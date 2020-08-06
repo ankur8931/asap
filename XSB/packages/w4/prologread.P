@@ -1,0 +1,97 @@
+%%% Prolog Reader (Version 1.1/July 2003)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/projectos/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This module reads ordinary Prolog and converts them to a rule base term.
+%%% It supports translation of EVOLP program terms (asserts).
+%%%
+
+:- export readProlog/2.
+
+readProlog( InFile, RuleBase ) :-
+	readPrologStream( stream(InFile), RuleBase ).
+
+readPrologStream( stream(InFile), rulebase( Label, backward, Rules, Queries) ) :-
+	open( InFile, read, Stream ),
+	read( Stream, Term ),
+	readPrologRules( Term, Stream, Label, Rules, Queries ),
+	close( Stream ).
+
+readPrologRules( end_of_file, _, [], [], []) :- !.
+readPrologRules( ( :- module(Label) ), Stream, Label, Rules, Queries) :- !,
+	read( Stream, Term ), !,
+	readPrologRules( Term, Stream, _, Rules, Queries ).
+readPrologRules( ( :- Body ), Stream, Label, Rules, [query(TBody,[],Vars)|RestQueries]) :- !,
+	getVars( Body, Vars ),
+	translateGoal( Body, TBody ), 
+	read( Stream, Term ), !,
+	readPrologRules( Term, Stream, Label, Rules, RestQueries ).
+readPrologRules( ( Head :- Body ), Stream, Label, [Rule|RestRules], Queries ) :- !,
+	translateRule( Head, Body, Rule ),
+	read( Stream, Term ), !,
+	readPrologRules( Term, Stream, Label, RestRules, Queries).
+readPrologRules( Head , Stream, Label, [Rule|RestRules], Queries ) :- !,
+	translateFact( Head, Rule ),
+	read( Stream, Term ), !,
+	readPrologRules( Term, Stream, Label, RestRules, Queries ).
+	 	
+% Predicate to translate the Body of a rule, substituting assert/1 atoms by rule/4 atoms
+
+translateGoal( true, true ) :- !.
+translateGoal( ( First, Rest ), (TFirst, TRest) ) :- !,
+	translateGoal( First, TFirst ), !,
+	translateGoal( Rest, TRest ).
+translateGoal( not Goal, not TNot ) :- !,
+	translateGoal( Goal, TNot ).
+translateGoal( assert( ( Head :- Body ) ), assert(Rule) ) :- !,
+	translateRule( Head, Body, Rule ).
+translateGoal( assert( Head ), assert(Rule) ) :- !,
+	translateFact( Head, Rule ).
+translateGoal( Atom, Atom ).
+
+translateRule( Head, Body, rule(THead,TBody,[],Vars) ) :- 
+	getVars( Head, Vars ), 
+	translateGoal( Head, THead ),
+	translateGoal( Body, TBody ).
+
+translateFact( Head, rule(THead,true,[],Vars) ) :- 
+	getVars( Head, Vars ), 
+	translateGoal( Head, THead ).
+
+% Predicate to construct a list of the variables occurring in a term, without repetitions
+getVars( Term, Vars ) :-
+	getVars( Term, 0, _, Vars ),
+	closeList( Vars ).
+
+getVars( T, N, N1, Vars ) :-
+	var( T ), !, insertVar( T, N, N1, Vars ).
+getVars( T, N, N, _ ) :-
+	atomic( T ), !.
+getVars( T, N, N1, Vars ) :-
+	functor( T, _, Arity ),
+	getArgVars( T, 1, Arity, N, N1, Vars ).
+
+getArgVars( _, M, A, N, N, _ ) :- M > A, !.
+getArgVars( T, M, A, N, N2, Vars ) :- 
+	arg( M, T, Arg ),
+	getVars( Arg, N, N1, Vars ), 
+	M1 is M + 1, !,
+	getArgVars( T, M1, A, N1, N2, Vars ).
+
+insertVar( Var, N, N, [ _ = V | _ ] ) :- 
+	Var == V, !.
+insertVar( Var, N, N1, ['$VAR'(N) = Var|_] ) :- 
+	!, N1 is N + 1.
+insertVar( Var, N, N1, [ _ | RestVars ] ) :-
+	!, insertVar( Var, N, N1, RestVars ).
+
+closeList( [] ) :- !.
+closeList( [_|Rest] ) :- closeList( Rest ).
+

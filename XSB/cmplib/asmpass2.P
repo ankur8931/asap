@@ -1,0 +1,223 @@
+/* File:      asm_pass2.P
+** Author(s): Kostis Sagonas, Terrance Swift, Saumya Debray
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: asmpass2.P,v 1.17 2011-06-21 17:58:26 dwarren Exp $
+** 
+*/
+
+:- compiler_options([xpp_on]).
+
+#include "psc_defs.h"
+
+/*======================================================================*/
+/*  asm_gendata(+OStr, +SymList)						*/ 
+/*	Generates the data segment of the byte code file.  The data	*/
+/*	segment contains information about the symbols in the module.	*/
+/*======================================================================*/
+
+asm_gendata(OStr,SymList) :- 
+	(member(Sym, SymList),	% Non-deterministically get a symbol
+	 asm_putsym(OStr,Sym),
+	 fail			% reclaim space (remove all choice points left)
+	 ;
+	 true
+	).
+
+asm_putsym(OStr,Sym) :-
+	sym_name(Sym, Name, Arity), str_len(Name, L),
+	sym_env(Sym, Env), env_code(Env, DomCode),
+	(sym_prop((thread_shared),Sym)
+	 ->	(sym_prop((thread_private),Sym)
+		 ->	warning((Name/Arity,' declared both shared and private; thread_shared assumed'))
+		 ;	true
+		),
+		DomCode1 is DomCode \/ 16'30 %%T_SHARED\/T_SHARED_DET
+	 ; sym_prop((thread_private),Sym)
+	 ->	DomCode1 is DomCode \/ 16'10 %%T_SHARED_DET
+	 ;	DomCode1 = DomCode
+	),
+	(sym_prop((use_variant_tabling),Sym)
+	 ->	(sym_prop((use_subsumptive_tabling),Sym)
+		 ->	warning((Name/Arity,' declared both variant and subsumptive; variant assumed'))
+		 ;	true
+		),
+		DomCode2 is DomCode1 \/ 8 %%T_TABLED_VAR
+	 ; sym_prop((use_subsumptive_tabling),Sym)
+	 ->	DomCode2 is DomCode1 \/ 64 %%T_TABLED_SUB_LOADFILE
+	 ; sym_prop(tabled(_,_),Sym)
+	 ->	(sym_prop(defined,Sym)
+		 ->	true
+		 ; sym_prop(defined(_,_),Sym)
+		 ->	true
+		 ;	(atom_codes(Name,[95,36|_]) -> 
+		            true
+		          ; warning((Name/Arity,' declared as tabled, but not defined.')))
+		),
+		DomCode2 is DomCode1 \/ 72 %%T_TABLED_VAR\/T_TABLED_SUB_LOADFILE
+	 ;	DomCode2 = DomCode1
+	),
+	sym_category(Sym, Cat), category_code(Cat, CatCode),
+	(sym_prop(defined,Sym)
+	 ->	CatCode2 is CatCode \/ T_DEFI
+	 ; sym_prop(defined(_,_),Sym)
+	 ->	CatCode2 is CatCode \/ T_DEFA \/ T_DEFI
+	 ;	CatCode2 = CatCode)
+	,
+	file_put(OStr,DomCode2), file_put(OStr,CatCode2), file_put(OStr,Arity), asm_putlength(OStr,L),
+	write(OStr,Name),
+	(Env = im(Mod)
+	 ->	str_len(Mod, LM), file_put(OStr,LM), write(OStr,Mod)
+	 ; sym_prop(defined(Mod,PA),Sym)
+	 ->	str_len(Mod, LM), file_put(OStr,LM), write(OStr,Mod),
+		str_len(PA,LPA), file_put(OStr,LPA), write(OStr,PA)
+	 ;	true
+	),
+	!.
+
+% Writes the length of an atom to a byte code file.  Atoms with length
+% less than 255 have their length denoted using one byte; for atoms
+% with length 255 and higher, the escape byte 255 is used and the
+% length of the atom is written as an integer (next 4 bytes).
+
+asm_putlength(OStr,L) :-
+	( L < 255 -> file_put(OStr,L) ; file_put(OStr,255), write_int(OStr,L) ).
+
+env_code(ex, T_EXPORTED).
+env_code((local), T_LOCAL).
+env_code(im(_), T_IMPORTED).
+env_code(global, T_GLOBAL).
+
+category_code(ordinary, T_ORDI).	% uninstantiated variable
+% category_code(dynamic, T_DYNA).	% not used in the compiler yet
+category_code(pred, T_UDEF).		% T_PRED=:=2
+category_code(module, T_MODU).
+
+
+/*======================================================================*/
+/*  asm_gentext(+OStr, +PilCode, +LabelTab)				*/
+/*	Generates the text segment of the byte code file.  Each time	*/
+/*	text segment for a single predicate block is generated.  The	*/
+/*	PilCode for the predicate contains the non-index code ONLY	*/
+/*	(the part of the code used for indexing has already been taken	*/
+/*	out of the PilCode by predicate asm_get_index/5 of asm).	*/
+/*======================================================================*/
+
+asm_gentext(OStr, Program, LabelTab) :-
+	member(Inst, Program),
+	asm_gentext_inst(OStr, Inst, LabelTab),
+	fail.		% reclaim space (remove all choice points left)
+asm_gentext(_, _, _).
+
+asm_gentext_inst(OStr, Inst, LabelTab) :-
+	asm_inst(Inst, _Len, Opcode, Args),
+	( Opcode >= 0 -> file_put(OStr,Opcode), asm_genargs(OStr, Args, LabelTab)
+	; Opcode =:= -2 -> true		% label
+	; error(('unknown pil text instruction: ', Inst))
+	),
+	!.
+
+asm_genargs(_OStr,[], _).
+asm_genargs(OStr,[One|More], LabelTab) :- 
+	asm_genarg(OStr,One, LabelTab), 
+	asm_genargs(OStr,More, LabelTab).
+
+:- index asm_genarg/3-2.
+asm_genarg(OStr,p, _) :- file_put(OStr,0).
+asm_genarg(OStr,pp, _) :- file_put(OStr,0), file_put(OStr,0).
+asm_genarg(OStr,ppp, _) :- file_put(OStr,0), file_put(OStr,0), file_put(OStr,0).
+asm_genarg(OStr,s(Sym), _) :- sym_offset(Sym, I), write_int(OStr,I).
+asm_genarg(OStr,c(Sym), _) :- sym_offset(Sym, I), write_int(OStr,I).
+asm_genarg(OStr,g(Sym), _) :- sym_offset(Sym, I), write_int(OStr,I).
+asm_genarg(OStr,n(I), _) :-
+	(integer(I)
+	 ->	(I >= -2147483647, I =< 2147483647
+		 ->	write_int(OStr,I)
+		 ;	warning(('Integer constant: ',I,' too large for .xwam file. Extreme value used')),
+		 	(I < 0 -> II = -2147483647 ; II = 2147483647),
+			 write_int(OStr,II)
+		)
+	 ;	write_float(OStr,I)
+	).
+asm_genarg(OStr,d(I), _) :- write_double(OStr,I).
+asm_genarg(OStr,i(I), _) :-  write_int(OStr,I).
+asm_genarg(OStr,l(L), LabelTab) :- hashed_find_label((L,I), LabelTab), write_int(OStr,I).
+asm_genarg(OStr,r(I), _) :- file_put(OStr,I).
+asm_genarg(OStr,v(I), _) :- file_put(OStr,I).
+asm_genarg(OStr,a(I), _) :- file_put(OStr,I).
+asm_genarg(OStr,t(T), _) :- write(OStr,T).
+
+
+/*======================================================================*/
+/*  asm_genindex(+OStr, +IndexCode, +LabelTab)				*/
+/*	Generates the index segment of the byte code file.  Each time	*/
+/*	index code for a single predicate block is generated.		*/
+/*======================================================================*/
+
+asm_genindex(OStr, IndexCode, LabelTab) :-
+	member(Inst, IndexCode),
+	asm_proc_index(OStr,Inst, LabelTab),
+	fail.		% reclaim space
+asm_genindex(_, _, _).
+
+:- index asm_proc_index/3-2.
+asm_proc_index(OStr, cases(_Label,Arity,Num,OrderNum), _) :-
+	asm_genindex_inst(OStr, cases(Arity,OrderNum,Num), _).
+asm_proc_index(OStr, arglabel(T,Val,L), LabelTab) :-
+	(T == c
+	 ->	sym_offset(Val, Nval), Inst = arglabel(T,Nval,L)
+	 ; T == s
+	 ->	sym_offset(Val, Nval), Inst = arglabel(T,Nval,L)
+	 ; T == i
+	 ->	Inst = arglabel(T,Val,L)
+	 ; T == f
+	 ->	Inst = arglabel(T,Val,L)
+	 ; T == d
+	 ->	Inst = arglabel(T,Val,L)
+	 ;	Inst = arglabel(T,L)
+	), 
+	asm_genindex_inst(OStr, Inst, LabelTab).
+
+asm_genindex_inst(OStr, Inst, LabelTab) :-
+	asm_inst(Inst, _Len, Opcode, Args),
+	( Opcode >= 0 -> file_put(OStr,Opcode), asm_genargs(OStr,Args, LabelTab)
+	; Opcode =:= -3 -> asm_genargs(OStr,Args, LabelTab)	% arglabel
+	; error(('unknown pil index instruction: ', Inst))
+	),
+	!.
+
+
+/*======================================================================*/
+/* --- other utilities ------------------------------------------------ */
+/*======================================================================*/
+
+hashed_find_label((abs(Value),Value), _) :- !.
+hashed_find_label(Elem, label_tab(Hash_Size,_,HashLabelTab)) :-
+	Elem = (X,_),
+	( X = (_,LabelId) ->
+		term_hash(LabelId, Hash_Size, Hash)
+	; term_hash(X, Hash_Size, Hash)
+	),
+	HashArg is Hash+1,
+	log_ith(HashArg, HashLabelTab, BucketList),
+	membercheck(Elem, BucketList).
+
+
+force_asm_pass2_loaded.

@@ -1,0 +1,56 @@
+\chapter{Implementation and System Features} \label{sec:impl}
+
+In this section we describe how the CDF system implements the
+semantincs of Part~\ref{part:semantics}, as well as many other
+features for ontology management.  We begin by describing CDF
+identifiers, facts, and rules in Section~\ref{sec:instance}.  The
+Type-0 query interface, based on tabled resolution is described in
+Section~\ref{sec:type0query}.  Section~\ref{sec:type0query} describes
+the Type-1 API, which is based on the CDF therorem prover.  Update and
+consistency predicates for CDF are described in
+Section~\ref{sec:update}.  Section~\ref{sec:config} describes how to
+configure CDF, along with predicates that allow the user to examine
+aspects of the CDF state.  Section~\ref{sec:components} describes
+basic I/O for CDF, along with a more sophisticated {\em component}
+system that is built on top of basic I/O.  Section~\ref{sec:database}
+describes database interfaces for CDF, and
+Section~\ref{sec:concurrency} describes concurrency support.
+%
+\mycomment{
+   Finally Section~\ref{} briefly describes the InterProlog interface for
+   XSB, the XJ interface that is built using InterProlog, the CDF caching
+   system that supports visual editing of CDF instances, and the CDF
+   Editor.}
+
+\paragraph{Terminology}
+Throughout this chapter, we assume a general familiarity with the
+terminology and conventions of Prolog in general and XSB in
+particular.  We discuss here our specialized conventions.  By
+\emindex{sorts} we mean the various sorts for identifiers discussed in
+\refchap{chap:type0} and in \refdef{def:cdfids}.  We reserve the term
+\emindex{types} for types as defined in the ISO-Prolog standard
+\cite{ISO}.  We use \emindex{domains} to refer to the ``types'' that are
+useful in CDF.  Each CDF domain is defined by a 1-ary predicate that
+begins with {\tt is}, such as {\tt isContextType/1}, {\tt
+isType0Term/1} etc., and we refer to domains via their predicate names
+and arities (e.g. {\tt isContextType/1}, etc).
+
+
+%----------------------------------------------------
+\input{instances} 
+%-------------------------------------------
+\input{type0impl}
+%------------------------------------------------------------------
+\input{type1impl}
+%------------------------------------------------------------------
+\input{update}
+%-----------------------------------------------------------------------------
+\input{checks}
+%-----------------------------------------------------------------------------
+\input{configuration}
+%------------------------------------------------------------------------------
+\input{components}
+%------------------------------------------------------------------------------
+\input{database}
+%------------------------------------------------------------------------------
+\input{concurrency}

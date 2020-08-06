@@ -1,0 +1,396 @@
+/* File:      ti_mod.P
+** Author(s): Steve Dawson
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: ti_mod.P,v 1.5 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/* This is the current version of transformational indexing.  As this   */
+/* is likely to undergo substantial revision in the coming months,      */
+/* I haven't put much effort into comments. -smd                        */
+/*======================================================================*/
+
+
+ti_pred_block([],[],_SymTab).
+ti_pred_block([InPred|InPreds],OutPreds,SymTab) :-
+	ti_xform_pred(InPred,OutPreds,OutPredsR,SymTab),
+	ti_pred_block(InPreds,OutPredsR,SymTab).
+
+
+ti_xform_pred(InPred,OutPreds,OutPredsR,SymTab) :-
+	ext_pred_data(InPred,Pred,Clauses,Prag),
+	( membercheck((ti),Prag) ->
+		( membercheck(index(Ind),Prag), nonvar(Ind), ! ; Ind = 1 ),
+		ti_factor(Clauses,Pred,Ind,TIPred),
+		ti_convert_pred(TIPred,Prag,OutPreds,OutPredsR,SymTab)
+	;
+		OutPreds = [InPred|OutPredsR]
+	).
+
+
+ti_factor(Clauses,InPred,Ind,OutPred) :-
+	int_pred_data(InPred,ExtName,Name,Arity,MList,Cls,ClsM,LastCl),
+	make_name(Name,Arity,PredName),
+	factor_clauses(Clauses,LastCl,PredName,Ind,MList,ClsM,ClsR,
+			  NewLastCl),
+	int_pred_data(OutPred,ExtName,Name,Arity,MList,Cls,ClsR,NewLastCl).
+
+
+factor_clauses([],LastCl,_Name,_Ind,_MList,Cls,Cls,LastCl).
+factor_clauses([Clause|Clauses],InLastCl,Name,Ind,MList,Cls,ClsR,
+	       OutLastCl) :-
+	ext_clause_data(Clause,Args,Body,Prag),
+	merge_clause(InLastCl,Args,Body,Prag,Name,Ind,MList,
+		     Cls,ClsM,MidLastCl),
+	factor_clauses(Clauses,MidLastCl,Name,Ind,MList,ClsM,ClsR,
+		       OutLastCl).
+
+
+merge_clause(InLast,Args2,Body2,Prag2,Name,Ind,MList,Cls,ClsR,OutLast) :-
+	int_clause_data(InLast,Args1,Body1,Prag1,Pred1),
+	get_common(Args1,Args2,Name,Name1,0,Arity1,MList,MList1,
+		   HArgs,BArgs,RArgs1,RArgs2),
+	( no_factor(Args1,Args2,HArgs,Ind) ->
+	  /* Case 1:  clauses can't be gainfully factored */
+		int_clause_data(OutLast,Args2,Body2,Prag2,end),
+		Cls = [InLast|ClsR]
+	; int_pred_data(Pred1,ExtName,_Name1,_Arity1,ML1,Cls1,Cls1M,Last1),
+	  MList1 == ML1 ->
+	  /* Case 2:  clause factors in the same way as the last one */
+		merge_clause(Last1,RArgs2,Body2,Prag2,Name,_,MList1,
+			     Cls1M,Cls1R,NewLast1),
+		int_pred_data(NewPred,ExtName,Name1,Arity1,MList1,
+			      Cls1,Cls1R,NewLast1),
+		int_clause_data(OutLast,Args1,Body1,Prag1,NewPred),
+		ClsR = Cls
+	; /* Case 3:  clauses factor in a "new" way */
+		fix_pass_thru(Pred1,RArgs1,Body1,NewB1),
+		int_clause_data(NewCl1,RArgs1,NewB1,Prag1,Pred1),
+		int_clause_data(NewCl2,RArgs2,Body2,Prag2,end),
+		int_pred_data(NewPred,ExtName,Name1,Arity1,MList1,
+			      [NewCl1|Cls1R],Cls1R,NewCl2),
+		goal_data(ExtName,BArgs,NewBody),
+		int_clause_data(OutLast,HArgs,NewBody,_NewPrag,NewPred),
+		ClsR = Cls
+	).
+
+
+/*
+ *  get_common(+Args1, +Args2, +InName, -OutName, +InArity, -OutArity,
+ *             +InML, -OutML, -HArs, -BArgs, -RArgs1, -RArgs2)
+ *
+ *	Finds all common parts of two argument lists.  Args1 and Args2
+ *	are the lists of arguments to match; InName is part of the name
+ *	that may be used for a new predicate; InArity indicates how
+ *	many args have been compared so far; Ind is the (perhaps yet
+ *	unknown) index position for the new predicate; InML is the list
+ *	of matching symbols -- this is used for creating the predicate
+ *	name and indirectly for chaining predicates properly;
+ *	HArgs is the factored argument list; BArgs is the list of
+ *	arguments for the call to the new predicate; RArgs1 and RArgs2
+ *	are the new lists of arguments for the factored clauses.
+ *	Sorry, I'm too lazy to explain the algorithm right now...
+ */
+
+get_common([],_,Name,Name,Arity,Arity,_,[],[],[],[],[]).
+get_common([Arg1|Args1],[Arg2|Args2],InName,OutName,InArity,OutArity,
+	   InML,OutML,HArgs,BArgs,RArgs1,RArgs2) :-
+	( compare_args(Arg1,Arg2,Arg,Name,Arity,SubArgs1,SubArgs2) ->
+		extend_name(InName,Name,Arity,Name1),
+		OutML = [(Name,Arity)|NextML],
+		( InML = [_|InML1] -> true ; InML1 = [] ),
+		reorder(SubArgs1,RSubArgs1), reorder(SubArgs2,RSubArgs2),
+		get_common_sub(RSubArgs1,RSubArgs2,Name1,Name2,InArity,Arity1,
+			       InML1,InML2,NextML,RestML,HSubArgs,
+			       BNext,BRest,RNext1,RRest1,RNext2,RRest2),
+		reorder(HSubArgs,RHSubArgs),
+		make_arg(Arg,RHSubArgs,HArg),
+		HArgs = [HArg|HRest],
+		( BNext == BRest ->
+			/* Arg1 and Arg2 are identical, so make this
+                           argument position a pass-thru to help reduce
+			   movement of arguments among registers */
+			Arity2 is Arity1 + 1,
+			pass_thru_sym(Pass),
+			BArgs = [Pass|BNext],
+			new_var(PTVar1), new_var(PTVar2),
+			RArgs1 = [PTVar1|RNext1], RArgs2 = [PTVar2|RNext2]
+		;
+			/* Arg1 and Arg2 differed somewhere, so replace
+			   this argument position with the first non-matching
+			   part (which takes the place of a pass-thru) */
+			Arity2 is Arity1,
+			BArgs = BNext,
+			RArgs1 = RNext1, RArgs2 = RNext2
+		)
+	;
+		get_match_name(InML,InName,Name2,OutML,RestML,InML2),
+		Arity2 is InArity + 1,
+		new_var(NewVar),
+		HArgs = [NewVar|HRest],
+		BArgs = [NewVar|BRest],
+		RArgs1 = [Arg1|RRest1], RArgs2 = [Arg2|RRest2]
+	),
+	get_common(Args1,Args2,Name2,OutName,Arity2,OutArity,
+		   InML2,RestML,HRest,BRest,RRest1,RRest2).
+
+
+/*
+ *  get_common_sub(+Args1, +Args2, +InName, -OutName, +InArity, -OutArity,
+ *                 +InML, +InMLT, -OutML, -OutMLT, -HArgs, -BArgs,
+ *                 -BTail, -RArgs1, -RTail1, -RArgs2, -RTail2)
+ *
+ *	Essentially similar to get_common/##, except that it factors
+ *	out common subparts of arguments for get_common (there are some
+ *	little differences that make it easier to implement as two
+ *	separate predicates).
+ */
+
+get_common_sub([],_,Name,Name,Arity,Arity,
+	       InML,InML,OutML,OutML,[],B,B,R1,R1,R2,R2).
+get_common_sub([Arg1|Args1],[Arg2|Args2],InName,OutName,InArity,OutArity,
+	       InML,InMLT,OutML,OutMLT,HArgs,BArgs,BTail,
+	       RArgs1,RTail1,RArgs2,RTail2) :-
+	( compare_args(Arg1,Arg2,Arg,Name,Arity,SubArgs1,SubArgs2) ->
+		extend_name(InName,Name,Arity,Name1),
+		OutML = [(Name,Arity)|NextML],
+		( InML = [_|InML1] -> true ; InML1 = [] ),
+		get_common_sub(SubArgs1,SubArgs2,Name1,Name2,InArity,Arity1,
+			       InML1,InML2,NextML,RestML,
+			       HSubArgs,BArgs,BRest,RArgs1,RRest1,
+			       RArgs2,RRest2),
+		make_arg(Arg,HSubArgs,HArg),
+		HArgs = [HArg|HRest]
+	;
+		get_match_name(InML,InName,Name2,OutML,RestML,InML2),
+		Arity1 is InArity + 1,
+		new_var(NewVar),
+		HArgs = [NewVar|HRest],
+		BArgs = [NewVar|BRest],
+		RArgs1 = [Arg1|RRest1], RArgs2 = [Arg2|RRest2]
+	),
+	get_common_sub(Args1,Args2,Name2,OutName,Arity1,OutArity,
+		       InML2,InMLT,RestML,OutMLT,HRest,
+		       BRest,BTail,RRest1,RTail1,RRest2,RTail2).
+
+
+reorder(Args,RArgs) :-
+	( option(ti_opt1) ->
+		reverse(Args,[],RArgs)
+	;
+		RArgs = Args
+	).
+
+reverse([],X,X).
+reverse([X|Xs],Y,Z) :- reverse(Xs,[X|Y],Z).
+
+
+compare_args(Arg1,Arg2,Arg1,Name1,Arity1,SubArgs1,SubArgs2) :-
+	arg_data(Arg1,Name1,Arity1,SubArgs1),
+	arg_data(Arg2,Name2,Arity2,SubArgs2),
+	Name1 == Name2,
+	Arity1 == Arity2.
+
+
+/*
+ *  make_name(+ArgName, +ArgArity, -OutName)
+ *
+ *	Makes an atom from a functor and its arity,
+ *	e.g.  (f,2) -> 'f/2'; (a,0) -> a
+ */
+
+make_name(ArgName,ArgArity,OutName) :-
+	( integer(ArgName) ->
+		number_codes(ArgName,L), atom_codes(OutName,L)
+	; number(ArgName) ->
+		OutName = 'F'
+	; ArgArity > 0 ->
+		str_cat(ArgName,'/',Temp0),
+		number_codes(ArgArity,L), atom_codes(Temp1,L),
+		str_cat(Temp0,Temp1,OutName)
+	;
+		OutName = ArgName
+	).
+
+
+/*
+ *  cat_name(+InName, +Name, -OutName)
+ *
+ *	Puts two atoms together with a "_" between.
+ */
+
+cat_name(InName,Name,OutName) :-
+	str_cat(InName,'_',Name0),
+	str_cat(Name0,Name,OutName).
+
+
+/*
+ *  I forget exactly what this does.
+ */
+
+get_match_name([],InName,OutName,[('X',0)|ML],ML,[]) :-
+	extend_name(InName,'X',0,OutName).
+get_match_name([M|Ms],InName,OutName,[M|ML],MLT,MLR) :-
+	M = (Name,Arity),
+	extend_name(InName,Name,Arity,Name1),
+	get_match_rest(Arity,Ms,Name1,OutName,ML,MLT,MLR).
+
+get_match_rest(0,MLR,Name,Name,MLT,MLT,MLR) :- !.
+get_match_rest(N,[M|Ms],InName,OutName,[M|ML],MLT,MLR) :-
+	M = (Name,Arity),
+	extend_name(InName,Name,Arity,Name1),
+	get_match_rest(Arity,Ms,Name1,Name2,ML,MLT1,MLR1),
+	N1 is N - 1,
+	get_match_rest(N1,MLR1,Name2,OutName,MLT1,MLT,MLR).
+
+extend_name(InName,Name,Arity,OutName) :-
+	( option(ti_long_names) ->
+		make_name(Name,Arity,Name1),
+		cat_name(InName,Name1,OutName)
+	;
+		OutName = InName
+	).
+
+
+no_factor([],_,_,_) :- !.
+no_factor(Args1,Args2,HArgs,Ind) :-
+	integer(Ind), mismatch_pos(Args1,Args2,HArgs,Ind), !.
+no_factor(_,_,HArgs,_) :- all_vars(HArgs).
+
+mismatch_pos([A1|A1s],[A2|A2s],[H|Hs],Ind) :-
+	( Ind =:= 1 ->
+		is_nonvar(A1), is_nonvar(A2), is_var(H)
+	;
+		Ind1 is Ind - 1,
+		mismatch_pos(A1s,A2s,Hs,Ind1)
+	).
+
+all_vars([]).
+all_vars([H|T]) :- is_var(H), all_vars(T).
+
+fix_pass_thru(end,_,Body,Body) :- !.
+fix_pass_thru(_,HArgs,InBody,OutBody) :-
+	goal_data(Pred,InBArgs,InBody),
+	fix_pass_thru2(HArgs,InBArgs,OutBArgs),
+	goal_data(Pred,OutBArgs,OutBody).
+
+fix_pass_thru2([],BArgs,BArgs).
+fix_pass_thru2([_|_],[],[]).
+fix_pass_thru2([HArg|HArgs],[InBArg|InBArgs],[OutBArg|OutBArgs]) :-
+	( is_var(HArg), is_pass_thru(InBArg) ->
+		OutBArg = HArg
+	;
+		OutBArg = InBArg
+	),
+	fix_pass_thru2(HArgs,InBArgs,OutBArgs).
+
+
+/* Data structure-dependent stuff */
+
+ext_pred_data(pred(Sym,[Clause|Clauses],Prag),Pred,Clauses,Prag) :-
+	sym_name(Sym,Name,Arity),
+	ext_clause_data(Clause,Args,Body,CPrag),
+	int_clause_data(Cl,Args,Body,CPrag,end),
+	int_pred_data(Pred,Sym,Name,Arity,[],Cls,Cls,Cl).
+
+ext_clause_data(clause(Args,Body,Prag),Args,Body,Prag).
+
+int_pred_data(ti_pred(ExtName,Name,Arity,MList,Cls,ClsR,LastCl),
+	      ExtName,Name,Arity,MList,Cls,ClsR,LastCl).
+
+int_clause_data(ti_clause(Args,Body,Prag,Pred),
+		Args,Body,Prag,Pred).
+
+arg_data(constant(Sym),Name,Arity,[]) :- sym_name(Sym,Name,Arity).
+arg_data(integer(Int),Int,0,[]).
+arg_data(real(Real),Real,0,[]).
+arg_data(structure(Sym,Args),Name,Arity,Args) :- sym_name(Sym,Name,Arity).
+
+make_arg(structure(Sym,_),Args,structure(Sym,Args)) :- !.
+make_arg(X,_,X).
+
+goal_data(Sym,Args,goal(Sym,Args)).
+
+new_var(varocc(Varocc)) :- cmp_gensym('_', Prefix), cat_name(Prefix,(ti),Varocc).
+
+pass_thru_sym(constant(Sym)) :- sym_pass_thru(Sym).
+
+is_var(varocc(_)).
+
+is_nonvar(X) :- \+ is_var(X).
+
+is_pass_thru(X) :- is_nonvar(X), pass_thru_sym(X).
+
+ti_convert_pred(TIPred,Prag,OutPreds,OutPredsR,SymTab) :-
+	int_pred_data(TIPred,Sym,_Name,Arity,_MList,Cls,[Last],Last),
+	OutPreds = [pred(Sym,Clauses,Prag)|OutPredsM],
+	init_ind_list(Arity,IndInit),
+	convert_clauses(Cls,Clauses,IndInit,_,OutPredsM,OutPredsR,SymTab).
+
+convert_pred(end,Preds,Preds,_SymTab) :- !.
+convert_pred(Pred,[pred(Sym,Clauses,Prag)|PredsM],PredsR,SymTab) :-
+	int_pred_data(Pred,Sym,Name,Arity,_MList,Cls,[Last],Last),
+	init_ind_list(Arity,IndInit),
+	convert_clauses(Cls,Clauses,IndInit,IndList,PredsM,PredsR,SymTab),
+	compute_index(IndList,0,1,0,Ind),
+	gensym_pred(Name,PredName),
+	( Ind > 0 ->
+		Prop = [pred,internal,index(Ind)],
+		Prag = [index(Ind)]
+	;
+		Prop = [pred,internal],
+		Prag = [index(_)]
+	),
+	sym_insert(PredName,Arity,Prop,SymTab,Sym).
+
+convert_clauses([],[],IndList,IndList,Preds,Preds,_SymTab).
+convert_clauses([Cl|Cls],[Clause|Clauses],InInd,OutInd,Preds,PredsR,SymTab) :-
+	convert_clause(Cl,Clause,InInd,MidInd,Preds,PredsM,SymTab),
+	convert_clauses(Cls,Clauses,MidInd,OutInd,PredsM,PredsR,SymTab).
+
+convert_clause(Cl,clause(Args,Body,Prag),InInd,OutInd,Preds,PredsR,SymTab) :-
+	int_clause_data(Cl,Args,Body,Prag,Pred),
+	update_ind_list(Args,InInd,OutInd),
+	convert_pred(Pred,Preds,PredsR,SymTab).
+
+init_ind_list(0,[]) :- !.
+init_ind_list(N,[0|Rest]) :- N1 is N - 1, init_ind_list(N1,Rest).
+
+update_ind_list([],[],[]).
+update_ind_list([Arg|Args],[In|Ins],[Out|Outs]) :-
+	( is_nonvar(Arg) ->
+		Out is In + 1
+	;
+		Out is In
+	),
+	update_ind_list(Args,Ins,Outs).
+
+compute_index([],_,_,Ind,Ind).
+compute_index([Count|Counts],Best,Pos,InInd,OutInd) :-
+	Pos1 is Pos + 1,
+	( Count > Best ->
+		compute_index(Counts,Count,Pos1,Pos,OutInd)
+	;
+		compute_index(Counts,Best,Pos1,InInd,OutInd)
+	).
+
+force_ti_mod_loaded.

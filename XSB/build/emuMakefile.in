@@ -1,0 +1,284 @@
+##############################################################################
+#                                                                            #
+# This is a Makefile for making the XSB emu directory.                       #
+# It has two main entries: xsb and xsbora. The latter for generating         #
+# executables with oracle support.                                           #
+# The EXECUTABLE variable is set by the top make file, build/Makefile        #
+#                                                                            #
+##############################################################################
+
+## File:      emuMakefile.in
+## Author(s): kifer (adapted from the original XSB makefile)
+## Copyright (C) The Research Foundation of SUNY, 1998
+##
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+##
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+##
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: emuMakefile.in,v 1.76 2013-01-04 15:02:16 dwarren Exp $
+##
+
+
+CC=@CC@@MEMFLAG@
+CPP=@CPP@
+CFLAGS=@CFLAGS@
+# Compilation flags for files requiring lower optimization level
+# (builtin.c,emuloop.c,tr_utils.c)
+loaderCFLAGS=@loaderCFLAGS@
+builtinsCFLAGS=@builtinsCFLAGS@
+emuloopCFLAGS=@emuloopCFLAGS@
+trutilsCFLAGS=@trutilsCFLAGS@
+CPPFLAGS=@CPPFLAGS@
+LDFLAGS=@LDFLAGS@
+ODBCSRC=@ODBCSRC@
+ODBCOBJ=@ODBCOBJ@
+ODBC_CFLAGS=@ODBC_CFLAGS@
+INTERPROLOGSRC=@INTERPROLOGSRC@
+INTERPROLOGOBJ=@INTERPROLOGOBJ@
+DLLTYPE=@DLLTYPE@
+JAVA_HEADER_PATH=@JAVA_HEADER_PATH@
+JAVA_PLATFORM_HEADER_PATH=@JAVA_PLATFORM_HEADER_PATH@
+SHAREDLIB_EXTENSION=@DYNMOD_SHAREDLIB_EXTENSION@
+DYNMOD_LDFLAGS=@DYNMOD_LDFLAGS@
+
+# For mno-cygwin
+# -mdll option is needed so that MSVC files could link to dll
+# however for old cygwin versions -dll option is used
+DLLNAME=xsb.dll
+DLL_LIBS=$(LDFLAGS)
+LIB_OBJECTS=xsb.o
+BASE_FILE=xsb.base
+DEF_FILE=$(arch_config_prefix)/saved.o/xsb.def
+LIB_FILE=libxsb.a
+ENTRY_FUNCTION=_win_xsbent@12
+
+
+
+
+XSBMOD_LDFLAGS=@XSBMOD_LDFLAGS@
+
+# Substitute an assignment for the MAKE variable, because
+# BSD doesn't have it as a default.
+@SET_MAKE@
+
+
+# just to be sure the sh is used
+SHELL=/bin/sh
+
+
+# The default location for installation.
+prefix=@prefix@
+# where sources are
+srcdir=@topdir@
+VPATH=@topdir@
+# Like `prefix', but used for architecture-specific files.
+arch_config_prefix=@arch_config_prefix@
+
+# Where to install XSB binaries
+bindir=$(arch_config_prefix)/bin
+# where XSB emu directory lives
+emudir=$(srcdir)/emu
+# where the object code goes
+arch_config_objlibdir=$(arch_config_prefix)/saved.o
+
+# Passed in from the top Makefile
+EXECUTABLE=xsb
+
+#=======================================================================
+# Stuff to automatically make the dependencies.
+#=======================================================================
+#
+DEPEND = makedepend
+#DEPENDFLAGS = -m
+#
+
+
+SRCS =	auxlry.c biassert.c builtin.c call_xsb.c cinterf.c conc_compl.c \
+	debug_xsb.c dis.c dynload.c dynamic_stack.c deadlock.c \
+	emuloop.c error_xsb.c findall.c function.c \
+	hash_xsb.c hashtable_xsb.c \
+	heap_xsb.c init_xsb.c inst_xsb.c io_builtins_xsb.c \
+	loader_xsb.c main_xsb.c memory_xsb.c orient_xsb.c \
+	pathname_xsb.c psc_xsb.c random_xsb.c \
+		remove_unf.c residual.c rw_lock.c \
+	scc_xsb.c slgdelay.c socket_xsb.c string_xsb.c \
+	storage_xsb.c struct_manager.c sub_delete.c subp.c \
+	system_xsb.c table_stats.c tables.c \
+	thread_xsb.c timer_xsb.c token_xsb.c \
+	tr_utils.c trace_xsb.c trie_lookup.c trie_search.c tries.c \
+	tst_insert.c tst_retrv.c tst_unify.c tst_utils.c varstring.c \
+	ubi_BinTree.c ubi_SplayTree.c \
+	hashtable.c hashtable_itr.c \
+	sha1.c md5.c \
+	url_encode.c getMemorySize.c \
+	incr_xsb.c call_graph_xsb.c 
+
+
+ORASRCS = $(SRCS) orastuff.c
+
+
+OBJS =	auxlry.o biassert.o builtin.o call_xsb.o cinterf.o conc_compl.o \
+	debug_xsb.o dis.o dynload.o dynamic_stack.o deadlock.o \
+	emuloop.o error_xsb.o findall.o function.o \
+	hash_xsb.o  hashtable_xsb.o \
+	heap_xsb.o init_xsb.o inst_xsb.o io_builtins_xsb.o \
+	loader_xsb.o memory_xsb.o orient_xsb.o \
+	pathname_xsb.o psc_xsb.o random_xsb.o \
+		remove_unf.o residual.o rw_lock.o \
+	scc_xsb.o slgdelay.o socket_xsb.o string_xsb.o \
+	storage_xsb.o struct_manager.o struct_intern.o sub_delete.o subp.o \
+	system_xsb.o table_stats.o tables.o \
+	thread_xsb.o timer_xsb.o token_xsb.o \
+	tr_utils.o trace_xsb.o trie_lookup.o trie_search.o tries.o \
+	tst_insert.o tst_retrv.o tst_unify.o tst_utils.o varstring.o \
+	ubi_BinTree.o ubi_SplayTree.o \
+	hashtable.o hashtable_itr.o \
+	sha1.o md5.o \
+	url_encode.o getMemorySize.o \
+	incr_xsb.o call_graph_xsb.o 
+
+# if emuMakefile.h exists, include it. Assume that it contains the var OTHEROBJS
+-include $(arch_config_prefix)/emuMakefile.h
+
+allOBJS = main_xsb.o ${OBJS} ${ODBCOBJ} ${INTERPROLOGOBJ}
+
+ORAOBJS = $(OBJS) orastuff.o
+
+allORAOBJS = $(allOBJS) orastuff.o
+
+init::
+	@echo -e "\nCompiling XSB with $(CC) using $(CFLAGS)\n"
+
+xsb:: init $(allOBJS)
+	@echo ""; echo "Making XSB executable $(EXECUTABLE) "; echo ""
+	@echo -e "\t[$(CC)] -o $(EXECUTABLE) $(LDFLAGS) "
+	@cd $(emudir); \
+		$(CC) -o $(EXECUTABLE) $(allOBJS) ${OTHEROBJS} $(LDFLAGS)
+
+xsbora:: init $(allORAOBJS)
+	@echo ""; \
+	  echo "Making XSB executable $(EXECUTABLE) with support for Oracle"; \
+	  echo ""
+	@echo -e "\t[$(CC)] -o $(EXECUTABLE) $(LDFLAGS) "
+	@cd $(emudir); \
+		$(CC) -o $(EXECUTABLE) $(allORAOBJS) ${OTHEROBJS} $(LDFLAGS)
+
+# Goal for making an XSB load module to be linked with external
+# C-drivers that pass queries to XSB
+xsbmod:: $(OBJS) ${ODBCOBJ} ${INTERPROLOGOBJ}
+	@echo ""; \
+	   echo "Making a C-callable XSB module"; \
+	   echo "@LD@ @MEMFLAG@ -o $(LIB_OBJECTS) $(XSBMOD_LDFLAGS) -r $(OBJS) ${ODBCOBJ} ${INTERPROLOGOBJ} ${OTHEROBJS}" ; \
+	   echo ""
+	@@LD@ @MEMFLAG@ -o $(LIB_OBJECTS) $(XSBMOD_LDFLAGS) -r $(OBJS) ${ODBCOBJ} ${INTERPROLOGOBJ} ${OTHEROBJS}
+	@cp $(LIB_OBJECTS) $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+xsbdynmod::
+	@echo "Making XSB Shared Library $(bindir)/libxsb.$(SHAREDLIB_EXTENSION)"
+	@@LD@ -o libxsb.$(SHAREDLIB_EXTENSION) $(DYNMOD_LDFLAGS)  -fPIC $(XSBMOD_LDFLAGS)  $(OBJS) ${ODBCOBJ} ${INTERPROLOGOBJ} -lm
+	@cp libxsb.$(SHAREDLIB_EXTENSION) $(bindir) 2>/dev/null || echo ""
+
+# same as xsbmod, but with oracle support
+xsboramod:: $(ORAOBJS)
+	@echo ""; \
+	   echo "Making a C-callable XSB module $(arch_config_objlibdir)/$(LIB_OBJECTS) with support for Oracle"; \
+	   echo ""
+	@@LD@ -o $(LIB_OBJECTS) $(XSBMOD_LDFLAGS) -r $(ORAOBJS) ${OTHEROBJS}
+	@cp $(LIB_OBJECTS) $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+
+depend::
+	@$(DEPEND) $(DEPENDFLAGS) -- -I$(arch_config_prefix)  -- $(SRCS) $(ODBCSRC)
+#	@$(DEPEND) $(DEPENDFLAGS) -- -I$(arch_config_prefix)  -I$(JAVA_PLATFORM_HEADER_PATH) -I$(JAVA_HEADER_PATH) $(CFLAGS) -- $(SRCS) $(ODBCSRC) ${INTERPROLOGSRC}
+
+#
+# create a new DLL library in cygwin (compiled with -mno-cygwin) environment
+#
+# LIB_OBJECTS: xsb.o 
+# DLLNAME: name of the new dll
+# DEFFILE is the name of the definitions file.
+# BASEFILE temporary
+# EXPFILE  temporary
+# ENTRY is the entry point  int WINAPI startup (HINSTANCE, DWORD, LPVOID)
+
+dll: $(DLLTYPE)
+
+nodll:
+
+cygdll: $(allOBJS) $(HEADERS) xsbmod
+	@echo "$(CC) -Wl,--add-stdcall-alias -shared -o $(arch_config_prefix)/bin/$(DLLNAME) $(OBJS) ${ODBCOBJ} ${INTERPROLOGOBJ} -Wl,--out-implib=xsb.a -Wl,--export-all-symbols -Wl,--enable-auto-import $(DLL_LIBS)"
+	@$(CC) -Wl,--add-stdcall-alias -shared -o $(arch_config_prefix)/bin/$(DLLNAME) $(OBJS) ${ODBCOBJ} ${INTERPROLOGOBJ} -Wl,--out-implib=xsb.a -Wl,--export-all-symbols -Wl,--enable-auto-import $(DLL_LIBS)
+	@echo "$(CC) -o $(arch_config_prefix)/bin/xsb.exe  $(CFLAGS) -I$(arch_config_prefix) -L$(arch_config_prefix)/bin main_xsb.c $(XSBMOD_LDFLAGS) $(DLL_LIBS) -lxsb"
+	@cp xsb.a $(arch_config_prefix)/bin/xsb.a
+	@$(CC) -o $(arch_config_prefix)/bin/xsb.exe  $(CFLAGS) \
+		-I$(arch_config_prefix) -L$(arch_config_prefix)/bin \
+		main_xsb.c $(XSBMOD_LDFLAGS) $(DLL_LIBS) -lxsb
+
+
+#=======================================================================
+# Put in this group all actions (rules) of this Makefile.
+#=======================================================================
+
+interprolog_callback.o: interprolog_callback.c
+	@echo -e "\t[$(CC)] interprolog_callback.c"
+	@$(CC) -c -I$(arch_config_prefix) -I$(JAVA_PLATFORM_HEADER_PATH) -I$(JAVA_HEADER_PATH) $(CFLAGS) interprolog_callback.c
+	@cp interprolog_callback.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+init_xsb.o: init_xsb.c
+	@echo -e "\t[$(CC)] init_xsb.c"
+	@$(CC) -I$(arch_config_prefix)  -c $(CFLAGS) init_xsb.c
+	@cp init_xsb.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+dynload.o: dynload.c
+	@echo -e "\t[$(CC)] dynload.c"
+	@$(CC) -I$(arch_config_prefix)  -c $(CFLAGS) dynload.c
+	@cp dynload.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+emuloop.o: emuloop.c
+	@echo -e "\t[$(CC)] emuloop.c using $(emuloopCFLAGS)"
+	@$(CC) -I$(arch_config_prefix)  -c $(emuloopCFLAGS) emuloop.c
+	@cp emuloop.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+# Higher optimization level has problem with some versions of gcc
+tr_utils.o: tr_utils.c
+	@echo -e "\t[$(CC)] tr_utils.c using $(trutilsCFLAGS)"
+	@$(CC) -I$(arch_config_prefix)  -c $(trutilsCFLAGS) tr_utils.c
+	@cp tr_utils.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+builtin.o: builtin.c
+	@echo -e "\t[$(CC)] builtin.c using $(builtinsCFLAGS)"
+	@$(CC) -I$(arch_config_prefix)  -c $(builtinsCFLAGS) builtin.c
+	@cp builtin.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+loader_xsb.o: loader_xsb.c
+	@echo -e "\t[$(CC)] loader_xsb.c using $(loaderCFLAGS)"
+	@$(CC) -I$(arch_config_prefix)  -c $(loaderCFLAGS) loader_xsb.c
+	@cp loader_xsb.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+odbc_xsb.o: odbc_xsb.c
+	@echo -e "\t[$(CC)] odbc_xsb.c"
+	@$(CC) -I$(arch_config_prefix)  -c $(ODBC_CFLAGS) $(CFLAGS) odbc_xsb.c
+	@cp odbc_xsb.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+.c.o:
+	@echo -e "\t[$(CC)] $*.c"
+	@$(CC) -I$(arch_config_prefix)  -c $(CFLAGS) $*.c
+	@cp $*.o $(arch_config_objlibdir) 2> /dev/null || echo ""
+
+
+#=======================================================================
+# All dependencies are automatically generated by makedepend.
+#=======================================================================
+
+# DO NOT DELETE THIS LINE -- `makedepend' depends on it!
+

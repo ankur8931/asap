@@ -1,0 +1,11 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : s = http://description.org/schema/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://www.w3.org/Home/Lassila],[element(http://description.org/schema/ : Creator,[],[Ora Lassila])])])
+
+----------RDF----------
+
+[description(description,about(http://www.w3.org/Home/Lassila),[http://description.org/schema/ : Creator = literal(Ora Lassila)])]
+
+--------Triples--------
+
+{http://www.w3.org/Home/Lassila, http://description.org/schema/Creator, literal(Ora Lassila)}

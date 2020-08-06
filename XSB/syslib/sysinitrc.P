@@ -1,0 +1,80 @@
+/* File:      sysinitrc.P -- system library search path initialization
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: sysinitrc.P,v 1.13 2004/03/13 21:03:22 dwarren Exp $
+** 
+*/
+
+
+%% This file is consulted from loader.P
+
+:- compiler_options([xpp_on,sysmod]).
+
+#include "flag_defs_xsb.h"
+
+
+:- import stat_set_flag/2 from machine.
+:- import xsb_configuration/2 from xsb_configuration.
+
+:- thread_shared library_directory/1.
+:- dynamic library_directory/1.
+
+:- %% Add the packages dir to the search path
+   xsb_configuration(packagesdir, LibDir1),
+   assert(library_directory(LibDir1)),
+
+   %% Add the configuration-INDEPENDENT SITE library to the search path
+   (xsb_configuration(site_libdir, LibDir2)
+   -> assert(library_directory(LibDir2))
+   ;  true
+   ),
+
+   %% Add the configuration-SPECIFIC SITE library to the search path
+   (xsb_configuration(site_config_libdir, LibDir3)
+   -> assert(library_directory(LibDir3))
+   ;  true
+   ),
+
+   %% Add the SYSTEM configuration-SPECIFIC library to the search path
+   (xsb_configuration(config_libdir, LibDir4)
+   -> assert(library_directory(LibDir4))
+   ;  true
+   ),
+
+   %% Add the $USER_HOME/.xsb/config/<arch> directory -- the place for
+   %% dynamically compiles *.so files and similar stuff.
+   xsb_configuration(user_config_libdir, Libdir5),
+   assert(library_directory(Libdir5)).
+
+
+/* this will go away in the future; its purpose is to make sure that
+   xsb_read.P is loaded before users have a chance to load their own
+   similarly named module. */
+:- import force_file_read_loaded/0 from xsb_read.
+:- force_file_read_loaded.
+
+%% tell the loader to start looking in non-system libraries
+:- stat_set_flag(LIBS_LOADED, 1). 
+
+%% load package maintenance definitions
+%% NO, made standard preds so this will be loaded on demand.
+%%:- [packaging].
+
+:- [xsbbrat].

@@ -1,0 +1,692 @@
+/* File:      error_handler.P
+** Author(s): Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABrILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: error_handler.P,v 1.58 2008/11/06 00:10:18 tswift Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod,optimize,spec_off]).
+%   :- import writeln/1 from standard.
+
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+#include "heap_defs_xsb.h"
+#include "standard.h"
+#include "char_defs.h"
+#include "thread_defs_xsb.h"
+#include "builtin.h"
+#include "memory_defs.h"
+
+/*
+get_error_tag(error(Tag,_),Tag).
+get_error_message(error(_Tag,context(MaybeM,_Backtrace)),Message):- 
+	(MaybeM = context(Message,_Goal) ; MaybeM = Message),!.
+get_error_backtrace(error(_Tag,context(_MaybeM,Backtrace)),Backtrace).
+get_error_goal(error(_Tag,context(context(_Msg,Goal),_Backtrace)),Goal).
+*/
+
+:- import read_atom_to_term/2 from string.
+xsb_error_get_tag(error(Tag,_),Tag).
+xsb_error_get_message(error(_Tag,context(MaybeM,_Backtrace)),Message):- 
+	(MaybeM = context(MaybeM1,_Goal) -> 
+	 (MaybeM1 = context(Message,_Tid) ; MaybeM1 = Message)
+	  ; MaybeM = Message),!.
+xsb_error_get_goal(error(_Tag,context(context(_Msg,GoalAtom),_Backtrace)),Goal):- read_atom_to_term(GoalAtom,Goal).
+xsb_error_get_goalatom(error(_Tag,context(context(_Msg,Goal),_Backtrace)),Goal).
+xsb_error_get_tid(error(_Tag,context(context(context(_Msg,Tid),_Goal),_Backtrace)),Tid).
+xsb_error_get_backtrace(error(_Tag,context(_MaybeM,Backtrace)),Backtrace).
+
+:- import default_user_error_handler/1 from usermod.
+:- dynamic default_user_error_handler/1.
+:- thread_shared(default_user_error_handler(_)).
+
+/* Types of errors are based on Section 7.12 of the ISO Standard, but
+   Ive added tabling_error.  (see manual for types and explanation).
+   User handlers only work for main -- otherwise use on-exit */
+default_error_handler(Error) :- 
+%       standard:writeln(default_error_handler(Error)),
+	xsb_thread_self(Thread),
+	Thread == 0,
+	default_user_error_handler(Error),
+%	close_open_tables(non_memory_error),
+	!,fail.
+default_error_handler(Error) :-   /* Thread is not console */
+	default_user_error_handler(Error),!.
+default_error_handler(Error) :-
+	default_sys_error_handler(Error).
+
+%----
+:- import thread_exit_handler/1 from thread.
+ccall_error_handler(thread_exit(Term)) :-
+	thread_exit_handler(Term),   
+	!.				% cut should be unnecessary, as thread should have exited by here
+
+ccall_error_handler(Error) :- 
+	default_user_error_handler(Error),
+	close_open_tables(non_memory_error),
+	!,fail.
+ccall_error_handler(Error) :-
+	default_ccall_error_handler(Error),
+	fail.
+
+/* Below, resource errors (usually mallocs returning null ptrs)
+ * are handled seperately, by writing out message in C.  
+ * Also, as a stab at error handling in the MT engine, we only print
+ * out backtrace for the console thread; we keep the error message
+ * around for non-console joinable threads. For detached threads,
+ * there''s not much that can be done.  */
+
+:- import  '_$thread_exit_ball'/2 from usermod.
+:- dynamic '_$thread_exit_ball'/2.
+:- thread_shared('_$thread_exit_ball'(_,_)).
+
+%:- import writeln/1 from standard.
+default_sys_error_handler(error(Error,Msg,Backtrace)) :- !,
+	default_sys_error_handler(error(Error,context(Msg,Backtrace))).
+default_sys_error_handler(error(Error,Context)) :- 
+	nonvar(Context),
+	Context = context(Msg_or_Ctxt,Backtrace),!,
+%	writeln(default_sys_error_handler(error(Error,context(Msg_or_Ctxt,Backtrace)))),
+	get_message(Msg_or_Ctxt,Msg),
+	% here is where we may do something abt backtraces.
+	xsb_flag(backtrace_on_error,BT),
+	xsb_thread_self(Thread),
+        default_sys_error_handler_message(error(Error,Msg)),
+	!,
+	(Thread == 0 -> 
+	    default_sys_error_handler_main(Error,Context,BT,Backtrace)
+	  ; 
+	    default_sys_error_handler_nonmain(Error,Thread,Backtrace,Msg) ).
+default_sys_error_handler(Ball) :- 
+	default_sys_error_handler_message(Ball).
+
+default_sys_error_handler_message(error(thread_cancel,_)) :- !.
+default_sys_error_handler_message(error(misc_error(Level),Msg)) :- 
+%        writeln(default_sys_error_handler_message(error(misc_error(Level),Msg)) ),
+	((Level > 0 ;  Msg = '_$silent_abort')-> 
+  	   true 
+	 ; default_sys_error_handler_message(error(misc_error,Msg))),!.
+default_sys_error_handler_message(error(Error,Msg)) :-
+	get_sys_error_description(error(Error,Msg),NewMsg),
+	flush_all_open_streams,
+	messageln(NewMsg,STDERR),
+	flush_output(STDERR),
+	!.
+default_sys_error_handler_message(X) :-
+	flush_all_open_streams,
+	messageln(('++Error[XSB/Runtime] Unhandled Exception: ',X),STDERR),
+	flush_output(STDERR).
+
+flush_all_open_streams:- 
+	stream_property(S,mode(X)),(X = append ; X = write),flush_output(S),fail.
+flush_all_open_streams.
+
+%%:- import atom_codes/2 from standard.
+:- import stat_set_flag/2 from machine.
+default_sys_error_handler_main(resource_error(E),_Message,_BT,_Backtrace):- 
+	% (aargh! module system)
+	%%atom_codes(E,Elist),atom_codes(memory,Elist),
+	functor(E,memory,0), !,
+	stat_set_flag(MEMORY_ERROR_FLAG,0),
+	close_open_tables(memory_error),fail.
+default_sys_error_handler_main(misc_error(Level),Message,_BT,_Backtrace):- !,
+%        writeln(default_sys_error_handler_main(misc_error(Level),Message,_BT,Backtrace)),
+       	conget('_$break_level', Break_Level),
+        (Level == 0 -> 
+	   fail
+	 ; 
+	 New_Break_Level is Break_Level - 1,
+	 conset('_$break_level', New_Break_Level),
+	 message('[ End break (level ',STDMSG),message(Break_Level,STDMSG),messageln(') ]',STDMSG),
+	 throw(error(misc_error(New_Break_Level),Message)) ).
+default_sys_error_handler_main(_Error,_Message,BT,Backtrace):- 
+	(BT == on,Backtrace \== [] -> print_backtrace(Backtrace) ; true),
+%	close_open_tables(non_memory_error),
+	fail.
+
+%-----
+:- import functor/3 from standard.
+/* TLS: for now ignoring backtraces in Ccall; Ignoring Mt engine.
+         Note that for ISO errors we get a comma-list that may have
+         terms in it.  Im handling that specially, to make it look
+         pretty.*/
+
+default_ccall_error_handler(error(Error,MsgIn,_Backtrace)) :-
+	% here is where we may do something abt backtraces.
+	% xsb_flag(backtrace_on_error,BT),
+	% xsb_thread_self(Thread),
+	(get_sys_error_description(error(Error,MsgIn),MsgList) -> 
+	    true
+	  ; MsgList = ('++Error[XSB/Runtime] Unhandled Exception: ',MsgIn)),
+	transform_error_message(MsgList,MsgList1),
+	concat_atom(MsgList1,MsgAtom),
+	(atom(Error) -> ErrorAtom = Error ; functor(Error,ErrorAtom,_)),
+	ccall_store_error(ErrorAtom,MsgAtom).
+
+transform_error_message((A,B),(NewA,NewB)):- !,
+	transform_error_message_1(A,NewA),
+	transform_error_message(B,NewB).
+transform_error_message(A,NewA):- 
+	transform_error_message_1(A,NewA).
+
+transform_error_message_1(A,NewA):- 
+	(integer(A) ; atom(A)) -> A = NewA ; term_to_atom(A,NewA).
+	
+%-----
+% Cancellation.
+default_sys_error_handler_nonmain(thread_cancel,Thread,Backtrace,Msg):- !,
+	(thread_property(Thread,detached(false)) -> 
+	       get_backtrace(Backtrace,ReadBT),
+	       asserta('_$thread_exit_ball'(Thread,
+	                                    cancelled(error(thread_cancel,Msg,ReadBT))))
+	     ; true),
+	internal_thread_exit(THREAD_CANCELLED).
+% Error: non-cancellation.
+default_sys_error_handler_nonmain(Error,Thread,Backtrace,Msg):- 
+	(thread_property(Thread,detached(false)) -> 
+	    get_backtrace(Backtrace,ReadBT),
+	    asserta('_$thread_exit_ball'(Thread,exception(error(Error,Msg,ReadBT))))
+	;   true),
+	internal_thread_exit(THREAD_EXCEPTION).
+
+% get_sys_error_description/3
+get_sys_error_description(error(Error,Msg,Backtrace), 
+	                        ExceptionDescription, BacktraceList) :- !,
+	get_sys_error_description(error(Error,Msg), ExceptionDescription),
+	get_backtrace(Backtrace, BacktraceList).
+get_sys_error_description(error(Error,Msg), ExceptionDescription, []) :-
+	get_sys_error_description(error(Error,Msg), ExceptionDescription).
+
+% get_sys_error_description/2
+% This needs to handle either comma lists or lists as input -- just as message/[1,2]
+get_sys_error_description(error(domain_error(Valid_type,Culprit),Msg), ExceptionDesc) :-
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Domain (',Culprit,' not in domain ',
+	                          Valid_type,')] ', Msg).
+get_sys_error_description(error(evaluation_error(Flag),Msg), ExceptionDesc) :- 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Evaluation (',Flag,')] ', Msg).
+get_sys_error_description(error(existence_error(Obj_type,Culprit),Msg), ExceptionDesc):-
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Existence (No ',Obj_type,
+	                          ' ',Culprit,' exists)] ', Msg).
+get_sys_error_description(error(instantiation_error,Msg), ExceptionDesc) :- 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Instantiation] ', Msg).
+get_sys_error_description(error(misc_error,Msg), ExceptionDesc) :- 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Miscellaneous] ', Msg).
+get_sys_error_description(error(preprocessing_error,Msg), ExceptionDesc) :- 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Preprocessing] ', Msg).
+get_sys_error_description(error(permission_error(Op,Obj_type,Culprit),Msg), 
+	                          ExceptionDesc) :-
+	(Culprit == '' -> 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Permission (Operation) ',
+		     Op,' on ',Obj_type,' ] ', Msg) 
+		 ; 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Permission (Operation) ',
+		     Op,' on ',Obj_type,': ',Culprit,'] ', Msg) ).
+%get_sys_error_description(error(representation_error(RepType,Culprit),Msg), ExceptionDesc) :- 
+%	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Representation (',Culprit,
+%	                 ' is not ',RepType,')] ', Msg) .
+get_sys_error_description(error(representation_error(RepType),Msg), ExceptionDesc) :- 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Representation (not ',RepType,')] ', Msg) .
+get_sys_error_description(error(resource_error(Flag),Msg), ExceptionDesc) :- 
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Resource (',Flag,')] ', Msg) .
+get_sys_error_description(error(SyntaxError,Msg), ExceptionDesc) :-
+	SyntaxError =.. [syntax_error,Culprit],
+	ExceptionDesc =   ('++Error[XSB/Runtime/P]: [Syntax] (', Culprit1,') ',Msg),
+	(var(Culprit)
+	 ->	Culprit1 = ''
+	 ; Culprit = [_H|_T]
+	 ->	term_to_atom(Culprit,Culprit1)
+	 ; Culprit1 = Culprit
+	).
+get_sys_error_description(error(syntax_error,Msg), ExceptionDesc) :- 
+	ExceptionDesc =   ('++Error[XSB/Runtime/P]: [Syntax] ', Msg) .
+get_sys_error_description(error(system_error,Msg), ExceptionDesc) :- 
+	ExceptionDesc =   ('++Error[XSB/Runtime/P]: [System] ', Msg).
+get_sys_error_description(error(table_error,Msg), ExceptionDesc) :-
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Table] ',Msg).
+get_sys_error_description(error(typed_table_error(Subtype),Msg), ExceptionDesc) :-
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Table] (',Subtype,') ',Msg).
+get_sys_error_description(error(thread_cancel,Id), ExceptionDesc) :- 
+	ExceptionDesc = 
+             ('++Error[XSB/Runtime/P]: [XSB Thread Cancellation] Thread ',Id).
+get_sys_error_description(error(type_error(Valid_type,Culprit),Msg), ExceptionDesc) :-
+  	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Type (',Culprit,' in place of ',Valid_type,')] ', Msg).
+get_sys_error_description(error(unrecoverable_error,Msg), ExceptionDesc) :-
+	ExceptionDesc = ('++Error[XSB/Runtime/P]: [Unrecoverable!] ',Msg).
+
+get_message(context(Msg,_),Msg):- !.
+get_message(Msg,Msg).
+
+/*get_backtrace(+, -) gets backtrace as built by build_xsb_backtrace:
+list pair, with car=forward continuation, cdr=backward continuation.
+backward is [] if xsb not started with -p option */
+get_backtrace([ForPscs|BackPscs], [['Forward Continuation...'|PFor]|['Backward Continuation...'| PBack]]) :-
+	get_mod_pred_arity_list(ForPscs,PFor),
+	get_mod_pred_arity_list(BackPscs,PBack).
+
+
+/* get backtrace as list of Mod:Pred/Arity, with ? if unknown */
+get_backtrace_list([],[]).
+get_backtrace_list([Psc|Pscs],[Mod:Name/Arity|Preds]) :-
+	(Psc =:= 0
+	 ->	Mod = (?), Name = (?), Arity = (?)
+	 ;	psc_modname_filename(Psc,Mod,_),
+		psc_name(Psc,Name),
+		psc_arity(Psc,Arity)
+	),
+	get_backtrace_list(Pscs,Preds).
+
+psc_modname_filename(Psc,ModName,FileName) :-
+	psc_data(Psc,ModPscOrFile),
+	(integer(ModPscOrFile)
+	 ->	(ModPscOrFile =:= 0
+		 ->	ModName = usermod, % 0 also means usermod
+			FileName = unknown
+		 ;	psc_name(ModPscOrFile,ModName),
+			psc_ep(ModPscOrFile,FileName)
+			%,standard:writeln(userout,mf(ModPscOrFile,FileName))
+		)
+	 ;	ModName = usermod,
+		FileName = ModPscOrFile
+	).
+
+/* get backtrace as printable list of atoms */
+get_mod_pred_arity_list([], []).
+get_mod_pred_arity_list([Psc|Pscs], [ModPred|ModPreds]) :-
+	(Psc =:= 0
+	 ->	ModPred = '... unknown/?',
+		FileName = unknown
+	 ;	psc_modname_filename(Psc,ModName,FileName),
+		psc_name(Psc,Name),
+		psc_arity(Psc,Arity),
+		(ModName == usermod
+		 ->	concat_atom(['... ',Name,'/',Arity,'  From ',FileName],ModPred)
+		 ;	concat_atom(['... ',ModName,':',Name,'/',Arity,'  From ',FileName],ModPred)
+		)
+	),
+	get_mod_pred_arity_list(Pscs, ModPreds).
+
+/* prints out backtrace as built by build_xsb_backtrace:
+list pair, with car=forward continuation, cdr=backward continuation.
+backward is [] if xsb not started with -p option */
+
+print_backtrace(BT) :- print_backtrace(BT,STDERR).
+
+print_backtrace([[]],_Stream) :- !.  % if empty, don't print anything
+print_backtrace([],_Stream) :- !.  % if empty, don't print anything
+print_backtrace([For|Back],Stream) :-
+	messageln('Forward Continuation...',Stream),
+	print_mod_pred_arity_list(For,Stream),
+	(Back == []
+	 ->	true
+	 ;	messageln('Backward Continuation...',Stream),
+		print_mod_pred_arity_list(Back,Stream)
+	).
+
+print_mod_pred_arity_list([],_Stream).
+print_mod_pred_arity_list([Psc|Pscs],Stream) :-
+	(Psc =:= 0
+	 ->	messageln(['... unknown/?','  From  unknown'],Stream)
+	 ;
+/*	 psc_data(Psc,ModPscOrFile),
+		(integer(ModPscOrFile)
+		 ->	(ModPscOrFile =\= 0
+			 ->	psc_name(ModPscOrFile,ModName),
+				psc_ep(ModPscOrFile,FileName)
+			 ;	ModName = unknown,
+				FileName = unknown
+			)
+		 ;	ModName = usermod,
+		 	FileName = ModPscOrFile
+		), **/
+		psc_modname_filename(Psc,ModName,FileName),
+		psc_name(Psc,Name),
+		psc_arity(Psc,Arity),
+		(ModName \== usermod
+		 ->	messageln(['... ',ModName,':',Name,'/',Arity,'  From ',FileName],Stream)
+		 ;	messageln(['... ',Name,'/',Arity,'  From ',FileName],Stream)
+		)
+	),
+	print_mod_pred_arity_list(Pscs,Stream).
+%-----------------------------------------------------------------------
+
+% ISO-compatable (and other) convenience predicates
+
+domain_error(Valid_type,Culprit,Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(domain_error(Valid_type,Culprit),context((' in arg ',Arg,' of predicate ',Predicate),Bt))).
+domain_error(Valid_type,Culprit,Predicate,Arg,Msg):- 
+	xsb_backtrace(Bt),
+	throw(error(domain_error(Valid_type,Culprit),context((' in arg ',Arg,' of predicate ',Predicate, ' (',Msg,')'),Bt))).
+%------
+evaluation_error(Flag,Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(evaluation_error(Flag),context((' in arg ',Arg,' of predicate ',Predicate),Bt))).
+%------
+existence_error(Object_type,Culprit,Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(existence_error(Object_type,Culprit),context((' in arg ',Arg,' of predicate ',Predicate),Bt))).
+%------
+% obsolete TLS
+instantiation_error(Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(instantiation_error,context((' in arg ',Arg,' of predicate ',Predicate),Bt))).
+instantiation_error(Predicate,Arg,State):- 
+	xsb_backtrace(Bt),
+	throw(error(instantiation_error,context((' in arg ',Arg,' of predicate ',Predicate,': must be ',State),Bt))).
+%------
+% Misc Errors (nee aborts)
+misc_error(Message):- 
+	xsb_backtrace(Bt),
+	throw(error(misc_error,context(Message,Bt))).
+
+misc_error(Message,Lev_in):- 
+        conget('_$break_level',BL),
+	(BL < Lev_in -> Level = BL ; Level = Lev_in),
+	xsb_backtrace(Bt),
+	throw(error(misc_error(Level),context(Message,Bt))).
+
+preprocessing_error(Message) :-
+	throw(error(preprocessing_error,context(Message,_))).
+
+%------
+permission_error(Op,Obj_type,Culprit,Predicate):- 
+	xsb_backtrace(Bt),
+	throw(error(permission_error(Op,Obj_type,Culprit),context((' in ',Predicate),Bt))).
+
+%------
+representation_error(Flag,Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(representation_error(Flag),context((' in arg ',Arg,' of predicate ',Predicate),Bt))).
+%------
+
+resource_error(Flag,Predicate):- 
+	xsb_backtrace(Bt),
+	throw(error(resource_error(Flag),context((' in predicate ',Predicate),Bt))).
+
+%------
+% PM: TODO - Replace usage of term syntax_error/1 with syntax_error/2
+syntax_error(Message):- 
+	xsb_backtrace(Bt),
+	SyntaxError =.. [syntax_error,_], % syntax_error/1 term in usermod
+	throw(error(SyntaxError,context(Message,Bt))).
+%------
+system_error(Flag,Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(system_error(Flag),context((' in arg ',Arg,' of predicate ',Predicate),Bt))).
+%------
+table_error(Message):- 
+	xsb_backtrace(Bt),
+	throw(error(table_error,context(Message,Bt))).
+
+%------
+
+table_error(Subtype,Message,Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(typed_table_error(Subtype),context((Message,' in arg ',Arg,' of predicate ',Predicate),Bt))).
+
+%------
+abort_on_thread_cancel:- 
+	xsb_thread_self(Id),
+	throw(error(thread_cancel,context(Id,[[]]))).
+
+%------
+type_error(Valid_type,Culprit,Predicate,Arg):- 
+	xsb_backtrace(Bt),
+	throw(error(type_error(Valid_type,Culprit),context((' in arg ',Arg,' of predicate ',Predicate),Bt))).
+
+
+%--------------------------------
+% These checks can be reused for various types of ISO compatability.
+% atom, number, integer, non-negative integer, nonvar, nonvar_list, 
+% atom_list.
+
+%-------------
+% Checks that a term is an atom.
+check_atom(Term,Predicate,Arg) :- 
+	(atom(Term) -> 
+	    true
+	 ;  type_error(atom,Term,Predicate,Arg) ).
+
+%-------------
+check_cyclic(_Term,_Pred,_Arg):- '_$builtin'(CHECK_CYCLIC).
+
+%-------------
+check_integer(Term,Predicate,Arg) :- 
+	(integer(Term) -> 
+	    true
+	 ;  type_error(integer,Term,Predicate,Arg) ).
+
+%-------------
+check_number(Term,Predicate,Arg) :- 
+	(number(Term) -> 
+	    true
+	 ;  type_error(number,Term,Predicate,Arg) ).
+
+%-------------
+check_nonneg_integer(Term,Predicate,Arg) :- 
+	(integer(Term)
+	 ->	(Term >= 0
+		 ->	true
+		 ;	domain_error(not_less_than_zero,Term,Predicate,Arg)
+		)
+	 ;	type_error(integer,Term,Predicate,Arg)
+	).
+
+check_pos_integer(Term,Predicate,Arg) :- 
+	(integer(Term)
+	 ->	(Term > 0
+		 ->	true
+		 ;	domain_error(greater_than_zero,Term,Predicate,Arg)
+		)
+	 ;	type_error(integer,Term,Predicate,Arg)
+	).
+
+%-------------
+check_callable(Term,Predicate,Arg):- 
+	(callable(Term) -> 
+	    true
+	 ;  type_error(callable_term,Term,Predicate,Arg) ).
+
+
+%-------------
+% Checks that a term is ground
+check_ground(Term,Predicate,Arg) :- 
+	(ground(Term) -> 
+	    true
+	 ;  instantiation_error(Predicate,Arg,ground) ).
+
+%-------------
+% Checks that a term is not a variable
+check_nonvar(Term,Predicate,Arg) :- 
+	(var(Term) -> 
+	    instantiation_error(Predicate,Arg,nonvar)
+             ;  true).
+
+check_one_thread(Op,Obj_type,Predicate):- 
+	stat_flag(NUM_THREADS, Value),
+	(Value > 1 -> 
+	    misc_error(('Operation ',Op,' on ',Obj_type,
+	                 ' is not permitted when more than one thread is active (',
+			 Predicate,')') )
+         ; true).
+	
+%-------------
+% Checks that a term is a variable
+check_var(Term,Predicate,Arg) :- 
+	(var(Term) -> 
+	    true
+             ;  type_error(variable,Term,Predicate,Arg) ).
+
+%-------------
+
+% Checks that Term is a list containing no variable elements
+check_nonvar_list(Term,Predicate,Arg) :- 
+	check_nonvar(Term,Predicate,Arg),
+	(	check_nonvar_list1(Term,Predicate,Arg) -> 
+		true
+	;	type_error(list,Term,Predicate,Arg)
+	).
+
+% Checks that Term can be grounded to a list.
+check_listable(Term,Predicate,Arg) :-
+	(listable(Term)
+	 ->	true
+	 ;	type_error(list,Term,Predicate,Arg)
+	).
+
+listable(X) :- var(X), !.
+listable([]).
+listable([_|L]) :- listable(L).
+
+% PM: the order of the next two clauses matters, otherwise an instantiiation
+% error will not be generated in case of an open list
+check_nonvar_list1([H|T],Predicate,Arg) :- 
+	(	nonvar(H) -> 
+		check_nonvar_list1(T,Predicate,Arg)
+	;	instantiation_error(Predicate,Arg)
+	).
+check_nonvar_list1([],_Predicate,_Arg).
+
+% Checks that Term is either an atom or a list all of whose elements
+% are atoms.  This is how ptoc_longstring should be checked. 
+check_atom_list(Term,Predicate,Arg) :- 
+	check_nonvar(Term,Predicate,Arg),
+	(	(	atom(Term) 
+		;	check_atom_list1(Term,Predicate,Arg)
+		) ->
+		true
+	 ;	domain_error(list_of_atom,Term,Predicate,Arg)
+	).
+	    
+% PM: the order of the next two clauses matters, otherwise an instantiiation
+% error will not be generated in case of an open list
+check_atom_list1([H|T],Predicate,Arg) :- 
+	(	atom(H) -> 
+		check_atom_list1(T,Predicate,Arg)
+	;	instantiation_error(Predicate,Arg)
+	).
+check_atom_list1([],_Predicate,_Arg).
+
+%------
+
+% Checks that Term is a comma list containing no variable elements
+check_nonvar_comma_list(Term,Predicate,Arg):- 
+	check_nonvar(Term,Predicate,Arg),
+	(check_nonvar_comma_list_1(Term,Predicate,Arg) -> 
+	    true
+	 ;  type_error(comma_list,Term,Predicate,Arg)).
+
+check_nonvar_comma_list_1((Term,Terms),Predicate,Arg):- !,
+	check_nonvar(Term,Predicate,Arg),
+	(check_nonvar_comma_list_1(Terms,Predicate,Arg) -> 
+	    true
+	 ;  type_error(comma_list,Term,Predicate,Arg)).
+check_nonvar_comma_list_1(Term,Predicate,Arg):- 
+	(nonvar(Term) -> 
+	    true
+	; 
+	    instantiation_error(Predicate,Arg)).
+
+%------
+
+permission_warning(Op,Obj_type,Culprit,Msg,PredInd):- 
+	warningln(('[Permission (Operation) ',Op,' on ',Obj_type,': ',Culprit,'] in ',
+	            PredInd,' ',Msg)).
+
+:- export return_memory_exception/2.
+return_memory_exception(Flag,error(resource_error(memory),context([Limit_Msg,Memory_Msg],[]))):-
+	Limit_Type is Flag /\ 3,
+	Memory_Type is Flag >> 2,
+	(Limit_Type = SYSTEM_MEMORY_LIMIT -> 
+		    Limit_Msg = 'Query exhausted system memory'
+		  ; Limit_Msg = 'Query exhausted user-set memory limit'),
+	memory_type(Memory_Type,Memory_Msg).
+
+memory_type(ATOM_SPACE,' (currently expanding atom space)').
+memory_type(STRING_SPACE,' (currently expanding string space)').
+memory_type(ASSERT_SPACE,' (currently expanding assert space)').
+memory_type(COMPILED_SPACE,' (currently expanding compiled space)').
+memory_type(FOR_CODE_SPACE,' (currently expanding foreign-code space)').
+memory_type(TABLE_SPACE,' (currently expanding table space)').
+memory_type(FINDALL_SPACE,' (currently expanding findall space)').
+memory_type(PROFILE_SPACE,' (currently expanding profile space)').
+memory_type(MT_PRIVATE_SPACE,' (currently expanding mt private space)').
+memory_type(BUFF_SPACE,' (currently expanding buffer space)').
+memory_type(GC_SPACE,' (currently expanding gc space)').
+memory_type(HASH_SPACE,' (currently expanding hash space)').
+memory_type(INTERPROLOG_SPACE,' (currently expanding interprolog space)').
+memory_type(THREAD_SPACE,' (currently expanding thread  space)').
+memory_type(READ_CAN_SPACE,' (currently expanding canonical i/o space)').
+memory_type(LEAK_SPACE,' (currently expanding leak space)').
+memory_type(SPECIAL_SPACE,' (currently expanding special space)').
+memory_type(OTHER_SPACE,' (currently expanding other space)').
+memory_type(INCR_TABLE_SPACE,' (currently expanding incremental tabling space)').
+memory_type(ODBC_SPACE,' (currently expanding odbc space)').
+% These next are not categories at the C level
+memory_type(TCP_SPACE,' (currently expanding trail/choice point stack space)').
+memory_type(GL_SPACE,' (currently expanding global/local stack space)').
+memory_type(COMPL_SPACE,' (currently expanding completion stack space)').
+
+%-------------
+
+end_of_file.
+
+get_sys_error_description(error(Error,Msg,_Backtrace), ExceptionDesc) :-
+	get_sys_error_description(error(Error,Msg), ExceptionDescription).
+
+/* messages are handled via abort/1.  */
+/* Obsolete ..
+| default_sys_error_handler('_$abort_ball'(Backtrace)):- 
+| 	% here is where we may do something abt backtraces.
+| 	get_sys_error_description('_$abort_ball'(Backtrace),NewMsg),
+| 	messageln(NewMsg,STDERR),
+| 	xsb_flag(backtrace_on_error,BT),
+| 	(BT == on
+| 	 ->	print_backtrace(Backtrace)
+| 	 ;	true
+| 	).
+| default_sys_error_handler('_$abort_ball'(Msg,Backtrace)) :-
+| 	% here is where we may do something abt backtraces.
+| 	get_sys_error_description('_$abort_ball'(Msg, Backtrace),NewMsg),
+| 	messageln(NewMsg,STDERR),
+| 	xsb_flag(backtrace_on_error,BT),
+| 	(BT == on
+| 	 ->	print_backtrace(Backtrace)
+| 	 ;	true
+| 	).
+*/
+/* Obsolete 
+| get_sys_error_description('_$abort_ball'(AbortMsgs, Backtrace), 
+| 	                  ExceptionDescription, BacktraceList) :- !,
+| 	get_sys_error_description('_$abort_ball'(AbortMsgs, Backtrace), 
+| 	                          ExceptionDescription),
+| 	get_backtrace(Backtrace, BacktraceList).
+| get_sys_error_description('_$abort_ball'(Backtrace),'Aborting...',BacktraceList) :- 
+|	!,
+| 	get_backtrace(Backtrace, BacktraceList).
+*/
+/* Obsolete
+| get_sys_error_description('_$abort_ball'(AbortMsgs, _Backtrace), ExceptionDesc) :- 
+| 	ExceptionDesc = AbortMsgs.
+| get_sys_error_description('_$abort_ball'(_Backtrace), 'Aborting...'). 
+*/
+
+rend

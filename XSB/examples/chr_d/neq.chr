@@ -1,0 +1,15 @@
+
+:- chr_module(neq).
+
+:- constraints neq/2, project1/2, project2/2.
+
+neq(X,X) <=> fail.
+neq(X,Y) #ID \ neq(Y,X) <=> true pragma passive(ID).
+
+project1(X,L) \ neq(X,Y) #ID <=> \+ var_member(Y,L) | true pragma passive(ID).
+project1(_,_) <=> true.
+
+project2(X,L) \ neq(Y,X) #ID <=> \+ var_member(Y,L) | true pragma passive(ID).
+project2(_,_) <=> true.
+
+

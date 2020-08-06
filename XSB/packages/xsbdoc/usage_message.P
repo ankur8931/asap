@@ -1,0 +1,41 @@
+usage_message("
+lpdoc -help        
+
+  Print this help message.
+
+xsbdoc [MiscOpts] [-p start_page ] 
+	[-t paper_type ] 
+        -main <main> [ <f1.texic> ... <fN.texic> ] 
+
+  Generate    the main    .texic   file  for  main
+  application  file   <file> and   whose component
+  .texic files are <file1.texic>... <fileN.texic>.
+  The special index name 'all' results in all indices 
+  being  generated. 
+
+lpdoc [MiscOpts] [-l <path1> ... <pathN> ] 
+                   [-s <path1> ... <pathN> ] 
+                   [-i <idx1> ... <idxN> ] 
+                   [-u path_aliases_file ] 
+                   -component <file.pl>
+
+  Generate a .texic file for module <file.pl>. The
+  optional arguments are as above.
+
+lpdoc [MiscOpts] [-l <path1> ... <pathN> ] 
+                   [-s <path1> ... <pathN> ] 
+                   [-u path_aliases_file ] 
+                   -htmlindex <main> 
+
+  Generate  (part of  an) html   file suitable for
+  including in an html page.
+
+lpdoc [MiscOpts] [-l <path1> ... <pathN> ] 
+                   [-s <path1> ... <pathN> ] 
+                   [-u path_aliases_file ] 
+                   -infoindex <main> 
+
+  Generate  an  info directory entry  suitable for
+  including in an info directory.
+
+").

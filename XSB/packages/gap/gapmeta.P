@@ -1,0 +1,105 @@
+/* File:      gapmeta.P
+** Author(s): Terrance Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+
+:- op(1200,xfx,<-).
+:- op(1000,xfy,and).
+:- op(1000,xfy,or).
+
+:- export meta/1.
+%:- import append/3, copy_term/2, memberchk/2 from basics.
+:- import copy_term/2 from basics.
+:- import get_returns/3, delete_return/2 from tables.
+:- import bottom/2, '<-'/2, gt1/3, lub/4,negate/3  from usermod.
+
+breg_retskel(_BregOffset,_Arity,_RetTerm,_SubgoalPtr):- '_$builtin'(154).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Meta Interpreter and Tests
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+meta(true):-!.
+meta(','(Term1,Term2)):-!,
+	meta(Term1),
+	meta(Term2).
+meta(Call:[Type,Var]):-!,
+	baglub(Type,Call,Var).
+meta(gap_not(Call:[Type,Var])):-!,
+	neg_baglub(Type,Call,Var).
+meta(Term):- call(Term).
+
+baglub(Type,Call,Res):- 
+	bottom(Type,Bot),
+	baglub(Call,Type,Res1,Bot),
+	eval(Type,Res1,Res).
+
+neg_baglub(Type,Call,Res):- 
+	bottom(Type,Bot),
+	baglub(Call,Type,Res1,Bot),
+	negate(Type,Res1,Neg_res),
+	eval(Type,Neg_res,Res).
+
+eval(_Type,Val1,_Val2):- var(Val1),!.
+eval(_Type,Val1,Val2):- var(Val2),Val1 = Val2,!.
+eval(Type,Val1,Val2):- gt1(Type,Val1,Val2).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% baglub1/4
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* Note: this predicate follows the paradigm of predicates in
+aggregs.P, but does not use HiLog. */
+
+baglub(Call,Type,Res,Bot):- 
+	baglub1(Call,Type,Res,Bot),
+	fail.
+baglub(Call,Type,Res,Bot):- 
+	baglub1(Call,Type,Res,Bot).
+
+:- table baglub1/4.  
+baglub1(_,_,Bot,Bot).  		/* A:bottom is true of all atoms */
+baglub1(Call,Type,Res,Bot):-
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+				/* the previous two literals form a
+				   low-level hack to instantiate Cs to
+				   a pointer to the root of the answer
+				   trie for the current call (via Breg) */
+	copy_term(p(Call,Res,Skel),p(Call,Ovar,Oskel)),
+	meta_expand(Call:[Type,Nvar]),
+	(get_returns(Cs,Oskel,Leaf),
+ 	 lub(Type,Ovar,Nvar,Res),
+	 Res \== Ovar,
+	 delete_return(Cs,Leaf)
+				/* delete returns that have been
+				   lubbed over.  There "should" be at
+				   most one */
+	 ;
+  	 \+ get_returns(Cs,Oskel,Leaf),
+ 	 lub(Type,Bot,Nvar,Res)
+	).
+
+meta_expand(Term):-
+	'<-'(Term,Body),
+	meta(Body).
+

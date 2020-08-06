@@ -1,0 +1,76 @@
+/* File:      perlmatch.P
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: perlmatch.P,v 1.7 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- export bulk_match/3, get_match_result/2, try_match/2,
+	  next_match/0, perl_substitute/3, load_perl/0, unload_perl/0.
+
+:- import xsb_configuration/2 from xsb_configuration.
+:- import bootstrap_package/2 from packaging.
+:- import abort/1 from standard.
+
+:- import bulk_match__/3, get_match_result__/2
+   from plmchshell.
+:- import try_match__/2, next_match__/0, perl_substitute__/3,
+	  load_perl__/0, unload_perl__/0
+   from xsbpattern.
+
+%% bootstrap(package-dirname-as-string, package-name-as-symbol).
+%% This also asserts 
+%% package_configuration(dir(PackageName), FullPackageDirname)
+%% some packages use it.
+
+:- bootstrap_package('perlmatch', perlmatch),
+   (xsb_configuration(perl_support, 'yes') -> [plmchshell]
+     ;
+     abort('Your system does not seem to have Perl installed or libraries are missing')
+     ).
+
+
+%% Make uniform interface to the package
+bulk_match(String, Pattern, Result) :-
+	atom(String), atom(Pattern),
+	!,
+	bulk_match__(String, Pattern, Result).
+bulk_match(String, Pattern, _Result) :-
+	throw(error(perlmatch(invalid_argument,bulk_match,[String,Pattern]), 'String argument expected')).
+
+try_match(String, Pattern) :-
+	atom(String), atom(Pattern),
+	!,
+	try_match__(String, Pattern).
+try_match(String, Pattern) :-
+	throw(error(perlmatch(invalid_argument,try_match,[String,Pattern]), 'String argument expected')).
+
+next_match :- next_match__.
+get_match_result(TypeOfMatch, Value) :- get_match_result__(TypeOfMatch, Value).
+
+perl_substitute(String, SubstExpr, Result) :-
+	atom(String), atom(SubstExpr),
+	!,
+	perl_substitute__(String, SubstExpr, Result).
+perl_substitute(String, SubstExpr, _Result) :-
+	throw(error(perlmatch(invalid_argument,perl_substitute,[String,SubstExpr]), 'String argument expected')).
+
+load_perl :- load_perl__.
+unload_perl :- unload_perl__.

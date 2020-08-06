@@ -1,0 +1,365 @@
+
+:- [cdftp_meta].
+:- [cdftp_cdfsc].
+
+:- export check_rule/1, dlrule_to_cdf/3, dlrule_to_cdf/4, body_ce_to_formula/4.
+:- export optimize_dlrules/3.
+
+:- import allAttr/3, hasAttr/3, immed_hasAttr/3,
+	   isa/2, maxAttr/4, minAttr/4,
+	   cdf_id_fields/4 from cdf_init_cdf.
+:- import get_component_intensional/3 from cdf_comps_share.
+:- import cdf_warning/2 from cdf_exceptions.
+:- import pretty_print/1 from newpp.
+%:- import compdlrule/3,compdltrans/3 from usermod.
+:- import compdltrans/3 from usermod.
+:- import member/2 from basics.
+:- import cdf_flags/2 from usermod.
+
+dlrule_to_cdf('<='(Head,Body),Name,CDFList):-
+	dlrule_to_cdf('<='(Head,Body),Name,CDFList,_).
+
+dlrule_to_cdf('<='(Head,Body),Name,CDFList,Cmpt):- 
+	head_ce_to_formula(Head,V,HeadList,[],Cmpt),
+	body_ce_to_formula(Body,V,Name,BodyF),
+	distribute_heads_to_bodies(HeadList,BodyF,CDFList),
+	assert_translation_facts(Cmpt,CDFList).
+
+assert_translation_facts(Cmpt,CDFList):- 
+	member((:-(H,B)),CDFList),
+	%%writeln(userout,:-(H,B)),
+	asserta(compdltrans(Cmpt,H,B)),
+	fail.
+assert_translation_facts(_Cmpt,_CDFList).
+
+head_ce_to_formula(','(CE1,CE2),Var,ListIn,ListOut,Cmpt):- !,
+	head_ce_to_formula(CE1,Var,ListIn,ListMid,Cmpt),
+	head_ce_to_formula(CE2,Var,ListMid,ListOut,Cmpt).
+head_ce_to_formula(exists(R,Cid),Var,
+	                   [hasAttr_int(Var,R,Cid)|L],L,Cmpt):- !,
+	cdf_id_fields(Cid,cid,_,_),  % dsw, does this work w/o this? seems not; I want to define an oid.
+	get_component_intensional(hasAttr_int(Var,R,Cid), _, Cmpt).
+head_ce_to_formula(all(R,Cid),Var,
+	                   [allAttr_int(Var,R,Cid)|L],L,Cmpt):- !,
+	cdf_id_fields(Cid,cid,_,_),
+	get_component_intensional(allAttr_int(Var,R,Cid), _, Cmpt).
+head_ce_to_formula(atLeast(N,R,Cid),Var,
+	                   [minAttr_int(Var,R,Cid,N)|L],L,Cmpt):- !,
+	cdf_id_fields(Cid,cid,_,_),
+	get_component_intensional(minAttr_int(Var,R,Cid,N), _, Cmpt).
+head_ce_to_formula(atMost(N,R,Cid),Var,
+	                  [maxAttr_int(Var,R,Cid,N)|L],L,Cmpt):- !,
+	cdf_id_fields(Cid,cid,_,_),
+	get_component_intensional(maxAttr_int(Var,R,Cid,N), _, Cmpt).
+head_ce_to_formula(component(Cmpt),_Var,L,L,Cmpt):- !.
+head_ce_to_formula(Cid,Var,[isa_int(Var,Cid)|L],L,Cmpt):- 
+	cdf_id_fields(Cid,cid,_,_),!,
+	(arg(2,Cid,Cmpt),atom(Cmpt)
+	 ->	true
+	 ;	cdf_warning(rule,('Incorrectly formed Head Expression in DL Rule ',Cid)),
+		fail
+	).
+head_ce_to_formula(CE,_,_,_,_Cmpt):- !,
+	cdf_warning(rule,('Incorrectly formed Head Expression in DL Rule ',
+	                           CE)),
+	fail.
+	
+:- import proper_isa/2 from cdf_init_cdf.
+%body_ce_to_formula(CE,Var,_Name,isa(Var,CE)) :- var(CE), !.  %but this doesn't work for eval, and is inefficient for tables.
+body_ce_to_formula(CE,_Var,_Name,true) :- var(CE), !.  % replace prev.  Don't use isa
+body_ce_to_formula(','(CE1,CE2),Var,Name,Res):- !,
+	body_ce_to_formula(CE1,Var,Name,F1),
+	body_ce_to_formula(CE2,Var,Name,F2),
+	(F2 == true -> Res=F1 ; F1 == true -> Res=F2 ; Res = (F1,F2)).
+body_ce_to_formula(';'(CE1,CE2),Var,Name,';'(F1,F2)):- !,
+	body_ce_to_formula(CE1,Var,Name,F1),
+	body_ce_to_formula(CE2,Var,Name,F2).
+body_ce_to_formula(not(CE1),Var,Name,\+(F1)):- !,
+	body_ce_to_formula(CE1,Var,Name,F1).
+body_ce_to_formula(exists(R,CE1),Var,Name,F):- !,
+	(dl_optimizable(CE1)
+	 ->	F = hasAttr(Var,R,CE1)
+	 ;	body_ce_to_formula(CE1,Var1,Name,F1),
+		(F1 == true
+		 ->	F = hasAttr(Var,R,Var1)
+		 ;	F = (hasAttr(Var,R,Var1),F1)
+		)
+	).
+body_ce_to_formula(exists_immed(R,CE1),Var,_Name,F):- !,
+	(dl_optimizable(CE1)
+	 ->	F = immed_hasAttr(Var,R,CE1)
+	 ;	body_ce_to_formula(CE1,Var1,Name,F1),
+		(F1 == true
+		 ->	F = immed_hasAttr(Var,R,Var1)
+		 ;	F = (immed_hasAttr(Var,R,Var1),F1)
+		)
+	).
+body_ce_to_formula(all(R,CE1),Var,Name,','(allAttr(Var,R,Var1),F1)):- !,
+	body_ce_to_formula(CE1,Var1,Name,F1).
+body_ce_to_formula(atLeast(N,R,CE),Var,Name,','(minAttr(Var,R,Var1,N),F1)):- !,
+	body_ce_to_formula(CE,Var1,Name,F1).
+body_ce_to_formula(atMost(N,R,CE),Var,Name,','(maxAttr(Var,R,Var1,N),F1)):- !,
+	body_ce_to_formula(CE,Var1,Name,F1).
+body_ce_to_formula(is(Targ,Expr),_Var,_Name,dlEval(Expr,Targ)) :- !.
+body_ce_to_formula(call(Goal),_Var,_Name,call(Goal)) :- !.
+body_ce_to_formula(Table,_Var,Name,DLTable) :-
+	functor(Table,dlTable,Arity), Arity < 11, % MAX dlTable
+	!,
+	Table =.. [dlTable|Args],
+	DLTable =.. [dlTable,Name|Args].
+body_ce_to_formula(Cid,Var,_Name,Test):- 
+	cdf_id_fields(Cid,cid,_,_),!,
+	(\+proper_isa(_,Cid) -> Var=Cid, Test = true ; Test = isa(Var,Cid)). % optimization for indexing (DO NOT BIND Cid!)
+body_ce_to_formula(trace,_,_,trace) :- !.
+body_ce_to_formula(CE,_,_,_):- 
+	cdf_warning(rule,('Dont know how to translate ',CE)),fail.
+
+dl_optimizable(X) :- var(X), !.
+dl_optimizable(cid(_,_)).
+dl_optimizable(oid(_,_)).
+
+%% There should be a hook that allows a user to redefine this.  If no
+%% hook, then use XSB's is/2.
+:- import dlEval_user/2 from usermod.
+dlEval(Expr,Cid) :-
+	(if_predicate_defined(dlEval_user(_,_))
+	 ->	dlEval_user(Expr,Cid)
+	 ;	Cid = cid(Var,cdfpt),
+		Var is Expr
+	).
+
+:- import term_psc/2, psc_type/2 from machine.
+if_predicate_defined(Skel) :-
+    term_psc(Skel,Psc),
+    psc_type(Psc,Type),
+    Type =\= 0,			%  != T_ORDI
+    Type =\= 12.		%  != T_UDEF, not loaded
+
+
+/*
+add_cmpt_check_to_body(','(A,B),V,Cmpt,','(NewA,B)):- !,
+	add_cmpt_check_to_body(A,V,Cmpt,NewA).
+add_cmpt_check_to_body(A,V,Cmpt,','(A,cdf_id_fields(V,_,_,Cmpt))):- !.
+*/
+
+pretty_print_list([]).
+pretty_print_list([H|R]):- 
+	pretty_print(H),
+	nl,
+	pretty_print_list(R).
+
+distribute_heads_to_bodies([],_Body,[]).
+distribute_heads_to_bodies([Head|Rest],BodyF,[(Head :- BodyF)|RRest]):- 
+	distribute_heads_to_bodies(Rest,BodyF,RRest).
+	
+check_rule(Rule):- 
+	dlrule_to_cdf(Rule,dummy,CDFList),
+	pretty_print_list(CDFList).
+
+/***********************************************************************
+
+The following predicate optimizes some sets of DL rules.  It is easy
+to write many rules of the form:
+
+exists(rid('MATT',xsb),cid('STEEL',mat)) <=
+    exists(rid('SPEC',xsb),cid('A-A-1234',spec)).
+
+where only the material value and the spec name change.  Evaluating
+such rules to find a material given the spec has to backtrack through
+all those rules (and there may be thousands.)  A better solution would
+be to write the rules with a dlTable as:
+
+exists(rid('MATT',xsb),cid(Material,mat)) <=
+    exists(rid('SPEC',xsb),cid(Spec,spec)),
+    dlTable(spec_mat_tab,Spec,Material).
+
+dlTable(spec_mat_tab,'A-A-1234','STEEL').
+
+In this form we have one rule and many dlTable facts.  And with this
+form, when trying to find a material, it finds the spec and then uses
+the indexing in the table to find the material.  So this can be much
+faster.
+
+The predicate optimize_dlrules/3 performs this transformation.  It is
+quite restricted in the forms of predicates it allows, and at the
+moment only works for exists operations as the first of the body.  And
+it is limited in the way it will find ground rules to generalize to a
+single form.  But is can be useful (and extended if/when necessary.)
+
+***********************************************************************/
+
+:- import variant/2 from subsumes.
+:- import conget/2, conset/2, coninc/1, gensym/2 from gensym.
+:- import excess_vars/4 from setof.
+:- import warning/1 from standard.
+:- import misc_error/1 from error_handler.
+:- import (<= /2) from usermod.
+
+:- dynamic <= /2, <== /2, dlTab/1.
+
+/* optimize_dlrules(+InFile,+OutFile,+MinCnt) optimizes the DL rules
+in InFile (which must contain only DL rules), generating the optimized
+rules into OutFile.  MinCnt controls how rules are generated.  It
+iteratively finds sets of input rules that generalize to a single
+general rule.  This may be able to be done in many ways.  MinCnt tells
+it not to keep any generalization that doesn't cover more than MinCnt
+input DL rules.  So a larger number generally forces more
+generalzation and fewer optimized rules (and thus fewer, larger
+tables.)  */
+
+optimize_dlrules(InFile,_OutFile,MinCnt) :-
+	optimize_dlrules1(InFile,MinCnt),
+	fail.			% previous pred fails anyway.
+optimize_dlrules(_InFile,OutFile,_MinCnt) :-
+	open(OutFile,write,OStr),
+	(<=(H,B),		% all unoptimized DL rules
+	 write_canonical(OStr,<=(H,B)),writeln(OStr,'.'),
+	 fail
+	 ;	
+	 <==(H,B),		% optimized DL rules
+	 write_canonical(OStr,<=(H,B)),writeln(OStr,'.'),
+	 fail
+	 ;	
+	 dlTab(DlTabLit),	% tables used in DL rules
+	 write_canonical(OStr,DlTabLit),writeln(OStr,'.'),
+	 fail
+	 ;	
+	 true
+	),
+	close(OStr).
+
+optimize_dlrules1(InFile,MinCnt) :-
+	retractall(<==(_,_)),
+	retractall(dlTab(_)),
+	load_dync(InFile),
+	repeat,
+	nl(userout),
+	(find_gen(MinCnt,GH,GB,Vars)
+	 ->	true
+	 ;	!,fail
+	),
+	writeln(userout,<=(GH,GB,Vars)),
+	generate_dlTable_rule(GH,GB,Vars,DlTabLit),
+	generate_dtTable_facts(GH,GB,DlTabLit),
+	retractall(<=(GH,GB)),
+	fail.
+
+generate_dlTable_rule(GH,GB,Vars,DlTabLit) :-
+	(GB = exists(Rid,Cid)
+	 ->	FLit = GB, Tail = true
+	 ; GB = (exists(Rid,Cid),Tail)
+	 ->	FLit = exists(Rid,Cid)
+	 ;	misc_error('unhandled DLRule form to optimize'(<=(GH,GB))),
+		fail
+	),
+	excess_vars([Rid,Cid],[],[],BVars),
+	(BVars == []
+	 ->	warning('No variables bound if first body exist literal '(<=(GH,GB)))
+	 ;	true
+	),
+	reorder_vars(BVars,Vars,OrdVars),
+	gensym(dlTab_,DlTabId),
+	DlTabLit =.. [dlTable,DlTabId|OrdVars],
+	(Tail = true
+	 ->	assert(<==(GH,(GB,DlTabLit)))
+	 ;	assert(<==(GH,(exists(Rid,Cid),DlTabLit,Tail)))
+	).
+
+reorder_vars([],Vars,Vars).
+reorder_vars([BVar|BVars],Vars,OrdVars) :-
+	(deletee(BVar,Vars,NVars)
+	 ->	OrdVars = [BVar|OrdVars1],
+		reorder_vars(BVars,NVars,OrdVars1)
+	 ;	reorder_vars(BVars,Vars,OrdVars)
+	).
+
+deletee(A,[B|Bs],Bs) :- A == B.
+deletee(A,[B|Bs],[B|Cs]) :- deletee(A,Bs,Cs).
+
+generate_dtTable_facts(GH,GB,DlTabLit) :-
+	(<=(GH,GB),
+	 assert(dlTab(DlTabLit)),
+	 fail
+	 ;
+	 true
+	).
+
+%% could improve way to look for best generalizations.
+%% e.g., find all and choose best.
+find_gen(MinCnt,GH,GB,Vars) :-
+	<=(H1,B1),
+	<=(H2,B2),
+	\+ variant(<=(H1,B1),<=(H2,B2)),
+	do_abstraction(<=(H1,B1),<=(H2,B2),_VL,<=(GH,GB),Vars,[]),
+	conset('CCC',0),
+	(<=(GH,GB),
+	 coninc('CCC'),
+	 fail
+	 ;
+	 conget('CCC',Cnt),
+	 Cnt > MinCnt
+	).
+
+do_abstraction(T1,T2,EV,T1,Vs,Vs) :-
+	var(T1), !,
+	var(T2),
+	memberchkee(T1==T2,EV).
+do_abstraction(T1,T2,EV,G,Vs0,Vs) :-
+	structure(T1), !,
+	T1 =.. [F|As1],
+	T2 =.. [F|As2],
+	do_abstraction_list(As1,As2,EV,Gs,Vs0,Vs),
+	G =.. [F|Gs].
+do_abstraction(T1,T2,_EV,G,Vs0,Vs) :-
+	atomic(T1),
+	!,
+	(T1 == T2
+	 ->	G = T1, Vs = Vs0
+	 ;	Vs0 = [G|Vs]
+	).
+
+do_abstraction_list([],[],_EV,[],Vs,Vs).
+do_abstraction_list([A1|As1],[A2|As2],EV,[Gs1|Gs2],Vs0,Vs) :-
+	do_abstraction(A1,A2,EV,Gs1,Vs0,Vs1),
+	do_abstraction_list(As1,As2,EV,Gs2,Vs1,Vs).
+
+%% Any V-V match must be of corresponding V's; i.e., if V1 matches V2
+%% once, then it can only match V2
+memberchkee(P,L) :- var(L),!,L=[P|_].
+memberchkee(P,[T1==T2|Rest]) :-
+	P = (X == Y),
+	(X == T1
+	 ->	Y == T2
+	 ; Y == T2
+	 ->	X == T1
+	 ;	memberchkee(P,Rest)
+	).
+
+
+
+end_of_file.
+
+/*	
+body_ce_to_formula(exists(R,CE1),Var,','(hasAttr(Var,R,Var1),F1)):- !,
+	body_ce_to_formula(CE1,Var1,F1).
+body_ce_to_formula(all(R,CE1),Var,\+(','(hasAttr(Var,R,Var1),\+((F1))))):- !,
+	body_ce_to_formula(CE1,Var1,F1).
+body_ce_to_formula(atLeast(N,R,CE),Var,atLeast(N,Var,F1)):- !,
+	body_ce_to_formula(exists(R,CE),Var,F1).
+body_ce_to_formula(atMost(N,R,CE),Var,atMost(N,Var,F1)):- !,
+	body_ce_to_formula(exists(R,CE),Var,F1).
+*/
+
+atLeast(N,Var,F):-
+	findall(Var,F,Insts),
+	sort(Insts,Uniq),
+	length(Uniq,L),
+	L >= N.
+
+atMost(N,Var,F):-
+	findall(Var,F,Insts),
+	sort(Insts,Uniq),
+	length(Uniq,L),
+	L =< N.
+
+

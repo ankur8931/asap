@@ -1,0 +1,283 @@
+%%% RuleML writer ( Version 1.0/October 2002)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/projectos/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This modules writes to a stream, in UTF-8 encoding, RuleML rulebases, rules, queries, answers, and literals.
+%%%
+
+:- op( 600, xfx, '@' ).
+:- op( 900, fy, not ).
+:- op( 900, fy, neg ).
+
+% writeRuleML/2 is the main predicate for RuleML output
+% 
+
+:- export writeRuleML/2.
+:- export writeAnswer/2.
+
+writeRuleML( rulebase( Label, Direction, Rules, Queries ), Stream ) :- !,
+	write( Stream, '<rulebase' ),
+	( Direction \= [] -> write( Stream, ' direction="' ), write( Stream, Direction ), write( Stream, '">' )
+                         ; write( Stream, '>' ) 
+	),
+	writeRuleBaseLabel( Label, Stream ),
+	writeRuleMLList( Rules, Stream ),
+	writeRuleMLList( Queries, Stream ),
+	write( Stream, '</rulebase>' ).
+writeRuleML( rule( Head, Body, Label, Vars ), Stream ) :- !,
+	writeRule( rule( Head, Body, Label, Vars ), Stream ).
+writeRuleML( query( Body, Label, Vars ), Stream ) :- !,
+	writeQuery( query( Body, Label, Vars ), Stream ).
+writeRuleML( answer( Label, Vars ), Stream ) :- !,
+	writeAnswer( answer( Label, Vars ), Stream ).
+
+writeRuleMLList( [], _ ) :- !.
+writeRuleMLList( [R|Rest], Stream ) :- 
+	writeRuleML( R, Stream ), !,
+	writeRuleMLList( Rest, Stream ).
+
+writeRule( rule( Head, true, Label, Vars ), Stream ) :- !,
+	writeFact( Head, Label, Vars, Stream ).
+writeRule( rule( Head, Body, Label, Vars ), Stream ) :-
+	writeImp( Head, Body, Label, Vars, Stream ).
+
+writeFact( Head, Label, Vars, Stream ) :-
+	write( Stream, '<fact>' ),
+	writeLabel( Label, Vars, Stream ),
+	writeHead( Head, Vars, Stream ),
+	write( Stream, '</fact>' ).
+
+writeImp( Head, Body, Label, Vars, Stream ) :-
+	write( Stream, '<imp>' ),
+	writeLabel( Label, Vars, Stream ),
+	writeHead( Head, Vars, Stream ),
+	writeBody( Body, Vars, Stream ),
+	write( Stream, '</imp>' ).
+
+writeQuery( query( Body, Label, Vars ), Stream ) :-
+	write( Stream, '<query>' ),
+	writeLabel( Label, Vars, Stream ),
+	writeBody( Body, Vars, Stream ),
+	write( Stream, '</query>' ).
+
+writeAnswer( answer( Label, Vars ), Stream ) :-
+	write( Stream, '<_answer>' ),
+	writeLabel( Label, Vars, Stream ),
+	writeSubstitutions( Vars, Stream ),
+	write( Stream, '</_answer>' ).
+
+writeHead( Head, Vars, Stream ) :- !,
+	write( Stream, '<_head>' ),
+	writeLiteral( Head, Vars, Stream ),
+	write( Stream, '</_head>' ).
+
+writeBody( Body, Vars, Stream ) :- !,
+	write( Stream, '<_body>' ),
+	writeAnd( Body, Vars, Stream ),
+	write( Stream, '</_body>' ).
+
+writeRuleBaseLabel( [], _ ) :- !.
+writeRuleBaseLabel( Label, Stream ) :- !,
+	write( Stream, '<_rbaselab>' ),
+	writeArg( Label, [], Stream ),
+	write( Stream, '</_rbaselab>' ).
+
+writeLabel( [], _, _ ) :- !.
+writeLabel( Label, Vars, Stream ) :- !,
+	write( Stream, '<_rlab>' ),
+	writeArg( Label, Vars, Stream ),
+	write( Stream, '</_rlab>' ).
+
+writeAnd( true, _, Stream ) :- !,
+	write( Stream, '<and/>' ).
+writeAnd( Conjunction, Vars, Stream ) :- !,
+	write( Stream, '<and>' ),
+	writeConjunction( Conjunction, Vars, Stream ),
+	write( Stream, '</and>' ).
+
+writeConjunction( ( Literal, RestLiterals), Vars, Stream ) :- !,
+	writeLiteral( Literal, Vars, Stream ), !,
+	writeConjunction( RestLiterals, Vars, Stream ).
+writeConjunction( Literal, Vars, Stream ) :-
+	writeLiteral( Literal, Vars, Stream ).
+
+%%% Extends the syntax of urhornlog with default, explicit negation operators, and assert literals
+writeLiteral( not ObjectiveLiteral, Vars, Stream ) :- !,
+	write( Stream, '<not>' ),
+	writeObjectiveLiteral( ObjectiveLiteral, Vars, Stream ),
+	write( Stream, '</not>' ).
+writeLiteral( ObjectiveLiteral, Vars, Stream ) :- !,
+	writeObjectiveLiteral( ObjectiveLiteral, Vars, Stream ).
+
+writeObjectiveLiteral( assert( Rule ), Vars, Stream ) :- !,
+	write( Stream, '<assert>' ),
+	writeAssertRule( Rule, Vars, Stream ),
+	write( Stream, '</assert>' ).
+writeObjectiveLiteral( neg Atom, Vars, Stream ) :- !,
+	write( Stream, '<neg>' ),
+	writeAtom( Atom, Vars, Stream ),
+	write( Stream, '</neg>' ).
+writeObjectiveLiteral( Atom, Vars, Stream ) :- !,
+	writeAtom( Atom, Vars, Stream ).
+
+writeAssertRule( rule( Head, true, Label, Vars ), _, Stream ) :- !,
+	writeFact( Head, Label, Vars, Stream ).
+writeAssertRule( rule( Head, Body, Label, Vars ), _, Stream ) :-
+	writeImp( Head, Body, Label, Vars, Stream ).
+
+%%% <!ELEMENT atom ((_opr, (ind | var | cterm | tup | roli)*) | ((ind | var | cterm | tup | roli)+, _opr))>
+
+writeAtom( Atom @ Href, Vars, Stream ) :- !,
+	write( Stream, '<atom>' ),
+	functor( Atom, Name, Arity ),
+	writeOpr( Href, Name, Stream ),
+	writeArgs( 1, Arity, Atom, Vars, Stream ),
+	write( Stream, '</atom>' ).
+writeAtom( Atom, Vars, Stream ) :- !,
+	write( Stream, '<atom>' ),
+	functor( Atom, Name, Arity ),
+	writeOpr( [], Name, Stream ),
+	writeArgs( 1, Arity, Atom, Vars, Stream ),
+	write( Stream, '</atom>' ).
+
+writeArgs( N, M, _, _, _ ) :- N > M, !.
+writeArgs( N, M, Atom, Vars, Stream ) :- 
+	arg( N, Atom, ArgN ),
+	writeArg( ArgN, Vars, Stream ),
+	N1 is N + 1, !,
+	writeArgs( N1, M, Atom, Vars, Stream ).
+
+%%% <!ELEMENT _opr (rel)>
+
+writeOpr( Href, Name, Stream ) :- !,
+	write( Stream, '<_opr>' ), 
+	writeRel( Href, Name, Stream ),
+	write( Stream, '</_opr>' ).
+
+%%% <!ELEMENT rel (#PCDATA)>
+%%% <!ATTLIST rel href %URI; #IMPLIED>
+
+writeRel( Href, Name, Stream ) :-
+	writeUR( Href, Name, rel, Stream ).
+
+
+%%% (ind | var | cterm | tup | roli)
+
+writeArg( Var, Vars, Stream ) :- 
+	var( Var ), !,
+	writeVar( Var, Vars, Stream ).
+writeArg( { RoleList }, Vars, Stream ) :- !,
+	write( Stream, '<roli>' ),
+	writeRoleList( RoleList, Vars, Stream ),
+	write( Stream, '</roli>' ). 
+writeArg( Arg @ Href, Vars, Stream ) :- !,
+	( atomic( Arg ) -> writeInd( Href, Arg, Stream ) ; writeCTerm( Href, Arg, Vars, Stream ) ).
+writeArg( Arg, Vars, Stream ) :-
+	functor( Arg, ',',  N ), !,
+	write( Stream, '<tup>' ),
+	writeArgs( 1, N, Arg, Vars, Stream ),
+	write( Stream, '</tup>' ).
+writeArg( Arg, Vars, Stream ) :-
+	( atomic( Arg ) -> writeInd( [], Arg, Stream ) ; writeCTerm( [], Arg, Vars, Stream ) ).
+
+writeVar( Var, Vars, Stream ) :-
+	write( Stream, '<var>' ),
+	getVarName( Vars, Var, Name ),
+	write( Stream, Name ),
+	write( Stream, '</var>' ).
+
+getVarName( [], Var, Var ) :- !.
+getVarName( [Name = V|_], Var, Name ) :-
+	V == Var, !.
+getVarName( [_|RestVars], Var, Name ) :- 
+	!, getVarName( RestVars, Var, Name ).
+
+writeInd( Href, Name, Stream ) :- !,
+	writeUR( Href, Name, ind, Stream ).
+
+%%% <!ELEMENT cterm ((_opc, (ind | var | cterm | tup | roli)*) | ((ind | var | cterm | tup | roli)+, _opc))>
+
+writeCTerm( Href, CTerm, Vars, Stream ) :-
+	functor( CTerm, Name, Arity ),
+	write( Stream, '<cterm>' ),
+	writeOpc( Href, Name, Stream ),
+	writeArgs( 1, Arity, CTerm, Vars, Stream ),
+	write( Stream, '</cterm>' ).
+
+%%% <!ELEMENT _opc (ctor)>
+
+writeOpc( Href, Name, Stream ) :- !,
+	write( Stream, '<_opc>' ), 
+	writeCtor( Href, Name, Stream ),
+	write( Stream, '</_opc>' ).
+
+%%% <!ELEMENT ctor (#PCDATA)>
+%%% <!ATTLIST ctor href %URI; #IMPLIED>
+
+writeCtor( Href, Name, Stream ) :-
+	writeUR( Href, Name, ctor, Stream ).
+
+%%% <!ELEMENT roli ((_arv)*)>
+
+writeRoleList( '', _, _ ) :- !.
+writeRoleList( (Arv,RestArvs), Vars, Stream ) :-
+	writeArv( Arv, Vars, Stream ), !,
+	writeRoleList( RestArvs, Vars, Stream ).
+writeRoleList( Arv, Vars, Stream ) :-
+	writeArv( Arv, Vars, Stream ).
+ 
+%%% <!ELEMENT _arv ((arole, (ind | var | cterm | tup | roli)) | ((ind | var | cterm | tup | roli), arole))>
+
+writeArv( ( Name -> Arg ) , Vars, Stream ) :- !,
+	write( Stream, '<_arv>' ),
+	writeARole( Name, Stream ),
+	writeArg( Arg, Vars, Stream ),
+	write( Stream, '</_arv>' ).
+	
+%%% <!ELEMENT arole (#PCDATA)>
+
+writeARole( Name @ Href, Stream ) :- !,
+	writeUR( Href, Name, arole, Stream ).
+writeARole( Name, Stream ) :-
+	writeUR( [], Name, arole, Stream ).
+
+%% Writing substitutions
+
+writeSubstitutions( [], _ ) :- !.
+writeSubstitutions( [Var = Value|RestVars], Stream ) :- 
+	writeSubst( Var, Value, Stream ), !,
+	writeSubstitutions( RestVars, Stream ).
+
+writeSubst( Var, Value, Stream ) :- !,
+	write( Stream, '<_subst>' ),
+	writeVar( Var, [], Stream ),
+	writeArg( Value, [], Stream ),
+	write( Stream, '</_subst>' ). 
+	
+
+writeUR( [], Name, Tag, Stream ) :- !,
+	write( Stream, '<' ),
+	write( Stream, Tag ), 
+	write( Stream, '>' ),
+	write( Stream, Name ),
+	write( Stream, '</' ),
+	write( Stream, Tag ), 
+	write( Stream, '>' ).
+writeUR( Href, Name, Tag, Stream ) :- !,
+	write( Stream, '<' ),
+	write( Stream, Tag ), 
+	write( Stream, ' href="' ),
+	write( Stream, Href ),
+	write( Stream, '">' ),
+	write( Stream, Name ),
+	write( Stream, '</' ),
+	write( Stream, Tag ), 
+	write( Stream, '>' ).
+

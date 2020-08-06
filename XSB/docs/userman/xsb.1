@@ -1,0 +1,176 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH XSB 1 "March 5, 2002"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+xsb \- A Logic Programming and Deductive Database System
+.SH SYNOPSIS
+.BI "xsb [" "flags" "] [-l] [-i]"
+.br
+.BI "xsb [" "flags" "] -n"
+.br
+.BI "xsb [" "flags" "]" " module"
+.br
+.BI "xsb [" "flags" "] -B" " boot_module " "[-D" " cmd_loop_driver" "] [-t] [-e" " goal" "]"
+.br
+.BI "xsb [" "flags" "] -B" " module_to_disassemble " "-d"
+.br
+.B xsb -[h | v]
+.br
+.B xsb --help |  --version  |  --nobanner  |  --quietload  |  --noprompt
+.br
+.SH DESCRIPTION
+This manual page was prepared for the Debian GNU/Linux distribution
+because the original program does not have a manual page.
+Instead, it has extensive documentation in postscript format.
+.PP
+.\" TeX users may be more comfortable with the \fB<whatever>\fP and
+.\" \fI<whatever>\fP escape sequences to invode bold face and italics, 
+.\" respectively.
+.B XSB is a research-oriented Logic Programming and Deductive Database System developed at SUNY Stony Brook. In addition to providing all the functionality of Prolog, it contains features not usually found in Logic Programming Systems such as evaluation according to the Well Founded Semantics through full SLG resolution, constraint handling for tabled programs, a compiled HiLog implementation, unification factoring and interfaces to other systems such as ODBC, C, Java, Perl, and Oracle.
+
+.SH OPTIONS
+XSB follows the usual GNU command line syntax, with long options starting with two dashes (`-'). A summary of options is included below. For a complete description, see the postscript manuals.
+.SS
+memory management flags:
+.BI "\-c" " tcpsize" " | \-m" " glsize" " | \-o" " complsize" " | \-u" " pdlsize" " | \-r | \-g" " gc_type"
+.SS
+miscellaneous flags:
+.B \-s | \-S | \-T
+.SS
+module:
+    Module to execute after XSB starts up. Module should have no suffixes, no directory part, and the file module.O must be on the library search path.
+.SS
+boot_module:
+    This is a developer's option. The -B flags tells XSB which bootstrapping module to use instead of the standard loader.  The loader must be specified using its full pathname, and boot_module.O must exist.
+.SS
+module_to_disassemble:
+    This is a developer's option. The -d flag tells XSB to act as a disassembler. The -B flag specifies the module to disassemble.
+.SS
+cmd_loop_driver:
+    The top-level command loop driver to be used instead of the standard one.  Usually needed when XSB is run as a server.
+.SS
+flags:
+    The order in which these options appear makes no difference.
+.TP
+\fB-i\fP
+Brings up the XSB interpreter.  This is the normal use and because of this, use of this option is optional and is only kept for backwards compatibility.
+.TP
+\fB-e goal\fP
+Pass goal to XSB at startup. This goal is evaluated right before the first prompt is issued. For instance,
+.br
+
+xsb -e "write('Hello!'), nl."
+.br
+
+will print a heart-warming message when XSB starts up.
+.TP
+\fB-l\fP
+Forces the interpreter to print unbound variables as letters, as opposed to the default setting which prints variables as memory locations prefixed with an underscore. For example, starting XSB's interpreter with this option will print the following:
+.br
+
+| ?- Y = X, Z = 3, W = foo(X,Z).
+.br
+Y = A
+.br
+X = A
+.br
+Z = 3
+.br
+W = foo(A,3)
+.br
+
+as opposed to something like the following:
+
+| ?- Y = X, Z = 3, W = foo(X,Z).
+.br
+Y = _10073976
+.br
+X = _10073976
+.br
+Z = 3
+.br
+W = foo(_10073976,3);
+.TP
+\fB-n\fP
+Used in conjunction with the -i option, to indicate that the usual read-eval-print top-loop is not to be entered, but instead will interface to a calling C program.
+.TP
+.B -B
+.B Specify the boot module to use in lieu of the standard loader
+.TP
+.B -D
+.B Tells XSB to use a top-level command loop driver specified here instead of the standard XSB interpreter. This is most useful when XSB is used as a server.
+.TP
+.B -t
+.B Traces through code at SLG-WAM instruction level. This option is for internal debugging and is not fully supported. It is also not available when the system is being used at the non-debug mode (compiled without the --debug option).
+.TP
+.B -d
+.B Produces a disassembled dump of byte_code_file to stdout and exits.
+.TP
+.B -c
+.B Allocates N KBytes of space to the trail/choice-point stack area.  The trail stack grows upward from the bottom of the region, and the choice point stack grows downward from the top of the region.  Because this region is expanded automatically from Version 1.6.0 onward, this option should rarely need to be used.  Default initial size: 768 KBytes.
+.TP
+.B -m
+.B Allocates N KBytes of space to the local/global stack area.  The global stack grows upward from the bottom of the region, and the local stack grows downward from the top of the region.  Default: 768 KBytes.
+.TP
+.B -o
+.B Allocates N KBytes of space to the completion stack area.  Because this region is expanded automatically from Version 1.6.0 onward, this option should rarely need to be used. Default initial size 64 KBytes.
+.TP
+.B -u
+.B Allocates N KBytes of space to the unification (and table copy) stack.  Default 64 KBytes. (This option should rarely need to be used).
+.TP
+.B -r
+.B Turns off automatic stack expansion.
+.TP
+.BI "-g" " gc_type"
+.B Chooses the garbage collection strategy that is employed. Choice of the strategy is between "none" (meaning perform no garbage collection), or garbage collection based on "sliding", on "copying", or on "indirection". The choice "indirection" is not available on CHAT, and this choice will be ineffective on emulators configured for CHAT.
+.TP
+.B -s
+.B Maintains information on the size of program stacks for the predicate
+.IB "statistics/0" "."
+.B This option may be expected to slow execution by around 10\%. Default: off.
+.TP
+.B -S
+.B Indicates that tabled predicates are to be evaluated using subsumption-based tabling as a default for tabled predicates whose tabling method is not specified by using
+.IB "use\_variant\_tabling/1" " or "
+.IB "use\_subsumptive\_tabling/1" "."
+.B If this option is not specified, variant-based tabling will be used as the default tabling method by XSB.
+.TP
+.B -T
+.B Generates a trace at entry to each called predicate (both system and user-defined).  This option is available mainly for people who want to modify and/or extend XSB, and it is \fBnot\fP the normal way to trace XSB programs.  For the latter, the built-in predicates
+.IB "trace/0" " or "
+.IB "debug/0"
+.B should be used.
+Note: This option is not available when the system is being used at the non-tracing mode.
+.TP
+.B -v, --version
+Prints the version and configuration information about XSB.
+.TP
+.B -h, --help
+Prints a help message
+.TP
+.B --nobanner
+Do not show the startup banner. Useful in batch scripts and for interprocess communication (when XSB is launched as a subprocess).
+.TP
+.B --quietload
+Do not tell when a new module gets loaded. Useful in non-interactive activities and for interprocess communication.
+.TP
+.B --noprompt
+Do not show the XSB prompt. Useful in batch mode and in interprocess communication.
+.SH SEE ALSO
+.SH AUTHOR
+This manual page was prepared by Kristis Makris <devcore@freeuk.com>,
+for the Debian GNU/Linux system (but may be used for other systems).

@@ -1,0 +1,517 @@
+/* File:      lists.P
+** Author(s): Daniel Diaz, Bart Demoen, Tom Schrijvers 
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: lists.P,v 1.5 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  _ _     _
+%% | (_)___| |_ ___
+%% | | / __| __/ __|
+%% | | \__ \ |_\__ \
+%% |_|_|___/\__|___/
+%%
+%% * adapted from the GNU Prolog list.pl library
+%% 
+%%   /*-------------------------------------------------------------------------* 
+%%    * GNU Prolog                                                              * 
+%%    *                                                                         * 
+%%    * Part  : Prolog buit-in predicates                                       * 
+%%    * File  : list.pl                                                         * 
+%%    * Descr.: list library                                                    * 
+%%    * Author: Daniel Diaz                                                     * 
+%%    *                                                                         * 
+%%    * Copyright (C) 1999-2002 Daniel Diaz                                     * 
+%%    *                                                                         * 
+%%    * GNU Prolog is free software; you can redistribute it and/or modify it   * 
+%%    * under the terms of the GNU General Public License as published by the   * 
+%%    * Free Software Foundation; either version 2, or any later version.       * 
+%%    *                                                                         * 
+%%    * GNU Prolog is distributed in the hope that it will be useful, but       * 
+%%    * WITHOUT ANY WARRANTY; without even the implied warranty of              * 
+%%    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU        * 
+%%    * General Public License for more details.                                * 
+%%    *                                                                         * 
+%%    * You should have received a copy of the GNU General Public License along * 
+%%    * with this program; if not, write to the Free Software Foundation, Inc.  * 
+%%    * 59 Temple Place - Suite 330, Boston, MA 02111, USA.                     * 
+%%    *-------------------------------------------------------------------------*/
+%%
+%% * ported several predicates from the Mercury list.m library
+%%
+%%   %---------------------------------------------------------------------------%
+%%   % Copyright (C) 1993-2003 The University of Melbourne.
+%%   % This file may only be copied under the terms of the GNU Library General
+%%   % Public License - see the file COPYING.LIB in the Mercury distribution.
+%%   %---------------------------------------------------------------------------%
+%%
+%% * ported to hProlog and extended by Tom Schrijvers, K.U.Leuven
+%%
+%% * ported to xsb by Tom Schrijvers, K.U.Leuven
+:- compiler_options([allow_redefinition]).
+
+:- export 
+         append/3,
+	 append_lists/2,
+         delete/3,
+	 delete_first/3,
+	 drop/3,
+	 drop_upto/3,
+%	 flatten/2,   (better to use version in basics)
+	 insert/3,
+	 intersect/3,
+	 intersect_eq/3,
+	 is_empty/1,
+         is_list/1,
+	 is_not_empty/1,
+         last/2,
+	 length/2,
+	 list_difference_eq/3,
+         member/2,
+         memberchk/2,
+         memberchk_eq/2,
+	 mklist/2,
+         nextto/3,
+        % no_doubles/1,
+        % non_member/2,
+         nth/3,
+         nth/4,
+         nth0/3,
+         nth0/4,
+	 or_list/2,
+         permutation/2,
+         prefix/2,
+         remove_duplicates/2,
+         reverse/2,
+         same_length/2,
+         same_length/3,
+         select/3,
+	 split_list/4,
+         sublist/2,
+         substitute/4,
+         suffix/2,
+	 take/3,
+	 take_upto/3,
+	 zip/3,
+         max_list/2,
+         min_list/2,
+         sum_list/2.
+
+:- import integer/1 from standard.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% written by Bart Demoen
+is_list(L) :-
+	(var(L) ->
+	    fail
+	;
+	    is_list2(L)
+	).
+
+is_list2([]).
+is_list2([_|Tail]) :- nonvar(Tail), is_list2(Tail).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+is_empty([]).
+is_not_empty([_|_]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+append([], L, L).
+append([H|T1], List, [H|T2]) :-
+	append(T1, List, T2).
+
+append_lists([],[]).
+append_lists([X|Xs],L) :-
+	append(X,T,L),
+	append_lists(Xs,T).
+
+/*
+flatten([],[]).
+flatten([X|Xs],L) :-
+	'$flatten'(X,T,L),
+	'$flatten'(Xs,[],T).
+
+'$flatten'(X,T,L) :-
+	( X == [] ->
+		L = T
+	; X = [Y|Ys] ->
+		'$flatten'(Y,T2,L),
+		'$flatten'(Ys,T,T2)
+	;
+		L = [X|T]
+	).
+*/
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  member(X, [H|T]) :-
+%%  	(   X = H
+%%  	;   member(X, T)
+%%  	).
+
+/* more efficient implementation that avoids last choicepoint */
+%% original version
+%% member(Element, [Head|Tail]) :-
+%% 	member_(Tail, Head, Element).
+%% 
+%% member_(_, Element, Element).
+%% member_([Head|Tail], _, Element) :-
+%% 	member_(Tail, Head, Element).
+
+/* more efficient implementation that really avoids last choicepoint */
+
+member(Element, [Head|Tail]) :- m5(Element,Head,Tail).
+
+m5(X,A,R) :-
+	(R == [] ->
+	    X = A
+	;
+	    m6(X,A,R)
+	).
+
+m6(X,X,_).
+m6(X,_,[A|R]) :- m5(X,A,R).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+memberchk(X, [H|T]) :-
+	(   X = H, !
+	;   memberchk(X, T)
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+memberchk_eq(X,[Y|Ys]) :-
+   (   X == Y ->
+       true
+   ;   memberchk_eq(X,Ys)
+   ).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+reverse([], []).
+reverse([H|T], L) :-
+	'$reverse1'(T, L, [H]).
+
+'$reverse1'([], L, L).
+'$reverse1'([H|T], L, L1) :-
+	'$reverse1'(T, L, [H|L1]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+delete([], _, []).
+delete([H|T], X, L) :-
+	H == X, !,
+	delete(T, X, L).
+delete([H|T], X, [H|L]) :-
+	delete(T, X, L).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+delete_first([], _, []).
+delete_first([X | Xs], Y, Zs) :-
+	( X == Y ->
+		Zs = Xs
+	;
+		Zs = [X | Zs1],
+		delete_first(Xs, Y, Zs1)
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+remove_duplicates([], []).
+remove_duplicates([H|T1], [H|T2]) :- 
+	delete(T1, H, R),
+        remove_duplicates(R, T2).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nextto(X,Y,[Z|T]) :-
+	( X = Z,
+          T = [Y|_] ->
+		true
+	;
+		nextto(X,Y,T)
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+select(X, [X|T], T).
+select(X, [H|T1], [H|T2]) :-
+	select(X, T1, T2).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+insert(Elem, List0, List) :-
+	select(Elem, List, List0).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+permutation([], []).
+permutation(L, [H|T]) :-
+	select(H, L, Rest),
+	permutation(Rest, T).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+prefix([], _).
+prefix([X|T], [X|T1]) :-
+	prefix(T, T1).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+suffix(L, L).
+suffix(X, [_|T]) :-
+	suffix(X, T).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+sublist(L, L).
+sublist(Sub, [H|T]) :-
+	'$sublist1'(T, H, Sub).
+
+'$sublist1'(Sub, _, Sub).
+'$sublist1'([H|T], _, Sub) :-
+	'$sublist1'(T, H, Sub).
+'$sublist1'([H|T], X, [X|Sub]) :-
+	'$sublist1'(T, H, Sub).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+last([H|T], X) :-
+	'$last1'(T, H, X).
+'$last1'([], X, X).
+'$last1'([H|T], _, X) :-
+	'$last1'(T, H, X).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+length(L, N) :-
+ 	integer(N), !,
+ 	N >= 0,
+ 	mklist(N, L).
+length(L, N) :-
+ 	'$length'(L, 0, N).
+  
+  
+  '$length'([], N, N).
+  '$length'([_|L], M, N) :-
+  	M1 is M + 1,
+  	'$length'(L, M1, N).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+mklist(0, []) :-
+	! .
+mklist(N, [_|L]) :-
+	N1 is N - 1,
+	mklist(N1, L).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+same_length([], []).
+same_length([_|T1], [_|T2]) :-
+	same_length(T1, T2).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+same_length(L1, L2, N) :-
+	nonvar(N), !,
+	length(L1, N),
+	length(L2, N).
+same_length(L1, L2, N) :-
+	same_length(L1, L2, 0, N).
+
+same_length([], [], N, N).
+same_length([_|T1], [_|T2], N0, N) :-
+	N1 is N0+1,
+	same_length(T1, T2, N1, N).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nth(N, L, X) :-
+	integer(N), !,
+	N >= 1,
+	'$nth1'(N, L, X).
+nth(N, L, X) :-
+	var(N),
+	'$nth2'(L, X, 1, N).
+
+nth0(N, L, X) :-
+	integer(N), !,
+	N >= 0,
+	'$nth1'(N, L, X).
+nth0(N, L, X) :-
+	var(N),
+	'$nth2'(L, X, 0, N).
+
+'$nth1'(1, [X|_], X) :-
+	! .
+'$nth1'(N, [_|T], X) :-
+	N1 is N - 1,
+	'$nth1'(N1, T, X).
+
+'$nth2'([X|_], X, N, N).
+'$nth2'([_|T], X, I, N) :-
+	I1 is I + 1,
+	'$nth2'(T, X, I1, N).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nth(N, L, X, R) :-
+	integer(N), !,
+	N >= 1,
+	N1 is N-1,
+	'$nth/4_1'(N1, L, X, R).
+nth(N, L, X, R) :-
+	var(N),
+	'$nth/4_2'(L, X, 1, N, R).
+
+nth0(N, L, X, R) :-
+	integer(N), !,
+	N >= 0,
+	'$nth/4_1'(N, L, X, R).
+nth0(N, L, X, R) :-
+	var(N),
+	'$nth/4_2'(L, X, 0, N, R).
+
+'$nth/4_1'(0, L, H, T) :- !,
+	L = [H|T].
+'$nth/4_1'(N, [H|T], X, [H|R]) :-
+	M is N - 1,
+	'$nth/4_1'(M, T, X, R).
+
+'$nth/4_2'([X|T], X, I, I, T).
+'$nth/4_2'([H|T], X, M, I, [H|R]) :-
+	N is M + 1,
+	'$nth/4_2'(T, X, N, I, R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+substitute(_, [], _, []) :- ! .
+substitute(X, [U|Us], Y, [Y|Vs]) :-
+	X==U, !,
+	substitute(X, Us, Y, Vs).
+substitute(X, [U|Us], Y, [U|Vs]) :-
+	substitute(X, Us, Y, Vs).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+zip([], Bs, Bs).
+zip([A | As], Bs, [A | Cs]) :-
+	zip2(As, Bs, Cs).
+
+zip2(As, [], As).
+zip2(As, [B | Bs], [B | Cs]) :-
+	zip(As, Bs, Cs).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+split_list(N, List, Start, End) :-
+	( N == 0 ->
+		Start = [],
+		End = List
+	;
+		N > 0,
+		N1 is N - 1,
+		List = [Head | List1],
+		Start = [Head | Start1],
+		split_list(N1, List1, Start1, End)
+	).
+
+take(N, As, Bs) :-
+	( N > 0 ->
+		N1 is N - 1,
+		As = [A | As1],
+		Bs = [A | Bs1],
+		take(N1, As1, Bs1)
+	;
+		Bs = []
+	).
+
+take_upto(N, As, Bs) :-
+	( take(N, As, Bs0) ->
+		Bs = Bs0
+	;
+		Bs = As
+	).
+
+drop(N, As, Bs) :-
+	( N > 0 ->
+		N1 is N - 1,
+		As = [_ | Cs],
+		drop(N1, Cs, Bs)
+	;
+		As = Bs
+	).
+
+drop_upto(N, As, Bs) :-
+	( drop(N, As, Bs0) ->
+		Bs = Bs0
+	;
+		Bs = []
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+intersect([], _, []).
+intersect([X|Xs],Ys,L) :-
+	( memberchk(X,Ys) ->
+		L = [X|T],
+		intersect(Xs,Ys,T)
+	;
+		intersect(Xs,Ys,L)
+	).
+
+intersect_eq([], _, []).
+intersect_eq([X|Xs],Ys,L) :-
+	( memberchk_eq(X,Ys) ->
+		L = [X|T],
+		intersect_eq(Xs,Ys,T)
+	;
+		intersect_eq(Xs,Ys,L)
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+list_difference_eq([],_,[]).
+list_difference_eq([X|Xs],Ys,L) :-
+	( memberchk_eq(X,Ys) ->
+		list_difference_eq(Xs,Ys,L)
+	;
+		L = [X|T],
+		list_difference_eq(Xs,Ys,T)
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+max_list([H|T], Max) :-
+	'$max_list1'(T, H, Max).
+
+'$max_list1'([], Max, Max).
+'$max_list1'([H|T], X, Max) :-
+	H =< X, !,
+	'$max_list1'(T, X, Max).
+'$max_list1'([H|T], _, Max) :-
+	'$max_list1'(T, H, Max).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+min_list([H|T], Min) :-
+	'$min_list1'(T, H, Min).
+
+'$min_list1'([], Min, Min).
+'$min_list1'([H|T], X, Min) :-
+	H >= X, !,
+	'$min_list1'(T, X, Min).
+'$min_list1'([H|T], _, Min) :-
+	'$min_list1'(T, H, Min).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+sum_list(L, Sum) :-
+	'$sum_list1'(L, 0, Sum).
+
+'$sum_list1'([], Sum, Sum).
+
+'$sum_list1'([H|T], Sum0, Sum) :-
+	Sum1 is H + Sum0,
+	'$sum_list1'(T, Sum1, Sum).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+or_list(L, Or) :-
+	'$or_list1'(L, 0, Or).
+
+'$or_list1'([], Or, Or).
+
+'$or_list1'([H|T], Or0, Or) :-
+	Or1 is H \/ Or0,
+	'$or_list1'(T, Or1, Or).

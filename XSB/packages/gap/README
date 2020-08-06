@@ -1,0 +1,10 @@
+
+The file gap.P is provided to allow users to experiment with the
+meta-interpretation of Gaps.  Its design and use are fully documented
+in the paper
+
+Tabling for Non-Monotonic Programming
+Terrance Swift
+
+To appear in Annals of Mathematics and Artificial Intelligence.  For
+now, it is also available through http://www.cs.sunysb.edu/~tswift

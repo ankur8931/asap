@@ -1,0 +1,744 @@
+/* File:      file_io.P
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: file_io.P,v 1.61 2009/10/19 16:56:42 dwarren Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod]).
+
+#include "io_defs_xsb.h"
+#include "system_defs_xsb.h"
+#include "standard.h"
+#include "flag_defs_xsb.h"
+#include "psc_defs.h"
+#include "builtin.h"
+
+	       /********************************/
+	       /*  Formatted I/O    	       */
+	       /********************************/
+
+fmt_write(Fmt, Args) :-
+       stat_flag(CURRENT_OUTPUT, IOport),   % Current output
+	fmt_write(IOport, Fmt, Args).
+
+fmt_write(S_or_A, Fmt, Args) :-
+	check_open_stream_or_alias(S_or_A,fmt_write/3,1,output,Stream),
+	formatted_io(FMT_WRITE, Stream, Fmt, Args, _Ret).
+
+fmt_write_string(Str, Fmt, Args) :-
+	formatted_io(FMT_WRITE_STRING, Str, Fmt, Args, _Ret).
+
+fmt_read(Fmt,Result,Status) :-
+        stat_flag(CURRENT_INPUT, IOport),  % Current input
+	fmt_read(IOport, Fmt,Result,Status).
+
+fmt_read(S_or_A, Fmt, Result, Status) :-
+	check_open_stream_or_alias(S_or_A,fmt_read/4,1,input,Stream),
+	formatted_io(FMT_READ, Stream, Fmt, Result, Status).
+
+
+/***************************************************************/
+/*    	      	      	      	      	      	      	       */
+/*       file_flush, file_seek, file_truncate, file_pos, etc.  */
+/*    	      	      	      	      	      	      	       */
+/***************************************************************/
+
+file_flush(IOport, Ret) :-
+	file_function(FILE_FLUSH, IOport, Ret).
+file_seek(IOport, Offset, Place, Ret) :-
+	file_function(FILE_SEEK, IOport, Offset, Place, Ret, _,_).
+file_truncate(S_or_A, Length, Ret) :-
+	check_open_stream_or_alias(S_or_A,fmt_truncate/3,1,output,Stream),
+	file_function(FILE_TRUNCATE, Stream, Length, Ret, _E, _,_).
+file_pos(IOport, Pos) :-
+	file_function(FILE_POS, IOport, Pos_1),
+	(Pos_1 < 0 -> Pos = end_of_file ; Pos = Pos_1).
+file_open(FileName, Mode_in, IOport) :-
+	file_open(FileName, Mode_in, 0, IOport).
+file_open(FileName, Mode_in, OpenNew, IOport) :-
+	preserve_numeric_calls(Mode_in,Mode),
+	file_function(XSB_FILE_OPEN, FileName, Mode, OpenNew, IOport, _,_).
+/* TLS: file_close/1 is obsolescent */
+file_close(IOport) :-
+	file_function(FILE_CLOSE,IOport,NOFORCE_FILE_CLOSE).
+file_close(IOport,Force) :-
+	file_function(FILE_CLOSE,IOport,Force).
+% obsolete -- specify byte or code
+file_get(IOport,Char) :-
+	file_function(FILE_GET_BYTE, IOport, Char).
+file_get_byte(IOport,Char) :-
+	file_function(FILE_GET_BYTE, IOport, Char).
+file_get_code(IOport,Char) :-
+	file_function(FILE_GET_CODE, IOport, Char).
+file_get_char(IOport,Char) :-
+	file_function(FILE_GET_CHAR, IOport, Char).
+file_put(IOport,Char) :-
+	file_function(FILE_PUT_BYTE, IOport, Char).
+file_put_code(IOport,Char) :-
+	file_function(FILE_PUT_CODE, IOport, Char).
+file_put_char(IOport,Char) :-
+	file_function(FILE_PUT_CHAR, IOport, Char).
+file_clearerr(IOport) :-
+	file_function(FILE_CLEARERR, IOport, _).
+tmpfile_open(IOport) :-
+	file_function(TMPFILE_OPEN, IOport, _).
+xsb_stream_lock(IOport):- 
+	file_function(XSB_STREAM_LOCK_B, IOport, _).
+xsb_stream_unlock(IOport):- 
+	file_function(XSB_STREAM_UNLOCK_B, IOport, _).
+
+preserve_numeric_calls(0,r):- !.
+preserve_numeric_calls(1,w):- !.
+preserve_numeric_calls(2,a):- !.
+preserve_numeric_calls(3,sr):- !.
+preserve_numeric_calls(X,X).
+
+%----------------------------------------------------------------------------------------------------
+
+file_getbuf(IOport, ByteCount, ToAtom, BytesRead) :-
+	(var(ToAtom), var(BytesRead) ->
+	    file_function(FILE_GETBUF, IOport,ByteCount,ToAtom,BytesRead,_,_)
+	; abort('Usage: file_getbuf([+IOport,] +ByteCount, -ToAtom, -BytesRead)')
+        ).
+
+%% same as file_getbuf
+file_getbuf_atom(IOport, ByteCount, ToAtom, BytesRead) :-
+	(var(ToAtom), var(BytesRead) ->
+	    file_function(FILE_GETBUF, IOport,ByteCount,ToAtom,BytesRead,_,_)
+	; abort('Usage: file_getbuf_atom([+IOport,] +ByteCount, -ToAtom, -BytesRead)')
+        ).
+
+file_getbuf_atom(ByteCount, ToAtom, BytesRead) :-
+	stat_flag(CURRENT_INPUT, IOport),
+	(var(ToAtom), var(BytesRead) ->
+	    file_function(FILE_GETBUF, IOport,ByteCount,ToAtom,BytesRead,_,_)
+	; abort('Usage: file_getbuf_atom([+IOport,] +ByteCount, -ToAtom, -BytesRead)')
+        ).
+
+file_getbuf_list(IOport, ByteCount, ToList, BytesRead) :-
+	(var(ToList), var(BytesRead) ->
+	    file_function(FILE_GETBUF, IOport,ByteCount,TmpStr,BytesRead,_,_),
+	    atom_codes(TmpStr, ToList)
+	;
+	abort('Usage: file_getbuf_list([+IOport,] +ByteCount, -ToList, -BytesRead)')).
+
+file_getbuf_list(ByteCount, ToList, BytesRead) :-
+	stat_flag(CURRENT_INPUT, IOport),
+	(var(ToList), var(BytesRead) ->
+	    file_function(FILE_GETBUF, IOport,ByteCount,TmpStr,BytesRead,_,_),
+	    atom_codes(TmpStr, ToList)
+	;
+	abort('Usage: file_getbuf_list([+IOport,] +ByteCount, -ToList, -BytesRead)')).
+
+file_putbuf(IOport, ByteCount, FromString, Offset, BytesWritten) :-
+	(var(BytesWritten) ->
+	    file_function(FILE_PUTBUF, IOport,ByteCount,FromString,Offset,BytesWritten,_)
+	;
+	abort('Usage: file_putbuf([+IOport,] +ByteCount, +FromString, +Offset, -BytesWritten)')
+    ).
+
+file_putbuf(ByteCount, FromString, Offset, BytesWritten) :-
+	stat_flag(CURRENT_OUTPUT, IOport),
+	(var(BytesWritten) ->
+	    file_function(FILE_PUTBUF, IOport,ByteCount,FromString,Offset,BytesWritten,_)
+	; abort('Usage: file_putbuf([+IOport,] +ByteCount, +FromString, +Offset, -BytesWritten)')
+	).
+
+
+file_read_line(IOport, Str) :-
+	( var(Str) ->
+	    file_function(FILE_READ_LINE, IOport, Str, _, _, _,_)
+	; abort('Usage: file_read_line(+IOport, -InputStr)')
+        ).
+
+%-----------------------
+
+% TLS: in introducing error conditions, in the read_line_xxx, I'm
+% trying not to change the semantics of the previous cases by adding new
+% checks.  
+
+%% same as file_read_line
+file_read_line_atom(S_or_A, Atom) :-
+	check_open_stream_or_alias(S_or_A,file_read_line_atom/2,1,input,Stream),
+	file_read_line_atom_1(Stream, Atom).
+
+file_read_line_atom_1(Stream, Atom) :-
+	( var(Atom) ->
+	    file_function(FILE_READ_LINE, Stream, Atom, _, _, _,_)
+	; abort('Usage: file_read_line_atom([+Stream] -InputAtom)')
+        ).
+
+%% Read line from current input stream (previously set by 'see')
+file_read_line_atom(Atom) :-
+	stat_flag(CURRENT_INPUT, IOport),  % Current input
+	file_read_line_atom_1(IOport, Atom).
+
+%-----------------------
+
+%% Like file_read_line_atom, but returns list of characters
+file_read_line_list(S_or_A, CharLst) :-
+	check_open_stream_or_alias(S_or_A,file_read_line_list/2,1,input,Stream),
+	file_read_line_list_1(Stream, CharLst).
+
+file_read_line_list_1(Stream, CharLst) :-
+	( var(CharLst) ->
+	    file_function(FILE_READ_LINE_LIST, Stream, CharLst, _, _, _,_)
+	; abort('Usage: file_read_line_list([+Stream] -InputStr)')
+        ).
+
+%% Read line from current input stream (previously set by 'see')
+%% Return list of chars
+file_read_line_list(Lst) :-
+	stat_flag(CURRENT_INPUT, IOport),  % Current input
+	file_read_line_list_1(IOport, Lst).
+
+%-----------------------
+
+%% Write Str out to IOport. Str must be atom or list of chars.
+%% This is checked in C, by the builtin.
+
+file_write_line(S_or_A, Str, Offset) :-
+	check_open_stream_or_alias(S_or_A,file_write_line/3,1,output,Stream),
+	file_function(FILE_WRITE_LINE, Stream, Str, Offset, _,_,_).
+
+%% Same as file_write_line/3, but write to current output
+file_write_line(String, Offset) :-
+	stat_flag(CURRENT_OUTPUT, IOport),  % Current output
+	file_function(FILE_WRITE_LINE, IOport, String, Offset, _,_,_).
+
+%-----------------------
+
+
+/* Fancy stuff */
+%% Like freopen
+file_reopen(FileName, Mode, IOport,ErrCode) :-
+	file_function(FILE_REOPEN, FileName,  Mode, IOport, ErrCode,_,_).
+
+%% Like dup/dup2: make DestIOport into the same file descriptor as SrcIOport
+%% If DestIOport is var, then behaves like dup; else like dup2 
+%% (and then expects DestIOport to be a file descriptor).
+%% ErrCode=0 - ok
+file_clone(SrcIOport, DestIOport, ErrorCode) :-
+	file_function(FILE_CLONE, SrcIOport, DestIOport, ErrorCode,_,_,_).
+
+%% Open pipe. ReadPipe is for reading from pipe,
+%% WritePipe is for writing to the pipe.
+pipe_open(ReadPipe, WritePipe) :-
+	file_function(PIPE_OPEN, ReadPipe, WritePipe, _,_,_,_).
+
+%% Convert pipe into an XSB file descriptor.
+%% This should be done on both ends: by the parent XSB process and by 
+%% the child XSB process
+fd2ioport(Pipe, IOport) :-
+	file_function(FD2IOPORT, Pipe, IOport,'u',_,_,_).
+fd2iostream(Pipe, Mode,IOstream) :-
+	file_function(FD2IOPORT, Pipe, IOstream,Mode,_,_,_).
+
+
+/***************************************************************
+**
+** print_file_contents/1
+**
+****************************************************************/
+
+print_file_contents(Filename) :-
+	stat_flag(CURRENT_OUTPUT, ToIOport),  % current output
+	print_file_contents(Filename, ToIOport).
+
+print_file_contents(FileName, ToIOport) :-
+	file_open(FileName, r, FromIOport),
+	copyIOport(FromIOport, ToIOport),
+	file_close(FromIOport).
+copyIOport(FromIOport, ToIOport) :-
+	repeat,
+	(file_read_line(FromIOport, Line) 
+	-> file_write(ToIOport, Line),fail
+	; true
+	), !.
+copyIOport(_,_).
+
+/***************************************************************/
+
+% TLS: changed to allow users to call with Time either time(A,B) or as var.
+file_time(FileName, Time) :-
+	sys_system(STAT_FILE_TIME,FileName,Time, _,_,_,_).
+
+file_size(FileName, Size) :-
+	sys_system(STAT_FILE_SIZE,FileName,[H,L], _,_,_,_),
+	Size is L + (H << 24).
+
+
+/************************************************************************
+    	    	Path Operations
+************************************************************************/
+
+%% These fail if the op doesn't succeed
+path_sysop(isplain, Path) :- !, is_plain_file(Path).
+path_sysop(isdir, Path) :- !, is_directory(Path).
+path_sysop(rename, OldPath, NewPath) :- !, rename(OldPath,NewPath).
+path_sysop(copy, FromPath, ToPath) :- !,
+	sys_filecopy(FromPath,ToPath,Res), Res=:=0.
+path_sysop(append, FromPath, ToPath) :- !,
+	sys_fileappend(FromPath,ToPath,Res), Res=:=0.
+	/*
+	file_open(FromPath, r, FromIOport),
+	FromIOport >= 0,
+	file_open(ToPath, w, ToIOport),
+	ToIOport >= 0,
+	copyIOport(FromIOport, ToIOport),
+	file_close(ToIOport),
+	file_close(FromIOport).
+        */
+path_sysop(rm, Path) :- !, rm(Path).
+path_sysop(unlink, Path) :- !, rm(Path).
+path_sysop(link, SrsPath, DestPath) :- !,
+	sys_link(SrsPath,DestPath,Res), Res=:=0.
+path_sysop(cwd, Path) :- !, cwd(Path).
+path_sysop(chdir, Path) :- !, cd(Path).
+path_sysop(mkdir, Path) :- !, sys_mkdir(Path,Res), Res=:=0.
+path_sysop(rmdir, Path) :- !, sys_rmdir(Path,Res), Res=:=0.
+path_sysop(rmdir_rec, Path) :- !, rmdir_rec(Path).
+path_sysop(exists, Path) :- !, file_exists(Path).
+path_sysop(readable, Path) :- !, sys_access(Path, 'r', Res), Res =:= 0.
+path_sysop(writable, Path) :- !, sys_access(Path, 'w', Res), Res =:= 0.
+path_sysop(executable, Path) :- !, sys_access(Path, 'x', Res), Res =:= 0.
+path_sysop(modtime,Path,Time) :- !,
+	file_time(Path,Time), Time \== 0.
+path_sysop(newerthan,Path1,Path2) :- !,
+	file_time(Path1,Time1),
+	file_time(Path2,Time2),
+	Time1 >= Time2.
+path_sysop(size,Path,Size) :- !,
+	sys_system(STAT_FILE_SIZE,Path,Size, _,_,_,_).
+path_sysop(tmpfilename,TmpName) :- !,
+	sys_system(GET_TMP_FILENAME,TmpName,_,_,_,_,_).
+path_sysop(extension,Filename,Extension) :- !,
+	parse_filename(Filename,_,_,Extension).
+path_sysop(basename,Filename,Basename) :- !,
+	parse_filename(Filename,_,Basename,_).
+path_sysop(dirname,Filename,Dirname) :- !,
+	parse_filename(Filename,Dirname,_,_).
+path_sysop(isabsolute,Filename) :- !,
+	is_absolute_filename(Filename).
+path_sysop(expand,Filename,ExpandedName) :- !,
+	expand_filename(Filename,ExpandedName).
+path_sysop(cwd_ancestordir,BaseName,ExpandedName) :- !,
+	cwd(CurrDir0),		% cwd returns name without trailing slash
+	slash(Slash),
+	concat_atom([CurrDir0,Slash],CurrDir),
+	(get_ancestor(CurrDir,BaseName,ExpandedName)
+	 ->	true
+	 ;	(getenv([BaseName,'_HOME'],FileName)
+		 ->	expand_filename(FileName,ExpandedName)
+		 ;	abort(('[PATH_SYSOP]: No ancestor directory (and no environment variable) for: ', BaseName))
+		)
+	).
+path_sysop(X,_,_) :- abort(('[PATH_SYSOP]: Invalid request for path_sysop/3, ', X)).
+path_sysop(X,_) :- abort(('[PATH_SYSOP]: Invalid request for path_sysop/2, ', X)).
+
+
+get_ancestor(CurrDir,BaseName,AncDir) :-
+	CurrDir \== '',
+	CurrDir \== '/',
+	CurrDir \== '\\',
+	CurrDir1 = [CurrDir,'/.'],
+	path_sysop(basename,CurrDir1,CurrDirName),
+	(CurrDirName = BaseName
+	 ->	AncDir = CurrDir
+	 ;	path_sysop(dirname,CurrDir1,ParentDir),
+		get_ancestor(ParentDir,BaseName,AncDir)
+	).
+
+%----------------------------------------------------------------------------------------------------
+% Stream and Alias Checking.
+%----------------------------------------------------------------------------------------------------
+/* 
+is_valid_stream/2: assumes integer, checks that the stream is valid
+with mode input or output.
+
+check_stream_or_alias/4 checks if stream term or alias is valid and
+raises exception otherwise.
+
+check_open_stream_or_alias/5 checks if stream or alias is valid for
+mode, and raises exception otherwise.
+
+check_enumerate_stream_or_alias/4: if bound,
+check_valid_open_stream_or_alias.  If variable, backtracks through the
+valid streams.
+
+current_stream_or_alias/1: if integer, checks that the S_or_A is valid, and
+fails otherwise. If variable, backtracks through the valid streams.
+
+*/
+
+%-----
+
+is_valid_stream(Stream) :- 
+	is_valid_stream(Stream,_).
+
+is_valid_stream(Stream,Mode) :-
+	file_function(IS_VALID_STREAM, Stream, M, _, _, _, _),
+	(M =:= 0 -> Mode = input ; Mode = output).
+
+%-----
+
+check_stream_or_alias(S_or_A,Predicate,Arg,Stream) :- 
+	(integer(S_or_A) -> 
+	    Stream = S_or_A
+	;
+	    (atom(S_or_A) -> 
+	        ('_$alias'(S_or_A,Stream) -> 
+		    true 
+		;   domain_error(stream_or_alias,S_or_A,Predicate,Arg) )
+	    ;  (var(S_or_A) -> 
+	         instantiation_error(Predicate,Arg)
+	         ;  domain_error(stream_or_alias,S_or_A,Predicate,Arg) ) ) ).
+
+'_$alias'(user_input,STDIN).
+'_$alias'(user_output,STDOUT).
+'_$alias'(user_error,STDERR).
+'_$alias'(user_warning,STDWARN).
+'_$alias'(user_message,STDMSG).
+'_$alias'(userout,STDOUT).
+'_$alias'(userin,STDIN).
+'_$alias'(user_in,STDIN).
+'_$alias'(user_out,STDOUT).
+%'_$alias'(usererr,2).
+'_$alias'(In,Out):-  '_$alias_dynamic'(In,STREAM_ALIAS,Out).
+
+:- import (index)/2 from standard.
+:- dynamic '_$alias_dynamic'/3.
+:- index('_$alias_dynamic'/3,[1,3]).
+:- thread_shared '_$alias_dynamic'/3.
+
+add_aliases_flag_error([],_Type,_Obj,Flag):- !,(var(Flag) -> Flag = 0 ; true).
+add_aliases_flag_error([H|T],Type,Obj,Flag):- !,
+	add_alias_flag_error(H,Type,Obj,Flag),
+	(Flag == 1 -> 
+	    remove_alias(_,Type,Obj)
+	 ; 
+	    add_aliases_flag_error(T,Type,Obj,Flag) ).
+add_alias_flag_error(Alias,Type,Obj,Flag):- 
+	'_$alias_dynamic'(Alias,Type,_Stream) -> 
+	   Flag = 1
+	 ; asserta('_$alias_dynamic'(Alias,Type,Obj)).
+
+add_aliases([],_Type,_Stream,_Pred).
+add_aliases([H|T],Type,Stream,Pred):- 
+	add_alias(H,Type,Stream,Pred),
+	add_aliases(T,Type,Stream,Pred).
+
+add_alias(Alias,Type,Stream,Predicate):- 
+	(	'_$alias_dynamic'(Alias,Type,_Stream) -> 
+		permission_error(open,source_sink,alias(Alias),Predicate)
+	;	asserta('_$alias_dynamic'(Alias,Type,Stream))
+	).
+
+:- export '_$alias_dynamic'/3.
+get_alias(main,THREAD_ALIAS,0):- !.
+get_alias(Alias,Type,Stream):- 
+	'_$alias_dynamic'(Alias,Type,Stream).
+
+remove_alias(Alias,Type,Stream):- 
+	retractall('_$alias_dynamic'(Alias,Type,Stream)).
+
+%-----
+check_stream_position(Offset,Predicate,Arg) :-
+	(	integer(Offset) ->
+		true
+	;	var(Offset) ->
+		instantiation_error(Predicate,Arg)
+	;	domain_error(stream_position,Offset,Predicate,Arg)
+	).
+
+%-----
+check_open_stream_or_alias(S_or_A,Predicate,Arg,Mode,Stream) :- 
+	check_stream_or_alias(S_or_A,Predicate,Arg,Stream),
+	(	is_valid_stream(Stream,ActualMode) -> 
+		(	var(Mode) ->
+			true
+		;	Mode == ActualMode ->
+			true
+		;	permission_error(Mode,stream,S_or_A,Predicate)
+		)
+	;	existence_error(stream,S_or_A,Predicate,Arg)
+	).
+
+%-----
+check_enumerate_stream_or_alias(S_or_A,Predicate,Arg,Stream):- 
+	(integer(S_or_A) -> 
+	    (is_valid_stream(S_or_A) -> 
+		true
+	      ;     existence_error(stream,S_or_A,Predicate,Arg))
+	    ; (atom(S_or_A) -> 
+	          '_$alias'(S_or_A,Stream),
+	          (is_valid_stream(Stream) -> 
+		 true
+	           ; existence_error(stream,S_or_A,Predicate,Arg) )
+  	        ; (var(Stream) -> 
+	             for(Stream,0,MAX_OPEN_FILES),
+	             is_valid_stream(Stream)
+	          ; domain_error(stream_or_alias_or_variable,Stream,
+		                    check_enumerate_stream_or_alias/1,1) ) ) ).
+
+%-----
+/* Checks a stream or enumerates. Failure */
+current_stream_or_alias(S_or_A,Stream):- 
+	(integer(S_or_A) -> 
+	   is_valid_stream(S_or_A),S_or_A = Stream
+             ; (atom(S_or_A) -> 
+	      '_$alias'(S_or_A,Stream),
+ 	      is_valid_stream(S_or_A)
+ 	    ; (var(S_or_A) -> 
+	         for(Stream,0,MAX_OPEN_FILES),
+	         is_valid_stream(Stream),S_or_A = Stream
+	       ; domain_error(stream_or_alias_or_variable,Stream,
+	                             current_stream_or_alias/1,1) ) ) ).
+
+%---------------------------------------------------------------------------------------------------
+% ISO Predicates.
+%---------------------------------------------------------------------------------------------------
+
+% TLS: Debugging predicate that will soon be obsolete.
+print_openfiles:- file_function(PRINT_OPENFILES,_,_,_,_,_,_).
+
+peek_code(S_or_A,Code):- 
+	check_open_stream_or_alias(S_or_A,peek_code/2,1,input,Str),
+	file_function(FILE_PEEK_CODE,Str,Ret,_Y,_Z, _,_),
+	Ret = Code.
+
+peek_code(Code):- 
+	stat_flag(CURRENT_INPUT, Str),
+	file_function(FILE_PEEK_CODE,Str,Ret,_Y,_Z, _,_),
+	Ret = Code.
+
+peek_byte(S_or_A,Byte):- 
+	check_open_stream_or_alias(S_or_A,peek_byte/2,1,input,Str),
+	(	var(Byte) ->
+		true
+	;	integer(Byte), Byte >= 0, Byte =< 255 ->
+		true
+	;	type_error(in_byte,Byte,peek_byte/2,2)
+	),
+	file_function(FILE_PEEK_BYTE,Str,Ret,_Y,_Z, _,_),
+	Ret = Byte.
+
+peek_byte(Byte):- 
+	stat_flag(CURRENT_INPUT, Str),
+	(	var(Byte) ->
+		true
+	;	integer(Byte), Byte >= 0, Byte =< 255 ->
+		true
+	;	type_error(in_byte,Byte,peek_byte/1,1)
+	),
+	file_function(FILE_PEEK_BYTE,Str,Ret,_Y,_Z, _,_),
+	Ret = Byte.
+
+% TLS: need char_conversion table.
+peek_char(S_or_A,Char):- 
+	check_open_stream_or_alias(S_or_A,peek_char/2,1,input,Str),
+	file_function(FILE_PEEK_CHAR,Str,C,_Y,_Z, _,_),
+	Char = C.
+%	(Ret >= 0 -> 
+%	    atom_codes(Char,[Ret])
+%	 ;  Char = Ret).
+
+peek_char(Char):- 
+	stat_flag(CURRENT_INPUT, Str),
+	file_function(FILE_PEEK_CHAR,Str,C,_Y,_Z, _,_), Char = C.
+%	(Ret >= 0 -> 
+%	    atom_codes(Char,[Ret])
+%	 ;  Char = Ret).
+	
+%-----------
+
+
+% TLS: ISO interfaces to feof()
+at_end_of_stream:- 
+	stat_flag(CURRENT_INPUT, Str),
+	file_function(FILE_END_OF_FILE,Str,_Ret,_Y,_Z, _,_).
+	
+at_end_of_stream(S_or_A):- 
+	check_open_stream_or_alias(S_or_A,at_end_of_file/1,1,_Mode,Str),
+	file_function(FILE_END_OF_FILE,Str,_Ret,_Y,_Z, _,_).
+
+%-----------
+
+% TLS: ISO interface to file_seek/3.  For now, handling only files,.
+set_stream_position(S_or_A,Offset):- 
+	check_open_stream_or_alias(S_or_A,set_stream_position/2,1,_Mde,Str),
+	check_stream_position(Offset,set_stream_position/2,2),
+	(	stream_property(Str,reposition(true)) ->
+		true
+	;	permission_error(reposition,stream,S_or_A,set_stream_position/2)
+	),
+	file_seek(Str, Offset, 0, Ret),
+	(	Ret =:= 0 -> 
+		true
+	;	permission_error(set_position,stream,S_or_A,set_stream_position/2)
+	).
+
+%-----------
+% TLS: ISO interface to file_flush/2
+flush_output(S_or_A):-
+	check_open_stream_or_alias(S_or_A,flush_output/1,1,output,Str),
+	file_flush(Str,Ret),
+	(Ret \== 0 ->
+	    permission_error(flush,stream,Str,flush_output/1)
+	  ; true).
+
+%-----------
+% TLS: ISO interface to file_flush/2
+flush_output:-
+	stat_flag(CURRENT_OUTPUT,Stream),
+	file_flush(Stream,Ret),
+	(Ret \== 0 ->
+	    permission_error(flush,stream,Stream,flush_output/1)
+	  ; true).
+
+%-----------
+% TLS: ISO specifies some error conditions for this, but failure seems better.
+stream_property(S_or_A,Prop):- 
+	current_stream_or_alias(S_or_A,Stream),
+	stream_property_1(Stream,Prop).
+
+stream_property_1(Stream,alias(A)):- 
+	'_$alias'(A,Stream).
+stream_property_1(Stream,Property) :-
+	(Stream >= MIN_USR_OPEN_FILE -> 
+	    user_stream_property(Stream,Property)
+	 ;  (Stream < 0 -> 
+	        atom_stream_property(Property)
+	      ; 
+	        system_stream_property(Stream,Property) ) ).
+stream_property_1(Stream,position(P)):- 
+	file_pos(Stream,P).
+stream_property_1(Stream,end_of_stream(E)):- 
+	(at_end_of_stream(Stream) -> E = at ; E = not).
+
+user_stream_property(Stream,Property):- 
+	user_stream_property_1(Property,Prop_type,Return),
+	file_function(STREAM_PROPERTY,Stream, Prop_type,Ret,_, _, _),
+	transform_property_returned(Prop_type,Ret,Return).
+
+user_stream_property_1(stream_class(C),STREAM_CLASS,C).
+user_stream_property_1(file_name(F),STREAM_FILE_NAME,F).
+user_stream_property_1(type(T),STREAM_TYPE,T).
+user_stream_property_1(mode(M),STREAM_MODE,M).
+user_stream_property_1(input,STREAM_INPUT,_).
+user_stream_property_1(output,STREAM_OUTPUT,_).
+user_stream_property_1(reposition(Bool),STREAM_REPOSITIONABLE,Bool).
+user_stream_property_1(eof_action(Act),STREAM_EOF_ACTION,Act).
+/* TLS: not yet done
+user_stream_property_1(end_of_stream(E),STREAM_END_OF_STREAM,E).
+*/
+
+system_stream_property(STDIN,stream_class(console)).
+system_stream_property(STDIN,type(text)).
+system_stream_property(STDIN,mode(read)).
+system_stream_property(STDIN,input).
+system_stream_property(STDIN,reposition(false)).
+system_stream_property(STDIN,eof_action(reset)).
+
+system_stream_property(STDOUT,stream_class(console)).
+system_stream_property(STDOUT,type(text)).
+system_stream_property(STDOUT,mode(append)).
+system_stream_property(STDOUT,output).
+system_stream_property(STDOUT,reposition(false)).
+system_stream_property(STDOUT,eof_action(reset)).
+
+system_stream_property(STDERR,stream_class(console)).
+system_stream_property(STDERR,type(text)).
+system_stream_property(STDERR,mode(append)).
+system_stream_property(STDERR,output).
+system_stream_property(STDERR,reposition(false)).
+system_stream_property(STDERR,eof_action(reset)).
+
+system_stream_property(STDWARN,stream_class(console)).
+system_stream_property(STDWARN,type(text)).
+system_stream_property(STDWARN,mode(append)).
+system_stream_property(STDWARN,output).
+system_stream_property(STDWARN,reposition(false)).
+system_stream_property(STDWARN,eof_action(reset)).
+
+system_stream_property(STDMSG,stream_class(console)).
+system_stream_property(STDMSG,type(text)).
+system_stream_property(STDMSG,mode(append)).
+system_stream_property(STDMSG,output).
+system_stream_property(STDMSG,reposition(false)).
+system_stream_property(STDMSG,eof_action(reset)).
+
+system_stream_property(STDDBG,stream_class(console)).
+system_stream_property(STDDBG,type(text)).
+system_stream_property(STDDBG,mode(append)).
+system_stream_property(STDDBG,output).
+system_stream_property(STDDBG,reposition(false)).
+system_stream_property(STDDBG,eof_action(reset)).
+
+system_stream_property(STDFDBK,stream_class(console)).
+system_stream_property(STDFDBK,type(text)).
+system_stream_property(STDFDBK,mode(append)).
+system_stream_property(STDFDBK,output).
+system_stream_property(STDFDBK,reposition(false)).
+system_stream_property(STDFDBK,eof_action(reset)).
+
+atom_stream_property(stream_class(atom)).
+atom_stream_property(type(text)).
+atom_stream_property(mode(read)).
+atom_stream_property(input).
+atom_stream_property(reposition(true)).
+atom_stream_property(eof_action(eof_code)).
+
+transform_property_returned(STREAM_CLASS,Ret,Ret_out):- 
+	transform_stream_class(Ret,Ret_out).
+transform_property_returned(STREAM_FILE_NAME,Ret,Ret):- 
+	atom(Ret).
+transform_property_returned(STREAM_TYPE,Ret,Ret_out):- 
+	(Ret == BINARY_FILE_STREAM -> 
+	    Ret_out = binary
+	  ; Ret_out = text).
+transform_property_returned(STREAM_MODE,Ret_in,Ret_out):- 
+	(Ret_in == READ_MODE -> 
+	    Ret_out = read
+	  ; (Ret_in == WRITE_MODE -> 
+	       Ret_out = write
+	     ; Ret_out = append)).
+transform_property_returned(STREAM_INPUT,READ_MODE,input).
+transform_property_returned(STREAM_OUTPUT,Ret,output):- 
+	(Ret = WRITE_MODE ; Ret = APPEND_MODE),!.
+% TLS: assuming that strings and consoles are taken care of ...
+transform_property_returned(STREAM_REPOSITIONABLE,Ret,Ret_out):- 
+	(Ret == PIPE_STREAM -> 
+	    Ret_out = false
+	  ; Ret_out = true).
+% TLS: assuming that strings and consoles are taken care of ...
+transform_property_returned(STREAM_EOF_ACTION,Ret,Ret_out):- 
+	(Ret == PIPE_STREAM -> 
+	    Ret_out = error
+	  ; Ret_out = eof_code).
+
+transform_stream_class(TEXT_FILE_STREAM,file).
+transform_stream_class(BINARY_FILE_STREAM,file).
+transform_stream_class(PIPE_STREAM,pipe).
+transform_stream_class(CONSOLE_STREAM,console).
+
+url_encode(In,Out) :- url_encode_decode(URL_ENCODE,In,Out).
+url_decode(In,Out) :- url_encode_decode(URL_DECODE,In,Out).

@@ -1,0 +1,449 @@
+%%% Document Object Model ( Version 1.0/October 2002)
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This module provides several interfaces for constructing a Prolog representation of
+%%% XML documents. It follows almost completely the recommendation XML Information Sets 
+%%% (http://www.w3.org/TR/xml-infoset). 
+%%% 
+%%% XML Namespaces and XML Base are fully supported.
+%%%
+%%% The properties which involve referencing other information items 
+%%% are not implemented. This is motivated by the fact that some Prolog system do not 
+%%% give support for cyclic terms. However, we are planning to provide an extension to this
+%%% module for the full recommendation.
+%%% 
+%%% In most situations unknown or no value properties are represented by empty lists.
+%%% In order to maintain compatibility for subsequent versions of our parser, all applications
+%%% should use the current predicates to create/extract properties from the information items 
+%%%
+%%% Some of the specification and predicate names were inspired by XML DOM Level 3.
+%%%
+
+
+% Document Information Item
+%
+% document(Children,DocumentElement,Notations,Unparsed,BaseURI,CharacterEncoding,Standalone,Version,AllProcessed,DTD)
+%
+
+isDocument(document(_,_,_,_,_,_,_,_,_,_)).
+
+% createDocument(-Document).
+createDocument(document([],[],[],[],[],[],[],[],[],[]) ) :- !.
+
+setDocumentChildren(document(_,Doc,N,U,Base,Enc,S,V,A,DTD),Cs,document(Cs,Doc,N,U,Base,Enc,S,V,A,DTD)).
+setDocumentElement(document(Cs,_,N,U,Base,Enc,S,V,A,DTD), Doc, document(Cs,Doc,N,U,Base,Enc,S,V,A,DTD)) :- !.
+setDocumentPhysicalStructures(document(Cs,Doc,_,_,Base,Enc,S,V,A,DTD), Phys, document(Cs,Doc,N,U,Base,Enc,S,V,A,DTD) ) :- !,
+	getPhysicalStructuresNotations( Phys, N ),
+	getPhysicalStructuresUnparsedEntities( Phys, U ).
+setDocumentBaseURI(document(Cs,Doc,N,U,_,Enc,S,V,A,DTD), Base, document(Cs,Doc,N,U,Base,Enc,S,V,A,DTD) ) :- !.
+setDocumentEncoding(document(Cs,Doc,N,U,Base,_,S, V,A,DTD), Enc, document(Cs,Doc,N,U,Base,Enc,S,V,A,DTD)).
+setDocumentStandalone(document(Cs,Doc,N,U,Base,Enc,_,V,A,DTD), yes, document(Cs,Doc,N,U,Base,Enc,yes,V,A,DTD)) :- !.
+setDocumentStandalone(document(Cs,Doc,N,U,Base,Enc,_,V,A,DTD), no, document(Cs,Doc,N,U,Base,Enc,no,V,A,DTD)) :- !.
+setDocumentStandalone(document(Cs,Doc,N,U,Base,Enc,_,V,A,DTD), [], document(Cs,Doc,N,U,Base,Enc,[],V,A,DTD)) :- !.
+setDocumentVersion(document(Cs,Doc,N,U,Base,Enc,S,_,A,DTD), Version, document(Cs,Doc,N,U,Base,Enc,S,Version,A,DTD)) :- !,
+	( Version = [] ; Version = '1.0' ).
+% setVersion(document(_,_,_,_,_,_,_,_,_), _, _) :- !, throw( dom_exception( not_supported_err ) ).
+setDocumentAllProcessed(document(Cs,Doc,N,U,Base,Enc,S,V,_,DTD), All, document(Cs,Doc,N,U,Base,Enc,S,V,All,DTD)) :- !.
+setDocumentDTD(document(Cs,Doc,N,U,Base,Enc,S,V,A,[]), DTD, document(Cs,Doc,N,U,Base,Enc,S,V,A,DTD)) :- !.
+
+getDocumentChildren(document(Cs,_,_,_,_,_,_,_,_,_),Cs).
+getDocumentElement(document(_,Doc,_,_,_,_,_,_,_,_),Doc).
+getDocumentNotations( document(_,_,N,_,_,_,_,_,_,_), N ) :- !.
+getDocumentUnparsedEntities( document(_,_,_,U,_,_,_,_,_,_), U ) :- !.
+getDocumentBaseURI( document(_,_,_,_,B,_,_,_,_,_), B ) :- !.
+getDocumentEncoding(document(_,_,_,_,_,E,_,_,_,_),E).
+getDocumentStandalone(document(_,_,_,_,_,_,S,_,_,_),S).
+getDocumentVersion(document(_,_,_,_,_,_,_,V,_,_),V).
+getDocumentAllProcessed(document(_,_,_,_,_,_,_,_,All,_),All).
+getDocumentDTD(document(_,_,_,_,_,_,_,_,_,DTD),DTD).
+
+appendDocumentChildren(document([],Doc,N,U,Base,Enc,S,V,All,DTD), DocFrag/[], document(DocFrag,Doc,N,U,Base,Enc,S,V,All,DTD)) :- !.
+
+getDocumentDefaultAttributes(Document,ElemName, Attributes,NamespaceAttributes) :-
+	getDocumentDTD(Document,DTD),
+	getDefaultAttributesFromDTD(DTD,ElemName, Attributes,NamespaceAttributes).
+	
+
+%% Document Type Information Item
+%%
+%% documenttype( QualifiedName, PublicId, SystemId, ElemDecl, AttDecl, PIs )
+
+isDocumentType( documenttype(_QualifiedName,_PublicId,_SystemId,_ElemDecl, _AttDecl, _PIs) ).
+
+% createDocumentType(+QualifiedName,+PublicId,+SystemId,+Logical,+PIs,-DocumentType)
+createDocumentType(QualifiedName,PublicId,SystemId, logical_structs(Els,Atts), PIs, documenttype(QualifiedName,PublicId,SystemId, Els, Atts, PIs) ).
+
+getDocumentTypeQualifiedName( documenttype(QualifiedName,_,_,_,_,_),QualifiedName).
+getDocumentTypePublicId( documenttype(_,PublicId,_,_,_,_),PublicId).
+getDocumentTypeSystemId( documenttype(_,_,SystemId,_,_,_),SystemId).
+getDocumentTypeElementDeclarations( documenttype(_,_,_,ElemDecl,_,_),ElemDecl).
+getDocumentTypeAttributeDeclarations( documenttype(_,_,_,_,AttDecl,_),AttDecl).
+getDocumentTypeChildren( documenttype(_,_,_,_,_,PIs),PIs).
+getDocumentTypeLogicalStructs( documenttype( _, _, _, Els, Atts, _ ), logical_structs(Els,Atts) ).
+
+
+getElementSpecificationFromDTD( documenttype(_,_,_,ElemDecl,_,_), ElemQName, ElemSpec ) :-
+	getNamedItem( ElemDecl, ElemQName, ElemSpec ), !.
+getElementSpecificationFromDTD( _, _, [] ).
+
+getDefaultAttributesFromDTD(documenttype(_,_,_,_,AttDecl,_),ElemQName,Attributes,NamespaceAttributes) :-
+	getNamedItem( AttDecl, ElemQName, attlist(AttList) ), !,
+	extractDefaultAttributes( AttList, Attributes, NamespaceAttributes ).
+getDefaultAttributesFromDTD(_,_, [],[]).
+	
+getAttributeDeclarationFromDTD( documenttype(_,_,_,_,AttDecl,_), ElemQName, AttQName, Type, Default ) :- 
+	getNamedItem( AttDecl, ElemQName, AttList ),
+	getAttributeDeclaration( AttList, AttQName, Type, Default ), !.
+getAttributeDeclarationFromDTD( _, _, _, [], [] ). 
+
+
+extractDefaultAttributes( [], [], [] ).
+extractDefaultAttributes( [Name=attribute_decl(_,fixed(Value))|RestAttList], Attributes, NamespaceAttributes ) :- !,
+	splitAttrib( Name, Value, Attributes, RestAttributes, NamespaceAttributes, RestNamespaceAttributes  ), !,
+	extractDefaultAttributes( RestAttList, RestAttributes, RestNamespaceAttributes ).
+extractDefaultAttributes( [Name=attribute_decl(_,default(Value))|RestAttList], Attributes, NamespaceAttributes ) :- !,
+	splitAttrib( Name, Value, Attributes, RestAttributes, NamespaceAttributes, RestNamespaceAttributes  ), !,
+	extractDefaultAttributes( RestAttList, RestAttributes, RestNamespaceAttributes ).
+extractDefaultAttributes( [_|RestAttList], Attributes, NamespaceAttributes ) :- !,
+	extractDefaultAttributes( RestAttList, Attributes, NamespaceAttributes ).
+
+splitAttrib( qname('',xmlns), Value, Attributes, Attributes, [qname('',xmlns)=Value|RestNamespaceAttributes], RestNamespaceAttributes ) :- !.
+splitAttrib( qname(xmlns,Prefix), Value, Attributes, Attributes, [qname(xmlns,Prefix)=Value|RestNamespaceAttributes], RestNamespaceAttributes ) :- !.
+splitAttrib( Name, Value, [Name=Value|RestAttributes], RestAttributes, NamespaceAttributes, NamespaceAttributes ) :- !.
+
+
+%%%% INTERFACE:  phys_structs( ParameterEntities, ParsedEntities, Notations, UnparsedEntities )
+
+isPhysicalStructures( phys_structs( _, _, _, _ ) ).
+
+createPhysicalStructures( phys_structs( PEs, Entities, Notations, Unparsed ) ) :- 
+	createNamedMap( PEs ),
+	createNamedMap( Entities ),
+	createNamedMap( Notations ),
+	createNamedMap( Unparsed ).
+
+setPhysicalStructuresParameterEntities( phys_structs( _, Entities, Notations, Unparsed ),  PEs, phys_structs( PEs, Entities, Notations, Unparsed ) ).
+setPhysicalStructuresGeneralEntities(   phys_structs( PEs, _, Notations, Unparsed ),  Entities, phys_structs( PEs, Entities, Notations, Unparsed ) ).
+setPhysicalStructuresNotations(         phys_structs( PEs, Entities, _, Unparsed ),  Notations, phys_structs( PEs, Entities, Notations, Unparsed ) ).
+setPhysicalStructuresUnparsedEntities(  phys_structs( PEs, Entities, Notations, _),   Unparsed, phys_structs( PEs, Entities, Notations, Unparsed ) ).
+
+getPhysicalStructuresParameterEntities( phys_structs( PEs, _Entities, _Notations, _Unparsed ), PEs).
+getPhysicalStructuresGeneralEntities(   phys_structs( _PEs, Entities, _Notations, _Unparsed ), Entities).
+getPhysicalStructuresNotations(         phys_structs( _PEs, _Entities, Notations, _Unparsed ), Notations).
+getPhysicalStructuresUnparsedEntities(  phys_structs( _PEs, _Entities, _Notations, Unparsed ), Unparsed).
+
+
+addPhysicalStructuresParameterEntity( phys_structs( PEs, Entities, Notations, Unparsed ), Name, Value , phys_structs( NewPEs, Entities, Notations, Unparsed ) ) :-
+	setNewNamedItem( PEs, Name, Value, NewPEs ).
+addPhysicalStructuresParsedEntity( phys_structs( PEs, Entities, Notations, Unparsed ),  Name, Ent, phys_structs( PEs, NewEntities, Notations, Unparsed ) ) :-
+	setNewNamedItem( Entities, Name, Ent, NewEntities ).
+addPhysicalStructuresUnparsedEntity( phys_structs( PEs, Entities, Notations, Unparsed ), Name, UnpEnt, phys_structs( PEs, Entities, Notations, NewUnparsed ) ) :-
+	setNewNamedItem( Unparsed, Name, UnpEnt, NewUnparsed ).
+addPhysicalStructuresNotation( phys_structs( PEs, Entities, Notations, Unparsed ), Name, Notation, phys_structs( PEs, Entities, NewNotations, Unparsed ) ) :-
+	setNamedItemIfNew( Notations,Name,Notation,NewNotations).
+
+
+% addPhysicalStructuresGeneralEntity adds a general entity to the current physical structures: it can be unparsed, external or internal.
+% Only internal entities are handled
+%
+% addPhysicalStructuresGeneralEntity( + Notation, +Content, +Name, +BaseURI, +OldPhys, -Phys )
+ 
+addPhysicalStructuresGeneralEntity( [], id(PublicId,SystemId), Name, BaseURI, OldPhys, Phys ) :- !,
+	createExternalEntity( Name, PublicId, SystemId, BaseURI, ExtEnt ),
+	addPhysicalStructuresParsedEntity( OldPhys, Name, ExtEnt, Phys ).
+addPhysicalStructuresGeneralEntity( [], ReplacementText, Name, _, OldPhys, Phys ) :- !,
+	createEntity( Name, ReplacementText, IntEnt ),
+	addPhysicalStructuresParsedEntity( OldPhys, Name, IntEnt, Phys ).
+addPhysicalStructuresGeneralEntity( Notation, id(PublicId,SystemId), Name, BaseURI, OldPhys, Phys ) :- !,
+	createUnparsedEntity( Name, PublicId, SystemId, BaseURI, Notation, UnpEnt ),
+	addPhysicalStructuresUnparsedEntity( OldPhys, Name, UnpEnt, Phys ).
+
+%%%% Unparsed Entity and Unexpanded Entity Information Items
+%%%% Entity Information Items are not specified in XML Info Set
+
+isInternalEntity( internal_entity( _, _ ) ).
+isExternalEntity( unexpanded_entity( _, _, _, _) ).
+isUnparsedEntity( unparsed_entity( _, _, _, _, _ ) ).
+
+createEntity( Name, ReplacementText, internal_entity( Name, ReplacementText ) ).
+createExternalEntity( Name, PublicId, SystemId, BaseURI, unexpanded_entity( Name, PublicId, SystemId, BaseURI ) ).
+createUnparsedEntity( Name, PublicId, SystemId, BaseURI, Notation, unparsed_entity( Name,  PublicId, SystemId, BaseURI, Notation ) ).
+
+getEntityName( internal_entity( Name, _ ), Name ) :- !.
+getEntityName( unexpanded_entity( Name, _, _, _ ), Name ) :- !.
+getEntityName( unparsed_entity( Name, _, _, _, _ ), Name ) :- !.
+
+getEntityPublicId( unexpanded_entity( _, PublicId, _, _ ), PublicId ) :- !.
+getEntityPublicId( unparsed_entity( _, PublicId, _, _, _ ), PublicId ) :- !.
+
+getEntitySystemId( unexpanded_entity( _, _, SystemId, _ ), SystemId ) :- !.
+getEntitySystemId( unparsed_entity( _, _, SystemId, _, _ ), SystemId ) :- !.
+
+getEntityBaseURI( unexpanded_entity( _, _, _, BaseURI ), BaseURI ) :- !.
+getEntityBaseURI( unparsed_entity( _, _, _, BaseURI, _), BaseURI ) :- !.
+
+getEntityNotationName( unparsed_entity( _, _, _, _, Notation ), Notation ) :- !.
+
+getEntityReplacementText( Text-RestText, Text-RestText ) :- !.
+getEntityReplacementText( internal_entity(_,Text), ReplacementText ) :- !,
+	copy_term( Text, ReplacementText ).
+
+ 
+%%%% INTERFACE:  logical structures
+
+isLogicalStructures( logical_structs(_,_) ).
+
+createLogicalStructures( logical_structs( ElemDecls, AttDecls ) ) :-
+	createNamedMap( ElemDecls ),
+	createNamedMap( AttDecls ).
+
+createLogicalStructuresAttributeList( logical_structs( Els, Atts ), NameEl, logical_structs( Els, NewAtts ) ) :-
+	createAttributeList( AttList ),
+	setNewNamedItem( Atts, NameEl, AttList, NewAtts ).
+	
+addLogicalStructuresElementDeclaration( logical_structs( Els, Atts ), Name, ElDecl, logical_structs( NewEls, Atts ) ) :-
+	setNamedItemIfNew(Els,Name,ElDecl,NewEls).
+addLogicalStructuresAttributeDeclaration( logical_structs( Els, Atts ), NameEl, AttDecl, logical_structs( Els, NewAtts ) ) :-
+	setNamedItemIfNew(Atts,NameEl,AttDecl,NewAtts).
+
+getLogicalStructuresElementDeclaration( logical_structs( Els, _ ), Name, ElDecl ) :-
+	getNamedItem(Els,Name,ElDecl).
+getLogicalStructuresAttributeDeclarations( logical_structs( _, Atts ), NameEl, AttDecl ) :-
+	getNamedItem(Atts,NameEl,AttDecl).
+
+
+%%%% INTERFACE: spec
+
+isElementSpecification( spec( _ ) ).
+
+createElementSpecification( _QName, ContentSpec, spec(ContentSpec) ).
+	
+getElementSpecification( spec( ContentSpec ), ContentSpec ).
+
+
+%%%% INTERFACE: attlist
+
+isAttributeListDeclaration( attlist( _ ) ).
+
+getAttributeListDeclaration( attlist(Decls), Decls ) :- !.
+
+createAttributeList( attlist(EmptyMap) ) :- createNamedMap( EmptyMap ).
+
+createAttributeDeclaration( QName, Type, Default, attlist(AttList) ) :-
+	createNamedMap( EmptyMap ),
+	setNamedItem( EmptyMap, QName, attribute_decl(Type, Default), AttList ).
+	
+mergeNamedItem( attlist(Old), attlist([Name=Value]), attlist(New) ) :- !,
+	setNewNamedItem( Old, Name, Value, New ).	
+
+getAttributeDeclaration( attribute_decl(Type,Default), Type, Default ).
+
+getAttributeDeclaration( attlist(Decls), QName, Type, Default ) :- !,
+	getNamedItem( Decls, QName, attribute_decl(Type,Default) ).
+
+getAttributeDeclaration( attlist(Decls), Prefix, Local, Type, Default ) :- !,
+	getNamedItem( Decls, qname(Prefix,Local), attribute_decl(Type,Default) ).
+ 
+
+%%%% Notation Information Item
+
+isNotation( notation(_,_,_,_) ).
+
+createNotation( Name, PublicId, SystemId, BaseURI, notation(Name,PublicId,SystemId,BaseURI) ).
+
+mergeNamedItem( notation(_,_,_,_), notation(_,_,_,_), _ ) :- !, fail.
+
+getNotationName( notation(Name,_,_,_), Name ) :- !.
+getNotationPublicId( notation(_,PublicId,_,_), PublicId ) :- !.
+getNotationSystemId( notation(_,_,SystemId,_), SystemId ) :- !.
+getNotationBaseURI( notation(_,_,_,BaseURI), BaseURI) :- !.
+
+
+%%%% INTERFACE: documentFragment
+
+isDocumentFragment( _/_ ).
+
+createDocumentFragment( DocFrag/DocFrag ).
+
+appendDocumentFragmentChild( DocFrag/[Child|RestDocFrag], Child, DocFrag/RestDocFrag ).
+ 
+
+%% Element Information Item
+
+isElement(element(_NamespaceURI,_LocalName,_Prefix,_Attributes,_NameAttributes,_Children,_InScope,_BaseURI,_Lang)).
+
+	
+createElementNS( Prefix, LocalName, BaseURI, InScope, Lang, element(NamespaceURI,LocalName,Prefix,[],[],[],InScope,BaseURI,Lang)) :-
+	getNamedItem( InScope, Prefix, NamespaceURI ).
+
+setElementAttributes( element(NamespaceURI,LocalName,Prefix,_,_,Children,InScope,Base,Lang), Attributes, NamespaceAttribs, 
+			    element(NamespaceURI,LocalName,Prefix,Attributes,NamespaceAttribs,Children,InScope,Base,Lang)) :- !.
+
+setElementContent( element(NamespaceURI,LocalName,Prefix,Attributes,NamespaceAttribs,_,InScope,Base,Lang), Content, 
+			 element(NamespaceURI,LocalName,Prefix,Attributes,NamespaceAttribs,Content,InScope,Base,Lang)) :- !.
+
+
+/*
+createElementNS( Prefix, LocalName, BaseURI, InScope, Lang, element(NamespaceURI,LocalName,Prefix,_,_,_,InScope,BaseURI,Lang)) :-
+	getNamedItem( InScope, Prefix, NamespaceURI ).
+
+setElementAttributes( El, Attributes, NamespaceAttribs, El ) :- !, El = element(_,_,_,_,Attributes,NamespaceAttribs,_,_,_).
+
+setElementContent( El, Content, El ) :- !, El = element( _, _, _, Content,_,_,_,_,_).
+*/
+
+getElementName( element(NamespaceURI,LocalName,Prefix,_,_,_,_,_,_), NamespaceURI, LocalName, Prefix ) :- !.
+getElementChildren( element(_,_,_,_,_,Children,_,_,_), Children ) :- !.
+getElementAttributes( element(_,_,_,Attributes,NamespaceAttribs,_,_,_,_), Attributes, NamespaceAttribs ) :- !. 
+getElementInScopeNamespaces( element(_,_,_,_,_,_,InScope,_,_), InScope ) :- !.
+getElementBaseURI( element(_,_,_,_,_,_,_,Base,_), Base) :- !.
+getElementLang( element(_,_,_,_,_,_,_,_,Lang), Lang) :- !.
+
+%%%% Attribute Information Item 
+
+isAttribute(attribute(_NamespaceURI,_LocalName,_Prefix,_Value,_Specified,_Type)).
+
+	
+createAttributeNS(Prefix, LocalName, NamespaceURI, NormValue, Specified, attribute(NamespaceURI,LocalName,Prefix,NormValue,Specified,[])) :- !.
+
+getAttributeName( attribute(NamespaceURI,LocalName,Prefix,_,_,_), NamespaceURI, LocalName, Prefix ) :- !.
+getAttributeValue( attribute(_,_,_,Value,_,_), Value ) :- !.
+getAttributeSpecified( attribute(_,_,_,_,Specified,_), Specified ) :- !.
+getAttributeType( attribute(_,_,_,_,_,Type), Type ) :- !.
+
+%%%% Processing Instruction Information Item
+%%%% pi( Target, Content, BaseURI, Notation ) 
+
+
+isPI(pi(_Target,_Content,_BaseURI)).
+
+createPI(Target,Content, BaseURI, pi(Target,Content,BaseURI) ).
+
+setPIBaseURI( pi(Target,Content,_), BaseURI, pi(Target,Content,BaseURI) ).
+
+getPITarget( pi(Target,_,_), Target ).
+getPIContent( pi(_,Content,_), Content ).
+getPIBaseURI( pi(_,_,BaseURI), BaseURI ).
+
+%%%% Comment Information Item
+
+isComment(comment(_Text)).
+
+createComment( Text, comment(Text) ) :- !.
+getCommentContent( comment(Text), Text ).
+
+%% Character Data
+
+isCharData(pcdata(_) ).
+isCharData(whitespace(_) ).
+
+isWhiteSpace(whitespace(_)).
+
+createCharData( Text, pcdata(Text) ).
+getCharData( pcdata(Text), Text ).
+getCharData( whitespace(Text), Text ).
+
+
+%%%% Auxiliary predicates
+
+%% NodeLists are represented currently as ordinary lists.
+isNodeList( [] ) :- !.
+isNodeList( [_|_] ) :- !.
+
+createNodeList([]).
+isEmptyNodeList([]).
+
+getHeadNodeList( [Head|_], Head ).
+getTailNodeList( [_|Tail], Tail ).
+
+%%%% NamedNodeMap
+
+isNamedMap( [] ) :- !.
+isNamedMap( [_|_] ) :- !.
+
+createNamedMap( [] ).
+isEmptyNamedMap( [] ).
+
+getFirstNamedMap( [_=Value|_], Value ).
+getFirstNamedMap( [Name=Value|_], Name, Value ).
+getRestNamedMap( [_|RestMap], RestMap ).
+
+
+%getNamedItem( NamedNodeMap, Name, Node ) :- 
+%	member( Name = Node, NamedNodeMap ), !.
+
+getNamedItem( [Name=Arg|_], Name, Value ) :- !, Value = Arg.
+getNamedItem( [Name1=_|RestNamedNodeMap], Name, Node ) :- 
+	Name1 @< Name, !, getNamedItem( RestNamedNodeMap, Name, Node ).
+
+setNamedItem( [], Name, Arg, [Name=Arg] ) :- !.
+setNamedItem( [Name=_|RestNamedNodeMap], Name, Arg, [Name=Arg|RestNamedNodeMap] ) :- !.
+setNamedItem( [Name1=Arg1|RestNamedNodeMap], Name, Arg, [Name=Arg,Name1=Arg1|RestNamedNodeMap] ) :- 
+	Name @< Name1, !.
+setNamedItem( [Map|RestNamedNodeMap], Name, Arg, [Map|NewNamedNodeMap] ) :- !,
+	setNamedItem( RestNamedNodeMap, Name, Arg, NewNamedNodeMap ).
+
+setNewNamedItem( [], Name, Arg, [Name=Arg] ) :- !.
+setNewNamedItem( [Name=Arg|RestNamedNodeMap], Name, _, [Name=Arg|RestNamedNodeMap] ) :- !.
+setNewNamedItem( [Name1=Arg1|RestNamedNodeMap], Name, Arg, [Name=Arg,Name1=Arg1|RestNamedNodeMap] ) :- 
+	Name @< Name1, !.
+setNewNamedItem( [Map|RestNamedNodeMap], Name, Arg, [Map|NewNamedNodeMap] ) :- !,
+	setNewNamedItem( RestNamedNodeMap, Name, Arg, NewNamedNodeMap ).
+
+setNamedItemIfNew( [], Name, Arg, [Name=Arg] ) :- !.
+setNamedItemIfNew( [Name=Val|RestNamedNodeMap], Name, NewVal, [Name=MergeVal|RestNamedNodeMap] ) :- !, 
+	mergeNamedItem( Val, NewVal, MergeVal ).
+setNamedItemIfNew( [Name1=Val1|RestNamedNodeMap], Name, Val, [Name=Val,Name1=Val1|RestNamedNodeMap] ) :- 
+	Name @< Name1, !.
+setNamedItemIfNew( [Map|RestNamedNodeMap], Name, Arg, [Map|NewNamedNodeMap] ) :- !,
+	setNamedItemIfNew( RestNamedNodeMap, Name, Arg, NewNamedNodeMap ).
+
+% removeNamedItem( [], _, _, _) :- throw( dom_exception( not_found_err ) ).
+removeNamedItem( [Name=Value|RestNamedNodeMap], Name, Value, RestNamedNodeMap ) :- !.
+removeNamedItem( [Map|RestNamedNodeMap], Name, Value, [Map|NewNamedNodeMap] ) :- !,
+	removeNamedItem( RestNamedNodeMap, Name, Value, NewNamedNodeMap ).
+
+
+
+
+
+%% Qualified Names
+
+isQualifiedName( qname(_Prefix,_LocalName) ).
+
+createQualifiedName(Prefix,LocalName, qname(Prefix,LocalName) ).
+
+getPrefix(qname(Prefix,_),Prefix).
+getLocalName(qname(_,LocalName),LocalName).
+
+
+
+%% Unused predicates:
+
+/*
+setNamedItem( NamedNodeMap, Arg, NewNodeMap ) :-
+	nodeName( Arg, Name ), !,
+	setNamedItem( NamedNodeMap, Name, Arg, NewNodeMap ).
+*/
+
+/*
+getNamedItemNS( NamedNodeMap, NamespaceURI, LocalName, Node ) :- 
+	createQualifiedName( NamespaceURI, LocalName, QName ), 
+	member( QName = Node, NamedNodeMap ), !.
+
+setNamedItemNS( NamedNodeMap, Arg, NewNamedNodeMap ) :- 
+	namespaceURI( Arg, NamespaceURI ),
+	getLocalName( Arg, LocalName ),
+	createQualifiedName( NamespaceURI, LocalName, QName ), 
+	setNamedItem( NamedNodeMap, QName, Arg, NewNamedNodeMap ).
+
+removeNamedItemNS( NamedNodeMap, NamespaceURI, LocalName, NewNamedNodeMap ) :- 
+	createQualifiedName( NamespaceURI, LocalName, QName ), 
+	removeNamedItem( NamedNodeMap, QName, _, NewNamedNodeMap ).
+*/

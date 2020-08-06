@@ -1,0 +1,200 @@
+/* File:      random.P
+** Author(s): Baoqiu Cui
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: random.P,v 1.8 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod]).
+
+#include "standard.h"
+
+%-----------------------------------------------------------------------
+% random(Num) binds Num to a floating number in [0.0, 1.0)
+%-----------------------------------------------------------------------
+random(Num) :-
+	wh_random(1, Num, _, _).
+
+
+%-----------------------------------------------------------------------
+% random(+L, +U, -R) binds R to a random integer in [L,U) when L and U
+% are integers, or to a random floating number in [L,U) otherwise.
+%-----------------------------------------------------------------------
+random(L, U, R) :-
+	L < U,
+	random(X),
+	(integer(L), integer(U)
+	 ->	R is L + floor((U - L) * X)
+	 ;	R is L + ((U - L) * X)
+	).
+
+%-----------------------------------------------------------------------
+% getrand(?State) tries to unify State with the term rand(X,Y,Z) where
+% X, Y, and Z are integers describing the state of the random generator.
+%-----------------------------------------------------------------------
+getrand(rand(X,Y,Z)) :-
+	wh_random(2, X, Y, Z).
+
+
+%-----------------------------------------------------------------------
+% Sets the state of the random generator. X, Y and Z must be integers
+% in the ranges [1,30269), [1,30307), [1,30323).
+%-----------------------------------------------------------------------
+setrand(rand(X,Y,Z)) :-
+        (integer(X), X > 0, X < 30269
+	 ->	true
+	 ;	abort('First arg of setrand/3 is not in the range [1,30269).')
+        ),
+        (integer(Y), Y > 0, Y < 30307
+	 ->	true
+	 ;	abort('Second arg of setrand/3 is not in the range [1,30307).')
+        ),
+        (   integer(Z), Z > 0, Z < 30323
+	 ->	true
+	 ;	abort('Third arg of setrand/3 is not in the range [1,30323).')
+        ),
+	wh_random(3, X, Y, Z).
+
+%-----------------------------------------------------------------------
+datime_setrand:- 
+	datime(datime(_Y,_M,D,H,Min,Sec)), 
+	One is D + H, Two is H + Min, Three is Min + Sec, 
+	setrand(rand(One,Two,Three)).
+
+%-----------------------------------------------------------------------
+% randseq(+K, +N, -L) returns in L a random sequence of K integers in
+% the range of [1..N].  The result is in random order.
+%-----------------------------------------------------------------------
+randseq(K, N, L) :-
+	K >= 0, K =< N,
+	randseq1(K, N, L0),
+	keysort(L0, L1),
+	strip_keys(L1, L).
+
+randseq1(0, _, []) :- !.
+randseq1(K, N, [R-N|Ls]) :-
+	random(X),
+	X < K / N, !,
+	K1 is K - 1,
+	N1 is N - 1,
+	random(R),
+	randseq1(K1, N1, Ls).
+randseq1(K, N, Ls) :-
+	N1 is N - 1,
+	randseq1(K, N1, Ls).
+
+strip_keys([], []).
+strip_keys([_R-K|Lin], [K|Lout]) :-
+	strip_keys(Lin, Lout).
+
+%-----------------------------------------------------------------------
+% randset(+K, +N, -L) returns in L an ordered set of K integers in
+% the range of [1..N].  The result is in reversed order, with the
+% largest element at the beginning.
+%-----------------------------------------------------------------------
+:- import reverse/2 from basics.
+randset(K, N, L) :-
+	K >= 0, K =< N,
+	(16*N < K*K
+	 ->	randset1(K, N, L) % use O(N) method
+	 ;	randset2(K,N,[],L1), % use O(K^2) method
+		reverse(L1,L)
+	).
+
+:- export randseto/3, randsetn/3.
+:- import cputime/1, writeln/1 from standard.
+randseto(K,N,L) :- cputime(T0),randset1(K,N,L),cputime(T1),T is T1-T0,writeln(cputime=T).
+randsetn(K,N,L) :- cputime(T0),randset2(K,N,[],L1),reverse(L1,L),cputime(T1),T is T1-T0,writeln(cputime=T).
+
+randset1(K,N,L) :-
+	(K =< 0
+	 ->	L = []
+	 ;	random(X),
+		(X < K/N
+		 ->	K1 is K-1,
+			N1 is N-1,
+			L = [N|Ls],
+			randset1(K1,N1,Ls)
+		 ;	N1 is N-1,
+			randset1(K,N1,L)
+		)
+	).
+
+randset2(K,N,L0,L) :-
+	(K =< 0
+	 ->	L = L0
+	 ;	random(X),
+		J is floor(X * N) + 1,
+		insert_rand(J,L0,L1),
+		K1 is K-1,
+		N1 is N-1,
+		randset2(K1,N1,L1,L)
+	).
+
+insert_rand(J,L1,L) :-
+	(L1 = [I|L0]
+	 ->	(J >= I
+		 ->	J1 is J + 1,
+			L = [I|L2],
+			insert_rand(J1,L0,L2)
+		 ;	L = [J|L1]
+		)
+	 ;	L = [J]
+	).
+	 
+%-----------------------------------------------------------------------
+% gauss(-Y1,-Y2) uses the polar form of the Box-Muller algorithm to 
+% generate two random numbers with mean 0 and standard deviation 1.
+%-----------------------------------------------------------------------
+
+gauss(Y1,Y2):-
+    gauss_1(Square,X1,X2),
+    Y1 is X1 * sqrt( (-2.0 * log(Square)) / Square),
+    Y2 is X2 * sqrt( (-2.0 * log(Square)) / Square),!.
+			      
+gauss_1(Square,X1,X2):- 
+	repeat,
+	random(X1),
+	random(X2),
+	Square is sqrt(X1*X1 + X2*X2),
+	Square < 1.0,
+	Square > 0.
+
+/*
+Non-polar form:
+gauss_nonpolar(U1,U2,N1,N2):- 
+    N1 is sqrt( -2*log(U1)) * cos(2*pi*U2),
+    N2 is sqrt( -2*log(U1)) * sin(2*pi*U2).
+*/
+
+%-----------------------------------------------------------------------
+
+weibull(K,Lambda,X):-
+	random(R),
+	X is Lambda * (-log(R))**(1/K).
+
+exponential(Lambda,X):- 
+	random(R),
+	X is Lambda * (-log(R)).
+
+%-----------------------------------------------------------------------
+% The builtin predicate
+%-----------------------------------------------------------------------
+wh_random(_Type,_A,_B,_C) :- '_$builtin'(53).

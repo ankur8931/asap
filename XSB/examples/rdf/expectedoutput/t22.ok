@@ -1,0 +1,15 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : s = http://description.org/schema/,xmlns : v = http://description.org/view/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://x.org/packages/X11],[element(http://description.org/schema/ : DistributionSite,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Alt,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = ftp://ftp.x.org],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = ftp://ftp.cs.purdue.edu],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = ftp://ftp.eu.net],[])])])])])
+
+----------RDF----------
+
+[description(description,about(http://x.org/packages/X11),[http://description.org/schema/ : DistributionSite = description(http://www.w3.org/1999/02/22-rdf-syntax-ns#Alt,_h671,[rdf : li = description(description,about(ftp://ftp.x.org),[]),rdf : li = description(description,about(ftp://ftp.cs.purdue.edu),[]),rdf : li = description(description,about(ftp://ftp.eu.net),[])])])]
+
+--------Triples--------
+
+{__Description541, http://www.w3.org/1999/02/22-rdf-syntax-ns#type, http://www.w3.org/1999/02/22-rdf-syntax-ns#Alt}
+{__Description541, http://www.w3.org/1999/02/22-rdf-syntax-ns#_1, ftp://ftp.x.org}
+{__Description541, http://www.w3.org/1999/02/22-rdf-syntax-ns#_2, ftp://ftp.cs.purdue.edu}
+{__Description541, http://www.w3.org/1999/02/22-rdf-syntax-ns#_3, ftp://ftp.eu.net}
+{http://x.org/packages/X11, http://description.org/schema/DistributionSite, __Description541}

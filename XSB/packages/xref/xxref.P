@@ -1,0 +1,468 @@
+/* File:      xxref.P
+** Author(s): David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) Copyright: David S. Warren
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+** 
+** 
+*/
+
+:- comment(build_xref/0, "@pred{build_xref/0} descends from the current
+directory and reads every XSB source file found (by the .P suffix).
+It creates a set of predicates that record all predicates defined and
+used in every XSB source file encountered.  It then writes this
+information out to a file named xsb_xref.P, which can be later
+dynamically loaded to find where predicates are defined and used.
+Very large (>20 Mb) files are assumed to be in canonical term format.
+").
+
+:- comment(dump_xref/0, "@pred(dump_xref/0} writes out information
+gathered by @pred{build_xref/1} to the file named xsb_xref.P into the
+current directory.").
+
+:- comment(build_xref/1, "@pred{build_xref/1} is similar to
+@pred{build_xref/0}, but it takes an explicit directory name, and it
+does not create a file, but only builds the necessary predicates in
+memory.  @pred{dump_xref/0} or @pred{dump_xref/1} can be used to write
+the information out to a file.").
+
+:- comment(dump_xref/1, "@pred(dump_xref/1} writes out information
+gathered by @pred{build_xref/1} to the file named by its argument.").
+
+/* Explore building a simple program to read all Prolog (.P) files in
+a part of the file system and build a table of where predicates are
+defined and used.  */
+
+:- dynamic xsb_defined/3.	% pred,arity,filename
+:- index(xsb_defined/3,trie).
+
+:- dynamic xsb_used/5.		% usedpred,usedarity,filename,pred,arity
+:- index(xsb_used/5,trie).
+
+build_xref :-
+	build_xref('.'),
+	dump_xref.
+
+dump_xref :- dump_xref('xsb_xref.P').
+
+xld :- load_dync(xsb_xref).
+
+xld(Dir) :-
+	concat_atom([Dir,'/xsb_xref'],XrefFile),
+	load_dync(XrefFile).
+
+xhelp(Pred/Arity) :-
+	instantiate_pa(Pred/Arity),
+	write(Pred),write('/'),write(Arity),writeln(':'),
+	xhelpd1(Pred/Arity),
+	xhelpu1(Pred/Arity),
+	fail.
+xhelp(_).
+	
+xhelpf(FileName) :-
+	instantiate_file(FileName),
+	nl,write('Predicates defined in: '),write(FileName),writeln(':'),
+	findall(P/A,xsb_defined(P,A,FileName),Preds),
+	sort(Preds,SPreds),
+	member(P/A,SPreds),
+	tab(2),write(P),write('/'),writeln(A),
+	xhelpu1(P/A),
+	fail.
+xhelpf(_FileName).
+
+
+xhelpd(Pred/Arity) :-
+	instantiate_pa(Pred/Arity),
+	write(Pred),write('/'),write(Arity),writeln(':'),
+	xhelpd1(Pred/Arity),
+	fail.
+xhelpd(_).
+
+instantiate_pa(Pred/Arity) :-
+	(var(Pred)
+	 ->	findall(Pre/Ari,(xsb_defined(Pre,Ari,_);xsb_used(Pre,Ari,_,_,_)),Preds),
+		sort(Preds,UPreds),
+		member(Pred/Arity,UPreds),
+		\+ standard_symbol(Pred,Arity,_) % maybe not do this?
+	 ; var(Arity)
+	 ->	findall(Ari,(xsb_defined(Pred,Ari,_);xsb_used(Pred,Ari,_,_,_)),Arities),
+		sort(Arities,SArities),
+		member(Arity,SArities)
+	 ;	true
+	).
+
+instantiate_file(FileName) :-
+	(var(FileName)
+	 ->	findall(FileName,xsb_defined(_,_,FileName),FileNames),
+		sort(FileNames,SFileNames),
+		member(FileName,SFileNames)
+	 ;	true
+	).
+
+xhelpu1(Pred/Arity) :-
+	(xsb_used(Pred,Arity,_,_,_)
+	 ->	tab(4),write('used in: '),
+		conset('_xref_first',0),
+		(
+		 (xsb_used(Pred,Arity,FileName,CPred,CArity),
+		  conget('_xref_first',First),
+		  (First =:= 0
+		   ->	  conset('_xref_first',1)
+		   ;	  tab(13)
+		  ),
+		  write(FileName),
+		  tab(2),write('('),write(CPred),write('/'),write(CArity),writeln(')'),
+		  fail
+		  ;
+		  true
+		 )
+		)
+	 ;	true
+	).
+
+xhelpd1(Pred/Arity) :-
+	(xsb_defined(Pred,Arity,_)
+	 ->	tab(4),write('defined in: '),
+		conset('_xref_first',0),
+		(
+		 (xsb_defined(Pred,Arity,FileName),
+		  conget('_xref_first',First),
+		  (First =:= 0
+		   ->	  conset('_xref_first',1)
+		   ;	  tab(16)
+		  ),
+		  writeln(FileName),
+		  fail
+		  ;	 
+		  true
+		 )
+		)
+	 ;      true
+	).
+
+build_xref(Dir) :-
+	(retractall(xsb_defined(_,_,_)),
+	 retractall(xsb_used(_,_,_,_,_)),
+	 gen_p_files(Dir,FileName),
+	 % file_size(FileName,FSize),
+	 % (FSize > 10000000 -> write('Skipped huge file '), writeln(FileName), fail; true),
+	 read_in_prolog_file(FileName),
+	 fail
+	 ;
+	 true
+	).
+
+dump_xref(FileName) :-
+	tell(FileName),
+	write_canonical(:-(index(xsb_defined/3,trie))),writeln('.'),
+	(xsb_defined(Predicate,Arity,File),
+	 write_canonical(xsb_defined(Predicate,Arity,File)),
+	 writeln('.'),
+	 fail
+	 ;
+	 true
+	),
+	write_canonical(:-(index(xsb_used/5,trie))),writeln('.'),
+	(xsb_used(UPred,UArity,File,Predicate,Arity),
+	 write_canonical(xsb_used(UPred,UArity,File,Predicate,Arity)),
+	 writeln('.'),
+	 fail
+	 ;
+	 true
+	),
+	told.
+
+print_pred(Pred,Arity,FileName) :-
+	setof(p(FileName,DU),(P1,A1)^ (xsb_defined(Pred,Arity,FileName),DU=d;xsb_used(Pred,Arity,FileName,P1,A1),DU=u),FileNames),
+	write(Pred),write('/'),write(Arity),writeln(':'),
+	member(p(FileName,DU),FileNames),
+	tab(2),
+	(DU == d -> write('D: ') ; write('U: ')),
+	writeln(FileName),
+	fail.
+print_pred(_,_,_).
+
+
+print_file(Pred,Arity,FileName) :-
+	setof(p(Pred,Arity),xsb_defined(Pred,Arity,FileName),Preds),
+	write(FileName),write(':'),
+	member(p(Pred,Arity),Preds),
+	tab(2),write(Pred),write('/'),writeln(Arity),
+	fail.
+print_file(_,_,_).
+
+gen_p_files(Dir,FileName) :-
+	list_directory(Dir,File),
+	File \== '.', File \== '..',
+	concat_atom([Dir,'/',File],CFileName),
+	(is_directory(CFileName)
+	 ->	%writeln(dir(CFileName)),
+		gen_p_files(CFileName,FileName)
+	 ; is_plain_file(CFileName)
+	 ->	%writeln(file(CFileName)),
+		atom_codes(File,FileCodes),
+		append(_,".P",FileCodes),
+		FileName = CFileName
+	 ;	fail
+	).
+
+:- dynamic ops(Op,Prec,Fix).
+
+read_in_prolog_file(PFileName) :-
+	conset('_$lineCnt',0),
+	atom_codes(PFileName,PFileNameCodes),
+	append(PFilePrefixCodes,".P",PFileNameCodes),  % must be .P file
+	atom_codes(PFilePrefix,PFilePrefixCodes),
+	write(PFilePrefix),write(' ...'),
+	append(PFilePrefixCodes,".H",HFileNameCodes),
+	atom_codes(HFileName,HFileNameCodes),
+	catch((read_p_file(HFileName,PFilePrefix),read_p_file(PFileName,PFilePrefix)),_Ball,true), %ignore
+	reset_ops,
+	conget('_$lineCnt',NLines),
+	write(NLines),writeln(' terms.').
+
+reset_ops :-
+	ops(Op,OldPrec,Fix),
+	op(OldPrec,Fix,Op),
+	fail.
+reset_ops :-
+	retractall(ops(_,_,_)).
+
+read_p_file(FileName,BFileName) :-
+	( (file_exists(FileName), open(FileName,read,IStr), IStr >= 0)
+	 ->	file_size(FileName,FSize),
+		read_p_file_s(IStr,FSize,BFileName,Result),
+		close(IStr),
+		(Result == xpp	% must send thru xpp and reread
+		 ->	cwd(OldDir),
+			atom_codes(FileName,FileCodes),
+			(once(llappend(DirCodes,[0'/|FileNCodes],FileCodes))
+			 ->	atom_codes(Dir,DirCodes),
+				atom_codes(XFile,FileNCodes),
+				cd(Dir) % must get into right directory for included files
+			 ;	XFile = FileName
+			),
+			xpp_process_file(XFile,XPP_process,NIStr),
+			read_p_file_s(NIStr,FSize,BFileName,do_xpp),
+			process_control(XPP_process, wait(ExitCode)),
+			(ExitCode==0,!
+			 ;	file_close(NIStr),
+				cd(OldDir),
+				abort(('Error while preprocessing ', FileName,
+				       '. Dynamic loading aborted.'))
+			),
+			file_close(NIStr),
+			cd(OldDir)
+		 ;	true	% done
+		)			
+	 ;	true
+	).
+
+%% maybe try read_canonical if file_size is very large?
+%% Result is a var the first time reading, and bound if already through xpp
+read_p_file_s(IStr,FSize,BFileName,Result) :-
+	conset('_$lineCnt',0),
+	conset('_$errorCnt',0),
+	(FSize > 20971520 % no apparent need to use this lower bound: 500000
+	 ->	repeat,
+		file_read_canonical(IStr,Term0,_),
+		(Term0 == read_canonical_error
+		 ->	coninc('_$errorCnt',ErrCount),
+			(ErrCount > 5
+			 ->	writeln(userout,'Too many errors; rest of file ignored')
+			 ;	fail % ignore first 25 errors
+			)
+		 ;      true
+		)
+	 ;	repeat,
+		catch(file_read(IStr,Term0),Ball,(do_read_error(Ball,BFileName),fail))
+	),
+	coninc('_$lineCnt'),
+	expand_term(Term0,Term),
+	(Term == read_canonical_error
+	 ->	!
+	 ; Term == end_of_file
+	 ->	!
+	 ; var(Result),Term = (:-compiler_options(Opts)), member(xpp_on,Opts)
+	 ->	Result = xpp,
+		!		
+	 ; Term = (:-Dir)
+	 ->	process_directive(Dir,BFileName),
+		functor('_$main',Main,0),
+		process_uses(Dir,BFileName,Main,0),
+		fail
+	 ; Term = (?-Dir)
+	 ->	functor('_$main',Main,0),
+		process_uses(Dir,BFileName,Main,0),
+		fail
+	 ;	(Term = (Head :- Body)
+		 ->	true
+		 ;	Head = Term,
+			Body = true
+		),
+		functor(Head,Pred,Arity),
+		may_assert_xsb_defined(Pred,Arity,BFileName),
+		(Body == true
+		 ->	true
+		 ;	process_uses(Body,BFileName,Pred,Arity)
+		),
+		fail
+	).
+
+
+:- dynamic files_with_errors/1.
+/***do_read_error(error(syntax_error(_),String,_BT),_BFileName) :-
+	atom_codes(String,Codes),  % not preprocessing 
+	append(_,[35,32,32,60,45,45,45,32,72,69,82,69,63|_],Codes),   % hash --> here
+	!,
+	nl, tab(4),
+	write('Preprocessing command ignored'). ***/
+do_read_error(Ball,BFileName) :-
+	(files_with_errors(BFileName)
+	 ->	true
+	 ;	asserta(files_with_errors(BFileName)),
+		nl,
+		tab(4),
+		write(Ball),
+		writeln('   Any further errors in this file not reported. ')
+	).
+
+process_directive(op(Prec,Fix,Op),_) :- !,
+	('_$op'(OldPrec,OldFix,Op),op_type(Fix,T),op_type(OldFix,T)
+	 ->	true
+	 ;	OldPrec = 0, OldFix = Fix
+	),
+	(nonvar(Op), nonvar(OldPrec), nonvar(OldFix)
+	 ->	assert(ops(Op,OldPrec,OldFix)),
+		op(Prec,Fix,Op)
+	 ;	true
+	).
+process_directive(compiler_options(OptList),_) :-
+	member(ciao_directives,OptList),
+	!,
+	%% These are ciao-directives and hard-coded.  Should get from compiler
+	process_directive(op(500,yfx,(#)),_),
+	process_directive(op(975,xfx,(=>)),_),
+	process_directive(op(978,xfx,(::)),_).
+process_directive(dynamic(ExpList),BFileName) :- !,
+	process_specs_defined(ExpList,BFileName).
+process_directive(export(ExpList),BFileName) :- !,
+	process_specs_defined(ExpList,BFileName).
+process_directive(document_export(ExpList),BFileName) :- !,
+	process_specs_defined(ExpList,BFileName).
+process_directive(import(From),BFileName) :- !,
+	From = from(ExpList,FromModule),
+	process_specs_used(ExpList,BFileName),
+	process_specs_defined(ExpList,FromModule). % Let us also assume the module defines it
+process_directive(document_import(ExpList),BFileName) :- !,
+	process_specs_used(ExpList,BFileName).
+process_directive(_,_).
+
+process_specs_defined((Spec1,Spec2),BFileName) :- !,
+	process_specs_defined(Spec1,BFileName),
+	process_specs_defined(Spec2,BFileName).
+process_specs_defined(Spec,BFileName) :-
+	(Spec = Pred/Arity
+	 ->	true
+	 ;	functor(Spec,Pred,Arity)
+	),
+	may_assert_xsb_defined(Pred,Arity,BFileName).
+
+process_specs_used((Spec1,Spec2),BFileName) :- !,
+	process_specs_used(Spec1,BFileName),
+	process_specs_used(Spec2,BFileName).
+process_specs_used(Spec,BFileName) :-
+	(Spec = Pred/Arity
+	 ->	true
+	 ;	functor(Spec,Pred,Arity)
+	),
+	assert(xsb_used(Pred,Arity,BFileName,???,???)).
+
+
+llappend([X|L1],L2,[X|L3]) :- llappend(L1,L2,L3).
+llappend([],L,L).
+
+process_uses(true,_BFileName,_Pred,_Arity) :- !.  % catches vars
+process_uses(!,_BFileName,_Pred,_Arity) :- !.
+process_uses(findall(_,Body,_),BFileName,Pred,Arity) :- nonvar(Body), !,
+	process_uses(Body,BFileName,Pred,Arity).
+process_uses(tfindall(_,Body,_),BFileName,Pred,Arity) :- nonvar(Body), !,
+	process_uses(Body,BFileName,Pred,Arity).
+process_uses(':'(_M,B),BFileName,Pred,Arity) :- nonvar(B), !,
+	process_uses(B,BFileName,Pred,Arity).
+process_uses(setof(_,Body,_),BFileName,Pred,Arity) :- !,
+	process_uses(Body,BFileName,Pred,Arity).
+process_uses(bagof(_,Body,_),BFileName,Pred,Arity) :- !,
+	process_uses(Body,BFileName,Pred,Arity).
+process_uses(catch(Call,_Ball,Handler),BFileName,Pred,Arity) :-
+	process_uses(Call,BFileName,Pred,Arity),
+	process_uses(Handler,BFileName,Pred,Arity).
+process_uses(\+(Body),BFileName,Pred,Arity) :- !,
+	process_uses(Body,BFileName,Pred,Arity).
+process_uses(tnot(Body),BFileName,Pred,Arity) :- !,
+	process_uses(Body,BFileName,Pred,Arity).
+process_uses(not(Body),BFileName,Pred,Arity) :- !,
+	process_uses(Body,BFileName,Pred,Arity).
+process_uses(assert(Term),BFileName,Pred,Arity) :- nonvar(Term), !,
+	process_assert(Term,BFileName,Pred,Arity).
+process_uses(asserta(Term),BFileName,Pred,Arity) :- nonvar(Term), !,
+	process_assert(Term,BFileName,Pred,Arity).
+process_uses(assertz(Term),BFileName,Pred,Arity) :- nonvar(Term), !,
+	process_assert(Term,BFileName,Pred,Arity).
+process_uses(retract(Term),BFileName,Pred,Arity) :- nonvar(Term), !,
+	process_assert(Term,BFileName,Pred,Arity).
+process_uses(retractall(Term),BFileName,Pred,Arity) :- nonvar(Term), !,
+	process_assert(Term,BFileName,Pred,Arity).
+process_uses((Body1,Body2),BFileName,Pred,Arity) :- !,
+	process_uses(Body1,BFileName,Pred,Arity),
+	process_uses(Body2,BFileName,Pred,Arity).
+process_uses((Body1->Body2),BFileName,Pred,Arity) :- !,
+	process_uses(Body1,BFileName,Pred,Arity),
+	process_uses(Body2,BFileName,Pred,Arity).
+process_uses((Body1->Body2;Body3),BFileName,Pred,Arity) :- !,
+	process_uses(Body1,BFileName,Pred,Arity),
+	process_uses(Body2,BFileName,Pred,Arity),
+	process_uses(Body3,BFileName,Pred,Arity).
+process_uses((Body1;Body2),BFileName,Pred,Arity) :- !,
+	process_uses(Body1,BFileName,Pred,Arity),
+	process_uses(Body2,BFileName,Pred,Arity).
+process_uses(Body,BFileName,Pred,Arity) :-
+	functor(Body,UPred,UArity),
+	(xsb_used(UPred,UArity,BFileName,Pred,Arity)
+	 ->	true
+	 ;	assert(xsb_used(UPred,UArity,BFileName,Pred,Arity))
+	).
+
+process_assert(Term,BFileName,Pred,Arity) :-
+	(Term = (Head:-Body)
+	 ->	true
+	 ;	Head = Term, Body = true
+	),
+	(nonvar(Head)
+	 ->	functor(Head,NPred,NArity),
+		may_assert_xsb_defined(NPred,NArity,BFileName),
+		(Body == true
+		 ->	true
+		 ;	process_uses(Body,BFileName,Pred,Arity)
+		)
+	 ;      true
+	).
+
+% to go easier on our memory usage:
+may_assert_xsb_defined(Pred,Arity,BFileName) :- xsb_defined(Pred,Arity,BFileName), !.
+may_assert_xsb_defined(Pred,Arity,BFileName) :- assert(xsb_defined(Pred,Arity,BFileName)).
+

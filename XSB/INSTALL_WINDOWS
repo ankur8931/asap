@@ -1,0 +1,86 @@
+	INSTALLATION INSTRUCTIONS FOR WINDOWS
+	--------------------------------------
+
+There are two ways to install XSB on Windows:
+      - Using CygWin emulation of POSIX system calls; and
+      - A native build.
+
+For CygWin, the installation process is the same as under Unix --- see the
+./INSTALL file --- with one caveat. XSB can be built using CygWin64 and
+CygWin32. However, the latter must then be installed on a 32 bit Windows
+machine. XSB will not build under CygWin32 on a 64 bit Windows: if you use
+Windows64 then also CygWin64 must be used.
+
+The native build depends on how you obtained XSB:
+
+   - checked out from the CVS repository at http://xsb.sourceforge.net
+   - downloaded a pre-configured version of XSB from http://xsb.sourceforge.net
+
+You must have a copy of Visual C++ installed in order to build XSB
+natively. You can get a free (as in beer) version of VC Express from
+http://www.microsoft.com/express/Downloads/
+If you don't have one (and don't feel like having it), then
+your next best bet is to download a pre-compiled version of XSB from
+http://xsb.sourceforge.net.
+
+In most cases you do not need to perform steps 1 and 2 below.
+
+1. Check the file 
+
+       config\x86-pc-windows\xsb_config.h
+
+   You may have to change some variables there. The variables are commented
+   so hopefully it should be clear how things might need to be changed.
+   The part of the file where changes are allowed is clearly marked.
+
+2. Check the file:
+
+       config\x86-pc-windows\lib\xsb_configuration.P
+
+   Again, some settings there might need to be changed.
+   The file is commented and the part that might need to be changed is
+   clearly marked.
+
+3. If you downloaded a pre-compiled version of XSB, you are done.
+   If you need to recompile XSB, then read (6).
+
+4. Compile the .\emu directory.
+
+      cd build
+      makexsb
+      (or makexsb64 on a 64 bit machine)
+
+
+[NOTES on using Microsoft Visual C++:]
+
+To compile from the command line, you should set some environment
+variables. Visual C++ has a command file called vcvars32.bat or similar,
+which you should find and drag into the command window (and press Return).
+This will set all the necessary environment variables. On a 64 bit machine
+(BUT SEE THE XSB MANUAL FOR MORE DETAILS:
+  - For VC 9.0:
+    use the command file is called vcvarsx86_amd64.bat or
+    vcvarsx86_ia64.bat - whichever is appropriate for your configuration.
+  - For VC 10.0: 
+    use SetEnv.cmd
+
+The executable and the DLL will be in
+
+     .\config\x86-pc-windows\bin\xsb.exe
+     .\config\x86-pc-windows\bin\xsb.dll
+
+or, for a 64 bit machine, in
+
+     .\config\x64-pc-windows\bin\xsb.exe
+     .\config\x64-pc-windows\bin\xsb.dll
+
+5. If you compile for 32 bits and would like to recompile for 64, run
+
+     makexsb clean
+
+   before recompilation. Likewise, to recompile for 32 bits after
+   previously compiling for 64 bits, run
+
+     makexsb64 clean
+
+   in-between.

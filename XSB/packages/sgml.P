@@ -1,0 +1,226 @@
+:- import bootstrap_package/2 from packaging.
+
+:-import pl_new_sgml_parser/2, 
+	pl_sgml_parse/2, 
+	pl_set_sgml_parser/2, 
+	pl_open_dtd/2, 
+	pl_new_dtd/2, 
+	pl_free_sgml_parser/1, 
+	pl_free_dtd/1, 
+	pl_doctype/2, 
+	pl_allocate_error_term/2,
+	pl_xml_quote_attribute/2,
+	pl_xml_quote_cdata/2,
+	pl_xml_name/1,
+	pl_finalize_warn/1 from sgml2pl.
+
+:- import dtd_struct/2 from usermod.
+:- import slash/1 from machine.
+:- import fmt_write_string/3 from file_io.
+:- import xsb_configuration/2 from xsb_configuration.
+
+:- export 
+	load_structure/4, 
+	load_html_structure/3,
+	load_xhtml_structure/3,
+	load_xml_structure/3,
+	load_sgml_structure/3,
+	new_sgml_parser/3,
+	free_sgml_parser/2,
+	sgml_parse/3,
+	new_dtd/3,
+	free_dtd/2,
+	open_dtd/3,
+	dtd/3,
+	dtd/4,
+	xml_quote_attribute/2,
+	xml_quote_cdata/2,
+	xml_name/1.
+
+:- bootstrap_package([sgml, cc], sgml), consult(sgmlconfig).
+
+xml_quote_attribute(In, Out) :-
+	pl_xml_quote_attribute(In, Out).
+
+xml_quote_cdata(In, Out) :-
+	pl_xml_quote_cdata(In, Out).
+
+xml_name(In) :-
+	pl_xml_name(In).
+
+
+new_sgml_parser(Parser, Options, Warn):-
+	new_sgml_parser_warn(Parser, Options, Warn),
+	pl_finalize_warn(Warn).
+
+new_sgml_parser_warn(Parser, Options, Warn):-
+	pl_allocate_error_term(Error, Warn),
+	pl_new_sgml_parser(Parser, Options),
+	throw_error(Error).
+
+
+free_sgml_parser(Parser, Warn) :-
+	free_sgml_parser_warn(Parser, Warn),
+	pl_finalize_warn(Warn).
+
+free_sgml_parser_warn(Parser, Warn) :-
+	pl_allocate_error_term(Error, Warn),
+        pl_free_sgml_parser(Parser),
+        throw_error(Error).
+
+
+sgml_parse(Parser, Options, Warn) :-
+	sgml_parse_warn(Parser, Options, Warn),
+	pl_finalize_warn(Warn).
+
+
+sgml_parse_warn(Parser, Options, Warn) :-
+	pl_allocate_error_term(Error, Warn),
+        pl_sgml_parse(Parser, Options),
+	throw_error(Error).
+
+
+
+new_dtd(Doctype, DTD, Warn) :-
+	pl_allocate_error_term(Error, Warn),
+        pl_new_dtd(Doctype, DTD),
+	throw_error(Error),
+	pl_finalize_warn(Warn).
+
+
+
+free_dtd(DTD, Warn) :-
+	pl_allocate_error_term(Error, Warn),
+        pl_free_dtd(DTD),
+        throw_error(Error),
+	pl_finalize_warn(Warn).
+
+
+
+open_dtd(DTD, Options, Warn) :-
+	pl_allocate_error_term(Error, Warn),
+        pl_open_dtd(DTD, Options),
+        throw_error(Error),
+	pl_finalize_warn(Warn).
+
+
+load_structure(Source, Term, Options, Warn) :-
+	load_structure_warn(Source, Term, Options, Warn),
+	pl_finalize_warn(Warn).
+
+load_structure_warn(Source, Term, Options, Warn) :-
+        (
+	  \+var(Options) -> true
+	;
+	  abort('++Abort[sgml]> The options list cannot be a variable')
+	),
+	pl_allocate_error_term(Error, Warn),
+	select_dtd(Options, DTD, Doctype, ExplicitDTD),
+	new_sgml_parser_warn(Parser,[dtd_struct(DTD, Doctype)], Warn),
+	parse(Parser, Options, Term, Source, Warn),
+	doctype(Parser, Doctype, ExplicitDTD, Warn),
+	free_sgml_parser_warn(Parser, Warn),
+	throw_error(Error).
+
+throw_error(Error) :- var(Error),!.
+throw_error(Error) :- throw(Error).
+
+doctype(_, _, 'No', _):-!.
+
+doctype(Parser, Doctype, 'Yes', Warn) :- 
+	pl_allocate_error_term(Error, Warn),	
+	pl_doctype(Parser, Doctype),
+	throw_error(Error).
+
+dtd('HTML', Dtd, Warn):-
+	dtd_warn(html, Dtd, Warn),
+	pl_finalize_warn(Warn).
+
+dtd(html, Dtd , Warn):- 
+	dtd_warn(html, Dtd , Warn),
+	pl_finalize_warn(Warn).
+
+dtd_warn('html', Dtd , Warn):- 
+	pl_allocate_error_term(Error, Warn),
+	pl_new_dtd('html', Dtd), 
+	filesdir(Dtdfile, 'HTML4.dtd'),
+	pl_open_dtd(Dtd, [source(file(Dtdfile))]),
+	throw_error(Error).
+
+load_html_structure(Source, Term, Warn) :- 
+	dtd_warn('html', Dtd, Warn), 
+	load_structure_warn(Source, Term,[Dtd, dialect(sgml)], Warn),
+	pl_finalize_warn(Warn).
+
+dtd('xhtml', Dtd, Warn):-
+	dtd_warn('xhtml', Dtd, Warn),
+	pl_finalize_warn(Warn).
+
+dtd('XHTML', Dtd, Warn):-
+	dtd_warn('xhtml', Dtd, Warn),
+	pl_finalize_warn(Warn).
+
+dtd_warn('xhtml', Dtd, Warn):-
+        pl_allocate_error_term(Error, Warn),
+	pl_new_dtd('xhtml', Dtd), 
+	filesdir(Dtdfile, 'xhtml1-transitional.dtd'),
+	pl_open_dtd(Dtd, [source(file(Dtdfile))]),
+	throw_error(Error).
+
+load_xhtml_structure(Source, Term, Warn) :- 
+	dtd_warn('xhtml', Dtd, Warn), 
+	load_structure_warn(Source, Term,[Dtd, dialect(xml)], Warn),
+	pl_finalize_warn(Warn).
+
+load_xml_structure(Source, Term, Warn) :- 
+	load_structure_warn(Source, Term,  [dialect(xml)], Warn),
+	pl_finalize_warn(Warn).
+
+load_sgml_structure(Source, Term, Warn) :- 
+	load_structure_warn(Source, Term,  [dialect(sgml)], Warn),
+	pl_finalize_warn(Warn).
+
+dtd(Type, Dtd, DtdFile, Warn) :- 
+	dtd_warn(Type, Dtd, DtdFile, Warn),
+	pl_finalize_warn(Warn).
+
+dtd_warn(Type, Dtd, DtdFile, Warn) :- 
+	pl_allocate_error_term(Error, Warn),
+	pl_new_dtd(Type, Dtd), 
+	pl_open_dtd(Dtd, [source(DtdFile)]),
+	throw_error(Error).
+
+parse(Parser, Options, Document, In, Warn) :-
+	set_parser_options(Parser, Options),
+	sgml_parse_warn(Parser,
+			[ document(Document),
+			  source(In)
+			| Options
+			],
+			Warn).
+
+
+set_parser_options(Parser, [X|T]):-
+	pl_set_sgml_parser(Parser, X), 
+	set_parser_options(Parser, T).
+
+set_parser_options(_, []).
+
+
+select_dtd([X|_], DTD, Doctype, ExplicitDTD):-
+	select(X, DTD, Doctype, ExplicitDTD),!.
+
+select_dtd([_|T], DTD, Doctype, ExplicitDTD) :-
+	select_dtd(T, DTD, Doctype, ExplicitDTD).
+
+select_dtd([], _, _, 'No').
+
+select(dtd_struct(DTD, Doctype), DTD, Doctype, 'Yes').
+
+filesdir(SgmlDir, FileName) :-
+        xsb_configuration(packagesdir, PackDir),
+        slash(Slash),
+        fmt_write_string(SgmlDir,
+			 '%s%ssgml%scc%sdtd%s%s',
+			 f(PackDir, Slash, Slash, Slash, Slash, FileName)).
+

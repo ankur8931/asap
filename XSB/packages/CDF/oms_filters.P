@@ -1,0 +1,426 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export oms_subset/3.
+
+:- import append/3, ground/1, member/2 from basics.
+:- import concat_atom/2 from string.
+:- import numbervars/3 from num_vars.
+
+:- ensure_loaded(oms_io).
+
+:- comment(module, "A number of filters can be made on an
+ontology...@em{TLS: this documentation is not yet updated}").
+
+:- dynamic oms_cn_sub/4.
+:- index(oms_cn_sub/4,trie).
+:- dynamic oms_sc_sub/2.
+:- index(oms_sc_sub/2,trie).
+:- dynamic oms_rln_sub/3.
+:- index(oms_rln_sub/3,trie).
+:- dynamic oms_obj_sub/4.
+:- index(oms_obj_sub/4,trie).
+:- dynamic oms_mo_sub/2.
+:- index(oms_mo_sub/2,trie).
+:- dynamic oms_at_sub/3.
+:- index(oms_at_sub/3,trie).
+:- dynamic oms_ao_sub/3.
+:- index(oms_ao_sub/3,trie).
+
+:- dynamic inverse_general_node/1.
+
+:- comment(oms_subset/3,
+"@tt{oms_subset(ClassList,InverseList,Directory)} generates a
+subset of the in-memory OMS, and writes it, as a OMS, to the indicated
+directory.
+
+ClassList is a list of node IDs for nodes in the in-memory OMS.
+Each of these nodes and their ancestors and descendents are included
+in the sub-OMS.  Each relationship with source as one of the included
+nodes causes the relationship and the target node to be included in
+the subset.  Also each relationship with target as one of the included
+nodes and source that is a descendent of a node whose ID is in
+InverseList causes the source node to be included in the subset.
+The sub-OMS is the closure of these operations.").
+
+:- comment(oms_subset_internal/3,
+"@pred{oms_subset(ClassList,InverseList,Directory)} Internal version
+of @pred{oms_subset/3}, which uses internal ids, rather than native
+id, source pairs.").
+
+pair_to_key([],[]).
+pair_to_key([ext(Nid,Src)|R],[Key|R1]):- 
+	class(Key,_,Nid,Src),
+	pair_to_key(R,R1).
+
+:- comment(oms_subset/3,"oms_subset((ClassNodeList,TargNodeList,Dir)
+makes the following filter.
+
+	If N is in ClassNodeList,
+@begin{itemize}
+@item take all subclasses of N and all objects in these subclasses; 
+@item take all superclasses of N but not objects in these
+	superclasses.
+@item take all relations, R,  of N and their superclasses and
+					subclasses and subclass objects
+@item take all targets, T, or relations, R,  of N and their
+				superclasses and subclasses and
+						 subclass objects.
+@end{itemize}
+
+This may not work best for all purposes, but its what is currently done.
+").
+
+
+/* default is external */
+oms_subset(ClassNodeList,TargNodeList,Dir):- 
+	pair_to_key(ClassNodeList,ClassKeyList),
+	pair_to_key(TargNodeList,TargKeyList),
+	oms_subset_internal(ClassKeyList,TargKeyList,convert,Dir).
+	
+oms_subset_internal(ClassNodeList,Dir) :-
+	oms_subset_internal(ClassNodeList,[],noconvert,Dir).
+
+oms_subset_internal(ClassNodeList,InverseRlnNodeList,Dir):-
+	oms_subset_internal(ClassNodeList,InverseRlnNodeList,noconvert,Dir).
+ 
+oms_subset_internal(ClassNodeList,InverseRlnNodeList,Mode,Dir) :-
+	retractall(inverse_general_node(_)),
+	(member(Node,InverseRlnNodeList),
+	 assert(inverse_general_node(Node)),
+	 fail
+	 ;
+	 true
+	),
+	oms_subset1(ClassNodeList,Mode,Dir).
+
+oms_subset1(ClassNodeList,Mode,Dir) :-
+	abolish_table_pred(oms_extract_node_and_children(_)),
+	abolish_table_pred(oms_extract_objects(_)),
+	abolish_table_pred(oms_extract_ancestors(_)),
+
+	retractall(oms_cn_sub(_,_,_,_)),
+	retractall(oms_sc_sub(_,_)),
+	retractall(oms_rln_sub(_,_,_)),
+	reindex_rln,
+
+	oms_extract_subset(ClassNodeList),
+	dump_oms_subset(Mode,Dir),
+	abolish_table_pred(oms_extract_node_and_children(_)),
+	abolish_table_pred(oms_extract_objects(_)),
+	abolish_table_pred(oms_extract_ancestors(_)).
+	
+
+:- dynamic oms_rln_reverse/3.
+:- index(oms_rln_reverse/3,trie).
+reindex_rln :-
+	retractall(oms_rln_reverse(_,_,_)),
+	oms_rln(A,B,C),
+	assert(oms_rln_reverse(C,B,A)),
+	fail.
+reindex_rln.
+
+oms_extract_subset([]).
+oms_extract_subset([Node|Nodes]) :-
+	oms_extract_nodes(Node),
+	oms_extract_subset(Nodes).
+
+oms_extract_nodes(Node) :-
+	(atomic(Node)
+	 ->	GenNode = Node
+	 ;	(Node = [_|_]
+		 ->	GenNode = [_|_]
+		 ;	term_psc(Node,PSC),
+			term_new(PSC,GenNode)
+		)
+	),
+	oms_extract_node_and_children(GenNode).
+
+:- import term_psc/2, term_new/2 from machine.
+:- table oms_extract_node_and_children/1.
+oms_extract_node_and_children(GenNode) :-
+	oms_extract_single_node(GenNode),
+	(oms_sc(Child,GenNode),
+	 oms_extract_nodes(Child),
+	 fail
+	 ;
+	 true
+	).	
+
+oms_extract_single_node(GenNode) :-
+	oms_cn(GenNode,Name,NId,Sou),
+	assert(oms_cn_sub(GenNode,Name,NId,Sou)),
+	oms_extract_objects_in(GenNode),
+	oms_extract_rlns(GenNode),
+	oms_extract_rlns_reverse(GenNode),
+	oms_extract_ancestors(GenNode). % Ancestors
+
+oms_extract_objects_in(GenNode) :-
+	\+ oms_primitive_type(GenNode),	% oms_primitive_type(GenNode),
+	oms_mo(Obj,GenNode),
+	assert(oms_mo_sub(Obj,GenNode)),
+	oms_extract_objects(Obj),
+	fail.
+oms_extract_objects_in(_GenNode).
+
+:- table oms_extract_objects/1.
+oms_extract_objects(Obj) :-
+	oms_obj(Obj,Na,Nid,Src),
+	assert(oms_obj_sub(Obj,Na,Nid,Src)),
+	oms_at(Obj,Rln,Cpt),
+	assert(oms_at_sub(Obj,Rln,Cpt)),
+	oms_extract_nodes(Rln),
+	oms_extract_nodes(Cpt),
+	fail.
+oms_extract_objects(Obj) :-
+	oms_ao(Obj,Rln,Obj2),
+	assert(oms_ao_sub(Obj,Rln,Obj2)),
+	oms_extract_nodes(Rln),
+	oms_extract_objects(Obj2),
+	fail.
+oms_extract_objects(_Obj).
+
+oms_extract_rlns_reverse(GenNode) :-
+	\+ oms_primitive_type(GenNode),
+	oms_rln_reverse(GenNode,RelID,SNode),
+	inverse_general_node(InvNode),
+	if_subclass(SNode,InvNode),
+	assert(oms_rln_sub(SNode,RelID,GenNode)),
+	oms_extract_nodes(RelID),
+	oms_extract_nodes(SNode),
+	fail.
+oms_extract_rlns_reverse(_GenNode).
+
+oms_extract_rlns(GenNode) :-
+	oms_rln(GenNode,RelID,ValID),
+	assert(oms_rln_sub(GenNode,RelID,ValID)),
+	oms_extract_nodes(RelID),
+	oms_extract_nodes(ValID),
+	fail.
+oms_extract_rlns(_).
+
+:- table oms_extract_ancestors/1.
+oms_extract_ancestors(GenNode) :-
+	oms_sc(GenNode,ParNode),
+	assert(oms_sc_sub(GenNode,ParNode)),
+	(atomic(ParNode)
+	 ->	GenParNode = ParNode
+	 ;	term_psc(ParNode,PSC),
+		term_new(PSC,GenParNode)
+	),
+	oms_extract_single_ancestor(GenParNode),
+	fail.
+oms_extract_ancestors(_GenNode).
+
+/* change tls, not extracting objects, etc from ancestor, 
+   but do extract rlns (as before) */
+oms_extract_single_ancestor(GenNode) :-
+	oms_cn(GenNode,Name,NId,Sou),
+	assert(oms_cn_sub(GenNode,Name,NId,Sou)),
+%	oms_extract_objects_in(GenNode),
+	oms_extract_rlns(GenNode),
+	oms_extract_rlns_reverse(GenNode),
+	oms_extract_ancestors(GenNode). % Ancestors
+
+/* TLS: this dumps the subset in external format */
+dump_oms_subset(convert,Dir) :-
+	exchange_defs(oms_cn_sub(_,_,_,_),oms_cn(_,_,_,_)),
+	exchange_defs(oms_sc_sub(_,_),oms_sc(_,_)),
+	exchange_defs(oms_rln_sub(_,_,_),oms_rln(_,_,_)),
+	exchange_defs(oms_obj_sub(_,_,_,_),oms_obj(_,_,_,_)),
+	exchange_defs(oms_mo_sub(_,_),oms_mo(_,_)),
+	exchange_defs(oms_at_sub(_,_,_),oms_at(_,_,_)),
+	exchange_defs(oms_ao_sub(_,_,_),oms_ao(_,_,_)),
+	dump_omsext_schema(Dir),		      
+	dump_omsext_data(Dir),		      
+	exchange_defs(oms_cn_sub(_,_,_,_),oms_cn(_,_,_,_)),
+	exchange_defs(oms_sc_sub(_,_),oms_sc(_,_)),
+	exchange_defs(oms_rln_sub(_,_,_),oms_rln(_,_,_)),
+	exchange_defs(oms_obj_sub(_,_,_,_),oms_obj(_,_,_,_)),
+	exchange_defs(oms_mo_sub(_,_),oms_mo(_,_)),
+	exchange_defs(oms_at_sub(_,_,_),oms_at(_,_,_)),
+	exchange_defs(oms_ao_sub(_,_,_),oms_ao(_,_,_)).
+
+dump_oms_subset(noconvert,Dir) :-
+	oms_fix_dir(Dir,DirS),
+	exchange_defs(oms_cn_sub(_,_,_,_),oms_cn(_,_,_,_)),
+	exchange_defs(oms_sc_sub(_,_),oms_sc(_,_)),
+	exchange_defs(oms_rln_sub(_,_,_),oms_rln(_,_,_)),
+	exchange_defs(oms_obj_sub(_,_,_,_),oms_obj(_,_,_,_)),
+	exchange_defs(oms_mo_sub(_,_),oms_mo(_,_)),
+	exchange_defs(oms_at_sub(_,_,_),oms_at(_,_,_)),
+	exchange_defs(oms_ao_sub(_,_,_),oms_ao(_,_,_)),
+		      
+	dump_oms_pred(oms_cn(_,_,_,_),class,DirS),
+	dump_oms_pred(oms_sc(_,_),subclass,DirS),
+	dump_oms_pred(oms_rln(_,_,_),relationship,DirS),
+	dump_oms_pred(oms_obj(_,_,_,_),object,DirS),
+	dump_oms_pred(oms_mo(_,_),memberof,DirS),
+	dump_oms_pred(oms_at(_,_,_),attribute,DirS),
+	dump_oms_pred(oms_ao(_,_,_),attribute_object,DirS),
+
+	exchange_defs(oms_cn_sub(_,_,_,_),oms_cn(_,_,_,_)),
+	exchange_defs(oms_sc_sub(_,_),oms_sc(_,_)),
+	exchange_defs(oms_rln_sub(_,_,_),oms_rln(_,_,_)),
+	exchange_defs(oms_obj_sub(_,_,_,_),oms_obj(_,_,_,_)),
+	exchange_defs(oms_mo_sub(_,_),oms_mo(_,_)),
+	exchange_defs(oms_at_sub(_,_,_),oms_at(_,_,_)),
+	exchange_defs(oms_ao_sub(_,_,_),oms_ao(_,_,_)).
+
+:- import conpsc/2, psc_type/2, psc_ep/2, psc_set_ep/2 from machine.
+
+/* Kids, dont try this at home */
+exchange_defs(Skel1,Skel2) :-
+	conpsc(Skel1,PSC1),
+	conpsc(Skel2,PSC2),
+	psc_type(PSC1,Type1),
+	psc_type(PSC2,Type2),
+	(Type1 =\= Type2
+	 ->	abort(['cannot exchange different typed predicates',
+		       Skel1,Type1,Skel2,Type2])
+	 ;	true
+	),
+	psc_ep(PSC1,EP1),
+	psc_ep(PSC2,EP2),
+	psc_set_ep(PSC1,EP2),
+	psc_set_ep(PSC2,EP1).
+
+end_of_file.
+
+/*******************************************************************/
+
+class(Cid,Name,NatId,Sou) :- oms_cn(Cid,Name,NatId,Sou).
+class(Cid,Name,NatId,Sou) :-
+	tran_cid(Cid,NatId,Sou),
+	class_ext(Name,NatId,Sou).
+
+:- dynamic cn_id_map/3.
+:- index(cn_id_map/3,[1,2+3],5001).
+
+tran_cid(Cid,NatId,Sou) :-
+	(nonvar(Cid)
+	 ->	cn_id_map(Cid,NatId,Sou)
+	 ; nonvar(NatId),nonvar(Sou)
+	 ->	(cn_id_map(Cid,NatId,Sou)
+		 ->	true
+		 ;	class_ext(_Name,NatId,Sou),
+			new_cid(Cid),
+			assert(cn_id_map(Cid,NatId,Sou))
+		)
+	 ;	writeln('Warning: Scanning class'),
+		class_ext(_Name,NatId,Sou),
+		new_cid(Cid),
+		assert(cn_id_map(Cid,NatId,Sou))
+	).
+
+immediate_subclass(CCid,PCid) :- oms_sc(CCid,PCid).
+immediate_subclass(CCid,PCid) :-
+	(nonvar(CCid)
+	 ->	immediate_class(CCid,_,CNatId,CSou),
+		subclass_ext(CNatId,CSou,PNatId,PSou),
+		immediate_class(PCid,_,PNatId,PSou)
+	 ; nonvar(PCid)
+	 ->	immediate_class(PCid,_,PNatId,PSou),
+		subclass_ext(CNatId,CSou,PNatId,PSou),
+		immediate_class(CCid,_,CNatId,CSou)
+	 ;	subclass_ext(CNatId,CSou,PNatId,PSou),
+		immediate_class(CCid,_,CNatId,CSou),
+		immediate_class(PCid,_,PNatId,PSou)
+	).
+
+immediate_relationship(SCid,RCid,TCid) :- oms_rln(SCid,RCid,TCid).
+immediate_relationship(SCid,RCid,TCid) :-
+	(nonvar(SCid)
+	 ->	(nonvar(RCid)
+		 ->	immediate_class(SCid,_,SNatId,SSou),
+			immediate_class(RCid,_,RNatId,RSou),
+			relationship_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			immediate_class(TCid,_,TNatId,TSou)
+		 ;	immediate_class(SCid,_,SNatId,SSou),
+			relationship_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			immediate_class(RCid,_,RNatId,RSou),
+			immediate_class(TCid,_,TNatId,TSou)
+		)
+	 ;	relationship_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+		immediate_class(SCid,_,SNatId,SSou),
+		immediate_class(RCid,_,RNatId,RSou),
+		immediate_class(TCid,_,TNatId,TSou)
+	).
+
+object(Oid,Sou,NatOid) :- oms_obj(Oid,Sou,NatOid).
+object(Oid,Sou,NatOid) :-
+	tran_oid(Oid,NatId,Sou),
+	object_ext(Sou,NatId).
+
+:- dynamic ob_id_map/3.
+:- index(ob_id_map/3,[1,2+3],5001).
+
+tran_oid(Oid,NatId,Sou) :-
+	(nonvar(Oid)
+	 ->	ob_id_map(Oid,NatId,Sou)
+	 ; nonvar(NatId),nonvar(Sou)
+	 ->	(ob_id_map(Oid,NatId,Sou)
+		 ->	true
+		 ;	object_ext(NatId,Sou),
+			new_oid(Oid),
+			assert(ob_id_map(Oid,NatId,Sou))
+		)
+	 ;	writeln('Warning: Scanning class'),
+		object_ext(NatId,Sou),
+		new_oid(Oid),
+		assert(ob_id_map(Oid,NatId,Sou))
+	).
+
+
+immediate_memberof(Oid,Cid) :- oms_mo(Oid,Cid).
+immediate_memberof(Oid,Cid) :-
+	(nonvar(Oid)
+	 ->	immediate_object(Oid,CNatId,CSou),
+		memberof_ext(CNatId,CSou,PNatId,PSou),
+		immediate_class(Cid,_,PNatId,PSou)
+	 ; nonvar(Cid)
+	 ->	immediate_class(Cid,_,PNatId,PSou),
+		memberof_ext(CNatId,CSou,PNatId,PSou),
+		immediate_object(Oid,CNatId,CSou)
+	 ;	memberof_ext(CNatId,CSou,PNatId,PSou),
+		immediate_object(Oid,CNatId,CSou),
+		immediate_class(Cid,_,PNatId,PSou)
+	).
+
+immediate_attribute(Oid,RCid,TCid) :- oms_at(Oid,RCid,TCid).
+immediate_attribute(Oid,RCid,TCid) :-
+	(nonvar(Oid)
+	 ->	(nonvar(RCid)
+		 ->	immediate_object(Oid,SNatId,SSou),
+			immediate_class(RCid,_,RNatId,RSou),
+			attribute_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			immediate_class(TCid,_,TNatId,TSou)
+		 ;	immediate_object(Oid,SNatId,SSou),
+			attribute_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			immediate_class(RCid,_,RNatId,RSou),
+			immediate_class(TCid,_,TNatId,TSou)
+		)
+	 ;	attribute_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+		immediate_object(Oid,SNatId,SSou),
+		immediate_class(RCid,_,RNatId,RSou),
+		immediate_class(TCid,_,TNatId,TSou)
+	).
+
+immediate_attribute_object(Oid,RCid,TOid) :- oms_ao(Oid,RCid,TOid).
+attribute_object(Oid,RCid,TOid) :-
+	(nonvar(Oid)
+	 ->	(nonvar(RCid)
+		 ->	immediate_object(Oid,SNatId,SSou),
+			immediate_class(RCid,_,RNatId,RSou),
+			attribute_object_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			immediate_object(Toid,_,TNatId,TSou)
+		 ;	immediate_object(Oid,SNatId,SSou),
+			attribute_object_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			immediate_class(RCid,_,RNatId,RSou),
+			immediate_object(Toid,TNatId,TSou)
+		)
+	 ;	attribute_object_ext(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+		immediate_object(Oid,SNatId,SSou),
+		immediate_class(RCid,_,RNatId,RSou),
+		immediate_object(Toid,TNatId,TSou)
+	).
+

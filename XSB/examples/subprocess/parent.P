@@ -1,0 +1,33 @@
+/* This program spawns off a child XSB and then tells it what to do 
+   (to consult child.P). It then contines to talk to child-XSB through
+   stdin as well as through an earlier created pipe.
+*/
+
+:- import pipe_open/2, fd2ioport/2, fmt_write/3, 
+	file_flush/2, file_close/1 from file_io.
+:- import process_control/2 from shell.
+
+%% Create the pipe and pass it to the child process
+?- pipe_open(RP,WP),
+   %% WF is now the XSB file descriptor bound to the write part of the pipe
+   fd2ioport(WP,WF),
+   %% ProcInput becomes the XSB stream leading directly to the child's stdin
+   spawn_process(xsb, ProcInput, block, block, Process),
+   %% Tell the child where the reading part of the pipe is.
+   %% The child will be reading our msgs from there.
+   fmt_write(ProcInput, "assert(pipe(%d)).\n", arg(RP)),
+   fmt_write(ProcInput, "assert(process(%d)).\n", arg(Process)),
+   fmt_write(ProcInput, "[child].\n", _),
+   file_flush(ProcInput, _),
+   %% Pass a message through the pipe
+   fmt_write(WF, "Hello!\n", _),
+   file_flush(WF, FlushRes),
+   fmt_write(ProcInput, "stop.\n",_), % send termination sig to child
+   file_flush(ProcInput, _),
+   %% wait for child (so as to not leave zombies around; 
+   %% zombies quit when the parent finishes, but they consume resources)
+   process_control(Process, wait),
+   %% Close the ports used to commuicate with the process
+   %% Otherwise, the parent might run out of file descriptors 
+   %% (if many processes were spawned)
+   file_close(ProcInput), file_close(WF).

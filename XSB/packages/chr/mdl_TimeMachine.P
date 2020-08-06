@@ -1,0 +1,398 @@
+%% mdl_TimeMachine.P
+%%  Barry Evans 2006
+
+:- compiler_options([xpp_on]).
+%#define TRACE
+
+:- export	mdl_TraceNewPath/1,
+			mdl_TraceConstraintRuleFired/2,
+			mdl_TraceConstraintRuleFired/3,
+			mdl_Prepare/0,
+			mdl_DisplayState/0,
+			mdl_GraphState/0,
+			mdl_GraphStep/0,
+			mdl_DetermineID/2.
+
+:- import global_term_ref_1/1 from chr_interp.
+:- import get_attr/3 from machine.
+:- import findall/3 from setof.
+:- import member/2, memberchk/2 from basics.
+:- import prepare/1,gensym/2 from gensym.
+:- import concat_atom/2 from string.
+
+:- ensure_loaded('iso8601.P').
+:- import	date_string/3,
+			date/4
+			from iso8601.
+
+:- import lookup_variable_id/2 from constraintLib.
+
+
+
+#ifndef TRACE
+%
+%	Dummy versions for when tracing is off
+%
+
+mdl_TraceNewPath(_Path).
+mdl_TraceConstraintRuleFired(_RuleName,_TriggeringPath).
+mdl_TraceConstraintRuleFired(_RuleName,_TriggeringPath1,_TriggeringPath2).
+mdl_Prepare.
+mdl_GraphState.
+mdl_GraphStep.
+
+%mdl_DisplayState.
+
+mdl_DisplayState :-
+ 	global_term_ref_1(Store),
+ 	get_attr(Store,timeConstraints,Attr),
+	fmt_write('\nTime Constraints state is:\n',_),
+	(
+	Attr =.. [v,_|Susps] ->
+		findall(_,(member(L,Susps),member(S,L),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],mdl_DisplayPath(C)),_)
+		;
+		findall(_,(member(S,Attr),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],mdl_DisplayPath(C)),_)
+	),
+	write('\n\n'),
+	!.
+
+mdl_DisplayState :-
+	fmt_write('*** Time Constraints state is empty ***\n',_).
+
+%
+%	mdl_DetermineID(X,IdX)
+%
+
+mdl_DetermineID(X,(IdX,X)) :-
+	var(X),
+	lookup_variable_id(X,IdX),
+	!.
+
+mdl_DetermineID(X,X).
+
+%
+%	mdl_DisplayPath(Path)
+%
+
+mdl_DisplayPath(Path) :-
+	write('path: '),
+	mdl_WritePath(Path),
+	nl,
+	!.
+
+mdl_DisplayPath(Path) :-
+	fmt_write('\n### mdl_DisplayPath failed for Path:%S ###\n\n',arg(Path)).
+
+
+mdl_WritePath(Path) :-
+	mdl_DeterminePath(Path,X,Y,L),
+	mdl_WritePath(X,Y,L).
+
+mdl_WritePath(X,Y,L) :-
+	fmt_write('%S -%S-> %S',arg(X,L,Y)).
+
+
+mdl_DeterminePath(path(_N,X,Y,L,_T,_I),IdX,IdY,L) :-
+	mdl_DetermineID(X,IdX),
+	mdl_DetermineID(Y,IdY).
+
+#else
+
+%
+%	External Interfaces, exported predicates
+%
+
+%
+%	mdl_TraceNewPath(Path)
+%
+
+mdl_TraceNewPath(Path) :-
+	write('Adding path '),
+	mdl_DeterminePath(Path,X,Y,L),
+	mdl_WritePath(X,Y,L),
+	nl,
+	!.
+
+mdl_TraceNewPath(Path) :-
+	fmt_write('\n### mdl_TraceNewPath failed for Path:%S ###\n\n',arg(Path)).
+
+%
+%	mdl_TraceConstraintRuleFired(RuleName,TriggeringPath)
+%	mdl_TraceConstraintRuleFired(RuleName,TriggeringPath1,TriggeringPath2)
+%
+
+mdl_TraceConstraintRuleFired(RuleName,TriggeringPath) :-
+	fmt_write('\nRule %S triggered by\n\t',arg(RuleName)),
+	mdl_DeterminePath(TriggeringPath,X,Y,L),
+	mdl_WritePath(X,Y,L),
+	nl,
+	mdl_GraphStep(RuleName,[X-Y]),
+	!.
+
+mdl_TraceConstraintRuleFired(RuleName,TriggeringPath) :-
+	fmt_write('\n### mdl_TraceConstraintRuleFired failed for RuleName:%X, TriggeringPath: %S',arg(RuleName,TriggeringPath)).
+
+
+mdl_TraceConstraintRuleFired(RuleName,TriggeringPath1,TriggeringPath2) :-
+	fmt_write('\nRule %S triggered by\n\t',arg(RuleName)),
+	mdl_DeterminePath(TriggeringPath1,X1,Y1,L1),
+	mdl_WritePath(X1,Y1,L1),
+	write('\n\t'),
+	mdl_DeterminePath(TriggeringPath2,X2,Y2,L2),
+	mdl_WritePath(X2,Y2,L2),
+	write('\n\t'),
+	nl,
+	mdl_GraphStep(RuleName,[X1-Y1,X2-Y2]),
+	!.
+
+mdl_TraceConstraintRuleFired(RuleName,TriggeringPath1,TriggeringPath2) :-
+	fmt_write('\n### mdl_TraceConstraintRuleFired failed for RuleName:%X, TriggeringPaths: %S,%S',arg(RuleName,TriggeringPath1,TriggeringPath2)).
+
+%
+%	mdl_Prepare/0
+%
+mdl_Prepare :-
+	prepare(0),
+	shell('rm ./dot_cache/*',_Result1),
+	shell('rm ./jpeg_cache/*',_Result2),
+	!.
+
+mdl_Prepare.
+
+%
+%	mdl_DisplayState
+%
+
+mdl_DisplayState :-
+ 	global_term_ref_1(Store),
+ 	get_attr(Store,timeConstraints,Attr),
+	fmt_write('\nTime Constraints state is:\n',_),
+	(
+	Attr =.. [v,_|Susps] ->
+		findall(_,(member(L,Susps),member(S,L),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],mdl_DisplayPath(C)),_)
+		;
+		findall(_,(member(S,Attr),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],mdl_DisplayPath(C)),_)
+	),
+	write('\n\n'),
+	!.
+
+mdl_DisplayState :-
+	fmt_write('*** Time Constraints state is empty ***\n',_).
+
+mdl_GraphState.
+mdl_GraphState(_File,_TriggerPaths,_RuleName).
+mdl_GraphStep.
+/*
+%
+%	mdl_GraphState
+%
+mdl_GraphState :-
+	mdl_GraphState('Test.dot',[],''),
+	shell('open DisplaySlideshow.app',_Result).
+
+
+mdl_GraphState(File,TriggerPaths,RuleName) :-
+	tell(File),
+	fmt_write('digraph states {\n\tnode [style=filled,color=green,shape=circle];\n',_),
+	mdl_GetConstraintPaths(Paths),
+	mdl_GraphNodesInPaths(Paths),
+	mdl_GraphPaths(Paths,TriggerPaths),
+	mdl_writeGraphRuleName(RuleName),
+	write('  }\n'),
+	told,
+	!.
+
+mdl_GraphState(_File,_TriggerPaths,_RuleName) :-
+	fmt_write('*** Time Constraints state is empty ***\n',_).
+
+
+
+mdl_GraphStep :-
+	gensym(step,FileName),
+	concat_atom(['./dot_cache/',FileName,'.dot'],DotPathname),
+	mdl_GraphState(DotPathname,[],''),
+	concat_atom(['dot -Tjpg ',DotPathname,' -o./jpeg_cache/',FileName,'.jpeg'],JPegCommand),
+	shell(JPegCommand,_Result).
+
+mdl_GraphStep.
+
+*/
+
+
+%
+%	Internal predicates
+%
+
+%
+%	mdl_DetermineID(X,IdX)
+%
+
+mdl_DetermineID(X,IdX) :-
+	var(X),
+	lookup_variable_id(X,IdX),
+	!.
+
+mdl_DetermineID(X,X).
+
+%
+%	mdl_DisplayPath(Path)
+%
+
+mdl_DisplayPath(Path) :-
+	write('path: '),
+	mdl_WritePath(Path),
+	nl,
+	!.
+
+mdl_DisplayPath(Path) :-
+	fmt_write('\n### mdl_DisplayPath failed for Path:%S ###\n\n',arg(Path)).
+
+
+mdl_WritePath(Path) :-
+	mdl_DeterminePath(Path,X,Y,L),
+	mdl_WritePath(X,Y,L).
+
+mdl_WritePath(X,Y,L) :-
+	fmt_write('%S -%S-> %S',arg(X,L,Y)).
+
+
+mdl_DeterminePath(path(_N,X,Y,L,_T,_I),IdX,IdY,L) :-
+	mdl_DetermineID(X,IdX),
+	mdl_DetermineID(Y,IdY).
+
+
+
+mdl_writeGraphRuleName('') :-!.
+
+mdl_writeGraphRuleName(RuleName) :-
+	fmt_write('"%S" [shape=plaintext,color=white];\n',arg(RuleName)).
+
+/*
+mdl_GraphStep(RuleName,TriggerPaths) :-
+	gensym(step,FileName),
+	concat_atom(['./dot_cache/',FileName,'.dot'],DotPathname),
+	mdl_GraphState(DotPathname,TriggerPaths,RuleName),
+	concat_atom(['dot -Tjpg ',DotPathname,' -o./jpeg_cache/',FileName,'.jpeg'],JPegCommand),
+	shell(JPegCommand,_Result).
+*/
+
+mdl_GraphStep(_RuleName,_TriggerPaths).
+
+
+mdl_GraphPaths([],_TriggerPaths) :- !.
+
+mdl_GraphPaths([Path|Paths],TriggerPaths) :-
+	mdl_GraphPath(Path,TriggerPaths),
+	mdl_GraphPaths(Paths,TriggerPaths).
+
+mdl_GraphPath(path(_N,X,Y,L,_T,I),TriggerPaths) :-
+	mdl_DetermineID(X,IdX),
+	mdl_DetermineID(Y,IdY),
+	mdl_EdgeAttributeCheck(IdX-IdY,I,TriggerPaths,Attributes),
+	write('\t'),
+	mdl_GraphPath1(IdX),
+	write(' -> '),
+	mdl_GraphPath1(IdY),
+	fmt_write(' [%Slabel = "',arg(Attributes)),
+	mdl_writeGraphLable(L),
+	write('"];\n').
+
+
+mdl_GraphPath1(X-Y) :-
+	!,
+	fmt_write('"%S-%S"',arg(X,Y)).
+
+mdl_GraphPath1(X) :-
+	fmt_write('%S',arg(X)).
+
+
+mdl_writeGraphLable([]) :-!.
+
+mdl_writeGraphLable([Label|Labels]) :-
+	fmt_write('%S\\n',arg(Label)),
+	mdl_writeGraphLable(Labels).
+
+
+mdl_EdgeAttributeCheck(Path,_I,TriggerPaths,'color=red,') :-
+	memberchk(Path,TriggerPaths),
+	!.
+mdl_EdgeAttributeCheck(_Path,1,_TriggerPaths,'color=deepskyblue,') :- !.
+mdl_EdgeAttributeCheck(_Path,_I,_TriggerPaths,'style=dashed,').
+
+
+/*
+
+clust.dot
+
+	subgraph cluster_0 {
+		label = "hello world";
+		a -> b;
+		a -> c;
+		color = hot_pink;
+	}
+
+*/
+
+
+
+
+mdl_GraphNodesInPaths([]) :- !.
+
+mdl_GraphNodesInPaths(Paths) :-
+	mdl_PathNodes(Paths,Nodes),
+	write('\tordering=out;\n'),
+	mdl_GraphNodes(Nodes).
+
+mdl_GraphNodes([]) :- !.
+
+mdl_GraphNodes([Node|Nodes]) :-
+	mdl_GraphNode(Node),
+	!,
+	mdl_GraphNodes(Nodes).
+
+mdl_GraphNodes([_Node|Nodes]) :-
+	mdl_GraphNodes(Nodes).
+
+mdl_GraphNode([]) :- !.
+
+mdl_GraphNode(Start-End) :-
+	!,
+	fmt_write('\t"%S-%S"  [label="[ ',arg(Start,End)),
+	writeDate(Start),
+	write(' - '),
+	writeDate(End),
+	write(' ]"];\n').
+
+mdl_GraphNode(Node) :-
+	fmt_write('\t%S  [label="T%S"];\n',arg(Node,Node)).
+
+
+mdl_PathNodes(Paths,NodesOut) :-
+	findall(Node,(member(Path,Paths),mdl_PathNode(Path,Node)),Nodes),
+	sort(Nodes,NodesOut).
+
+mdl_PathNode(path(_N,X,_Y,_L,_T,_I),IdX) :- mdl_DetermineID(X,IdX).
+mdl_PathNode(path(_N,_X,Y,_L,_T,_I),IdY) :- mdl_DetermineID(Y,IdY).
+
+
+writeDate(JD) :-
+	date(JD, Year, Month, Day),
+	date_string('YYYY-MM-DD',[Year,Month,Day],Date),
+	write(Date).
+
+
+mdl_GetConstraintPaths(Paths) :-
+ 	global_term_ref_1(Store),
+ 	get_attr(Store,timeConstraints,Attr),
+	(
+	Attr =.. [v,_|Susps] ->
+		findall(Path,(member(L,Susps),member(S,L),S =.. [_,_,_,_,_,_,F|A],Path=..[F|A]),Paths)
+		;
+		findall(Path,(member(S,Attr),S =.. [_,_,_,_,_,_,F|A],Path=..[F|A]),Paths)
+	),
+	!.
+
+mdl_GetConstraintPaths([]).
+
+#endif
+

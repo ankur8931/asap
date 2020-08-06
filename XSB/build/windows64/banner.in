@@ -1,0 +1,3 @@
+XSB Version @xsb_full_version_name@ of @release_monthname@ @release_day@, @release_year@
+[x64-pc-windows; mode: @compile_mode@; engine: @engine_mode@; scheduling: @xsb_scheduling_strategy@]
+[@xsb_patch_date@]

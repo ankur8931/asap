@@ -1,0 +1,6 @@
+To compile and install the XSB installer, type:
+
+	sh makeinstall.sh
+	
+The InstallXSB.jar will be generated under XSB/
+This is the file to click in order to start the installation.

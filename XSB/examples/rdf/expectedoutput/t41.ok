@@ -1,0 +1,13 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : n = http://www.nist.gov/units/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = John_Smith],[element(http://www.nist.gov/units/ : weight,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : ID = JohnWeight,http://www.w3.org/1999/02/22-rdf-syntax-ns# : parseType = Resource],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : value,[],[200]),element(http://www.nist.gov/units/ : units,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : resource = http://www.nist.gov/units/Pounds],[])])])])
+
+----------RDF----------
+
+[description(description,about(John_Smith),[http://www.nist.gov/units/ : weight = description(description,id(#JohnWeight),[rdf : value = literal(200),http://www.nist.gov/units/ : units = description(description,about(http://www.nist.gov/units/Pounds),[])])])]
+
+--------Triples--------
+
+{#JohnWeight, http://www.w3.org/1999/02/22-rdf-syntax-ns#value, literal(200)}
+{#JohnWeight, http://www.nist.gov/units/units, http://www.nist.gov/units/Pounds}
+{John_Smith, http://www.nist.gov/units/weight, #JohnWeight}

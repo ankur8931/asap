@@ -1,0 +1,6 @@
+:- ['../test'].
+:- xlc(rether).
+
+test(Formula) :-
+	writeln('rether'(Formula)), 
+	check_all(rether,ns(0)).

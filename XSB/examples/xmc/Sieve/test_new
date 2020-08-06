@@ -1,0 +1,4 @@
+sieve(3,4,17) ae_finish
+Modelcheck from TEXT MODE gives 	mck(sieve(3,4,17),ae_finish) is true.
+Modelcheck from GUI gives true
+Justification tree has 423 nodes.

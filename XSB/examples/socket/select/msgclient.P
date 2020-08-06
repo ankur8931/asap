@@ -1,0 +1,113 @@
+%% Enhances msgclient/msgserver with socket_select.
+%% Shows how to create select group and use it.
+%% Uses regular and socket_select timeouts. 
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "timer_defs_xsb.h"
+#include "char_defs.h"
+
+:- ['auxdefs'].
+:- import tryN/5 from auxdefs.
+
+:- import 
+     socket/2, socket_connect/4, socket_set_option/3,
+     socket_close/2, socket_recv/3, socket_send/3, socket_set_select/4,
+     socket_select/6,socket_select_destroy/1 from socket.
+:- import file_close/1 from file_io.
+
+
+%% machine where server is running
+machine(localhost).
+%% Try something else:
+%%machine(compserv1).
+
+%% Port on which the server is listening
+%% Server must bind to this port
+xsb_port(6025).
+
+client :-
+	writeln('started client...'),
+	machine(IPAddrOrHostname),
+	xsb_port(XSB_port),
+	tryN(4,
+	     try_connect(Sockfd0 ,XSB_port, IPAddrOrHostname, Ecode2),
+	     (writeln(sock_connect1(Sockfd0,XSB_port,IPAddrOrHostname,Ecode2)),
+		 writeln('connected to server...')),
+	     writeln('Cannot connect to server'),
+	     Ecode2
+	    ),
+	%% Socket for reading replies
+	tryN(4,
+	     try_connect(Sockfd1, XSB_port, IPAddrOrHostname, Ecode3),
+	     writeln(socket_connect2(Sockfd1,XSB_port,IPAddrOrHostname,Ecode3)),
+	     writeln('Cannot connect to server'),
+	     Ecode3
+	     ),
+	socket_set_select(readtest2, [Sockfd1],[],[]),
+	socket_set_select(writetest2, [],[Sockfd0],[]),
+	writeln(socket_set_select(readtest2, [Sockfd1],[],[])),
+	writeln(socket_set_select(writetest2, [],[Sockfd0],[])),
+
+	client_loop(Sockfd0, Sockfd1),
+
+	socket_select_destroy(readtest2),
+	socket_select_destroy(writetest2),
+	writeln('select destroyed').
+
+client :- writeln('Client error: exiting...').
+      
+
+
+client_loop(Sockfd0, Sockfd1) :-  
+  nl, write('Please enter goal: g(X). or h(X).  Type e. to finish. Goal: '), 
+  read_canonical(Goal),
+  ((Goal == 'e' ; Goal == end_of_file) ->
+      !,
+      socket_close(Sockfd0, _),
+      socket_close(Sockfd1, _),
+      writeln('Exiting.'), true
+  ;   
+      nl,writeln(send(Goal)),
+      fmt_write_string(GoalStr, '%S.', arg(Goal)),
+
+      socket_select(writetest2,_,Availr,Availw,Availe,Err),
+      writeln( socket_select(writetest2,_,Availr,Availw,Availe,Err)),
+      (   Availw==[]
+      ->  writeln('no available write socket'),fail
+      ;   socket_send(Sockfd0, GoalStr, _Er) 
+      ),
+      writeln('Answers: '),
+      repeat,
+      socket_select(readtest2,_,Availr2,Availw2,Availe2,Err2),
+      writeln( socket_select(readtest2,_,Availr2,Availw2,Availe2,Err2)),
+
+      (Availr2 == []
+      -> writeln('no available read socket'),fail
+      ;  socket_recv(Sockfd1, AnswerStr,_)
+      ),
+      file_open(AnswerStr,sr,IOport),
+      file_read(IOport,Answer),
+      file_close(IOport),
+      (Answer==end_of_file 
+      -> !, true
+      ;  (   Answer == 'end' 
+	 ->  client_loop(Sockfd0, Sockfd1)
+	 ;   write('    '),
+	     write(Answer), nl, 
+	     fail
+	 )
+      )
+  ).
+ 
+
+ %% Open socket and connect
+ try_connect(Sockfd0,XSB_port,IPAddrOrHostname,Ecode) :-
+	 socket(Sockfd0, ErrCode1),
+	 (ErrCode1 =\= SOCK_OK
+	 -> writeln('Cannot connect to the server.'), fail
+	 ; true),
+	 socket_set_option(Sockfd0,linger,SOCK_NOLINGER),
+	 socket_connect(Sockfd0, XSB_port, IPAddrOrHostname, Ecode).
+
+

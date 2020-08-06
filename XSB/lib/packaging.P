@@ -1,0 +1,147 @@
+/* File:      packages.P -- Package bootstrapping aid
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: packaging.P,v 1.11 2011-05-01 05:42:32 kifer Exp $
+** 
+*/
+
+:- compiler_options([sysmod,optimize]).
+
+:- dynamic package_configuration/2.
+:- import package_configuration/2 from usermod.
+:- import library_directory/1 from usermod.
+
+%% This predicate is suppsed to keep track of the packages.
+%% Currently, the only conventions for the first arg are: dir(<packname>),
+%% version(<packname>), loaded(<packname>) (yes/no).
+%% The latter is supposed to tell us which packages are loaded.
+
+%% This predicate is for bootstrapping packages in the packages/ directory
+%% PackageDirs is a dir in the packages/ directory where the package is
+%% installed, or it is a list containing the package dir and any additional
+%% subdirectories in package dir that must be placed on the library path.
+%% PackageName is the name given to the package.
+bootstrap_package(PackageDirs, PackageName) :-
+	bootstrap(packagesdir, PackageDirs, PackageName).
+
+ensure_package_bootstrapped(PackageDirs,PackageName) :-
+	(package_configuration(loaded(PackageName),yes)
+	 ->	true
+	 ;	bootstrap_package(PackageDirs,PackageName)
+	).
+
+%% This is for bootstrapping packages installed in the system lib/ directory
+bootstrap_syspackage(PackageDirs, PackageName) :-
+	bootstrap(libdir, PackageDirs, PackageName).
+
+%% This one for packages installed in the site directory
+bootstrap_sitepackage(PackageDirs, PackageName) :-
+	bootstrap(site_libdir, PackageDirs, PackageName).
+
+%% This one for packages installed in the use-specified directory
+bootstrap_userpackage(LibDir, PackageDirs, PackageName) :-
+	expand_filename(LibDir, LibDir1),
+	bootstrap1(LibDir1, PackageDirs, PackageName).
+
+%% SysDir is the tag for the appropriate system directory as used in
+%% xsb_configuration. The tags of interest to us are `packagesdir' and
+%% `libdir'. It is possible, but unlikely, that `syslibdir' will also be
+%% used in the future.
+bootstrap(SysDir, PackageDirs, PackageName) :-
+    xsb_configuration(SysDir, SysdirPath),
+    bootstrap1(SysdirPath, PackageDirs, PackageName).
+
+bootstrap1(SysdirPath, PackageDirs, PackageName) :-
+    (	package_configuration(loaded(PackageName), yes)
+    ->	fail
+    ;	
+	assert_package_dirs(PackageName, SysdirPath, PackageDirs),
+	assert(package_configuration(loaded(PackageName), yes))
+    ).
+
+assert_package_dirs(PackageName, SysdirPath, PackageDirs) :-
+    !,
+    ( PackageDirs = [PackageDir| Dirs] -> true
+    ;	
+	PackageDir = PackageDirs, Dirs = []
+    ),
+    slash(Slash),
+    fmt_write_string(FullPackageDirname,
+		     '%s%s%s', f(SysdirPath,Slash,PackageDir)),
+    assert(package_configuration(dir(PackageName), FullPackageDirname)),
+    assert(library_directory(FullPackageDirname)),
+    put_pkg_dirs_on_libpath(FullPackageDirname,Dirs,ExpandedDirs),
+    assert(package_configuration(libdirs(PackageName), ExpandedDirs)).
+
+
+put_pkg_dirs_on_libpath(_,[],[]) :- !.
+put_pkg_dirs_on_libpath(FullPkgDirname,[Dir|Dirs],ExpandedDirs) :-
+    slash(Slash),
+    fmt_write_string(FullDirname, '%s%s%s', f(FullPkgDirname,Slash,Dir)),
+    assert(library_directory(FullDirname)),
+    put_pkg_dirs_on_libpath(FullPkgDirname, Dirs, ExpandedDirs1),
+    ExpandedDirs = [FullDirname|ExpandedDirs1].
+	
+
+%% This is useful for keeping library_directory under control
+%% and to clean up after a package crash.
+unload_package(PackageName) :-
+    package_configuration(dir(PackageName), FullPackageDirname),
+    retract(library_directory(FullPackageDirname)),
+    package_configuration(libdirs(PackageName), Dirs),
+    remove_pkg_dirs_from_libpath(Dirs),
+    retract(package_configuration(loaded(PackageName), _)),
+    retract(package_configuration(version(PackageName), _)),
+    retract(package_configuration(libdirs(PackageName), _)),
+    retract(package_configuration(dir(PackageName), _)).
+
+remove_pkg_dirs_from_libpath([]) :- !.
+remove_pkg_dirs_from_libpath([Dir|Dirs]) :-
+    retract(library_directory(Dir)),
+    remove_pkg_dirs_from_libpath(Dirs).
+
+%%% some common tools used in package configuration
+xsb_running_under(cygwin) :-
+	xsb_configuration(architecture, A),
+	str_sub(cygwin, A),
+	!.
+xsb_running_under(windows) :-
+	xsb_configuration(architecture, A),
+	str_sub(windows, A),
+	!.
+xsb_running_under(windows64) :-
+	xsb_configuration(architecture, A),
+	str_sub(windows, A),
+	str_sub(x64, A),
+	!.
+xsb_running_under(darwin) :-
+	xsb_configuration(architecture, A),
+	str_sub(darwin, A),
+	!.
+xsb_running_under(unix) :-
+	\+ xsb_running_under(cygwin),
+	\+ xsb_running_under(darwin),
+        \+ xsb_running_under(windows).
+
+%% Windows semantics for renaming is such that the op fails, 
+%% if the target exists
+force_rename_file(Orig,Target) :-
+	(path_sysop(unlink,Target), !; true),
+	path_sysop(rename,Orig,Target).

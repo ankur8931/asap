@@ -1,0 +1,193 @@
+/* File:      subsumes.P
+** Author(s): Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: subsumes.P,v 1.6 2005/12/20 19:45:13 dwarren Exp $
+** 
+*/
+
+:- compiler_options([sysmod,optimize]).
+
+%   subsumes_chk(General, Specific)
+%   is true when Specific is an instance of General. However, this
+%   predicate performs the test without binding any variables neither
+%   in General nor in Specific.
+
+/*subsumes_chk(General, Specific) :-
+ 	\+  (	numbervars(Specific),
+ 		\+ (General = Specific)
+ 	    ).*/
+
+subsumes_chk(General, Specific) :-
+	\+ \+ subsumes(General,Specific).
+
+% ISO
+subsumes_term(General, Specific) :-
+	\+ \+ subsumes(General,Specific).
+
+
+%   subsumes(General, Specific)
+%   is true when Specific is an instance of General. Unlike subsumes_chk/2
+%   this predicate will bind variables in General (but not those in Specific)
+%   so that General becomes identical to Specific.
+
+/*subsumes(General, Specific) :-
+	subsumes_chk(General, Specific),
+	General = Specific. */
+
+subsumes(General, Specific) :-
+	excess_vars(Specific,[],[],Vars),
+	General = Specific,
+	is_most_general_term(Vars).
+	
+
+/*** SB-Prolog one
+subsumes(X,Y) :- \+ (X=Y),!,fail.
+subsumes(X,Y) :- numbervars(Y,0,_),\+ (X=Y),!,fail.
+subsumes(_,_).
+***/
+
+%   variant(Term1, Term2)
+%   is true when Term1 and Term2 are alphabetic variants. The definition 
+%   here is not quite right;  if Term1 and Term2 share any variables it 
+%   may give the wrong answer. It is only meant to be used when the two 
+%   terms have no variables in common. 
+
+/*** A naive first version
+variant(Term1, Term2) :-
+	subsumes_chk(Term1, Term2),
+	subsumes_chk(Term2, Term1).
+***/
+
+/*** A semi-naive second version without attributed variables, and not threadsafe **
+variant(X,Y) :- \+ (X=Y), !, fail.
+variant(X,Y) :- conset('_$variant_cnt',0),
+		\+ variant1(X,Y), !, fail.
+variant(_,_).
+
+variant1(X,Y) :-
+	term_type(X,Ty), term_type(Y,Ty1), Ty=Ty1,
+	(Ty =:= 3	% list
+	 ->	X=[X1|X2], Y=[Y1|Y2],
+	 	variant1(X1,Y1), variant1(X2,Y2)
+	 ; Ty =:= 1	% str
+	 ->	term_psc(X,Xpsc), psc_arity(Xpsc,Arity),
+		term_psc(Y,Ypsc), psc_arity(Ypsc,Arity1), Arity=Arity1,
+		variant1(X,Y,Arity)
+	 ; Ty =:= 0	% vars
+	 ->	conget('_$variant_cnt',I0),
+	 	I is I0+1, conset('_$variant_cnt',I),
+		X = '$VAR'(I0), Y = X
+	 ;	X = Y
+	).
+
+variant1(X,Y,N) :-
+	(N =:= 0
+	 ->	true
+	 ;	term_arg(X,N,X1), term_arg(Y,N,Y1),
+	 	variant1(X1,Y1),
+		N1 is N-1, variant1(X,Y,N1)
+	).
+
+*****************/
+
+/******* Version that handles attributed variables **********/
+variant(X,Y) :- \+ (X=Y), !, fail. % for efficiency; may call attribute handler(?)
+variant(X,Y) :- \+ variant1(X,Y,0,_), !, fail.
+variant(_,_).
+
+variant1(X,Y,I0,I) :-
+	term_type(X,Ty), term_type(Y,Ty1), Ty=Ty1,
+	(Ty =:= 3	% list
+	 ->	X=[X1|X2], Y=[Y1|Y2],
+	 	variant1(X1,Y1,I0,I1), variant1(X2,Y2,I1,I)
+	 ; Ty =:= 1	% str
+	 ->	term_psc(X,Xpsc), psc_arity(Xpsc,Arity),
+		term_psc(Y,Ypsc), psc_arity(Ypsc,Arity1), Arity=Arity1,
+		variant1(X,Y,1,Arity,I0,I)
+	 ; Ty =:= 0	% vars
+	 ->	X = '$VAR'(I0), I is I0 + 1, Y = X
+	 ; Ty =:= 7	% attv
+	 ->	get_attributes(X,Xattr),
+		get_attributes(Y,Yattr),
+		attv_unify(X,'$VAR'(I0)),
+		attv_unify(Y,'$VAR'(I0)),
+		I1 is I0 + 1,
+		variant1(Xattr,Yattr,I1,I)		
+	 ;	I = I0, X = Y
+	).
+
+variant1(X,Y,N,A,I0,I) :-
+	(N > A
+	 ->	I = I0
+	 ;	term_arg(X,N,X1), term_arg(Y,N,Y1),
+	 	variant1(X1,Y1,I0,I1),
+		N1 is N+1, variant1(X,Y,N1,A,I1,I)
+	).
+
+/************** a version that does syntactic subsumption of attributed variables ***
+subsumes_chk(GT,ST) :-
+	\+ \+ subsumes_chk(GT,ST,0,_).
+
+subsumes_chk(GT,ST,I0,I) :-
+	term_type(GT,GTy), term_type(ST,STy),
+	(GTy =:= 0		% var
+	 ->	(STy =:= 0
+		 ->	GT = '$VAR'(I0),
+			GT = ST,
+			I is I0 + 1
+		 ;	GT = ST,
+			I = I0
+		)
+	 ; GTy =:= 7		% attributed var
+	 ->	(STy =:= 0
+		 ->	fail	% ? empty attr?
+		 ; STy =:= 7
+		 ->	get_attributes(GT,GTAttrs),
+			get_attributes(ST,STAttrs),
+			subsumes_chk(GTAttrs,STAttrs,I0,I),
+			attv_unify(GT,ST)
+		 ;	GT = ST,
+			I0 = I
+		)
+	 ; GTy =:= 3		% list
+	 ->	STy =:= 3,
+		GT = [GTA|GTB],
+		ST = [STA|STB],
+		subsumes_chk(GTA,STA,I0,I1),
+		subsumes_chk(GTB,STB,I1,I)
+	 ; GTy =:= 1		% structure
+	 ->	STy =:= 1,
+		functor(GT,F,A),
+		functor(ST,F,A),
+		subsumes_chk(GT,ST,1,A,I0,I)
+	 ;	GT == ST,
+		I0 = I
+	).
+
+subsumes_chk(GT,ST,N,A,I0,I) :-
+	(N > A
+	 ->	I = I0
+	 ;	arg(N,GT,GTA),
+		arg(N,ST,STA),
+		subsumes_chk(GTA,STA,I0,I1),
+		N1 is N+1,
+		subsumes_chk(GT,ST,N1,A,I1,I)
+	).
+***********************************************************************/

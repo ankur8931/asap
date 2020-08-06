@@ -1,0 +1,3 @@
+test_encode_url on http://www.cs.sunysb.edu/~cse532/
+Directory = http%3A%2F%2Fwww%2Ecs%2Esunysb%2Eedu%2F%7Ekifer%2FCourses%2Fcse532
+File = index.html

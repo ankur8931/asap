@@ -1,0 +1,203 @@
+
+:- [libwww].
+
+:- import libwww_request/1 from libwww.
+
+
+%% XML
+:- libwww_request([xml('http://www.w3.org/TR/1998/REC-xml-19980210.xml',
+		       [timeout(19)],P,Y,Z)]).
+%% swww.etrade.com times out
+:- libwww_request([html('http://swww.etrade.com/', [timeout(15)],P,Y,Z),
+		   html('http://www.etrade.com/', [timeout(15)],PP,YY,ZZ)]).
+%% Should timeout, but hangs instead (in select call).
+%% The extra timer trick solves this problem.
+:- libwww_request([html('http://swww.etrade.com/', [timeout(6)],P,Y,Z)]).
+:- libwww_request([html('http://www.etrade.com/', _,P,Y,Z)]).
+:- libwww_request([xml('files/REC-xml-19980210.xml',X,P,Y,Z)]).
+:- libwww_request([xml('files/simple.xml',X,PP,Y,Z),
+		   xml('files/REC-xml-19980210.xml',[],P,Yz,Zz)]).
+:- libwww_request([xml('http://www.w3.org/TR/1998/REC-xml-19980210.xml',
+		       XX,P,YY,ZZ),
+		   xml('files/simple.xml',X,PP,Y,Z)
+		  ]).
+:- libwww_request([xml('files/simple.xml',X,P,Y,Z)]).
+:- libwww_request([xml('files/simple_wrong.xml',X,P,Y,Z)]).
+:- libwww_request([xml('files/simple.xml',
+			[selection([a,f],[d],[c])],
+			P,Y,Z)]).
+:- libwww_request([xml('files/simple1.xml',[],P,Y,Z)]).
+:- libwww_request([xml("files/simple1.xml",[],P,Y,Z)]).
+:- libwww_request([xml('http://www.ug.cs.sunysb.edu/~kifer/test/simple.xml',
+		       [authorization([c(_,testuser,hahaha)]),
+			if_modified('Tue, 21 Sep 1999 14:46:36 GMT')],
+		       P,Y,Z)]).
+:- libwww_request([xml('http://www.cs.sunysb.edu/~kifer/test/simple.xml',
+		       [],P,Y,Z),
+		   html('http://www.cs.mit.edu',ZZ,PP,YY,XXX)]).
+:- libwww_request([xml('http://www.cs.sunysb.edu/~kifer/test/simple.xml',
+		       [],P,Y,Z),
+		   html('http://www.cs.sunysb.edu',ZZ,PP,YY,XXX)]).
+:- libwww_request([xml('http://www.cs.sunysb.edu/',Z,P,Y,XXX)]).
+:- libwww_request([html('http://www.cs.sunysb.edu/',Z,P,Y,XXX)]).
+
+:- libwww_request([html('http://www.cs.mit.edu',Z,P,Y,XXX)]).
+:- libwww_request([html('http://localhost/',Z,P,Y,XXX)]).
+:- libwww_request([html("http://localhost/",Z,P,Y,XXX)]).
+
+:- libwww_request([xml('http://localhost/simple.xml',
+		       [if_modified('Tue, 21 Sep 1999 14:46:36 GMT')],
+		       P,Y,XXX)]).
+:- libwww_request([xml('http://phony/simple.xml',
+		       [if_modified('Tue, 21 Sep 1999 14:46:36 GMT')],
+		       P,Y,XXX)]).
+
+:- libwww_request([head('http://localhost/',Z,P,Y,XXX)]).
+:- libwww_request([fetch("http://localhost/",Z,P,Y,XXX)]).
+
+:- libwww_request([head('http://www.cs.sunysb.edu/',Z,P,Y,XXX)]).
+:- libwww_request([html('http://www.sunysb.edu/abcddfs',Z,P,Y,XXX)]).
+:- libwww_request([html('http://www.cs.sunysb.edu',[timeout(1)],P,Y,X)]).
+
+%% Libwww loops on this one
+%% The extra timer trick alleviates this problem by timing out everything.
+:- libwww_request([html('http://localhost/',
+			[if_modified('Tue, 21 Sep 2000 14:46:36 GMT')],
+			P,Y,X),
+		   fetch('http://localhost/sub/test.html',Z,PPP,YYY,XXX),
+	 	   fetch('http://localhost/',
+			[if_modified('Tue, 21 Mar 1998 14:46:36 GMT')],
+			 PP,YY,XX),
+		   fetch('hp://localhost/sub/001.ent',ZZ,PPPP,YYYY,XXXX)
+		  ] ).
+:- libwww_request([html('http://www.ug.cs.sunysb.edu/',
+			[if_modified('Tue, 21 Sep 2000 14:46:36 GMT')],
+			P,Y,X),
+		   fetch('http://www.cs.sunysb.edu/',Z,PPP,YYY,XXX),
+	 	   fetch('http://www.ug.cs.sunysb.edu/',
+			[if_modified('Tue, 21 Mar 1998 14:46:36 GMT')],
+			 PP,YY,XX),
+		   fetch('hp://www.cs.sunysb.edu/',ZZ,PPPP,YYYY,XXXX)
+		  ] ).
+:- libwww_request([fetch('http://localhost/sub/001.ent',Z,PPP,YYY,XXX),
+		   ff('http://localhost/sub/001.ent',Z,PPPP,YYYY,XXXX)]).
+:- libwww_request([fetch('http://localhost/22',Z,P,Y,XXX)]).
+:- libwww_request([fetch('http://localhost/',[timeout(1)],P,Y,XXX)]).
+:- libwww_request([fetch('http://localhost/22',Z,P,Y,XXX),
+		   fetch('http://localhost/22',_,_,_,XX),
+		   fetch('http://localhost/22',_,_,_,X),
+		   fetch('http://localhost/',[timeout(1)],P1,Y1,X1)
+		   ]).
+:- libwww_request([fetch('http://www.cs.sunysb.edu/~kifer/test/22',Z,P,Y,XXX),
+		   fetch('http://www.cs.sunysb.edu/~kifer/test/22',_,_,_,XX),
+		   fetch('http://www.cs.sunysb.edu/~kifer/test/22',_,_,_,X),
+		   fetch('http://www.cs.sunysb.edu/',
+			 [timeout(1)],P1,Y1,X1)
+		   ]).
+:- libwww_request([fetch('files/simple.html', X,P,Y,Z)]).
+
+:- libwww_request([html('files/test2.html',[selection(['FORM','TABLE'],_,_)],
+			P,Y,X)]).
+:- libwww_request([html('files/test2.html',
+			[selection(['FORM','TABLE'],_,_)],PP,Y,X),
+		   html('files/test1.html',
+			[selection(['FORM','TABLE'],_,_)],P,YX,XX)]).
+
+:- libwww_request([html('files/newsday1.html',
+			[selection(['FORM','TABLE'],[p,hr],_)],P,Y,X),
+		   html('files/newsday1.html',[selection(_,[p,hr],_)],PP,YY,XX)
+		  ]).
+
+:- libwww_request([html('files/w3c.html',
+			[selection(['FORM','TABLE'],_,_)],P,Y,X)]).
+:- libwww_request([html('files/w3c1.html',
+			[selection(['FORM','TABLE'],_,[font,p])],P,Y,X)]).
+:- libwww_request([html('files/w3c1.html', [selection(['FORM'],_,_)],P,Y,X)]).
+:- libwww_request([html('files/w3c1.html', [],P,Y,Z)]).
+
+:- libwww_request([html('http://www.ug.cs.sunysb.edu/~kifer/test/test.html',
+			[authentication([c(unknown,kkk,lll),
+					 c('SUNYStonyBrook',
+					   testuser,hahaha)])],
+			P,Y,Z)]).
+:- libwww_request([html('http://www.ug.cs.sunysb.edu/~kifer/test/test.html',
+			[authentication([c(unknown,kkk,lll),
+					 c(_,testuser,ppp)])],
+			P,Y,Z)]).
+:- libwww_request([html('http://www.ug.cs.sunysb.edu/~kifer/test/test.html', 
+			X,P,Y,Z)]).
+
+
+:- libwww_request([html('files/simple.html', X,P,Y,Z)]).
+:- libwww_request([html('files/simple.html', [selection([a],_,_)],P,Y,Z),
+		   html('files/simple.html',
+			[selection([body,a,form],[ul,p],_)],PP,YY,ZZ)
+		  ]).
+
+:- libwww_request([html("files/simple.html", [selection([a],_,_)],PP,Y,Z),
+		   html('files/simple.html',
+			[selection([body,a,form],[ul,p],_)],P,Ya,Za)]).
+
+:- libwww_request([html('http://www.amazon.com',
+			[selection([body,a,form],[ul,p],_)],PP,Y,Z),
+		   html('http://www.w3c.org',
+			[selection(['FORM','TABLE'],_,_)],P,Y1,Z1)]).
+:- libwww_request([html('http://www.amazon.com/exec/obidos/subst/home/home.html/104-9212421-6329226',
+			[selection([form],[ul,p],_)],PP,Y,Z),
+		   html('http://www.w3.org',
+			[selection(['FORM'],[p],_)],P,Y1,Z1)]).
+:- libwww_request([html('files/test2.html',
+			[selection(['FORM','TABLE'],_,_)],PPP,Y,X),
+		   html('http://www.w3c.org',
+			[selection(['FORM'],[p],_)],PP,Y1,Z1),
+		   html('http://www.w3c.org',
+			[selection(['FORM'],[p],_)],P,Y2,Z2)
+		    ]).
+
+:- libwww_request([html('files/simple2.html', [],P,Y,X)]).
+
+:- libwww_request([html('http://infoseek.go.com/Titles',
+			[method(get), formdata(['qt=computer+science']),
+			 selection(_,['TABLE',form,title,img,p,br,
+				      hr,frame,iframe],[font,base,pcdata])],
+			P,Y,Z)]).
+:- libwww_request([html('http://www.amazon.com/exec/obidos/search-handle-form/002-0526407-6129061',
+			[method(post),
+			 formdata(['index=books','field-keywords=java']),
+			 selection(_,['TABLE',form,title,img],[font])],
+			P,Y,Z)]).
+%% Wrong method: GET instead of POST (should return error)
+:- libwww_request([html('http://www.amazon.com/exec/obidos/search-handle-form/002-0526407-6129061',
+			[method(get),
+			 formdata(['index=books','field-keywords=java']),
+			 selection(_,['TABLE',form,title,img],[font])],
+			P,Y,Z)]).
+
+:- libwww_request([rdf('files/ex2.rdf', X,P,Y,Z)]).
+:- libwww_request([rdf('files/ex3.rdf', X,P,Y,Z)]).
+:- libwww_request([rdf('files/ex4.rdf', X,P,Y,Z)]).
+:- libwww_request([rdf('files/ex5.rdf', X,P,Y,Z)]).
+:- libwww_request([rdf('files/ex6.rdf', X,P,Y,Z)]).
+:- libwww_request([rdf('files/ex7.rdf', X,P,Y,Z)]).
+:- libwww_request([rdf('http://localhost/ex3rdf.html', [timeout(9)],P,Y,Z)]).
+:- libwww_request([rdf('http://localhost/ex3.rdf', [timeout(9)],P,Y,Z)]).
+:- libwww_request([rdf('http://www.w3.org/XML/2000/04soccer-sched/team-2.rdf',
+		       [timeout(9)],P,Y,Z)]).
+:- libwww_request([html('http://www.w3.org/XML/2000/04soccer-sched/team-2.rdf',
+			[timeout(9)],P,Y,Z)]).
+
+%% This should give an error about Y being bound.
+:- libwww_request([rdf('files/ex5.rdf', X,P,Y,Z),
+		   xml('http://www.ug.cs.sunysb.edu/~kifer/test/simple.xml',
+		       [authorization([c(_,testuser,hahaha)]),
+			if_modified('Tue, 21 Sep 1999 14:46:36 GMT')],
+		       P,Y,Z),
+		   rdf('http://www.w3.org/XML/2000/04soccer-sched/team-2.rdf',
+		       X,P,Y,Z)]).
+:- libwww_request([rdf('files/ex5.rdf', X,P,Y,Z),
+		   xml('http://www.ug.cs.sunysb.edu/~kifer/test/simple.xml',
+		       [authorization([c(_,testuser,hahaha)]),
+			if_modified('Tue, 21 Sep 1999 14:46:36 GMT')],
+		       P1,Y1,Z1),
+		   rdf('http://www.w3.org/XML/2000/04soccer-sched/team-2.rdf',
+		       X2,P2,Y2,Z2)]).

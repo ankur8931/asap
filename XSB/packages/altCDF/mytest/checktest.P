@@ -1,0 +1,120 @@
+
+:- [altcdf].
+
+:- import load_extensional_facts/1 from cdf_io.
+:- import isa/2, hasAttr/3, classHasAttr/3, allAttr/3, minAttr/4, maxAttr/4
+              from cdf_init_cdf.
+:- import check_types/2,  check_types_checkflag/2, 
+	   check_ground/2, check_ground_checkflag/2, 
+	   check_identity/2, check_identity_checkflag/2,
+	   check_implication/2, check_implication_checkflag/2,
+               classify_if_necessary/2, classify_if_necessary_checkflag/2,
+	   check_redundancies/2,
+	   check_object_constraints/2
+                                   from cdf_checks.
+
+:- import member/2 from basics.
+
+reset:- 
+	load_extensional_facts('cdftest1'),
+	ensure_checks.
+
+check_query_off:- 
+	retractall(cdf_flags(query,_)).
+
+ensure_checks:- 
+	((cdf_flags(query,check(A,B,List)),
+	  member(check_types(A,B),List)) -> 
+	    true 
+	  ; assert(cdf_flags(query,check(A,B,[check_types(A,B)]))) ),
+
+	((cdf_flags(newExtTermSingle,check(A,B,List)) -> 
+	   member(check_ground(A,B),List)) -> 
+	    true 
+	  ; assert(cdf_flags(newExtTermSingle,
+	                             check(A,B,[check_ground(A,B)]))) ),
+
+	((cdf_flags(newExtTermSingle,check(A,B,List)) -> 
+	  member(check_implication(A,B),List)) -> 
+	    true 
+	  ; assert(cdf_flags(newExtTermSingle,
+	                             check(A,B,[check_implication(A,B)]))) ),
+
+	((cdf_flags(newExtTermSingle,check(A,B,List)) -> 
+	  member(check_identity(A,B),List)) -> 
+	    true 
+	  ; assert(cdf_flags(newExtTermSingle,
+	                             check(A,B,[check_identity(A,B)]))) ),
+
+	((cdf_flags(componentUpdate,check(A,B,List)) -> 
+	  member(classify_if_necessary(A,B),List)) -> 
+	    true 
+	  ; assert(cdf_flags(componentUpdate,
+	                             check(A,B,[classify_if_necessary(A,B)]))) ).
+
+check_query_good:- 
+	(isa(cid(c1,test),cid(c2,test)),fail ; true),
+	(hasAttr(cid(c2,test),rid(r2,test),cid(c12,test)),fail ; true),
+	(allAttr(cid(c2,test),rid(r2,test),cid(c12,test)),fail ; true),
+	(classHasAttr(cid(c2,test),crid(s2,test),cid(c12,test)),fail ; true),
+	(minAttr(cid(c2,test),rid(s2,test),cid(c12,test),2),fail ; true),
+	(maxAttr(cid(c2,test),rid(s2,test),cid(c12,test),2),fail ; true).
+
+check_query_bad1:- 
+	(isa(rid(r2,test),cid(c2,test)),fail ; true),
+	(hasAttr(cid(c2,test),crid(r2,test),cid(c12,test)),fail ; true),
+            (allAttr(cid(c2,test),rid(r2,test),crid(c12,test)),fail ; true),
+	(classHasAttr(oid(c2,test),rid(r2,test),cid(c12,test)),fail ; true),
+	(maxAttr(2,rid(r2,test),cid(c12,test),2),fail ; true).
+
+% this one aborts ...
+check_query_bad2:- 
+	(minAttr(cid(c2,test),rid(r2,test),cid(c12,test),cid(2,cdfpt)),fail ; true).
+
+check_checkflags_good:- 
+	check_ground_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c1,test),
+					        rid(r1,test),cid(c2,test))),
+	check_types_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c1,test),
+					        rid(r1,test),cid(c2,test))),
+	check_identity_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c1,test),
+					        rid(r1,test),cid(c333,test))),
+	check_implication_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c1,test),
+					        rid(r1,test),cid(c333,test))).
+
+check_checkflags_bad:- 
+	\+ check_identity_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c2,test),
+					        rid(r2,test),cid(c12,test))),
+	\+ check_implication_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c1,test),
+					        rid(r2,test),cid(c12,test))),
+	check_types_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c1,test),
+					     crid(r1,test),cid(c2,_))).
+
+% this one aborts...
+check_ground_bad:- 
+	check_ground_checkflag(newExtTermSingle,
+	                                     hasAttr_ext(cid(c1,test),
+					        rid(r1,test),cid(c2,_))).
+
+classify_test:- 
+	classify_if_necessary_checkflag(componentUpdate,test).
+
+redund_test1:- 
+	check_query_off,
+	check_redundancies(test,f(test,retract)).
+
+redund_test2:- 
+	check_query_off,
+	check_redundancies(test,f(test,retract)).
+
+constraint_test:- 
+	check_query_off,
+	check_object_constraints(test,test).
+
+end_of_file.

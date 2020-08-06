@@ -1,0 +1,98 @@
+/* File:      pre_cond.P
+** Author(s): Saumya Debray, Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: pre_cond.P,v 1.6 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+
+/*  This file contains predicates that handle conditional statements.
+    At this point, this is limited to the branches of a disjunction
+    with mutually exclusive inline tests, e.g. ">=" and "<".		*/
+
+/*======================================================================*/
+/* compl_cond(+Goal1, +Goal2, -Test, -TruePart, -FalsePart)		*/
+/*	The predicate will succeed, if Goal1 and Goal2 (assumed to be	*/
+/*	two branches in a disjuction) have complementary inline testing */
+/*	parts.	The test, true part, and false part will be returned.	*/
+/*	The complementary inline conditions are defined below.		*/
+/*======================================================================*/
+
+compl_cond(G1, G2, Test, TPart, FPart) :-
+	get_test(G1, Test, TPart), get_test(G2, Test2, FPart),
+	Test = inlinegoal(P,A,Args1), Test2 = inlinegoal(P2,A,Args2),
+	inline_neg0(P, A, P2), 
+	args_same(Args1, Args2).
+
+args_same([], []).
+args_same([A1|R1], [A2|R2]) :- arg_same(A1,A2), args_same(R1,R2).
+
+arg_same(varocc(ID),varocc(ID)).
+arg_same(integer(V), integer(V)).
+arg_same(constant(S), constant(S)).
+arg_same(string(S), string(S)).
+arg_same(structure(Sym, Args1), structure(Sym, Args2)) :-
+	args_same(Args1, Args2).
+
+/*======================================================================*/
+/* get_test(+Goal, -TestPart, -RestPart)				*/
+/*	Partitions the test part (first goal) and the rest of the goal.	*/
+/*======================================================================*/
+
+get_test(and(not(Test0),Rest), Test1, Rest) :-
+	inline_neg(Test0, Test1),
+	!.
+get_test(and(Test0,Rest), Test, and(Rest0,Rest)) :-
+	!,
+	get_test(Test0, Test, Rest0).
+get_test(Test, Test, inlinegoal(true,0,[])).
+
+
+/*======================================================================*/
+/* inline_neg(+Goal1, +Goal2)						*/
+/*	Succeeds iff Goal1 and Goal2 are complementary inline tests	*/
+/*	that do not change the state (without unification).		*/
+/*======================================================================*/
+
+inline_neg(inlinegoal(P,A,Args), inlinegoal(NP,A,Args)) :-
+	inline_neg0(P, A, NP).
+
+inline_neg0('=:=', 2, '=\=').
+inline_neg0('=\=', 2, '=:=').
+%%inline_neg0('>', 2, '=<').  %% not equivalent for floating point inf's 
+%%inline_neg0('>=', 2, '<').
+%%inline_neg0('=<', 2, '>').
+%%inline_neg0('<', 2, '>=').
+
+inline_neg0('==', 2, '\==').
+inline_neg0('\==', 2, '==').
+inline_neg0('@>', 2, '@=<').
+inline_neg0('@>=', 2, '@<').
+inline_neg0('@=<', 2, '@>').
+inline_neg0('@<', 2, '@>=').
+
+inline_neg0(var, 1, nonvar).
+inline_neg0(nonvar, 1, var).
+
+inline_neg0(fail, 0, true).
+inline_neg0(true, 0, fail).
+

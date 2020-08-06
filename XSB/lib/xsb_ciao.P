@@ -1,0 +1,64 @@
+:- compiler_options([sysmod,optimize,xpp_on]).
+
+#include "standard.h"
+
+:- export current_infixop/4, current_postfixop/3, current_prefixop/3,
+	base_name/2, no_path_file_name/2,
+	message/1,
+	ttyflush/0,
+	asserta_fact/1, assertz_fact/1, 
+	retract_fact/1, retractall_fact/1.
+
+:- import asserta/1, assertz/1, retract/1, retractall/1 from assert.
+
+:- import file_flush/2 from file_io.
+:- import concat_atom/2 from string.
+:- import abort/1, current_op/3, parse_filename/4 
+			from usermod.
+:- import message/2 from standard.
+
+% Ciao idioms and support -- adapted from operators.pl
+current_prefixop(Op,Less,Prec):- 
+	current_op(Prec, Type, Op),
+	op_ass(Type,_,Prec,Less,pre).
+
+current_postfixop(Op,Prec,Less):- 
+	current_op(Prec, Type, Op),
+	op_ass(Type,Less,Prec,_,post).
+
+current_infixop(Op,L,Prec,R):- 
+	current_op(Prec, Type, Op),
+	op_ass(Type,L,Prec,R,in).
+
+op_ass(fy, 0, Prec, Prec, pre).
+op_ass(fx, 0, Prec, Less, pre) :- Less is Prec-1.
+op_ass(yfx, Prec, Prec, Less, in) :- Less is Prec-1.
+op_ass(xfy, Less, Prec, Prec, in) :- Less is Prec-1.
+op_ass(xfx, Less, Prec, Less, in) :- Less is Prec-1.
+op_ass(yf, Prec, Prec, 0, post).
+op_ass(xf, Less, Prec, 0, post) :- Less is Prec-1.
+
+no_path_file_name(Path,Name):- 
+	(atom(Path) -> true 
+	   ; abort(no_path_file_name(Path))),
+	parse_filename(Path,_,Name1,Ext),
+	concat_atom([Name1,Ext],Name).
+
+base_name(Path,Name):- 
+	(atom(Path) -> true 
+	   ; abort(no_path_file_name(Path))),
+	parse_filename(Path,_,Name,_Ext).
+
+ttyflush:- file_flush(STDMSG,_).
+
+/* XSB message and Ciao messages are different */
+message(Atom):- message(Atom, STDERR).
+
+asserta_fact(Fact):- asserta(Fact).
+
+assertz_fact(Fact):- assertz(Fact).
+
+retractall_fact(Fact):- retractall(Fact).
+
+retract_fact(Fact):- retract(Fact).
+

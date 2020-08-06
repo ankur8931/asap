@@ -1,0 +1,413 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export oms_checking/1,check_consistency/0.
+
+:- import member/2 from basics.
+
+% should ensure that classes and objects are distinct.
+% add consistency checking for components.
+
+:- comment(module,"In order to ensure that the semantic axioms of the
+OMS are satisfied by a particular ontology, it is necessary to perform
+consistency checking.  Since a 'constraint' can be thought of as a
+necessary condition that a class or object must fulfill, consistency
+checking is sometimes called constraint checking.  Currently, the
+constraint system only ensures that the semantics axioms of the OMS
+are satisfied.  The current set of will soon be expanded to handle
+arbitrary necessary conditions on classes expressible in a language
+such as @em{ALCQ} or an extension.
+
+However, even within the limits of current constraint checking,
+different constraints may be checked at different times for the sake
+of efficiency.  In particular, the following conditions may not always
+be checked whenever the OMS is changed.
+
+@begin{itemize}
+
+@item @em{Schema Propagation to Objects}: Let scrhel(C,R,A) be defined
+for a given class C.  Then for any object O s.t. memberof(O,C),
+@begin{itemize} 
+@item it must be the case that attribute(O,R,A1) implies
+subclass(A1,A).
+
+@item it must be the case that attribute_object(O,R,O1) implies
+memberof(O1,A).
+@end{itemize}
+
+@item @em{Schema Propagation to Classes}: Let scrhel(C,R,Cs) and
+irel(C,R,Cr) be defined for a given class C (perhaps through
+inheritance).  Then there must be some Ci such that subclass(Ci,Cr)
+and subclass(Ci,Cs).
+
+@item @em{Connectedness of Objects}: Each object O must be a member of
+some class.
+
+@item @em{Connectedness of Classes}: Each class C must be a subclass
+of OMS Root.
+
+@item @em{Stratification of Parameterized Classes}: For any
+parameterized class C defined by a term T, no argument of T can be an
+ancestor of C.
+
+@item @em{Weak Anti-symmertry of subclass/2}: There should be no
+non-reflexive ""loops"" through subclass/2.
+
+@end{itemize}
+"
+).
+
+:-comment(oms_checking/1,"
+
+The invocation of the constraint checker is determed by the predicate
+@tt{oms_checking/1} whose first argument currently can have 4 values:
+@tt{partial}, @tt{batched}, and @tt{incremental}.
+
+@begin{itemize} 
+
+@item @tt{partial} checking is a somewhat ad-hoc form of checking that
+is based on efficiency considerations.  Constraints for Connectedness
+of Objects and Classes and for Stratification of Parameterized Classes
+are performed at creation by the @pred{newClass/5} and
+@pred{newObject/5} predicates, but are @em{not} performed upon merging
+an OMS in External Format or upon loading an OMS in Internal Format
+from a file.  Schema Propagation to Objects and Classes are never
+checked.
+
+@item @tt{batched} checking ensures that all constraints are checked
+whenever merging an OMS in External Format.  However, Schema
+Propagation to Objects and Classes are not checked by NewAttribute/4,
+NewAttributeObject/3, NewRelationship/3 or NewSchrel/3.
+
+@item @tt{batched} checking ensures that all constraints are checked
+whenever merging an OMS in External Format and whenever a change is
+made to the OMS.
+
+@end{itemize}
+
+Currently, the default level of constraint checking is @tt{partial}.
+"
+).
+
+reset_checkpoints :-
+	set_checkpoint(oms_cn(_,_,_,_)),
+	set_checkpoint(oms_sc(_,_)),
+	set_checkpoint(oms_rln(_,_,_)),
+	set_checkpoint(oms_strel(_,_,_)),
+	set_checkpoint(oms_schrel(_,_,_)),
+	set_checkpoint(oms_obj(_,_,_,_)),
+	set_checkpoint(oms_mo(_,_)),
+	set_checkpoint(oms_at(_,_,_)),
+	set_checkpoint(oms_ao(_,_,_)).
+
+set_checkpoint(Term):- 
+	(call(Term) -> 
+	     functor(Term,F,A),functor(NewTerm,F,A),
+	     retractall(last_checked(NewTerm)),
+	     assert(last_checked(Term))
+	  ;  true).
+
+%----------------------------------------------------------------
+:- dynamic irrelevant_term/0.
+
+/* This needs to be rewritten, perhaps usinga builtin.
+   For now, this gives me the proper operational semantics.  */
+
+relevant_term_for_checking(Term):- 
+	retractall(irrelevant_term),
+	relevant_term_for_checking_1(Term).
+
+relevant_term_for_checking_1(Term):- 
+	functor(Term,F,A),functor(Term1,F,A),
+	last_checked(Term1),
+	call(Term),
+	(Term = Term1 -> 
+	     assert(irrelevant_term),fail 
+           ; 	
+             \+ irrelevant_term ).
+relevant_term_for_checking_1(Term):- 
+	functor(Term,F,A),functor(Term1,F,A),
+	\+ last_checked(Term1),
+	call(Term).
+
+%----------------------------------------------------------------
+
+check_incremental_constraints(Term):- 
+	oms_checking(Term1),
+	(Term1 == incremental -> check_constraints_1(Term) ; true).
+
+check_constraints_1(subclass(CCid,PCid)):- 
+	check_subclass_consistency(CCid,PCid).
+check_constraints_1(attribute(Oid,Rid,Tid)):- 
+	check_attr_schema_coverage(Oid,Rid,Tid).
+check_constraints_1(attribute_object(Oid,Rid,Toid)):- 
+	check_ao_schema_coverage(Oid,Rid,Toid).
+check_constraints_1(relationship(Oid,Rid,Tid)):- 
+	check_relationship_consistency(Oid,Rid,Tid).
+check_constraints_1(strel(Oid,Rid,Tid)):- 
+	check_strel_consistency(Oid,Rid,Tid).
+check_constraints_1(schrel(Oid,Rid,Tid)):- 
+	check_schrel_consistency(Oid,Rid,Tid).
+
+%%%%%%%%%%%%%%%%%% Root OMS Constraints %%%%%%%%%%%%%%%%%%%%%%%%
+
+check_subclass_consistency(CCid,PCid):-
+	(CCid = PCid -> 
+	       oms_warning(update,
+                           ('Cannot add reflexive subclass term',CCid,PCid)),
+	       fail
+          ;    true),
+	(subclass(PCid,CCid) -> 
+	       oms_warning(update,
+                        ('Cannot add term that leads to loop in subclass',
+	                subclass(CCid,PCid))),
+	       fail
+          ;    true).
+
+/* These constraints are built into the semantics of the OMS */	
+/* TLS: new attribute must check EVERY applicable schema */
+check_attr_schema_coverage(Oid,Rid,Tid):- 
+	(attribute_violates_schema(Oid,Rid,Tid,Schrel) -> 
+	       object(Oid,_,Onid,Osrc),
+	       class(Rid,_,Rnid,Rsrc),
+	       class(Tid,_,Tnid,Tsrc),
+	       Term =.. [attribute,Onid,Osrc,Rnid,Rsrc,Tnid,Tsrc],
+	       oms_warning(update,
+                           (Term,' does not satisfy schema ',Schrel)),
+	       fail
+	     ; true).
+
+attribute_violates_schema(Oid,Rid,Tid,Schrel):-
+	immediate_memberof(Oid,Cid),
+	schrel(Cid,Rid,Sup),
+	standardize_value(Sup,Std_sup),
+	\+ subclass(Tid,Std_sup),
+	object(Oid,_,Onid,Osrc),
+	class(Rid,_,Rnid,Rsrc),
+	class(Tid,_,Tnid,Tsrc),
+	Schrel = schrel(Onid,Osrc,Rnid,Rsrc,Tnid,Tsrc).
+
+/* TLS: new attribute must check EVERY applicable schema */
+check_ao_schema_coverage(Oid,Rid,Tid):- 
+	(ao_violates_schema(Oid,Rid,Tid,Schrel) -> 
+		object(Oid,_,Onid,Osrc),
+		class(Rid,_,Rnid,Rsrc),
+		object(Tid,_,Tnid,Tsrc),
+		Term = attribute_object(Onid,Osrc,Rnid,Rsrc,Tnid,Tsrc),
+		oms_warning(update,
+	                    (Term,' does not satisfy schema ',Schrel)),
+		fail
+	 ;      true).
+
+ao_violates_schema(Oid,Rid,Tid,Schrel):- 
+	immediate_memberof(Oid,Cid),
+	schrel(Cid,Rid,Sup),
+	standardize_value(Sup,Std_sup),
+	\+ memberof(Tid,Std_sup),
+	object(Oid,_,Onid,Osrc),
+	class(Rid,_,Rnid,Rsrc),
+	object(Tid,_,Tnid,Tsrc),
+	Schrel = schrel(Onid,Osrc,Rnid,Rsrc,Tnid,Tsrc).
+
+check_relationship_consistency(Oid,Rid,Tid):- 
+	(relationship_violates_schema(Oid,Rid,Tid,Schrel) -> 
+		class(Oid,_,Onid,Osrc),
+		class(Rid,_,Rnid,Rsrc),
+		class(Tid,_,Tnid,Tsrc),
+		Term = relationship(Onid,Osrc,Rnid,Rsrc,Tnid,Tsrc),
+		oms_warning(consistency,
+	                    (Term,'conflicts with schema ',Schrel)),
+		fail
+	 ;      true).
+
+relationship_violates_schema(Cid,Rid,Tid,Schrel):- 
+	class(Rid,_,Rnid,Rsrc),
+	findall(p(C1,NewTid),(subclass(C1,Cid),
+	                      immediate_schrel(C1,Rid,NewTid)),Tids),
+        sort(Tids,Tidsort),     % subclass gives mult. sols.
+	member(p(Subc,SubTid),Tidsort),
+	\+ subclass(NewTid,Tid), \+ subclass(Tid,NewTid),
+	class(Subc,_,Cnid,Csrc),
+	class(SubTid,_,Tnid,Tsrc),
+	Schrel = immediate_schrel(Cnid,Csrc,Rnid,Rsrc,Tnid,Tsrc).
+
+check_strel_consistency(Oid,Rid,Tid):- 
+	(strel_violates_schema(Oid,Rid,Tid,Schrel) -> 
+		class(Oid,_,Onid,Osrc),
+		class(Rid,_,Rnid,Rsrc),
+		class(Tid,_,Tnid,Tsrc),
+		Term = strel(Onid,Osrc,Rnid,Rsrc,Tnid,Tsrc),
+		oms_warning(consistency,
+	                    (Term,'conflicts with schema ',Schrel)),
+		fail
+	 ;      true).
+
+strel_violates_schema(Cid,Rid,Tid,Schrel):- 
+	class(Rid,_,Rnid,Rsrc),
+	class(Cid,_,Cnid,Csrc),
+	findall(NewTid,(immediate_schrel(Cid,Rid,NewTid)),Tids),
+        sort(Tids,Tidsort),     % subclass gives mult. sols.
+	member(SubTid,Tidsort),
+	\+ subclass(NewTid,Tid), \+ subclass(Tid,NewTid),
+	class(SubTid,_,Tnid,Tsrc),
+	Schrel = immediate_schrel(Cnid,Csrc,Rnid,Rsrc,Tnid,Tsrc).
+
+check_schrel_consistency(Oid,Rid,Tid):- 
+	(schrel_violates_schema(Oid,Rid,Tid,Rel) -> 
+		class(Oid,_,Onid,Osrc),
+		class(Rid,_,Rnid,Rsrc),
+		class(Tid,_,Tnid,Tsrc),
+		Term = schrel(Onid,Osrc,Rnid,Rsrc,Tnid,Tsrc),
+		oms_warning(consistency,(Term,'conflicts with schema ',Rel)),
+		fail
+	 ;      true).
+
+schrel_violates_schema(Cid,Rid,Tid,Schrel):- 
+	class(Rid,_,Rnid,Rsrc),
+	findall(p(C1,NewTid,Type),
+	        possible_conflict(Cid,Rid,C1,NewTid,Type),Tids),
+        sort(Tids,Tidsort),     % subclass gives mult. sols.
+	member(p(Subc,SubTid,SubType),Tidsort),
+	\+ subclass(SubTid,Tid), \+ subclass(Tid,SubTid),
+	class(SubTid,_,Tnid,Tsrc),
+	class(Subc,_,Cnid,Csrc),
+	Schrel =.. [SubType,Cnid,Csrc,Rnid,Rsrc,Tnid,Tsrc].
+
+possible_conflict(Cid,Rid,C1,NewTid,relationship):- 
+	subclass(C1,Cid),immediate_relationship(C1,Rid,NewTid).
+possible_conflict(Cid,Rid,C1,NewTid,strel):- 
+	strel(C1,Rid,NewTid),Cid = C1.
+
+%-----------------------------------------------------------------
+% Non-incremental integrity constraints.  
+% TLS: these backtrack through external form for the sake of incrementality.
+
+check_consistency:- 
+	dangling_classes,
+	dangling_objects,
+	parameterized_class_loop,
+	check_affected_classes,
+	check_affected_objects,
+	reset_checkpoints.
+
+dangling_classes:- 
+	relevant_term_for_checking(oms_cn(Cid,Name,Nid,Src)),
+	Nid \== 'OMS Root',
+	\+ immediate_subclass(Cid,_),
+	oms_warning(consistency,('Dangling class ',Name,Nid,Src)),
+	fail.
+dangling_classes.
+
+dangling_objects:- 
+	relevant_term_for_checking(oms_obj(Oid,Name,Nid,Src)),
+	\+ immediate_memberof(Oid,_),
+	oms_warning(consistency,('Dangling object ',Name,Nid,Src)),
+	fail.
+dangling_objects.
+
+parameterized_class_loop:- 
+	relevant_term_for_checking(oms_cn(Cid,Name,Nid,Src)),
+	\+ atom(Nid),
+	check_not_primitive_type(Cid),
+	immediate_subclass(Cid,Parent),
+	parameterized_class_loop(Cid,Parent),
+	oms_warning(consistency,('Parameterized class loop',Name,Nid,Src)),
+	fail.
+parameterized_class_loop.
+
+parameterized_class_loop(Pclass,Parent):- 
+	functor(Pclass,_,N),
+	parameterized_class_loop(0,N,Pclass,Parent).
+
+parameterized_class_loop(Ar,Ar,_Pclass,_Parent):-!,fail.
+parameterized_class_loop(N,Ar,Pclass,Parent):-
+	N1 is N + 1,
+	arg(N1,Pclass,Arg),
+	(subclass(Parent,Arg) -> 
+	     true 
+	  ;
+	     parameterized_class_loop(N1,Ar,Pclass,Parent) ).
+
+check_affected_classes:- 
+	abolish_table_pred(affected_class/1),
+	affected_class(Cid),
+	schrel(Cid,Rid,Tid),
+	check_schrel_consistency(Cid,Rid,Tid),
+	fail.
+check_affected_classes:- 
+	abolish_table_pred(affected_class/1).
+	
+:- table affected_class/1.
+affected_class(SubCid):- 
+	(relevant_term_for_checking(oms_rln(Cid,_,_))
+	   ;  relevant_term_for_checking(oms_strel(Cid,_,_))
+	   ;  relevant_term_for_checking(oms_schrel(Cid,_,_))),
+	subclass(SubCid,Cid).
+
+check_affected_objects:- 
+	abolish_table_pred(affected_object/1),
+	affected_object(Oid),
+	(    attribute(Oid,Rid,Tid),
+ 	     check_attr_schema_coverage(Oid,Rid,Tid)
+	  ; 
+             attribute_object(Oid,Rid,Tid),
+ 	     check_ao_schema_coverage(Oid,Rid,Tid) ),
+	fail.
+check_affected_objects:- 
+	abolish_table_pred(affected_object/1).
+	
+:- table affected_object/1.
+affected_object(Oid):- 
+	(relevant_term_for_checking(oms_rln(Cid,_,_))
+	   ;  relevant_term_for_checking(oms_strel(Cid,_,_))
+	   ;  relevant_term_for_checking(oms_schrel(Cid,_,_))),
+	 memberof(Oid,Cid).
+affected_object(Oid):- 
+	(relevant_term_for_checking(oms_at(Oid,_,_))
+	   ;  relevant_term_for_checking(oms_ao(Oid,_,_)) ).
+
+end_of_file.
+
+%%%%%%%%%%%%%%%%%% Non-Root OMS Constraints %%%%%%%%%%%%%%%%%%%%%%%%
+% TLS: two ways of doing this: 1) inheritable relationships 2) strels
+% with special way of handling inheritance.  Disad of 1 is that you
+% see the constraints for objects. 
+
+% Current format uses CLASSIC-style constraints.  List of terms
+% returned by findall is taken to be conjunction.  Right now I stop at
+% the first violation, but will change that.
+% try to figure out some way of doing inverse relations -- just
+% inverse(rel)?  But how about relations? name(rel) or some such.
+% the different notions of inheritance must then be handled.
+% apparently, relation is an exists and shrel is an all.
+
+check_non_root_constraints(class(Cid,_Name,_Nid,_Source)):- 
+	findall(Constr,
+                relationship(Cid,non_root_constr,code(Constr)),
+                Constraints),
+	check_constraints(Constraints,Cid).
+
+check_non_root_constraints(object(Cid,Name,Nid,Source)):- 
+	findall(Constr,
+                relationship(Cid,non_root_constr,code(Constr)),
+                Constraints),
+	check_constraints(Constraints,Cid).
+
+check_constraints_for_class([],_Cid).
+check_constraints_for_class([Term|Rest],Cid):- 
+	check_constraint(Term,Cid),
+	check_constraints_for_class(Rest,Cid).
+
+check_constraint(at_least(Num,Rel),Cid):- 
+	findall(Targ,some_rel(Cid,Rel,Targ),Targlist),
+	length(Targlist,Tlen),
+	Tlen >= Num.
+check_constraint(at_most(Num,Rel),Cid):- 
+	findall(Targ,some_rel(Cid,Rel,Targ),Targlist),
+	length(Targlist,Tlen),
+	Tlen =< Num.
+
+some_rel(Cid,Rel,Targ):- 
+	(relationship(Cid,Rel,Targ) 
+         ; strel(Cid,Rel,Targ) 
+         ; schrel(Cid,Rel,Targ)).
+

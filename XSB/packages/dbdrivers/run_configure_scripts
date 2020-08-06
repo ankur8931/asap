@@ -1,0 +1,18 @@
+#! /bin/sh
+
+# run configure scripts for individual drivers
+
+/bin/rm -f ./Installation_summary
+
+curdir=`pwd`
+cd odbc; ./configure $*; cat Installation_summary >> ../Installation_summary
+/bin/rm -f cc/odbc_driver.H
+cd $curdir
+
+cd mysql; ./configure $*; cat Installation_summary >> ../Installation_summary
+/bin/rm -f cc/mysql_driver.H
+cd $curdir
+
+cd mysqlembedded; ./configure $*; cat Installation_summary >> ../Installation_summary
+/bin/rm -f cc/mysqlembedded_driver.H
+cd $curdir

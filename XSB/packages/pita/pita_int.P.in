@@ -1,0 +1,601 @@
+/* File:      pita_int.P
+** Author(s): Fabrizio Riguzzi and Terrance Swift
+** Contact:   fabrizio.riguzzi@unife.it, xsb-contact@cs.sunysb.edu
+**
+** Copyright (C) Copyright: Fabrizio Riguzzi and Terrance Swift
+**                          ENDIF - University of Ferrara
+**                          Centro de Inteligencia Artificial,
+**                          Universidade Nova de Lisboa, Portugal
+**
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+**
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+**
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+:- consult(pita_lib, [cc_opts('@ccflags@')]).
+
+:- import length/2,append/3 from lists.
+:- import ret_prob/2,init/1,end/0,and/3,or/3,bdd_not/2,zero/1,one/1,add_var/3,equality/3 from pita_lib.
+:- import check_ground/3 from error_handler.
+
+:-dynamic '$v'/3,'$p'/2,rule_n/1,setting/2.
+
+:- set_prolog_flag(unknown,fail).
+
+rule_n(1).
+
+setting(epsilon_parsing, 0.0001).
+setting(compiling,false).
+/* compiling: true, failse */
+setting(tabling_output,file).
+/* no, video, file */
+
+setting(reordering_method,'CUDD_REORDER_NONE').
+
+get_next_rule_number(R):-
+	retract(rule_n(R)),
+	R1 is R+1,
+	assert(rule_n(R1)).
+
+condprob(Goals,Evidence,P,CPUTime1,WallTime1):-
+       	cputime(CT0),
+	walltime(WT0),
+	 myinit,
+	myone(One),
+	derive_ev(Evidence,One,BE),
+	ret_prob(BE,PE),
+	derive_go(Goals,BE,PE,P),
+        myend,
+	cputime(CT1),
+	CPUTime1 is CT1-CT0,
+	walltime(WT1),
+	WallTime1 is WT1-WT0.
+
+
+condprob(Goals,Evidence,P):-
+        myinit,
+	myone(One),
+	derive_ev(Evidence,One,BE),
+	ret_prob(BE,PE),
+	derive_go(Goals,BE,PE,P),
+        myend.
+
+derive_go([],_BE,_PE,[]).
+
+derive_go([H|T],BE,PE,[P|T1]):-
+	add_bdd_arg(H,B1,Goal),
+	call(Goal),
+	myand(BE,B1,B),
+	ret_prob(B,PGE),
+	P is PGE/PE,
+	derive_go(T,BE,PE,T1).
+
+
+derive_ev([],B,B).
+
+derive_ev([H|T],B0,B):-
+	add_bdd_arg(H,B1,Goal),
+	call(Goal),
+	myand(B0,B1,B2),
+	derive_ev(T,B2,B).
+
+prob(Goal,P):-
+	myinit,
+	add_bdd_arg(Goal,BDD,Goal1),
+	(call(Goal1)->
+		ret_prob(BDD,P)
+	;
+		P=0.0
+	),
+	myend.
+
+
+prob(Goal,P,CPUTime1,WallTime1):-
+	cputime(CT0),
+	walltime(WT0),
+	myinit,
+	add_bdd_arg(Goal,BDD,Goal1),
+	(call(Goal1)->
+		ret_prob(BDD,P)
+	;
+		P=0.0
+	),
+	myend,
+	cputime(CT1),
+	CPUTime1 is CT1-CT0,
+	walltime(WT1),
+	WallTime1 is WT1-WT0.
+
+s(Goal,P):-
+	prob(Goal,P).
+
+s(Goal,P,CPUTime1,0,WallTime1,0):-
+	prob(Goal,P,CPUTime1,WallTime1).
+
+load(File):-
+	atom_concat(File,'.P',FileP),
+	atom_concat(File,'.cpl',FileCpl),
+	parse(FileCpl,FileP),
+	consult(FileP).
+
+parse(FileIn,FileOut):-
+	retractall('$p'(_,_)),
+	open(FileIn,read,SI),
+	read_clauses(SI,C),
+	close(SI),
+	set(compiling,true),
+	process_clauses(C,[],C1),
+	set(compiling,false),
+	open(FileOut,write,SO),
+	findall(p(P,A),'$p'(P,A),L),
+	setting(tabling_output,TO),
+	(TO=file->
+		write_tab_dir(L,SO)
+	;
+		(TO=video->
+			write_tab_dir(L,user_output)
+	
+		;
+			true
+		)
+	),
+	write_clauses(C1,SO),
+	close(SO).
+
+get_var_n(R,S,Probs,V):-
+	('$v'(R,S,V)->
+		true
+	;
+		length(Probs,L),
+		add_var(L,Probs,V),
+		assert('$v'(R,S,V))
+	).
+
+add_bdd_arg(A,BDD,A1):-
+	A=..[P|Args],
+	append(Args,[BDD],Args1),
+	A1=..[P|Args1],
+	functor(A1,_,Arity),
+	('$p'(P,Arity)->
+		true
+	;
+		assert('$p'(P,Arity))
+		%table_pred(A)
+	).
+
+
+add_bdd_arg_extra(A,BDD,A1,Cl):-
+	A=..[P|Args],
+	append(Args,[BDD],Args1),
+	atom_concat(P,'$',P1),
+	functor(A,_,Arity),
+	A1=..[P1|Args1],
+	('$p'(P,Arity)->
+		Cl=[]
+	;
+		assert('$p'(P,Arity)),
+		length(L,Arity),
+		append(L,[B],L1),
+		Head=..[P1|L1],
+		append(L,[B1],L2),
+		Body=..[P|L2],
+		Cl=[(Head:- (bagof(B1,Body,List),or_list(List,B)))],
+		(setting(tabling,on)->
+			table_pred(A),
+			A2=..[P1|Args],
+			table_pred(A2)
+		;
+			true
+		)
+	).
+
+table_pred(A):-
+	functor(A,P,Arity),
+	Arity1 is Arity +1,
+	functor(A1,P,Arity1),
+	A1=..[_|Args],
+	last(Args,myor/3-myzero/1),
+	(setting(tabling_output,call)->
+		call(table(A1))
+	;
+		write((:- table A1)),
+		writeln('.')
+	).
+
+
+table_dir(P,Arity,Atom):-	
+	functor(Atom,P,Arity),
+	Atom=..[_|Args],
+	last(Args,myor/3-myzero/1).
+
+/* rules generation */
+generate_rules_fact([],_VC,_R,_Probs,_N,[]).
+
+generate_rules_fact([(Head:_P1),('':_P2)],VC,R,Probs,N,[Clause]):-!,
+	add_bdd_arg(Head,BDD,Head1),
+	Clause=(Head1:-(get_var_n(R,VC,Probs,V),myequality(V,N,BDD))).
+
+generate_rules_fact([(Head:_P)|T],VC,R,Probs,N,[Clause|Clauses]):-
+	add_bdd_arg(Head,BDD,Head1),
+	Clause = ( Head1 :- (get_var_n(R,VC,Probs,V),myequality(V,N,BDD))) ,
+	N1 is N+1,
+	generate_rules_fact(T,VC,R,Probs,N1,Clauses).
+
+
+generate_clause(Head,Body,VC,R,Probs,BDDAnd,N,Clause):-
+	add_bdd_arg(Head,BDD,Head1),
+	Clause=(Head1:-(Body,get_var_n(R,VC,Probs,Var1),myequality(Var1,N,B),myand(BDDAnd,B,BDD))).
+
+
+generate_rules([],_Body,_VC,_R,_Probs,_BDDAnd,_N,[]).
+
+generate_rules([(Head:_P1),('':_P2)],Body,VC,R,Probs,BDDAnd,N,[Clause]):-!,
+	generate_clause(Head,Body,VC,R,Probs,BDDAnd,N,Clause).
+
+generate_rules([(Head:_P)|T],Body,VC,R,Probs,BDDAnd,N,[Clause|Clauses]):-
+	generate_clause(Head,Body,VC,R,Probs,BDDAnd,N,Clause),
+	N1 is N+1,
+	generate_rules(T,Body,VC,R,Probs,BDDAnd,N1,Clauses).
+
+
+/* body processing */
+process_body([],BDD,BDD,[]).
+
+process_body([\+ H|T],BDD,BDD1,[\+ H|Rest]):-
+	builtin(H),!,
+	process_body(T,BDD,BDD1,Rest).
+
+process_body([\+ H|T],BDD,BDD1,
+	[(H1->mybdd_not(BDDH,BDDN);myone(BDDN)),myand(BDD,BDDN,BDD2)|Rest]):-!,
+	add_bdd_arg(H,BDDH,H1),
+	process_body(T,BDD2,BDD1,Rest).
+
+process_body([H|T],BDD,BDD1,[H|Rest]):-
+	builtin(H),!,
+	process_body(T,BDD,BDD1,Rest).
+
+process_body([H|T],BDD,BDD1,
+	[H1,myand(BDD,BDDH,BDD2)|Rest]):-!,
+	add_bdd_arg(H,BDDH,H1),
+	process_body(T,BDD2,BDD1,Rest).
+
+
+/* head processing */
+process_head(HeadList, GroundHeadList) :- 
+	process_head(HeadList, 0, GroundHeadList).
+
+
+process_head([Head:ProbHead], Prob, [Head:ProbHead1|Null]) :-!,
+	ProbHead1 is ProbHead,
+	ProbLast is 1 - Prob - ProbHead1,
+	setting(epsilon_parsing, Eps), 
+	EpsNeg is - Eps, 
+	ProbLast > EpsNeg, 
+	(ProbLast > Eps ->
+		Null = ['':ProbLast];
+		Null = []). 
+
+process_head([Head:ProbHead|Tail], Prob, [Head:ProbHead1|Next]) :- 
+	ProbHead1 is ProbHead,
+	ProbNext is Prob + ProbHead, 
+	process_head(Tail, ProbNext, Next).
+
+/* clause processing */
+process_clauses([end_of_file],C,C).
+
+process_clauses([H|T],C0,C1):-
+	(term_expansion(H,H1)->
+		true
+	;
+		H1=H
+	),
+	(H1=[_|_]->
+		append(C0,H1,C2)
+	;
+		append(C0,[H1],C2)
+	),
+	process_clauses(T,C2,C1).
+
+/* output predicates */
+write_tab_dir([],S):-
+	nl(S).
+
+write_tab_dir([p(P,A)|T],S):-
+	table_dir(P,A,Atom),
+	write(S,':-table '),
+	write(S,Atom),
+	write(S,'.'),
+	nl(S),
+	write_tab_dir(T,S).
+
+write_clauses([],_).
+
+write_clauses([H|T],S):-
+	write(S,H),
+	write(S,'.'),
+	nl(S),
+	write_clauses(T,S).
+
+
+
+/* utility predicates */
+extract_vars(Variable, Var0, Var1) :- 
+	var(Variable), !, 
+	(member_eq(Variable, Var0) ->
+		Var1 = Var0
+	;
+		append(Var0, [Variable], Var1)
+	).
+
+extract_vars(Term, Var0, Var1) :- 
+	Term=..[_F|Args], 
+	extract_vars_list(Args, Var0, Var1).
+
+
+extract_vars_list([], Var, Var).
+
+extract_vars_list([Term|Tail], Var0, Var1) :- 
+	extract_vars(Term, Var0, Var), 
+	extract_vars_list(Tail, Var, Var1).
+
+
+difference([],_,[]).
+
+difference([H|T],L2,L3):-
+	member_eq(H,L2),!,
+	difference(T,L2,L3).
+	
+difference([H|T],L2,[H|L3]):-
+	difference(T,L2,L3).
+
+
+read_clauses(S,[Cl|Out]):-
+        read_term(S,Cl,[]),
+	(Cl=end_of_file->
+		Out=[]
+	;
+		read_clauses(S,Out)
+	).
+
+member_eq(Item, [Head|_Tail]) :-
+	Item==Head, !.
+
+member_eq(Item, [_Head|Tail]) :-
+	member_eq(Item, Tail).
+
+
+list2and([X], X) :-
+	X\= (_, _) , !.
+
+list2and([H|T], (H, Ta)) :- !,
+	list2and(T, Ta).
+
+
+list2or([X], X) :-
+	X \= ( _ ; _ ) , !.
+
+list2or([H|T], (H ; Ta)) :- !,
+	list2or(T, Ta).
+
+last([H],H):-!.
+
+last([_H|T],L):-
+	last(T,L).
+
+/* set(Par,Value) can be used to set the value of a parameter */
+set(Parameter,Value):-
+	retract(setting(Parameter,_)),
+	assert(setting(Parameter,Value)).
+
+
+reordering_integer('CUDD_REORDER_SAME',0).
+reordering_integer('CUDD_REORDER_NONE',1).
+reordering_integer('CUDD_REORDER_RANDOM',2).
+reordering_integer('CUDD_REORDER_RANDOM_PIVOT',3).
+reordering_integer('CUDD_REORDER_SIFT',4).
+reordering_integer('CUDD_REORDER_SIFT_CONVERGE',5).
+reordering_integer('CUDD_REORDER_SYMM_SIFT',6).
+reordering_integer('CUDD_REORDER_SYMM_SIFT_CONV',7).
+reordering_integer('CUDD_REORDER_WINDOW2',8).
+reordering_integer('CUDD_REORDER_WINDOW3',9).
+reordering_integer('CUDD_REORDER_WINDOW4',10).
+reordering_integer('CUDD_REORDER_WINDOW2_CONV',11).
+reordering_integer('CUDD_REORDER_WINDOW3_CONV',12).
+reordering_integer('CUDD_REORDER_WINDOW4_CONV',13).
+reordering_integer('CUDD_REORDER_GROUP_SIFT',14).
+reordering_integer('CUDD_REORDER_GROUP_SIFT_CONV',15).
+reordering_integer('CUDD_REORDER_ANNEALING',16).
+reordering_integer('CUDD_REORDER_GENETIC',17).
+reordering_integer('CUDD_REORDER_LINEAR',18).
+reordering_integer('CUDD_REORDER_LINEAR_CONVERGE',19).
+reordering_integer('CUDD_REORDER_LAZY_SIFT',20).
+reordering_integer('CUDD_REORDER_EXACT',21).
+
+
+myor(X,Y,Z):-
+	or(X,Y,Z).
+
+myequality(A,B,C):-
+	equality(A,B,C).
+
+myand(A,B,C):-
+	and(A,B,C).
+
+myret_prob(B,P):-
+	ret_prob(B,P).
+
+myzero(A):-
+	zero(A).
+
+myone(A):-
+	one(A).
+
+mybdd_not(A,B):-
+	bdd_not(A,B).
+
+myinit:-
+	setting(reordering_method,M),
+	reordering_integer(M,MI),
+	init(MI),
+	retractall('$v'(_,_,_)),
+	abolish_all_tables.
+
+myend:-
+	end.
+
+and_list([],B,B).
+
+and_list([H|T],B0,B1):-
+	and(B0,H,B2),
+	and_list(T,B2,B1).
+
+
+or_list([H],H):-!.
+
+or_list([H|T],B):-
+	or_list1(T,H,B).
+
+
+or_list1([],B,B).
+or_list1([H|T],B0,B1):-
+	or(B0,H,B2),
+	or_list1(T,B2,B1).
+
+get_probs([], []).
+
+get_probs([_H:P|T], [P1|T1]) :- 
+	P1 is P, 
+	get_probs(T, T1).
+
+builtin(_A is _B).
+builtin(_A > _B).
+builtin(_A < _B).
+builtin(_A >= _B).
+builtin(_A =< _B).
+builtin(_A =:= _B).
+builtin(_A =\= _B).
+builtin(true).
+builtin(false).
+builtin(_A = _B).
+builtin(_A==_B).
+builtin(_A\=_B).
+builtin(_A\==_B).
+builtin(length(_L, _N)).
+builtin(member(_El, _L)).
+builtin(average(_L, _Av)).
+builtin(max_list(_L, _Max)).
+builtin(min_list(_L, _Max)).
+builtin(nth0(_, _, _)).
+builtin(nth(_, _, _)).
+builtin(eraseall(_Id)).
+builtin(recordzifnot(_Id, _Item, _)).
+builtin(storage_insert_keypair(_,_,_,_)).
+
+/* term_expansion clauses */
+term_expansion((Head :- Body), Clauses):-
+% disjunctive clause with more than one head atom
+	setting(compiling,true),
+	Head = (_;_), !, 
+	list2or(HeadListOr, Head), 
+	process_head(HeadListOr, HeadList), 
+	list2and(BodyList, Body), 
+	process_body(BodyList,One,BDDAnd, BodyList1),
+	list2and(BodyList1,Body1),
+	get_next_rule_number(R),
+	get_probs(HeadList,Probs),
+	extract_vars((Head:-Body),[],VC),
+	generate_rules(HeadList,(myone(One),Body1),VC,R,Probs,BDDAnd,0,Clauses).
+
+term_expansion((Head :- Body), Clauses) :- 
+%  clause with a single head atom with prob 1
+	setting(compiling,true),
+	((Head:-Body) \= ((user:term_expansion(_,_) ):- _ )),
+	Head = (H:1.0), !, 
+	list2and(BodyList, Body), 
+	process_body(BodyList,One,BDDAnd,BodyList2),
+	list2and(BodyList2,Body2),
+	add_bdd_arg(H,BDDAnd,Head1),
+	Clauses=(Head1 :- (myone(One),Body2)).
+	
+term_expansion((Head :- Body), Clauses) :- 
+% disjunctive clause with a single head atom
+	setting(compiling,true),
+	((Head:-Body) \= ((user:term_expansion(_,_) ):- _ )),
+	Head = (H:_), !, 
+	list2or(HeadListOr, Head), 
+	process_head(HeadListOr, HeadList), 
+	list2and(BodyList, Body), 
+	process_body(BodyList,One,BDDAnd,BodyList2),
+	list2and(BodyList2,Body2),
+	get_next_rule_number(R),
+	get_probs(HeadList,Probs),
+	extract_vars((Head:-Body),[],VC),
+	generate_clause(H,(myone(One),Body2),VC,R,Probs,BDDAnd,0,Clauses).
+
+
+term_expansion((Head :- Body),Clauses) :- 
+% definite clause
+	setting(compiling,true),
+	((Head:-Body) \= ((user:term_expansion(_,_)) :- _ )),!,
+	list2and(BodyList, Body), 
+	process_body(BodyList,One,BDDAnd,BodyList2),
+	list2and(BodyList2,Body2),
+	add_bdd_arg(Head,BDDAnd,Head1),
+	Clauses=(Head1 :- (myone(One),Body2)).
+	
+
+term_expansion(Head,Clauses) :- 
+% disjunctive fact with more than one head atom
+	setting(compiling,true),
+	Head \= (:- _),
+	Head = (_;_),!, 
+	list2or(HeadListOr, Head), 
+	process_head(HeadListOr, HeadList), 
+	extract_vars((Head),[],VC),
+	get_next_rule_number(R),
+	get_probs(HeadList,Probs),
+	generate_rules_fact(HeadList,VC,R,Probs,0,Clauses).
+
+term_expansion(Head, (Head1:-myone(One))) :- 
+% fact with a single head atom with prob 1
+	setting(compiling,true),
+	(Head \= ((term_expansion(_,_)) :- _ )),
+	Head \= (:- _),
+	Head = (H:1.0), !, 
+	add_bdd_arg(Head,One,Head1).
+
+term_expansion(Head,Clause) :- 
+% disjunctive fact with a single head atom
+	setting(compiling,true),
+	(Head \= ((term_expansion(_,_)) :- _ )),
+	Head \= (:- _),
+	Head = (H:_), !, 
+	list2or(HeadListOr, Head), 
+	process_head(HeadListOr, HeadList),
+	extract_vars((Head),[],VC),
+	get_next_rule_number(R),
+	get_probs(HeadList,Probs),
+	add_bdd_arg(H,BDD,Head1),
+	Clause=(Head1:-(get_var_n(R,VC,Probs,V),myequality(V,0,BDD))).
+
+term_expansion(Head, (Head1:-myone(One))) :- 
+% definite fact
+	setting(compiling,true),
+	(Head \= ((term_expansion(_,_) ):- _ )),
+	Head \= (:- _),
+	Head \= (:- table _ ),
+	Head \= (:- import _),
+	(Head\= end_of_file),!,
+	add_bdd_arg(Head,One,Head1).
+

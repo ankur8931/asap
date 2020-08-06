@@ -1,0 +1,219 @@
+\section{Product Classes}
+
+The above predicates allow the definition of various named binary
+relations between classes.  However, binary definitions can sometimes
+be inconvenient to use.  For instance, in the part equivalency
+matching example, (Example~\ref{ex:strel}), it may be desirable to
+make explicit the weight of the match as an indication of the strength
+of the match.  The weight could be made explicit by a series of
+definitions
+%-------------------------------------------
+{\small 
+{\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> allAttr(\cid{dlaPart},\rid{suturesRusMatch\_low},\cid{suturesRusPart}) \\
+\> : \\
+\> allAttr(\cid{dlaPart},\rid{suturesRusMatch\_high},\cid{suturesRusPart})
+\end{tabbing}
+} } 
+%----------------------------------
+\noindent
+indicting that a given part has a match of weight {\em low} through
+{\em high}.  However, for a scale with a large number of values,
+defining matches in this way is time-consuming and prone to errors.
+To address this, we first define a new class {\tt \cid{matchScale}}
+containing as subclasses the various match levels.  We then combine
+{\tt \cid{matchScale}} with the class {\tt \cid{suturesRusPart}} in a
+product with a {\em product identifier}, as in the following fact
+%-------------------------------------------
+{\small 
+{\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+ 
+allAttr(\cid{dlaPart},\rid{suturesRusMatch}, \\
+\> \> \> \> \cid{partMach(\cid{suturesRusPart},\cid{matchScale})})
+\end{tabbing}  } }
+\noindent 
+which indicates that a {\tt \cid{dlaPart}} can have a {\tt
+\cid{suturesRusMatch}} to an object in the {\tt partMatch/2}  class,
+which has both a {\tt \cid{suturesRusPart}} component and a {\tt
+\cid{matchScale}} component.
+
+%-------------------------------------------------------------------
+
+We capture the intuition behind product classes through the following
+axiom schemas.  The first indicates that product identifiers 
+are constructed from {\em constituent identifiers} of the same sort.
+
+\begin{axiom}[Downward Closure] \label{ax:downcl}
+\index{axioms!downward closure}
+\ \\
+For each product identifier $\cid{f(x_1,\ldots,x_n)}$,
+$\oid{f((x_1,\ldots,x_n)}$, $\rid{f(x_1,\ldots,x_n)}$, and
+$c\rid{f((x_1,\ldots,x_n)}$ the following axiom is added,
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $isClass(\cid{f(x_1,\ldots,x_n)}) \Rightarrow 
+	isClass(x_1) \wedge \ldots \wedge isClass(x_n) $\\
+\> $isObj(\oid{f(x_1,\ldots,x_n)}) \Rightarrow 
+	isObj(x_1) \wedge \ldots \wedge isObj(x_n) $\\
+\> $isRel(\rid{f(x_1,\ldots,x_n)}) \Rightarrow 
+	isRel(x_1) \wedge \ldots \wedge isRel(x_n) $\\
+\> $isCrel(\crid{f(x_1,\ldots,x_n)}) \Rightarrow 
+	isCrel(x_1) \wedge \ldots \wedge isCrel(x_n) $
+\end{tabbing}
+\end{axiom}
+
+With this axiom, along with the use of $IdType/1$ in the various
+instance axioms, we will sometimes refer to a CDF identifier $I$ as a
+class identifier if its outer functor is {\tt cid/1}, an object
+identifier if its outer functor is {\tt oid/1} etc.  The next axiom
+associates product classes with the objects they contain.
+
+\begin{axiom}[Implicit Subclassing] \label{ax:implsc}
+\index{axioms!implicit subclassing} 
+
+\begin{enumerate}
+\item For each product identifier $cid(f(x_1,\ldots,x_n))$ or 
+$oid(f(x_1,...,x_n))$, the following axioms are added for $x_i, 1 \leq i
+\leq n$:
+\[
+(\forall E) [(elt(E,y_i) \Ra elt(E,x_i)) \Ra \\
+	(\forall E') [elt(E',f(x_1,...x_n))[x_i/y_i] \Rightarrow elt(E',f(x_1,...x_n))]]
+\]
+
+\item For each product identifier $rid(f(x_1,\ldots,x_n))$ the
+following axioms are added for $x_i, 1 \leq i 
+\leq n$:
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $(\forall E_1,E_2) [(rel(E_1,y_i,E_2) \Ra rel(E_1,x_i,E_2)) \Ra$ \\
+\> \> $(\forall E'_1,E'_2) [rel(E'_1,f(x_1,...x_n),E'_2)[x_i/y_i] \Ra rel(E'_1,f(x_1,...x_n),E'_2)]]$
+\end{tabbing}
+\end{enumerate}
+\end{axiom}
+
+%-------------------------------------------
+\mycomment{
+\begin{axiom}[Implicit Subclassing] \label{ax:implsc}
+\begin{enumerate}
+\item For each product identifier $\oid{f(x_1,\ldots,x_n)}$ the
+following axiom is added:  
+\[(\forall O) [elt(O,\cid{f(x_1,\ldots,x_n)})
+	\Ra (O = \oid{f(y_1,\ldots,y_n)} \wedge 
+  		  elt(y_1,x_1) \wedge \ldots \wedge elt(y_n,x_n))] \]
+
+\item For each product identifier $\cid{f(x_1,\ldots,x_n)}$ and for
+each atomic identifier $\cid{c}$ the following axiom is
+added:
+\[ (\forall C) 
+   ([elt(\oid{f(x_1,\ldots,x_n)},C)] \Ra (C = \cid{f(y_1,\ldots,y_n)}
+   \vee C = \cid{c})) \]
+\end{enumerate}
+\end{axiom}
+}
+%-------------------------------------------
+
+\begin{example} \rm
+Axiom~\ref{ax:downcl} simply states that identifier types cannot be
+mixed within a product identifier.  For instance, if {\tt
+\oid{matchLevelN}} is an object in the {\tt \cid{matchScale}},
+then the identifier 
+
+{\tt \cid{partMatch(\cid{suturesRusMatch},\oid{matchLevelN})}}
+
+\noindent
+is improperly formed.  On the other hand, if {\tt \oid{sutureU245H}} is in
+the class {\tt \cid{suturesRusPart}}, then the identifier {\tt
+\oid{partMatch(\oid{sutureU245H},\oid{matchLevelN})}} is a product
+identifier that is also an object identifier.
+
+Axiom~\ref{ax:implsc} also means that the inheritance relation of a
+product class is partly determined by the inheritance relation of its
+constituent elements.
+\end{example}
+
+\mycomment{
+Core Axiom~\ref{ax:implsc} can be used either to set up equality
+constraints on a model of a CDF instance, or it can be used to
+determine which CDF instances have free models (as explained in the
+next section).  The following example illustrates the first use.
+
+\begin{example} \rm \label{ex:equality}
+Suppose we have the CDF instance
+{\small 
+{\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> isa(\cid{a},\cid{f(a)}.
+\end{tabbing} } } 
+\noindent
+By Core Axiom~\ref{ax:nonnull} (Non-empty Classes), {\tt \cid{a}} has
+at least one element, which can be called {\tt \oid{a1}}.  By the
+instance axiom for the above fact, {\em elt(\oid{a1},\cid{f(a)}}.  By
+Core Axiom~\ref{ax:implsc}(1), it must be the case that 
+%
+\[ \oid{a1} = \oid{f(Y)} \wedge elt(Y,\cid{a}) \]
+%
+If we take $Y = \oid{a1}$, then this means that 
+%
+$ \oid{a1} = \oid{f(\oid{a1})} $
+% 
+so that the above fragment has a model $\cM$ with a single individual
+(in the universe of $\cM$) to which all object identifiers are mapped,
+and that has a $elt/2$ relation to each individual to which a class
+identifier is mapped (among other models).
+\end{example}
+}
+
+\section{Models of Type-0 Instances} \label{sec:type0models}
+
+Type-0 instances have been designed so that checking their consistency
+--- whether they have a model --- is easily done.  Models of Type-0
+instances are discussed in \cite{SwiW03b}, here we review some of the
+main points without proofs.  We begin by defining a model of a Type-0
+instance.
+
+\begin{definition} \label{def:ont-th}
+Let $\cO$ be a CDF instance.  We define as $\cL_{\cO}$, the ontology
+language whose functions and constant symbols are restricted to the
+identifiers in $\cO$.  $TH(\cO)$ is the ontology theory over
+$\cL_{\cO}$ whose non-logical axioms consist of the core axioms and
+the instance axiom for each fact in $\cO$.
+% while $\cO^{\cI}$ is the theory over $\cL_{\cO}$ containing only the
+% instance axioms.  
+We say that an ontology structure $\cM$ is a model of $\cO$ if it is a
+model of $TH(\cO)$.
+
+\index{well-sorted}
+If $\cO$ is Type-0 it is {\em well-sorted} if each instance axiom
+cojoined with Core Axioms~\ref{ax:distinct} (Distinct Identifiers) and
+Axiom Schema~\ref{ax:downcl} (Downward Closure) is consistent.
+\end{definition}
+
+Intuitively, a CDF fact is well-sorted if its arguments have class,
+relation, class relation identifiers, etc. in the right place.  There
+is no room for contradiction in a well-sorted Type-0 instance $\cO$
+unless it contains {\tt minAttr/4} and {\tt maxAttr/4} facts.  If it
+does, inconsistency can arise if {\tt minAttr(C$_1$,R,C$_2$,M)}$^{\cI}$
+holds, {\tt maxAttr(C$_1$,R,C$_2$,N)}$^{\cI}$ holds, and $M > N$.
+Thus, consistency of Type-0 instances is easy to check, and can in
+fact be done in polynomial time.
+
+However, CDF is a logic programming system, so it is important to know
+whether an instance $\cO$ over a language $\cL_{\cO}$ has a {\em
+Herbrand} model \cite{Lloy84} --- essentially one in which the
+universe $\cU$ of the model are the terms of $\cL_{\cO}$, and where
+the mapping of terms from $\cL_{\cO}$ to $\cU$ is the identity
+mapping.  Herbrand models are the basis of Prolog semantics, so that
+if CDF instances have Herbrand models, they can be easily implemented
+in Prolog without resorting to a constraint system or to
+meta-interpretation.  Care has been taken to ensure that any Type-0
+CDF instance does in fact have a Herbrand model, so that the Type-0
+interface in \refchap{sec:impl} can be supported~\footnote{This is one
+of the reasons why object identifiers in CDF denote singleton classes.
+If two classes $c_1$ and $c_2$ are ``equal'', this simply means that a
+model must satisfy the sentence $(\forall X) elt(X,c_1)
+\leftrightarrow elt(X,c_2)$ which has a Herbrand model.}.

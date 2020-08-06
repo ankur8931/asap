@@ -1,0 +1,189 @@
+/* File:      ccallxsb.P
+** Author(s): David Warren, Ernie Johnson
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1997-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: ccallxsb.P,v 1.3 2008/04/07 00:25:45 tswift Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,xpp_on]).
+#include "standard.h"
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+
+#define MAX_NUMBER_CACHED_QUERIES  500
+
+:- local
+	c_call_xsb_goal_cache/2,
+	cache_index/2,
+	last_cached_query_index/1.
+
+:- dynamic c_call_xsb_goal_cache/2.
+:- dynamic cache_index/2.
+:- dynamic last_cached_query_index/1.
+:- index(c_call_xsb_goal_cache/2,trie).
+:- index(cache_index/2,trie).
+
+:- import handle_goal_interrupt/1 from mutex_xsb.
+'_$goal_int'(One,_Two) :- 
+	handle_goal_interrupt(Message),
+%	writeln(call(Message)),
+	call(Message),
+	call_c(One).
+
+c_callloop_query_loop(Regs) :- 
+	catch(c_callloop_query_loop0(Regs),Ball,ccall_error_handler(Ball)).
+
+c_callloop_query_loop0(Regs) :-
+%	set_xsb_ready,
+ 	set_inthandler('_$attv_int'(_,_), MYSIG_ATTV),
+	set_thread_interrupt,
+	set_inthandler('_$timer_int'(_,_), TIMER_INTERRUPT),
+	set_inthandler('_$lazy_reeval_int'(_,_), LAZY_REEVAL_INTERRUPT),
+	repeat,
+	suspend_on_forign_function(Par,VarTerm,Command),
+	(\+integer(Command)
+	 ->	file_write(STDERR,'C command error; must be an integer; is '),
+		file_write(STDERR,Command),
+		file_nl(STDERR),
+		!,
+		fail
+	 ; Command =:= 0		/* call */
+	 ->	excess_vars(Par, [], [], VarList),
+		VarTerm =.. [ret|VarList],
+		do_pcall(Par,VarTerm)
+	 ; Command =:= 3	/* query_finish: succeed and return from XSB*/
+	 ->	!,
+		suspend_on_forign_function(Regs,_,_)
+	 ; Command =:= 2	/* string_call */
+	 ->	
+	    string_to_term(Par,Goal),
+	    excess_vars(Goal,[],[],VarList),
+	    VarTerm =.. [ret|VarList],
+	    do_pcall(Goal,VarTerm)
+	 ; Command =:= 1	/* quit */
+	 ->	!,fail
+	 ; fail
+	).
+
+% Used both to return to C and to call C functions.
+suspend_on_forign_function(_,_,_) :- halt.		% halt returns to caller
+
+do_pcall(Call,VarTerm) :-
+	%% ccall_error_handler fails
+	catch(call_and_get(Call,VarTerm,Command),Ball,ccall_error_handler(Ball)),
+	(Command =:= 0		/* next */
+	 ->	fail
+	 ; Command =:= 1	/* close query */
+	 ->	close_open_tables,
+		!,fail
+	).
+
+call_and_get(Call,VarTerm,Command) :-
+	'_$call'(Call),
+	suspend_on_forign_function(Call,VarTerm,Command).
+
+% hidden version of call
+'_$call'(Y) :- 
+	'_$savecp'(C), 
+	call_goal_cut_trans(Y,X,C),
+	call_expose(X).
+
+%% MK: added this clause. Reduces time to call XSB by x3.
+%%     Not sure, but the same can be useful in eval_cmdline_goal
+string_to_term(Atom,Goal) :-
+	c_call_xsb_goal_cache(Atom,Goal),
+	!.
+string_to_term(Atom,Goal) :-
+	stat_flag(STDERR_BUFFERED,StderrBuffered),
+	%% If stdio is redirected and buffered we want to capture error messages
+	1 =:= StderrBuffered,
+	!,
+	file_open(Atom,sr,Fp),
+	file_read(Fp,Goal,_),
+	file_close(Fp),
+	save_query_in_cache(Atom,Goal).
+
+string_to_term(Atom,Goal) :-
+	file_open(Atom,sr,Fp),
+	file_read(Fp,Goal,_),
+	file_close(Fp),
+	save_query_in_cache(Atom,Goal).
+
+
+save_query_in_cache(Atom,Goal) :-
+	(\+ last_cached_query_index(_) -> assert(last_cached_query_index(0))
+	; true
+	),
+	last_cached_query_index(Idx),
+	NextIdx is (Idx+1) mod MAX_NUMBER_CACHED_QUERIES,
+	assert(c_call_xsb_goal_cache(Atom,Goal)),
+	assert(cache_index(Idx,Atom)),
+	(cache_index(NextIdx,NextAtm)
+	->
+	    retractall(c_call_xsb_goal_cache(NextAtm,_)),
+	    retract(cache_index(NextIdx,NextAtm))
+	; true
+	),
+	retract(last_cached_query_index(Idx)),
+	!,
+	assert(last_cached_query_index(NextIdx)).
+
+
+'_$attv_int'(Intlist, Call) :-
+% 	file_write(1, '.... in _$attv_int/2'), file_nl(1),
+% 	file_write(1, '.... interrupt chain is : '),
+% 	file_write(1, Intlist), file_nl(1),
+	handle_interrupts(Intlist),
+%	file_write(1, '.... leaving _$attv_int/2'), file_nl(1),
+	call_c(Call).
+
+%% TES not sure whether thread interrupt is needed.  It wasn't set for
+%% C-calling-Prolog before.
+set_thread_interrupt:- 
+	xsb_configuration(engine_mode,'slg-wam'),!,
+	set_inthandler('_$goal_int'(_,_), THREADSIG_CANCEL).
+set_thread_interrupt.
+%	set_inthandler('_$thread_int'(_,_), THREADSIG_CANCEL).
+
+:- import handle_goal_interrupt/1 from mutex_xsb.
+'_$goal_int'(One,_Two) :- 
+	handle_goal_interrupt(Message),
+%	writeln(call(Message)),
+	call(Message),
+	call_c(One).
+
+% Continuation is in first arg as opposed to second in attv_int 
+%'_$thread_int'(One,_Two) :- 
+%	execute_messages_on_signal_queue,
+%	writeln(One),
+%	call_c(One).
+
+%%execute_messages_on_signal_queue:- 
+%	repeat,
+%	(thread_peek_signal(Message) -> 
+%	    thread_get_signal(Message),
+%	    call(Message),
+%	    fail
+%	 ;  true),!.
+
+:- import timer_interrupt_trap/2 from standard.
+'_$timer_int'(One,Two):- 
+	timer_interrupt_trap(One,Two).

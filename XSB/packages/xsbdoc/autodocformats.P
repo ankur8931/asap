@@ -1,0 +1,1790 @@
+:- compiler_options([ciao_directives]).
+
+:- export   supported_format/1,            supported_format_suffix/2,
+	    index_comment/2,               option_comment/2,
+	    format_front_matter/19,        format_intro/10,
+	    format_module_usage/10, 	   format_predicate_begin/6,
+	    format_predicates_begin/4,
+	    format_predicate_comment/3,    format_predicate_end/2,
+	    format_native_declaration/3,     
+	    format_predicates_end/2,
+	    format_multiple_usage_header/3,format_usage_header/2,
+	    format_head_descriptor/5,      format_other_assrt_header/2,
+	    format_site_begin/4,           format_site_end/2,
+	    format_properties_begin/2,     format_property/7,
+	    format_properties_end/2,       format_description/3,
+	    format_other_info/10,           
+	    format_includes_and_end_matter/6,
+	    format_tabling_declaration/3,
+	    verbatimize_string/3,
+
+	    typeindex/5, texinfo_escape_ats_etc/2. 	% for rewrite_command
+
+/* The following are to avoid useinfer messages */
+:- export supported_option/1.		
+
+
+
+:- import format/3 from format.
+:- import member/2 from basics.
+:- import display/2, 
+	  error_message/2, 
+	  list_concat/2, 
+	  optional_message/2, 
+	  xsbdoc_warning/1
+	from ciaoaux.
+:- import (data)/1 from ciaoaux.
+
+:- import current_infixop/4, current_postfixop/3, current_prefixop/3
+	from xsb_ciao.
+
+:- import concat_atom/2 from string.
+:- import write_term/3 from write_term.
+:- import version_descriptor/1, stringcommand/1 from comments.
+:- import rewrite_command/4 from rewrite_command.
+x
+%% ---------------------------------------------------------------------------
+%% Intro
+%% ---------------------------------------------------------------------------
+
+:- comment(title,"Low level documentation format definitions").
+
+:- comment(author,"Manuel Hermenegildo").
+
+:- comment(module," 
+
+   This module defines the interface for the auxiliary predicates
+   needed by the automatic documentation generation library: these
+   predicates determine the precise format in which the output is
+   written. 
+
+   Also, this module includes definitions of these predicates for a
+   few formats. The main output format supported is @tt{texinfo} (see
+   The GNU Texinfo Documentation System manual for more info), from
+   which printed manuals and several other printing and on-line
+   formats can be easily generated automatically (including info,
+   html, etc.). There is also some limited support for direct output
+   in unix @tt{man} format and direct @tt{html} (but note that html
+   can also be generated in a better way by first generating texinfo
+   and then using one of the available converters). For texinfo, the
+   documentation for a module is a texinfo chapter, suitable for
+   inclusion in a wrapper ``main'' document file.  A simple example of
+   the use of this library for generating a texinfo reference manual
+   (including a driver script, useful Makefiles, etc.) is included
+   with the library source code. Other examples can be found in the
+   CIAO documentation directory (i.e., the CIAO manuals themselves).
+
+").
+
+%% ---------------------------------------------------------------------------
+/*
+:- regtype supported_format(Format) 
+
+	# "@tt{Format} is a supported typesetting format.".
+*/
+%% ---------------------------------------------------------------------------
+
+supported_format(texinfo).
+supported_format(html).
+supported_format(ascii).
+%supported_format(man).
+
+%% ---------------------------------------------------------------------------
+/*
+:- pred supported_format_suffix(Format,Suffix) 
+
+	=> supported_format * atom
+
+        # "@var{Format} is a format for which formatting code is
+           available.  @var{Suffix} is the suffix that should be used
+           for the generated files. @cindex{supported documentation
+           formats}".
+*/
+%% ---------------------------------------------------------------------------
+
+supported_format_suffix(texinfo,texic).
+supported_format_suffix(html,html).
+supported_format_suffix(man,manl).
+supported_format_suffix(ascii,txt).
+
+%% ---------------------------------------------------------------------------
+:- pred index_comment(Index,Text) 
+
+	=> atom * string
+
+        # "@var{Type} is a type of index which is
+          supported. @var{Text} describes the index contents.".
+%% ---------------------------------------------------------------------------
+
+index_comment(Type,Text) :-
+	typeindex(Type,_,_,Text,_).
+
+%% ---------------------------------------------------------------------------
+:- prop supported_option(Option) 
+
+	# "@tt{Option} is a supported documentation option.".
+%% ---------------------------------------------------------------------------
+
+%% not recognized as a type :-(
+supported_option(X) :- 
+	option_comment(X,_).
+
+%% ---------------------------------------------------------------------------
+:- pred option_comment(Option,Text) 
+
+	=> supported_option * string
+
+        # "@var{Option} is a documentation option which is
+          supported. @var{Text} describes the effect of selecting that
+          option. Currently supported options are:
+
+@begin{verbatim}
+@includedef{option_comment/2}          
+@end{verbatim}
+          ".
+%% ---------------------------------------------------------------------------
+
+option_comment('-v',           'Verbose output (good for debugging).        ').
+option_comment('-noauthors',   'Do not include author names.                ').
+option_comment('-shorttoc',    'Produce shorter table of contents (no entries
+                                for individual defs of preds, props, etc.).').
+option_comment('-norefs',      'Do not include a ''References'' appendix.     ').
+
+option_comment('-nobugs',      'Do not include information on bugs.         ').
+option_comment('-noversion',   'Do not include version information.         ').
+option_comment('-nochangelog', 'Do not include change log.                  ').
+option_comment('-nopatches',   'Do not include comments for patches.        ').
+option_comment('-literalprops','Do not use text to document properties.     ').
+option_comment('-nopropnames', 'Do not include property names in prop text. ').
+option_comment('-noundefined', 'Do not signal undefined properties in text. ').
+option_comment('-nopropsepln', 'Do not put each property in a separate line.').
+
+option_comment('-nobullet',    'Do not generate initial bullet index        
+                                (.htmlbullet) with .htmlindex file. Select if
+                                only one manual will be installed in DOCDIR.').
+option_comment('-nosysmods',   'Do not include system modules in list of 
+                                libraries used.').
+%option_comment('-noisoline',   'Do not include *textual* description that a 
+%                                given usage conforms to the ISO standard.').
+option_comment('-propmods',    'Include module name to which props belong.').
+option_comment('-onesided',    'For printing on one side (default is two).').
+
+%% ---------------------------------------------------------------------------
+:- pred typeindex(Type,Index,IType,Name,Comment) 
+
+	=> atom * string * string * string * string
+
+        # "@var{Index} is the index in which objects of type
+           @var{Type} go. @var{Name} is the title of the index in the
+           documentation. @var{IType} is the type of index; an empty
+           string means normal. code@var{Comment} is a comment to
+           include before the index.".
+%% ---------------------------------------------------------------------------
+
+%%%% Should not be empty...?
+:- data(typeindex/5).
+
+   typeindex(pred,   "pdindex","code",'Predicate Definition Index','').
+   typeindex(op,     "opindex","code",'Operator Definition Index',        '').
+   typeindex(concept,"coindex",""    ,'Concept Definition Index',         '').
+%% Some versions of makeinfo get confused by this one (core dump!)
+   typeindex(global, "glindex","code",'Global Index',
+'This is a global index containing pointers to places where concepts, 
+ predicates, modes, properties, types, applications, etc., are referred to
+ in the text of the document. Note that due to limitations of the
+ @code{info} format unfortunately only the first reference will appear in
+ online versions of the document.').
+
+%   typeindex(lib,    "liindex","code",'Library/Module Definition Index',  '').
+%   typeindex(apl,    "apindex","code",'Application Index',                '').
+%% typeindex(func,   "fuindex","code",'Function/Method Definition Index', '').
+%  typeindex(regtype,"teindex","code",'Regular Type Definition Index',    '').
+%  typeindex(modedef,"moindex","code",'Mode Definition Index',            '').
+%  typeindex(file,   "fiindex","code",'File/Directory Index',             '').
+%   typeindex(prop,   "prindex","code",'Property Definition Index',        '').
+%   typeindex(decl,   "deindex","code",'Declaration Definition Index',     '').
+
+/* unused ...
+concepttype(index).
+concepttype(cindex).
+concepttype(concept).
+***/
+
+
+%% ---------------------------------------------------------------------------
+%% Should really use sourcename, but not really supported until we eliminate 
+%% the makefile completely
+:- regtype filename(X) # "@var{X} is the name of a file.".
+
+filename(X) :- atom(X).
+
+%% ---------------------------------------------------------------------------
+:- comment(
+   format_front_matter(Format,ModuleType,MainOrComp,Name,NDName,Version,GVers,
+       Title,Authors,Subtitle,Copyright,Summary,Indices,StartPage,PaperType,
+       Opts,I,O,OS),
+
+  "This predicate defines the first part of the format of the main
+   file of a manual. @var{Format} is the type of output (e.g.,
+   texinfo, latex, etc.)  -- different clauses of the predicate can be
+   defined for different formats. @var{Name} is the name of the
+   application (taken from the name of the input file). @var{NDName}
+   is the same, but without @tt{_doc}, if applicable. @var{Version} is
+   the version of the first @pred{comment/2} entry which specifies a
+   version number (which should be the current version). This is the
+   version of the last local change. @var{GVers} is the global
+   version.  @var{Title} is the intended title of the application
+   (taken from the approriate @pred{comment/2}
+   declaration). @var{Authors} is a (possibly empty) list of author
+   names. @var{Subtitle} is a (possibly empty) list of subtitle (e.g.,
+   address, explanation) lines.  @var{Copyright} is the copyright text
+   (taken from the appropriate @pred{comment/2} declaration).
+   @var{Summary} is a brief summary of the contents of the manual
+   (taken from the appropriate @pred{comment/2}
+   declaration). @var{Indices} is a list of index names (the indices
+   to be generated). @var{StartPage} is the page number of the first
+   page of the manual. @var{I} and @var{O} are the names of the input
+   and output files being processed (which can be used for example to
+   put a comment in the generated file saying that the file has been
+   generated automatically from these files and therefore should
+   probably not be edited by hand).  @var{OS} is the output stream to
+   which writes should be made (normally points to the output
+   file).").
+
+:- pred format_front_matter(Format,ModuleType,MainOrComp,Name,NDName,Version,
+                            GVers,Title,Authors,Subtitle,Copyright,Summary,
+			    Indices,StartPage,PaperType,Opts,I,O,OS)
+
+        : (Format=texinfo, atom(Name), atom(NDName), 
+           version_descriptor(Version), string(Title), list(Authors,string),
+	   list(Subtitle,string), string(Copyright), string(Summary), 
+           list(Indices,atom), int(StartPage), atom(PaperType), 
+	   list(Opts,supported_option), 
+	   filename(I), filename(O), stream(OS))
+
+        # "A texinfo main file is generated. @var{Name} is used as the
+           name of the file. @var{Title} is used as the title of the
+           document. The @var{Version}, @var{Authors}, and the
+           @var{Subtitle} will go in the title page. @var{Copyright}
+           goes in the back of the title page.".
+%% ---------------------------------------------------------------------------
+
+format_header(OS,IName,INDName,ITitle,Title,Indices,Ifile,Ofile,
+							PaperType,Opts):- 
+	optional_message('Generating document cover...',Opts),
+	texinfo_escape_ats_etc_all_atoms(IName,Name),
+	texinfo_escape_ats_etc_all_atoms(INDName,NDName),
+	(  ITitle = []
+	-> atom_codes(NDName,NDNameS),
+	   list_concat([ NDNameS, " Reference Manual" ], Title)
+	;  Title = ITitle ),
+	% Texinfo headers and indices
+        writeln(OS,'\\raggedbottom '),
+        writeln(OS,'\\input texinfo @c -*- texinfo -*- '),
+ 	writeln(OS,'@c ------------------------------------------------'),
+ 	format(OS,"@c WARNING: Do not edit this file (~w)~n"      ,[Ofile]),
+ 	writeln(OS,'@c It has been generated automatically from file:  '),
+ 	format(OS,"@c ~w~n"                                       ,[Ifile]),
+ 	writeln(OS,'@c ------------------------------------------------'),
+	writeln(OS,'@c %**start of header     '),
+	format(OS,"@setfilename ~w           ~n",[Name]),
+	format(OS,"@settitle ~s              ~n",[Title]),
+	writeln(OS,'@c @paragraphindent 0     '),
+	(  member('-twosided',Opts) 
+	-> writeln(OS,'@setchapternewpage odd ')
+	;  writeln(OS,'@setchapternewpage on  ')),
+	writeln(OS,'@c @footnotestyle separate'),
+	
+	findall(_, ( typeindex(IdxName,Index,IType,_ITitle,_IComment),
+	             (member(IdxName,Indices); Indices=[all]),
+	             list_concat([ IndexId, "index" ],Index),
+		     format(OS,"@def~sindex ~s~n",[IType,IndexId]) ),
+		_),
+
+	writeln(OS,'@iftex                    '),
+	writeln(OS,'@c @smallbook             '),
+	format(OS,"@~w                       ~n",[PaperType]),
+	writeln(OS,'@tolerance 10000          '),
+	writeln(OS,'@hbadness 10000           '),
+	writeln(OS,'@end iftex                '),
+	writeln(OS,'@c %**end of header       '),
+	writeln(OS,'                       ').
+
+format_title_page(OS,Title,Subtitle,Authors,GVers,Copyright,StartPage):- 
+	%% Title page
+	writeln(OS,' '),
+	writeln(OS,'@titlepage            '),
+	format(OS,"@title ~s                 ~n",[Title]),
+	writeln(OS,'@c @font@authorrm=cmbx10 scaled @magstep2'),
+
+	format_lines(Subtitle,"subtitle",OS),
+
+	format_version(GVers, "@subtitle Version", OS),
+	writeln(OS,' '),
+
+	(  Authors = []
+	-> format(OS,"@author ~n",[]) % Nicer front pg than if no auth command
+	;  format_lines(Authors,"author",OS) ),
+
+	%% Copyright page
+	writeln(OS,'@c Copyright page         '),
+	writeln(OS,'@page                     '),
+	writeln(OS,'@vskip 0pt plus 1filll    '),
+	format(OS,"~s                        ~n",[Copyright]),
+	writeln(OS,'@end titlepage            '),
+	writeln(OS,'                          '),
+	writeln(OS,'@iftex                    '),
+	format(OS,"@pageno ~w                ~n",[StartPage]),
+	writeln(OS,'@end iftex                '),
+	writeln(OS,'                     '),
+	writeln(OS,'@ifinfo                   '),
+	format(OS,"@node Top, ~s,(dir),(dir) ~n",[Title]),
+	format(OS,"@top ~s                   ~n~n",[Title]).
+
+format_front_matter(texinfo,_FileType,main(_),IName,INDName,_Version,GVers,
+                    ITitle,Authors,Subtitle,Copyright,Summary,Indices,
+                    StartPage,PaperType,Opts,Ifile,Ofile,OS) :-
+        !,
+	format_header(OS,IName,INDName,ITitle,Title,Indices,Ifile,Ofile,
+						PaperType,Opts),
+	
+	%% These are the Summary and Copyright which appear as headers
+	%% in the info file, but are not seen otherwise
+	writeln(OS,'                       '),
+	writeln(OS,'@ifinfo                '),
+
+	format(OS,"~s                        ~n",[Summary]),
+
+	format_version(GVers, 
+               "~n@sp 1~nThis documentation corresponds to version", OS),
+	(  GVers \== []
+	-> writeln(OS,'.')
+	;  true ),
+	writeln(OS,' '),
+	format(OS,"~s                        ~n",[Copyright]),
+	writeln(OS,'@end ifinfo        '),
+
+	format_title_page(OS,Title,Authors,Subtitle,GVers,Copyright,StartPage),
+	writeln(OS,'@end ifinfo               '),writeln(OS,' ').
+
+format_front_matter(texinfo,FileType,component,_IName,INDName,Version,GVers,
+                    ITitle,Authors,_Subtitle,_Copyright,_Summary,_Indices,
+		    _StartPage,_PaperType,Opts,I,O,OS) :-
+	optional_message('Generating chapter heading...',Opts),
+	texinfo_escape_ats_etc_all_atoms(INDName,NDName),
+	(  ITitle = []
+	-> atom_codes(NDName,NTitle),
+	   (  FileType = part
+	      -> NTitle = Title
+	      ;  list_concat([ NTitle, " (library)"     ], Title) )
+	;  Title = ITitle ),
+
+	(  FileType = part
+	-> format(OS,"~n~n@node ~s, next,  previous,  up~n",
+                     [[0'*,0'*,0'*,0' |Title]]),
+ 	   writeln(OS,'@comment node-name, next,  previous,  up'),
+           format_texinfo_section_no_node(0,Title,OS),
+	   writeln(OS,'@iftex~n@vfill~n@cartouche~n@sp~n@ ~n@end iftex')
+	;  format_texinfo_section(1,Title,OS) ),
+
+/* TLS: Not supporting library indices 
+	(  FileType \== part
+	   TI = lib,
+	   (  ( member(TI,Indices);Indices=[all] ),
+	        typeindex(TI,Index,_,_,_)
+	   -> format(OS,"@~s ~w~n",[Index,NDName])
+	   ;  true )
+	; true ),
+*/
+ 	writeln(OS,'@c -------------------------------------------------'),
+ 	format(OS,"@c WARNING: Do not edit this file (~w)~n",[O]),
+ 	writeln(OS,'@c It has been generated automatically from file:  '),
+ 	format(OS,"@c ~w~n"                                              ,[I]),
+	writeln(OS,'@c -------------------------------------------------'),
+	
+        (  Authors = []
+	-> true
+	;  format(OS,"~n@strong{Author(s):} ",[]),
+	   format_list_commas_period(Authors,OS) ),
+
+	format_version(GVers,   "~n@strong{Version:}", OS),
+	format(OS, "~n", []),
+	( Version == GVers
+	-> true
+	;  format_version(Version, "~n@strong{Version of last change:}", OS),
+	   writeln(OS, ' ') ).
+
+format_version([], _, _) :-
+	!.
+format_version(Version, Prefix, OS) :-
+	( Version = version(Ver*Sub+0,Date) 
+	; Version = version(Ver*Sub+0,Date,[]) ),
+	!,
+	list_concat([ Prefix," ~w.~w (~w)" ],Format),
+	format(OS,Format,[Ver,Sub,Date]).
+format_version(version(Ver*Sub+0,Date,H:M*S+Z), Prefix, OS) :-
+	!,
+	list_concat([ Prefix, " ~w.~w (~w, ~w:~w:~w ~w)" ],Format),
+	format(OS,Format,[Ver,Sub,Date,H,M,S,Z]).
+format_version(Version, Prefix, OS) :-
+	( Version = version(Ver*Sub+Patch,Date) 
+	; Version = version(Ver*Sub+Patch,Date,[]) ),
+	!,
+	list_concat([ Prefix, " ~w.~w#~w (~w)" ],Format),
+	format(OS,Format,[Ver,Sub,Patch,Date]).
+format_version(version(Ver*Sub+Patch,Date,H:M*S+Z), Prefix, OS) :-
+	!,
+	list_concat([ Prefix, " ~w.~w#~w (~w, ~w:~w:~w ~w)" ],Format),
+	format(OS,Format,[Ver,Sub,Patch,Date,H,M,S,Z]).
+format_version(Version,_,_) :-
+	xsbdoc_warning(['unrecognized version format: ',Version]).
+	
+
+format_lines([],_Command,_OS).
+format_lines([Line|Lines],Command,OS) :-
+	format(OS,"@~s ~s~n",[Command,Line]),
+	format_lines(Lines,Command,OS).
+
+format_list_commas_period([],_OS) :-
+	!.
+format_list_commas_period([A],OS) :-
+	!,
+	format(OS,"~s.~n",[A]).
+format_list_commas_period([A|As],OS) :-
+	format(OS,"~s, ",[A]),
+	format_list_commas_period(As,OS).
+
+
+%% ---------------------------------------------------------------------------
+
+%% ---------------------------------------------------------------------------
+:-
+   comment(format_intro(Format,FileType,ModuleType,Name,NDName,Summary,Version,
+   Comment,OS,IntroOS),"This predicate defines the format of the
+   introduction and some auxiliary information. @var{Format} is the
+   type of output (e.g., texinfo, latex, etc.). @var{FileType} is the
+   type of file (main, component, etc.).  @var{ModuleType} is how the
+   module is used (use_module, etc.).  @var{Name} is the
+   module/application name.  @var{NDName} is the same, but without
+   @tt{_doc}, if applicable.  @var{Summary} is a brief summary of the
+   contents of the manual (taken from the appropriate @pred{comment/2}
+   declaration, if available). @var{Version} is the version of the
+   first @pred{comment/2} entry which specifies a version number
+   (which should be the current version).  @var{Comment} is the
+   introductory text for the module (taken from the @pred{comment/2}
+   declaration, if available).  @var{OS} is the output stream to which
+   writes should be made (normally points to the output
+   file). @var{IntroOS} is the output stream for the introduction.").
+
+:- pred format_intro(Format,FileType,ModuleType,Name,NDName,Summary,Version,
+                     Comment,OS,IntroOS)
+
+        : '='(texinfo) * term * atom * string * string * string * 
+          version_descriptor * string * stream * stream
+
+        # "Formats intro stuff: summary, intro, etc.".
+%% ---------------------------------------------------------------------------
+
+format_intro(texinfo,main(MainType),_FileType,Name,NDName,Summary,Version,
+	              Comment,OS,IntroOS) :-
+
+        (  Version \== [] 
+	-> format(OS,"~n@ifinfo~n",[]),
+	   format_version(Version, 
+	      "~n@sp 1~nThis documentation corresponds to version", OS),
+	   format(OS,".~n@end ifinfo~n",[]) 
+	;  true ),
+	% This unfortunately must be before the Summary.
+	writeln(OS,'@c Contents:'),
+	writeln(OS,'@c @summarycontents'),
+	format(OS,"@contents~n~n",[]),
+	( Summary = [] 
+	-> true
+	;  supported_format_suffix(texinfo,Suff),
+	   concat_atom([Name,'summary.',Suff],SummaryName),
+	   format_texinfo_components_include([SummaryName],OS),
+	   open(SummaryName,write,SummaryOS),
+	   format_texinfo_section(0,"Summary",SummaryOS),
+	   format(SummaryOS,"~n~s~n",[Summary]),
+	   (  Version \== [] 
+           -> format(SummaryOS,"~n@ifnotinfo~n",[]),
+	      format_version(Version, 
+              "~n@sp 1~nThis documentation corresponds to version", SummaryOS),
+	      format(SummaryOS,".~n@end ifnotinfo~n",[]) 
+	   ;  true ),
+	   close(SummaryOS) ),
+
+	supported_format_suffix(texinfo,Suff),
+	concat_atom([Name,'intro.',Suff],IntroName),
+	format_texinfo_components_include([IntroName],OS),
+	open(IntroName,write,IntroOS),
+	(  MainType = standalone
+	-> atom_codes(NDName,NDNameS),
+	   format_texinfo_section(0,NDNameS,IntroOS)
+	;  format_texinfo_section(1,"Introduction",IntroOS) ),
+	format(IntroOS,"~n~s~n~n",[Comment]).
+format_intro(texinfo,component,FileType,_Name,_NDName,_Summary,_Version,
+	              Comment,OS,_IntroOS) :-
+	format(OS,"~n~s~n~n",Comment),
+	(  FileType = part
+	-> format(OS,"@iftex~n@sp ~n@end cartouche~n@vfill~n@end iftex~n",[])
+	;  true ).
+
+
+%% ---------------------------------------------------------------------------
+
+:-
+   comment(format_includes_and_end_matter(Format,Name,
+                                          Components,Indices,Opts,OS),
+   "This predicate generates code for including the components of a
+   complex document if needed, and produces the final matter of the
+   main file. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.) -- different clauses of the predicate can be defined
+   for different formats. @var{Name} is the name of the application
+   (taken from the name of the input file). If the manual should
+   include other files (e.g., as chapters) @var{Components} is
+   nonempty and contains the complete names of the component
+   files. These files will appear in the manual in the order in which
+   they appear in @var{Components}. These files can be written
+   manually or generated automatically by @pred{document_module/2} or
+   any other means, but must be in a format compatible with
+   @var{Format}. @var{Indices} contains the index names (the indices
+   to be generated). @var{OS} is the output stream to which writes
+   should be made (normally points to the output file).").
+
+:- pred format_includes_and_end_matter(Format,Name,Components,Indices,Opts,OS)
+
+        : '='(texinfo) * filename * list(filename) * list(atom) 
+          * list(atom) * stream
+
+        # "The components in @var{Components}, if any, are included as
+           chapters. @var{Name} is used as the basename of the index
+           component files. If no components, then everything should
+           go in-line (including indices).".
+%% ---------------------------------------------------------------------------
+
+
+format_includes_and_end_matter(texinfo,Name,Components,Indices,Opts,OS) :-
+
+	format_texinfo_components_include(Components,OS),
+	(  member('-norefs',Opts)
+	-> true
+	;  supported_format_suffix(texinfo,Suff),
+	   format(OS,"~n@c (references)~n@include ~wrefs.~w~n",[Name,Suff]) ),
+
+	findall(_, ( typeindex(IdxName,Index,_IType,ITitle,IComment),
+	             (member(IdxName,Indices); Indices=[all]),
+		     list_concat([ IndexId, "index" ],Index),
+		     format_index(Name,ITitle,IComment,IndexId,OS)),
+                _),
+	format(OS,"@bye~n~n",[]).
+
+
+format_texinfo_components_include([],_OS).
+format_texinfo_components_include([Component|Components],OS) :-
+	format(OS,"@c (component)~n@include ~w~n",[Component]),
+	format_texinfo_components_include(Components,OS).
+
+
+%% Each index goes in a separate file unless no components 
+%% (then they go inline) 
+format_index(Name,Titleat,Commentat,IndexId,OS) :- 
+
+	atom_codes(Titleat,Title),
+	atom_codes(Commentat,Comment),
+
+	atom_codes(Name,NameS),
+	supported_format_suffix(texinfo,Suff),
+	atom_codes(Suff,SuffS),
+	list_concat([NameS,IndexId,"index.",SuffS],FileNameS),
+	atom_codes(FileName,FileNameS),
+	format(OS,"@c (index)~n@include ~w~n",[FileName]),
+	open(FileName,write,IndexOS),
+	format(IndexOS,"@node ~s, , , Top~n",[Title]),
+	format(IndexOS,"@comment  node-name,  next,  previous,  up~n",[]),
+	format(IndexOS,"@unnumbered ~s~n",[Title]),
+	format(IndexOS,"~n~s~n~n",[Comment]),
+	format(IndexOS,"@printindex ~s~n~n",[IndexId]),
+	close(IndexOS).
+
+%% ---------------------------------------------------------------------------
+:- comment( format_module_usage(Format,Name,Type,Exports,Mults,
+   UMods,IUMods,SMods,Ops,NDecls,NModes,Indices,OS), "This
+   predicate defines the format of the usage info for the
+   module. @var{Format} is the type of output (e.g., texinfo, latex,
+   etc.). @var{Name} is the name of the module. @var{Exports} contains
+   the predicates exported by the module (taken from the @pred{export/2}
+   declaration). @var{UMods} contains the user modules imported by the
+   module. @var{SMods} contains the system modules imported by the
+   module.  @var{Ops} contains any exported operator
+   definitions.  @var{NModes} contains any new mode
+   definitions. @var{Indices} is a list of index names (the indices to
+   be generated). @var{OS} is the output stream to which writes should
+   be made (normally points to the output file).").
+
+:- pred  format_module_usage(Format,Name,Type,Exports,Mults,
+                           UMods,IUMods,SysMods,EngMods,Ops,NDecls,Indices,OS)
+ : (Format=texinfo,atom(Name),modtype(Type),list(Exports,predname),
+   list(Exports,predname),list(UMods,atom),list(IUMods,atom),list(SysMods,atom),
+   list(Ops),list(NDecls,atom),list(NModes,atom),
+   list(Indices,atom),stream(OS)) 
+
+  # "The module header info is documented as the first section of the
+   chapter.".
+%% ---------------------------------------------------------------------------
+
+format_module_usage(texinfo,Name,Type,CExports,UMods,SysMods,Ops,NDecls,
+		    Indices,OS) :-
+	texinfo_escape_ats_etc_all_atoms(Name,EName),
+	format_texinfo_section_name(EName,2,"Usage and interface",OS),
+	writeln(OS,'@cartouche'),
+	writeln(OS,'@itemize @bullet{}'),
+
+	( Type = comment(Comment) -> 
+	      format(OS,"~n@item @strong{Library usage:}~n~n",[]),
+	      format(OS,"~s~n",[Comment])
+            ; true),
+
+	format_exports_for_module(CExports,OS,Indices),
+	format_operators_for_module(Ops,OS,Indices),
+	format_decls_for_module(NDecls,OS,Indices),
+	format_inputs_for_module(UMods,SysMods,OS,Indices).
+
+format_exports_for_module(CExports,OS,Indices):- 
+	( CExports = [] -> true
+	; nl(OS),writeln(OS,'@item @strong{Exports:}'),
+	  writeln(OS,'@itemize @minus'),nl(OS),
+
+% 	  filter_export_by_type(CExports,"PREDICATE",Predicates),
+	  handle_export_cases(CExports,'Predicates',Indices,OS),
+
+/*	  filter_export_by_type(CExports,"PROPERTY",Properties),
+	  handle_export_cases(Properties,
+	                           'Properties',Indices,OS),
+*/
+	  nl(OS),writeln(OS,'@end itemize'),nl(OS) ).
+
+format_operators_for_module(Ops,OS,Indices):- 
+	( Ops = [] -> true
+        ; nl(OS),writeln(OS,'@item @strong{New operators defined:}'),nl(OS),
+	  format_ops(Ops,Indices,OS) ).
+
+format_decls_for_module(NDecls,OS,Indices):- 
+	(NDecls = [] -> true
+           ; 
+  	     nl(OS),writeln(OS,'@item @strong{Module Level Declarations:}'),
+	     nl(OS),
+	     format_term_list_commas_period(NDecls,global,Indices,OS) ).
+
+format_inputs_for_module(UMods,SysMods,OS,Indices):- 
+	( UMods = [], SysMods = [] -> true
+        ; 
+	nl(OS),writeln(OS,'@item @strong{Other modules used:}'),
+	       writeln(OS,'@itemize @minus'),nl(OS),
+	     handle_library_used_cases(UMods,  
+	        'Application modules', Indices,OS),
+	     handle_library_used_cases(SysMods,
+	        'System library modules',Indices,OS),
+	  nl(OS),writeln(OS,'@end itemize'),nl(OS) ),
+%	format(OS, "@end itemize~n@end cartouche~n",[]).
+	writeln(OS,'@end itemize'),writeln(OS,'@end cartouche').
+
+
+handle_export_cases([],_Type,_Indices,_OS).
+handle_export_cases([Exp|Exps],Type,Indices,OS) :- 
+	format(OS,"~n@item @emph{~w:}~n~n",[Type]),
+	format_term_list_commas_period([Exp|Exps],global,Indices,OS).
+
+handle_library_used_cases([],_Type,_Indices,_OS).
+handle_library_used_cases([Lib|Libs],Type,Indices,OS) :- 
+	format(OS,"~n@item @emph{~w:}~n~n",[Type]),
+	format_term_list_commas_period([Lib|Libs],global,Indices,OS).
+
+format_term_list_commas_period([],_Type,_Indices,_OS) :-
+	!.
+format_term_list_commas_period([C],Type,Indices,OS) :-
+	!,
+	write_code_and_ref(C,Type,".\n",Indices,OS).
+format_term_list_commas_period([C|Cs],Type,Indices,OS) :-
+	write_code_and_ref(C,Type,", ",Indices,OS), 
+	format_term_list_commas_period(Cs,Type,Indices,OS).	
+
+write_code_and_ref(C,no_ref,Sep,_Indices,OS) :-
+	!,
+	texinfo_escape_ats_etc_all_atoms(C,EC),
+	%% This is to avoid parenthesis around operators...
+	(  EC = F/A
+	-> format(OS,"@code{~w/~w}~s",[F,A,Sep])
+	;  format(OS,"@code{~w}~s",[EC,Sep]) ).
+write_code_and_ref(C,Type,Sep,Indices,OS) :-
+	!,
+	texinfo_escape_ats_etc_all_atoms(C,EC),
+	format_ref(texinfo,Type,EC,Indices,OS),
+%% Seems like new versions of texinfo prefer @ etc escaped in indices...
+%%	format_ref(texinfo,Type,C,Indices,OS),
+	%% This is to avoid parenthesis around operators...
+	(  EC = F/A
+	-> format(OS,"@code{~w/~w}~s~n",[F,A,Sep])
+	;  format(OS,"@code{~w}~s~n",[EC,Sep]) ).
+
+format_ref(texinfo,Type,(F)/A,Indices,OS) :- 
+	!,
+	(  ( member(Type,Indices); Indices=[all] ),
+	   typeindex(Type,Index,_,_,_) 
+	-> unescape_ampersands(F,NF),
+	   format(OS,"@~s ~w/~w~n",[Index,NF,A])
+	;  true ).
+format_ref(texinfo,Type,library(C),Indices,OS) :- 
+	!,
+	(  ( member(Type,Indices); Indices=[all] ),
+	   typeindex(Type,Index,_,_,_)
+	-> unescape_ampersands(C,NC),
+	   format(OS,"@~s ~w~n",[Index,NC])
+	;  true ).
+format_ref(texinfo,Type,C,Indices,OS) :- 
+	!,
+	(  ( member(Type,Indices); Indices=[all] ),
+	   typeindex(Type,Index,_,_,_)
+	-> (  C = F/A
+	   -> unescape_ampersands(F,NF),
+	      format(OS,"@~s ~w/~w~n",[Index,NF,A])
+	   ;  unescape_ampersands(C,NC),
+	      format(OS,"@~s ~w~n",[Index,NC]) )
+	;  true ).
+
+%% Terrible kludge because of texinfo's very weird treatoment of '&': has 
+%% to be escaped in, e.g., deffn, but not in index entries!
+unescape_ampersands(T,T) :- 
+	var(T),
+	!.
+unescape_ampersands(T,ET) :- 
+	functor(T,F,A),
+	unescape_ampersands_atom(F,EF),
+	functor(ET,EF,A),
+	unescape_ampersands_arg(A,T,ET).
+
+unescape_ampersands_arg(0,_T,_ET) :-
+	!.
+unescape_ampersands_arg(A,T,ET) :-
+	A>0,
+	!,
+	arg(A,T,TArg),
+	unescape_ampersands(TArg,ETArg),
+	arg(A,ET,ETArg),
+	NA is A-1,
+	unescape_ampersands_arg(NA,T,ET).
+
+unescape_ampersands_atom(F,NF) :-
+	atom_codes(F,FS),
+	unescape_ampersands_str(FS,NFS),
+	atom_codes(NF,NFS).
+
+unescape_ampersands_str([],[]).
+unescape_ampersands_str([0'@,0'&|R],[0'&|NR]) :-
+	!,
+	unescape_ampersands_str(R,NR).
+unescape_ampersands_str([X|R],[X|NR]) :-
+	unescape_ampersands_str(R,NR).
+	
+
+format_ops([Op],Indices,OS) :-
+	!,
+	format_op(Op,".",Indices,OS).
+format_ops([Op|Ops],Indices,OS) :-
+	format_op(Op,", ",Indices,OS),
+	format_ops(Ops,Indices,OS).
+
+format_op(op(Prec,Type,Functor),Sep,Indices,OS) :- 
+	texinfo_escape_ats_etc_atom(Functor,EFunctor),
+	op_arity(Type,Arity),
+	format_ref(texinfo,op,EFunctor/Arity,Indices,OS),
+	format_ref(texinfo,global,EFunctor/Arity,Indices,OS),
+	format(OS,"@code{~w/~w} [~w,~w]~s~n",[EFunctor,Arity,Prec,Type,Sep]).
+
+op_arity(fy,1).
+op_arity(yf,1).
+op_arity(fx,1).
+op_arity(xf,1).
+op_arity(xfx,2).
+op_arity(xfy,2).
+op_arity(yfx,2).
+
+
+format_texinfo_section_name(Name,Level,Section,OS) :-
+	check_texinfo_section_name_syntax(Section),
+	format(OS,"~n~n@node ~s (~w), next,  previous,  up~n",[Section,Name]),
+ 	format(OS,"@comment node-name, next,  previous,  up~n",[]),
+	format_texinfo_section_no_node_name(Name,Level,Section,OS).
+
+format_texinfo_section(Level,Section,OS) :-
+	check_texinfo_section_name_syntax(Section),
+	format(OS,"~n~n@node ~s, next,  previous,  up~n",[Section]),
+ 	format(OS,"@comment node-name, next,  previous,  up~n",[]),
+	format_texinfo_section_no_node(Level,Section,OS).
+
+format_texinfo_section_no_node_name(Name,0,Section,OS) :-
+	format(OS,"@unnumbered ~s (@code{~w})~n",[Section,Name]).
+format_texinfo_section_no_node_name(Name,1,Section,OS) :-
+	format(OS,"@chapter ~s (@code{~w})~n",[Section,Name]).
+format_texinfo_section_no_node_name(Name,2,Section,OS) :-
+	format(OS,"@section ~s (@code{~w})~n",[Section,Name]).
+
+format_texinfo_section_no_node(0,Section,OS) :-
+	format(OS,"@unnumbered ~s~n",[Section]).
+format_texinfo_section_no_node(1,Section,OS) :-
+	format(OS,"@chapter ~s~n",[Section]).
+format_texinfo_section_no_node(2,Section,OS) :-
+	format(OS,"@section ~s~n",[Section]).
+
+:- comment(check_texinfo_section_name_syntax/1,"Issue an error message
+   if the section name contains characters that info will not like.").
+
+check_texinfo_section_name_syntax(Section) :-
+	check_texinfo_section_name_syntax_(Section,0,Section).
+
+check_texinfo_section_name_syntax_([],_PrevChar,_Section).
+check_texinfo_section_name_syntax_([H|T],_PrevChar,Section) :-
+	illegal_texinfo_section_name_char(H),
+	!,
+	error_message(
+     "info format does not support character ""~c"" in section names (""~s"")",
+	                [H,Section]),
+	check_texinfo_section_name_syntax_(T,H,Section).
+check_texinfo_section_name_syntax_([H|T],PrevChar,Section) :-
+	illegal_texinfo_section_name_repeated_char(H),
+	PrevChar == H,
+	!,
+	error_message(
+     "info format does not support chars ""~c~c"" in section names (""~s"")",
+	                [H,H,Section]),
+	check_texinfo_section_name_syntax_(T,H,Section).
+check_texinfo_section_name_syntax_([H|T],_PrevChar,Section) :-
+	check_texinfo_section_name_syntax_(T,H,Section).
+
+:- regtype illegal_texinfo_section_name_char/1.
+
+illegal_texinfo_section_name_char(0':).
+illegal_texinfo_section_name_char(0',).
+
+:- regtype illegal_texinfo_section_name_repeated_char/1.
+
+illegal_texinfo_section_name_repeated_char(0'-).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_predicates_begin(Format,Name,Text,OS),"This
+   predicate defines the format of the first part of the documentation
+   for a set of predicates. @var{Format} is the type of output (e.g.,
+   texinfo, latex, etc.). @var{Name} is the module name.  @var{Text}
+   describes which set of predicates is being documented (e.g.,
+   exported predicates, imported predicates, etc.).  @var{OS} is the
+   output stream to which writes should be made (normally points to
+   the output file).").
+
+:- pred format_predicates_begin(Format,Name,Text,OS) 
+   : '='(texinfo) * atom * string * stream
+
+  # "Predicates will formatted as an itemized list. Corresponds to a
+   begin itemize.".
+%% ---------------------------------------------------------------------------
+
+format_predicates_begin(texinfo,Name,Text,OS) :-
+	format_texinfo_section_name(Name,2,Text,OS).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_predicates_end(Format,OS),"This predicate defines
+   the format of the last part of the documentation for a set of
+   predicates. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.). @var{OS} is the output stream to which writes should
+   be made (normally points to the output file).").
+
+:- pred format_predicates_end(Format,OS) : '='(texinfo) * stream
+
+  # "Predicates will formatted as an itemized list. Corresponds to an
+   end itemize.".
+%% ---------------------------------------------------------------------------
+
+format_predicates_end(texinfo,_OS).
+
+%% ---------------------------------------------------------------------------
+:-
+   comment(format_predicate_begin(Format,Type,Pred,Indices,Opts,OS),"This
+   predicate defines the format of the first part of the documentation
+   for a predicate (the header). @var{Format} is the type of output
+   (e.g., texinfo, latex, etc.). @var{Type} is the type of predicate
+   being documented (predicate, property, type, etc.). @var{Pred} is
+   the name of the predicate. @var{Indices} is a list of index names
+   (the indices to be generated). @var{Opts} are the formatting
+   options. @var{OS} is the output stream to which writes should be
+   made (normally points to the output file). ").
+
+:- pred format_predicate_begin(Format,Type,Pred,Indices,Opts,OS) 
+   : '='(texinfo) * atom * predname * list(atom) * 
+     list(supported_option) * stream
+
+ # "Each predicate is an item in an itemized list.".
+%% ---------------------------------------------------------------------------
+
+% TLS: 08/04/05: changed edef stuf to get the xsbdoc manual to compile. 
+% TeX 3.141592 (Web2C 7.5.5) kpathsea version 3.5.5
+% texi2dvi (GNU Texinfo 4.7) 1.3
+% Dont know why this works, but it does on my Mac
+format_predicate_begin(texinfo,Type,PN,Indices,_Opts,OS) :-
+	texinfo_escape_ats_etc_all_atoms(PN,F/A),
+	typetext(Type,Text,_Prefix,_Postfix),
+%	(  member('-shorttoc', Opts)
+%	-> true
+%	;  format(OS,"@iftex~n@edef@temp{@noexpand@writetocentry{",[]),
+%	   format(OS,"@realbackslash unnumbsubsubsecentry{",[]),
+%	   format(OS,"~w (~w)}}}~n@temp~n@end iftex~n",[F/A,Type]) ),
+%	;  format(OS,"@iftex~n\\edef\\temp{\\noexpand\writetocentry{",[]),
+%	   format(OS,"\\realbackslash unnumbsubsubsecentry{",[]),
+%	   format(OS,"~w (~w)}}}~n\\temp~n@end iftex~n",[F/A,Type]) ),
+	(  ( member(Type,Indices); Indices=[all] ),
+	   typeindex(Type,Index,_,_,_)
+	-> unescape_ampersands(F,NF),
+	   format(OS,"@~s ~w/~w ~n",[Index,NF,A])
+	;  true ),
+	(  ( member(global,Indices); Indices=[all] ),
+	   typeindex(global,UIndex,_,_,_)
+	-> unescape_ampersands(F,NF),
+	   format(OS,"@~s ~w/~w ~n",[UIndex,NF,A])
+	;  true ),
+	format(OS,"@deffn ~s ~w/~w:~n",[Text,F,A]),
+	format(OS,"~n~n",[]).
+%%	format(OS,"~n@sp 1~n~n",[]).
+
+:- pred typetext(Type,Text,Prefix,Postfix) 
+	: assrt_type * string * string * string
+	# "@var{Text} is an appropriate text for the header for
+           @var{Type}.  Same for @var{Prefix} and @var{Postfix}".
+
+typetext(tpred,    "TABLED_PREDICATE",   "",    "").
+typetext(pred,    "PREDICATE",   "",    "").
+typetext(compat,  "PREDICATE",   "",    "").
+typetext(calls,   "PREDICATE",   "",    "").
+typetext(success, "PREDICATE",   "",    "").
+typetext(comp,    "PREDICATE",   "",    "").
+%% typetext(func,    "FUNCTION",    "",    "").
+typetext(prop,    "PROPERTY",    "",    "").
+%typetext(regtype, "REGTYPE",     "",    "").
+typetext(decl,    "DECLARATION", ":- ", ".").
+%typetext(modedef, "MODE",        "",    "").
+%typetext(entry,   "ENTRY POINT", "",    "").
+%% This one just for undocumented reexports:
+%typetext(udreexp, "(UNDOC_REEXPORT)",     "",    "").
+typetext(_,       "UNKNOWN",     "",    "").
+
+
+%% ---------------------------------------------------------------------------
+:- comment(format_predicate_comment(Format,Comment,OS),"This predicate
+   defines the format of @var{Comment}, an introductory text for the
+   predicate (taken from the @pred{comment/2} declaration, if
+   available).  @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.). @var{OS} is the output stream to which writes should
+   be made (normally points to the output file).").
+
+:- pred format_predicate_comment(Format,Comment,OS) 
+	: '='(texinfo) * string * stream
+
+        # "Predicate comments are output as is (in a separate paragraph).".
+%% ---------------------------------------------------------------------------
+
+format_predicate_comment(texinfo,Comment,OS) :-
+	format(OS,"~n~s~n~n",[Comment]).
+
+%% ---------------------------------------------------------------------------
+:- pred format_native_declaration(Format,Decl,OS) 
+	: '='(texinfo) * term * stream
+
+	# "This predicate defines the format for documenting
+          miscellaneous declarations such as @decl{dynamic/1}.
+          @var{Format} is the type of output (e.g., texinfo, latex,
+          etc.). @var{Decl} contains the declaration info. @var{OS} is
+          the output stream to which writes should be made (normally
+          points to the output file). ".
+%% ---------------------------------------------------------------------------
+
+format_native_declaration(texinfo,Type,OS) :-
+	texinfo_escape_ats_etc_all_atoms(Type,EType),
+	format(OS,"~nThe predicate is of type @emph{~w}.~n~n",[EType]).
+
+%% ---------------------------------------------------------------------------
+
+format_tabling_declaration(texinfo,TType,OS) :-
+	texinfo_escape_ats_etc_all_atoms(TType,EType),
+	format(OS,"~nThe predicate uses @emph{~w} tabling.~n~n",[EType]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_predicate_end(Format,OS),"This predicate defines the
+   format of the last part of the documentation for a
+   predicate. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.). @var{OS} is the output stream to which writes should
+   be made (normally points to the output file).").
+
+:- pred format_predicate_end(Format,OS) 
+
+	: '='(texinfo) * stream
+
+        # "Noop (each predicate is an item in an itemized list).".
+%% ---------------------------------------------------------------------------
+
+format_predicate_end(texinfo,OS) :-
+	format(OS,"@end deffn~n@sp 1~n~n",[]).
+%%	format(OS,"@end deffn~n",[]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_head_descriptor(Format,HD,Type,Standard,OS), "This
+   predicate defines the format of a predicate
+   descriptor. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.). @var{HD} describes the head of the predicate (as a
+   structure whose argunents are the variable names).  @var{Type} is
+   the type of predicate (predicate, function, declaration, ...).
+   @var{Standard} contains the atom @tt{iso} if the predicate is
+   iso-compliant. @var{OS} is the output stream to which writes should
+   be made (normally points to the output file.").
+
+:- pred format_head_descriptor(Format,HD,Type,Standard,OS) 
+ 
+        : atom * term * atom * atom * stream
+
+        # "Head descriptors are formatted literally, in @tt{@@code}
+           format. ISO compliance is formatted using the @tt{@@key}
+           command.".
+%% ---------------------------------------------------------------------------
+
+format_head_descriptor(texinfo,P,Type,Standard,OS) :- 
+	(  P=_F/_A 
+	-> true 
+	;  typetext(Type,_Text,Prefix,Postfix),
+	   texinfo_escape_ats_etc_all_atoms(P,EP),
+	   format(OS,"~s@code{",[Prefix]),
+	   sp_write(OS,EP),
+	   format(OS,"}~s",[Postfix]) ),
+	format_standard(Standard,OS).
+
+format_standard(iso,OS) :-
+	!,
+	rewrite_command(texinfo,iso(""),[],NewAll),
+        %% some versions of makeinfo do not seem to like @hfill... 
+ 	format(OS,"~n@iftex~n@hfill~n@end iftex~n~s",[NewAll]).
+format_standard(_Standard,_OS).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_usage_header(Format,OS), "This predicate defines the
+   format of the header describing a single usage for a
+   predicate. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.).  @var{OS} is the output stream to which writes should
+   be made (normally points to the output file).").
+
+:- pred format_usage_header(Format,OS) 
+
+	: '='(texinfo) * stream
+
+	# "Usage header in bold in separate paragraph.".
+%% ---------------------------------------------------------------------------
+
+format_usage_header(texinfo,OS) :-
+	format(OS,"~n@strong{Usage:} ",[]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_multiple_usage_header(Format,N,OS), "This predicate defines
+   the format of the header describing each usage for a predicate with
+   multiple declarations. @var{Format} is the type of output (e.g.,
+   texinfo, latex, etc.).  @var{N} is the usage number. @var{OS} is
+   the output stream to which writes should be made (normally points
+   to the output file).").
+
+:- pred format_multiple_usage_header(Format,N,OS) 
+
+	: '='(texinfo) * integer * stream
+
+	# "Usage header in bold in separate paragraph.".
+%% ---------------------------------------------------------------------------
+
+format_multiple_usage_header(texinfo,N,OS) :-
+	format(OS,"~n@strong{Usage ~w:} ",[N]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_other_assrt_header(Format,OS), "This predicate
+   defines the format of the header general properties of a
+   predicate. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.).  @var{OS} is the output stream to which writes should
+   be made (normally points to the output file).").
+
+:- pred format_other_assrt_header(Format,OS) 
+
+	: '='(texinfo) * stream
+
+	# "Header in bold in separate paragraph.".
+%% ---------------------------------------------------------------------------
+
+format_other_assrt_header(texinfo,OS) :-
+	format(OS,"~n@strong{General properties:} ",[]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_site_begin(Format,Text,Bullet,OS),"This predicate
+   defines the format of the header of the description of a set of
+   properties for a given @em{site} (at calls, on success, global
+   properties, etc.). @var{Format} is the type of output (e.g.,
+   texinfo, latex, etc.).  @var{Text} describes the site. @var{Bullet}
+   says if a bullet should precede the text. @var{OS} is the output
+   stream to which writes should be made (normally points to the
+   output file).").
+
+:- pred format_site_begin(Format,Text,Bullet,OS) : 
+	'='(texinfo) * string * atom * stream
+
+   # "Each site is an item in an itemized list.".
+%% ---------------------------------------------------------------------------
+
+format_site_begin(texinfo,Text,bullet,OS) :- 
+        format(OS,"@item @emph{~s}~n",[Text]).
+format_site_begin(texinfo,Text,nobullet,OS) :- 
+        format(OS,"~n~n@emph{~s}~n",[Text]).
+	
+%% ---------------------------------------------------------------------------
+:- comment(format_site_end(Format,OS),"This predicate defines the
+   format of the end of the description of a set of properties for a
+   given site. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.).  @var{OS} is the output stream to which writes should
+   be made (normally points to the output file).").
+
+:- pred format_site_end(Format,OS) : '='(texinfo) * stream
+
+   # "Simply end of item (a newline).".
+%% ---------------------------------------------------------------------------
+
+format_site_end(texinfo,OS) :-
+        format(OS,"~n",[]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_properties_begin(Format,OS),"This predicate defines
+   the beginning of the description of the properties for a given
+   predicate. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.).  @var{N} is the usage number. @var{OS} is the output
+   stream to which writes should be made (normally points to the
+   output file).").
+
+:- pred format_properties_begin(Format,OS) : '='(texinfo) * stream
+
+   # "Properties are formatted as a (second level) itemized list.".
+%% ---------------------------------------------------------------------------
+
+format_properties_begin(texinfo,OS) :-
+	format(OS,"~n@itemize @minus~n",[]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_property(Format, Prop, PM, DocString, VarNames,Opts,
+   OS),"This predicate defines the formatting for a property.
+   @var{Format} is the type of output (e.g., texinfo, latex, etc.).
+   @var{Prop} is the actual property (a term).  @var{PM} is the module
+   in which the property is defined. @var{VarNames} is a list of
+   (possibly repeated) variable names, corresponding to the names in
+   the head pattern.  @var{DocString} contains @tt{~s} in the places
+   where the variables names should appear. Note that this is suitable
+   for use as arguments for a call to @pred{format/2}. @var{OS} is the
+   output stream to which writes should be made (normally points to
+   the output file).").
+
+:- pred format_property(Format, Prop, PM, DocString, VarNames,   Opts,   OS) 
+   : atom * term * atom * string * list(string) * list(supported_option) * stream
+
+   # "Properties are formatted as running text.".
+%% ---------------------------------------------------------------------------
+
+%% -literalprops -nopropnames -noundefined -nopropsepln
+
+format_property(texinfo,Prop,PM,DocString,VarNames,Opts,OS) :- 
+	!,
+	texinfo_escape_ats_etc_all_atoms(Prop,EProp),
+	texinfo_escape_ats_etc_all_atoms(PM,EPM),
+ 	(  member('-nopropsepln',Opts)
+	-> format(OS," ",[])
+	;  format(OS,"~n~n",[]) ),
+	(  ( member('-literalprops',Opts) 
+	   ; DocString==[] 
+	   ; DocString==undefined )
+	-> format(OS,"@code{~w}",[EProp])
+	;  texinfo_escape_ats_etc_all_atoms(VarNames,RVarNames),
+	   (  ( member('-nopropsepln',Opts),
+	        list_concat([ NewDocString, "." ], DocString) )
+	   -> %% Just to make it nicer: get rid of final full stop.
+	      format(OS,NewDocString,RVarNames)
+	   ;  format(OS,DocString,RVarNames) ) ),
+ 	(  member('-nopropsepln',Opts)
+	-> true
+	;  format(OS,"~n@iftex~n@hfill~n@end iftex~n",[]) ),
+	(  DocString\==undefined ; member('-noundefined',Opts)
+	-> true 
+	;  format(OS," (undefined property)", []) ),
+	(  ( DocString==undefined 
+	   ; member('-nopropnames',Opts)
+	   ; member('-literalprops',Opts) )
+	-> true 
+	;  functor(Prop,F,A),
+	   texinfo_escape_ats_etc_all_atoms(F/A,Desc),
+	   (  EPM \== ''
+           -> format(OS," (@code{~w:~w})",[EPM,Desc]) 
+	   ;  format(OS," (@code{~w})",[Desc]) ) ),
+ 	(  member('-nopropsepln',Opts)
+	-> format(OS,".",[])
+	;  true ).
+format_property(texinfo,Prop,PM,_DocString,_VarNames,_Opts,_OS) :- 
+	error_message("could not format property ~w:~w",[PM,Prop]).
+
+
+%% ---------------------------------------------------------------------------
+:- comment(format_properties_end(Format,OS),"This predicate defines
+   the end of the description of the properties for a given
+   predicate. @var{Format} is the type of output (e.g., texinfo,
+   latex, etc.).  @var{N} is the usage number. @var{OS} is the output
+   stream to which writes should be made (normally points to the
+   output file).").
+
+:- pred format_properties_end(Format,OS) : '='(texinfo) * stream
+
+   # "End of the (second level) itemized list.".
+%% ---------------------------------------------------------------------------
+
+format_properties_end(texinfo,OS) :-
+	format(OS,"@end itemize~n",[]).
+
+%% ---------------------------------------------------------------------------
+:- comment(format_description(Format,Desc,OS),"This predicate defines
+   the format of @var{Desc}, an introductory text for the predicate
+   (taken from the comment part of a @pred{pred/1} declaration, if
+   available).  These coments are generally used to describe a
+   particular usage of the predicate. @var{Format} is the type of
+   output (e.g., texinfo, latex, etc.). @var{OS} is the output stream
+   to which writes should be made (normally points to the output
+   file).").
+
+:- pred format_description(Format,Desc,OS) : atom * string * stream
+
+   # "The description of the usage is a separate item in the site item list.".
+%% ---------------------------------------------------------------------------
+
+format_description(texinfo,Desc,OS) :-
+        format(OS,"@item @emph{Description:} ~s ~n",[Desc]).
+	
+%% ---------------------------------------------------------------------------
+:- comment(
+  format_other_info(Format,Level,Name,NDName,Appendix,Ack,Changes,Bugs,OS),
+  "This predicate defines the format of some auxiliary
+  information. @var{Format} is the type of output (e.g., texinfo,
+  latex, etc.). @var{Level} is the level of nesting of the
+  corresponding sections (e.g., 0=unnumbered, 1=chapter,
+  2=section,...). @var{Name} is the module/application
+  name. @var{NDName} is the same, but without @tt{_doc}, if
+  applicable. @var{Changes} contains the changelog. @var{Bugs}
+  contains documentation on the known bugs. @var{OS} is the output
+  stream to which writes should be made (normally points to the output
+  file).").
+
+:- pred 
+   format_other_info(Format,Level,Name,NDName,Appendix,Ack,Changes,Bugs,OS)
+   : (atom(Format),integer(Level),atom(Name),atom(NDName),string(Appendix),
+      string(Ack),list(Changes,change),list(Bugs,string),stream(OS))
+
+   # "Appendix is formatted as a simple text body. Bugs and changes are
+     formatted as itemized lists in separate sections.".
+%% ---------------------------------------------------------------------------
+
+format_other_info(texinfo,_FileType,_Name,_NDName,[],[],[],[],_OS,_IntroOS) :-
+	!.
+%% If level is 0 do not uniquify
+format_other_info(texinfo,main(standalone),Name,_NDName,Appendix,Ack,
+	          Changes,Bugs,OS,IntroOS) :-
+	!,
+	close(IntroOS),
+	supported_format_suffix(texinfo,Suff),
+	Level = 0,
+	(  Appendix = []
+        -> true 
+	;  concat_atom([Name,'appdx.',Suff],AppdxName),
+	   format_texinfo_components_include([AppdxName],OS),
+	   open(AppdxName,write,AppdxOS),
+	   format_texinfo_section(Level,"Other information",AppdxOS),
+	   format(AppdxOS,"~n~s~n~n",[Appendix]),
+	   close(AppdxOS)
+	),
+	(  Ack = []
+        -> true 
+	;  concat_atom([Name,'ack.',Suff],AckName),
+	   format_texinfo_components_include([AckName],OS),
+	   open(AckName,write,AckOS),
+	   format_texinfo_section(Level,"Acknowledgements",AckOS),
+	   format(AckOS,"~n~s~n~n",[Ack]),
+	   close(AckOS)
+	),
+	(  Bugs = []
+        -> true 
+	;  concat_atom([Name,'bugs.',Suff],BugsName),
+	   format_texinfo_components_include([BugsName],OS),
+	   open(BugsName,write,BugsOS),
+	   format_texinfo_section(Level,
+             "Known bugs and planned improvements",BugsOS),
+	   format(BugsOS,"~n@itemize @bullet{}~n",[]),
+	   format_itemize_body(Bugs,BugsOS),
+	   format(BugsOS,"@end itemize~n",[]),
+	   close(BugsOS)
+	),
+	(  Changes = []
+        -> true 
+	;  concat_atom([Name,'changes.',Suff],ChName),
+	   format_texinfo_components_include([ChName],OS),
+	   open(ChName,write,ChOS),
+	   format_texinfo_section(Level,"Version/Change Log",ChOS),
+	   format(ChOS,"~n@table @strong~n",[]),
+	   format_itemize_body(Changes,ChOS),
+	   format(ChOS,"@end table~n",[]),
+	   close(ChOS)
+	).
+format_other_info(texinfo,FileLevel,_Name,INDName,Appendix,Ack,Changes,Bugs,
+	          NOS,IntroOS) :-
+	( (FileLevel = component, OS = NOS)
+	; (FileLevel = main(withcomponents), OS = IntroOS) ),
+	!,
+	texinfo_escape_ats_etc_all_atoms(INDName,NDName),
+	Level = 2,
+	(  Appendix = []
+        -> true 
+	;  format_texinfo_section_name(NDName,Level,
+	          "Other information",OS),
+	   format(OS,"~n~s~n~n",[Appendix])
+	),
+	(  Ack = []
+        -> true 
+	;  format_texinfo_section_name(NDName,Level,
+	          "Acknowledgments",OS),
+	   format(OS,"~n~s~n~n",[Ack])
+	),
+	(  Bugs = []
+        -> true 
+	;  format_texinfo_section_name(NDName,Level,
+                  "Known bugs and planned improvements",OS),
+	   format(OS,"~n@itemize @bullet{}~n",[]),
+	   format_itemize_body(Bugs,OS),
+	   format(OS,"@end itemize~n",[])
+	),
+	(  Changes = []
+        -> true 
+	;  format_texinfo_section_name(NDName,Level,"Version/Change Log",OS),
+	   format(OS,"~n@table @strong~n",[]),
+	   format_itemize_body(Changes,OS),
+	   format(OS,"@end table~n",[])
+	),
+	(  FileLevel = main(withcomponents)
+	-> close(IntroOS)
+	;  true ).
+	
+
+
+format_itemize_body([],_OS).
+format_itemize_body([change(Version,Change)|Changes],OS) :-
+	format_version(Version,"~n@item Version",OS),
+	format(OS,"~n~s~n",[Change]),
+	format_itemize_body(Changes,OS).
+format_itemize_body([Bug|Bugs],OS) :-
+	format(OS,"~n@item~n~s~n",[Bug]),
+	format_itemize_body(Bugs,OS).
+
+%% ---------------------------------------------------------------------------
+:- pred texinfo_escape_ats_etc_all_atoms/2
+
+   # "Handle complications from the possible presence of @@ in
+     predicate names, modes, args, etc.".
+%% ---------------------------------------------------------------------------
+
+texinfo_escape_ats_etc_all_atoms(T,T) :- 
+	var(T),
+	!.
+texinfo_escape_ats_etc_all_atoms(T,ET) :- 
+	functor(T,F,A),
+	texinfo_escape_ats_etc_atom(F,EF),
+	functor(ET,EF,A),
+	texinfo_escape_ats_etc_all_atoms_arg(A,T,ET).
+
+texinfo_escape_ats_etc_all_atoms_arg(0,_T,_ET) :-
+	!.
+texinfo_escape_ats_etc_all_atoms_arg(A,T,ET) :-
+	A>0,
+	!,
+	arg(A,T,TArg),
+	texinfo_escape_ats_etc_all_atoms(TArg,ETArg),
+	arg(A,ET,ETArg),
+	NA is A-1,
+	texinfo_escape_ats_etc_all_atoms_arg(NA,T,ET).
+	
+%% ---------------------------------------------------------------------------
+:- pred texinfo_escape_ats_etc_atom/2 : atom * term => atom * atom
+
+   # "Handle complications from the possible presence of @@ in
+     predicate names, etc.".
+%% ---------------------------------------------------------------------------
+
+texinfo_escape_ats_etc_atom(A,A) :-
+	number(A),
+	!.
+texinfo_escape_ats_etc_atom(A,EA) :-
+	atom_codes(A,S),
+	texinfo_escape_ats_etc(S,ES),
+	atom_codes(EA,ES).
+
+%% ---------------------------------------------------------------------------
+:- pred verbatimize_string/3 
+   : supported_format * string * term => supported_format * string * string
+
+   # "Escapes needed characters in string as needed for the verbatim
+     command supported natively by the format.".
+%% ---------------------------------------------------------------------------
+
+verbatimize_string(texinfo,NS,VS) :-
+	texinfo_escape_ats_etc(NS,VS).
+%% These two need to be studied...
+verbatimize_string(html,S,S).
+verbatimize_string(man,S,S).
+
+%% ---------------------------------------------------------------------------
+:- pred texinfo_escape_ats_etc/2 : string * term => string * string
+
+   # "Handle complications from the possible presence of @@, @{, and
+     @} in predicate names, etc. Also, converts tabs to 8 spaces: not
+     ideal, but sufficient in many cases. There is an additional
+     complication with &, which has to be treated differently in index
+     entries (!).".
+%% ---------------------------------------------------------------------------
+
+texinfo_escape_ats_etc([],[]).
+texinfo_escape_ats_etc([0'@|S],[0'@,0'@|ES]) :-
+	!,
+	texinfo_escape_ats_etc(S,ES).
+texinfo_escape_ats_etc([0'{|S],[0'@,0'{|ES]) :-
+	!,
+	texinfo_escape_ats_etc(S,ES).
+texinfo_escape_ats_etc([0'}|S],[0'@,0'}|ES]) :-
+	!,
+	texinfo_escape_ats_etc(S,ES).
+texinfo_escape_ats_etc([0'&|S],[0'@,0'&|ES]) :-
+	!,
+	texinfo_escape_ats_etc(S,ES).
+texinfo_escape_ats_etc([0'\t|S],[0' ,0' ,0' ,0' ,0' ,0' ,0' ,0' |ES]) :-
+	!,
+	texinfo_escape_ats_etc(S,ES).
+texinfo_escape_ats_etc([C|S],[C|ES]) :-
+	!,
+	texinfo_escape_ats_etc(S,ES).
+	
+
+%% ---------------------------------------------------------------------------
+
+:- pred sp_write/2 : stream * term 
+
+   # "Same as @pred{write/2}, but puts space around operators. This
+      makes them easier to read in documents.".
+%% ---------------------------------------------------------------------------
+
+sp_write(OS,T) :-
+        nonvar(T),
+        functor(T, F, A),
+        sp_write_(OS,A, F, T), !.
+sp_write(OS,T) :- write(OS,T).
+
+sp_write_(OS,1, F, T) :-
+        current_postfixop(F, P, _), !,
+        arg(1, T, A),
+        write_term(OS, A, [priority(P), numbervars(true)]),
+        put_code(OS,0' ),
+        display(OS,F).
+sp_write_(OS,1, F, T) :-
+        current_prefixop(F, _, P), !,
+        display(OS,F),
+        put_code(OS,0' ),
+        arg(1, T, A),
+        write_term(OS, A, [priority(P), numbervars(true)]).
+sp_write_(OS,2, F, T) :-
+        current_infixop(F, P, _, Q), !,
+        arg(1, T, A),
+        write_term(OS, A, [priority(P), numbervars(true)]),
+        put_code(OS,0' ),
+        display(OS,F),
+        put_code(OS,0' ),
+        arg(2, T, B),
+        write_term(OS, B, [priority(Q), numbervars(true)]).
+   
+%% ---------------------------------------------------------------------------
+	
+end_of_file.
+
+:- comment(version_maintenance,dir('../version')).
+
+:- comment(version(1*9+50,2000/04/18,03:22*13+'CEST'), "Fixed spurious
+   chars in ascii output.  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+48,2000/04/03,19:22*22+'CEST'), "Formatting for
+   printing on one side can now be selected.  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+42,1999/12/10,19:19*01+'MET'), "Fixed the
+   unescaping of ampersands.  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+37,1999/12/09,01:21*44+'CET'), "The fact that a
+   predicate is @em{implicit} (@decl{impl_defined/1}) is now not
+   documented.  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+36,1999/12/09,00:31*35+'CET'), "Added new
+   option @tt{-regtypeprops}.  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+34,1999/12/09,00:09*33+'CET'), "Formatting of &
+   finally fixed (non-trivial due to texinfo's weird behaviour with
+   &).  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+33,1999/12/05,21:42*21+'CET'), "Fixed escaping
+   of @tt{&} (was not escaped before in texinfo ouput).  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*9+32,1999/12/05,21:00*27+'CET'), "Added chapter
+   appendix and ack formatting code.  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+19,1999/11/19,19:32*30+'MET'), "Changed
+   @em{tolerance} and @em{hbadness} in the generated @tt{texinfo}
+   output so that fewer messages are written (this makes it easier to
+   spot real errors when running @apl{tex}).  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+18,1999/11/18,23:58*55+'MET'), "Added bullet
+   selection in @pred{format_site_begin/4}.  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+15,1999/11/18,13:46*33+'MET'), "Imported
+   @pred{modtype} from @lib{autodoc}).  (Manuel Hermenegildo)").
+
+:- comment(version(1*9+12,1999/11/18,13:22*18+'MET'), "Moved contents
+   to beginning of document--horray!  (Manuel Hermenegildo)").
+
+:- comment(version(1*8+27,1999/04/12,15:06*23+'MEST'), "Now a warning
+   is issued if characters unsupported by info are used in section
+   names.  (Manuel Hermenegildo)").
+
+:- comment(version(1*8+26,1999/04/12,12:29*34+'MEST'), "Navigation in
+   html docs improved by moving the location of indexing commands in
+   texinfo files up a bit.  (Manuel Hermenegildo)").
+
+:- comment(version(1*8+18,1999/04/07,13:58*05+'MEST'), "Generated
+   files now have @tt{texic} suffix, since they are a @em{texinfo
+   component}.  (Manuel Hermenegildo)").
+
+:- comment(version(1*8+15,1999/03/31,19:34*54+'MEST'),
+   "@@begin@{cartouche@} and @@end@{cartouche@} commands now
+   supported.  (Manuel Hermenegildo)").
+
+:- comment(version(1*8+14,1999/03/31,19:04*46+'MEST'), "@@foonote
+   command now supported.  (Manuel Hermenegildo)").
+
+:- comment(version(1*8+12,1999/03/31,10:13*44+'CEST'), "Old @em{usage}
+   index is now called, more appropriately, @em{global}
+   index. Correspondingly, changed things so that now every definition
+   goes to the global index in addition to its definitional index.
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*8+11,1999/03/30,23:52*01+'MEST'), "The individual
+   descriptions of predicates, props, regtypes, declarations, etc. now
+   appear as entries in the table of contents of the printed manual.
+   This can be shut off with the @tt{-shorttoc} option.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*8+8,1999/03/30,22:13*32+'MEST'), "Implemented
+   support for the new definitions of @@index, @@cindex, @@concept.
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*8+7,1999/03/30,20:08*29+'MEST'), "Added support
+   for @em{part} filetype.  (Manuel Hermenegildo)").
+
+:- comment(version(1*8+6,1999/03/30,20:06*04+'MEST'), "Added
+   'cartouche' around usage and interface.  (Manuel Hermenegildo)").
+
+:- comment(version(1*7+28,1999/03/21,19:16*25+'CET'), "Changed spacing
+   between the definitions of the predicates.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*7+24,1999/03/18,15:11*56+'CET'), "Fixed some
+   typing errors flagged by the documenter.  (Manuel Hermenegildo)").
+
+:- comment(version(1*7+20,1999/03/06,19:52*30+'CET'), "A module is now
+   documented even if exports nothing at all.  (Manuel Hermenegildo)").
+
+:- comment(version(1*7+19,1999/03/06,19:48*29+'CET'), "Engine modules
+   used now documented even if no other modules used (was a reported
+   bug).  (Manuel Hermenegildo)").
+
+:- comment(version(1*7+18,1999/03/06,19:28*48+'CET'), "Operators now
+   correctly formatted under ciao-0.8.  (Manuel Hermenegildo)").
+
+:- comment(version(1*7+16,1999/03/03,18:49*11+'MET'), "Minor change in
+   version reporting for components ('Version (of last change)').
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*7+15,1999/03/02,13:06*25+'MET'), "Fixed indexing
+   of names containing @@ etc. for newer versions of texinfo.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*7+13,1999/02/26,17:05*42+'MET'), "Tabs now
+   converted to a number of spaces (8) in verbatim modes. Not perfect,
+   but produces better output than leaving the tabs in.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*7+12,1999/02/15,19:46*14+'MET'), "Name of changes
+   texinfo file corrected.  (Manuel Hermenegildo)").
+
+:- comment(version(1*7+10,1999/01/13,03:45*52+'MET'), "Added
+   @@noindent command.  (Manuel Hermenegildo)").
+
+:- comment(version(1*7+4,1998/12/04,11:53*22+'MET'), "Fixed some
+   typing bugs.  (Manuel Hermenegildo)").
+
+:- comment(version(1*6+21,1998/09/25,16:26*45+'MEST'), "Enumerated
+   lists now supported (partially sometimes) on some formats. Added
+   description list commands.  (Manuel Hermenegildo)").
+
+:- comment(version(1*6+20,1998/09/25,14:57*56+'MEST'), "Added some
+   symbols (bullet, result). Improved support of special characters in
+   html. (Manuel Hermenegildo)").
+
+:- comment(version(1*6+19,1998/09/25,14:00*25+'MEST'), "Concept index
+   now close to the end by default.  (Manuel Hermenegildo)").
+
+:- comment(version(1*6+18,1998/09/25,13:11*21+'MEST'), "Usage index
+   now contains all references (and can thus be used as a global
+   index).  (Manuel Hermenegildo)").
+
+:- comment(version(1*6+17,1998/09/25,12:46*16+'MEST'), "Using
+   @pred{list_concat/2} (makes source easier to read).  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*6+16,1998/09/24,11:28*05+'MEST'), "No extra
+   spaces appear any more between end of indexing commands and
+   following puctuation mark.  (Manuel Hermenegildo)").
+
+:- comment(version(1*6+15,1998/09/24,11:08*27+'MEST'), "Summary is now
+   a separate chapter (work around a @apl{texi2html} bug).  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*6+14,1998/09/24,10:29*53+'MEST'), "Version info
+   in summaries now separated by a blank line.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*6+13,1998/09/24,10:17*14+'MEST'), "Added
+   @tt{@@sp} command. Fixed a bug in @tt{@@tt} for html format.
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*6+11,1998/09/22,17:20*38+'MEST'), "Added @@index
+   command: adds entry to concept index, but prints in a normal font.
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*6+1,1998/09/09,14:38*06+'MEST'), "Added @@key
+   command (after all, it is typeset nicely in texinfo).  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*5+7,1998/09/02,17:43*57+'MEST'), "Greatly
+   improved and simplified treatoment of newlines (at the cost of two
+   passes).  (Manuel Hermenegildo)").
+
+:- comment(version(1*5+4,1998/08/29,08:12*45+'EST'), "Fixed some
+   serious bugs (sigh) in man format.  (Manuel Hermenegildo)").
+
+:- comment(version(1*5+2,1998/08/29,04:10*23+'EST'), "Simplified code,
+   fixed some minor formatting bugs.  (Manuel Hermenegildo)").
+
+:- comment(version(1*3+4,1998/07/14,11:29*47+'MET DST'), "User and
+   system modules used now separated in the documentation.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*2+6,1998/07/02,20:54*25+'MET DST'), "'Usage:' now
+   included in header even if only one use.  (Manuel Hermenegildo)").
+
+:- comment(version(1*2+5,1998/07/02,20:33*04+'MET DST'), "Changed
+   formatting of predicates in texinfo to use texinfo deffn command.
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*2+3,1998/06/29,14:37*44+'MET DST'), "Periods now
+   included in the appropriate places after printing version numbers.
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*1+27,1998/05/23,07:06*11+'EST'), "Fixed some bugs
+   in new formatting of properties.  (Manuel Hermenegildo)").
+
+:- comment(version(1*1+23,1998/05/01,06:34*34+'EST'), "Added support
+   for comment(usage,...).  (Manuel Hermenegildo)").
+
+:- comment(version(1*1+17,1998/04/15,10:12*49+'MET DST'), "Fixed
+   formatting of versions when date is present.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(1*1+10,1998/4/11), "Added support for file index.
+   (Manuel Hermenegildo)").
+
+:- comment(version(1*1+9,1998/4/11), "Words in @concept now appear
+   emphasized.  (Manuel Hermenegildo)").
+
+:- comment(version(1*1+7,1998/4/9), "Changed message for general
+   properties.  (Manuel Hermenegildo)").
+
+:- comment(version(1*1+4,1998/4/7), "Several improvements (e.g.,
+   treatoment of newlines) to formatting of unix man files.  (Manuel
+   Hermenegildo)").
+
+:- comment(version(0*9+1,1998/2/24), "File version is now global
+   lpdoc version.  (Manuel Hermenegildo)").
+
+:- comment(version(0*3+11,1998/2/20), "Added ascii format. (Manuel
+   Hermenegildo)").
+
+:- comment(version(0*3+10,1998/2/20), "Eliminated multiple arity
+   predicates. (Manuel Hermenegildo)").
+
+:- comment(version(0*3+9,1997/11/5), "Fixed acute accent for
+   i. (Manuel Hermenegildo)").
+
+:- comment(version(0*3+8,1997/9/19), "Fixed minor bug in texinfo
+   section header generation. (Manuel Hermenegildo)").
+
+:- comment(version(0*3+7,1997/9/19), "Fixed intro name. (Manuel
+   Hermenegildo)").
+
+:- comment(version(0*3+6,1997/9/17), "Added support for reexported
+   predicates. (Manuel Hermenegildo)").
+
+:- comment(version(0*3+5,1997/9/15), "Fixed problem with bodies of
+   concept commands not being included when no index being
+   generated. (Manuel Hermenegildo)").
+
+:- comment(version(0*3+4,1997/07/29), "Added support for optional
+   selection of indices to be generated.").
+
+:- comment(version(0*3+3,1997/07/25), "Added support for nroff -m
+   formatting (e.g., for man pages).").
+
+:- comment(version(0*3+2,1997/07/25), "Added partial support for html
+   formatting.").
+
+:- comment(version(0*3+1,1997/07/25), "Added version handling:
+   included it in cover.").
+
+:- comment(version(0*0+0,1996/10/10),"First prototype.").
+
+%% ---------------------------------------------------------------------------
+
+
+%% -modes and -headprops are used by normalizer!
+option_comment('-headprops',   'Do not move head properties to body.        ').
+option_comment('-modes',       'Do not translate modes and their arguments
+	                        (except for properties)                     ').
+option_comment('-regtypeprops','Include in the doc for regtypes the global
+                                prop stating that they are indeed regtypes.').
+
+filter_export_by_type([],_Type,[]).
+filter_export_by_type([export(F/A,Type)|CExps],TypeStr,[F/A|FExps]) :-
+	typetext(Type,TypeStr,_,_),
+	!,
+	filter_export_by_type(CExps,TypeStr,FExps).
+filter_export_by_type([_|CExps],TypeStr,FExps) :-
+	!,
+	filter_export_by_type(CExps,TypeStr,FExps).
+

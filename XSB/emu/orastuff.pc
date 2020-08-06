@@ -1,0 +1,2040 @@
+/* File:      orastuff.pc
+** Author(s): Ernie Johnson
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: orastuff.pc,v 1.18 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+#include "xsb_config.h"
+#include "xsb_debug.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdarg.h>
+
+#include "basicdefs.h"
+#include "basictypes.h"
+#include "cell_xsb.h"
+#include "cinterf.h"
+#include "psc_xsb.h"
+#include "flags_xsb.h"
+#include "error_xsb.h"
+#include "io_builtins_xsb.h"
+
+EXEC SQL INCLUDE "orastuff.h";
+
+
+
+
+/* Pro*C Precompiler Options
+   ------------------------- */
+
+EXEC ORACLE OPTION (MAXOPENCURSORS = 200);
+EXEC ORACLE OPTION (HOLD_CURSOR = YES);
+EXEC ORACLE OPTION (RELEASE_CURSOR = NO);
+
+
+
+/* Local Cursors
+   ------------- */
+
+static Cursor cursors[NUM_CURSORS];
+
+
+/* ======================================================================== */
+
+/*
+ *               Debugging and Error/Warning Reporting
+ *               =====================================
+ */
+
+
+/* Debugging Messages - to enable, remove leading '_'
+   ------------------ */
+#define _VIEW_SQL_AREAS
+#define _VIEW_BVs
+#define _VIEW_SLIs
+#define _VIEW_FETCH
+#define _VIEW_GET
+
+
+/* Error/Warning Messages
+   ---------------------- */
+
+static void oracle_error(char *formatStr, ... ) {
+
+  va_list args;
+
+  va_start(args, formatStr);
+  fprintf(stderr,"\nError in Oracle Interface:  DB operation\n");
+  vfprintf(stderr, formatStr, args);
+  fprintf(stderr,"\n\n%.70s\n\n",sqlca.sqlerrm.sqlerrmc);
+  va_end(args);
+
+  /* Oracle already rolls back the work of the failed statement. */
+}  
+
+
+/* ------------------------------------------------------------------------ */
+
+/* Diagnostic Routines
+   ------------------- */
+
+#ifdef VIEW_SQL_AREAS
+
+static void print_sqlca() {
+  /*
+   *  The SQLCA should be initialized to avoid erroneous output.
+   */
+
+  int i;
+
+  printf("SQLCA structure:\n");
+  printf("\tsqlcaid: %-.8s\n", sqlca.sqlcaid);
+  printf("\tsqlabc:  %ld\n", sqlca.sqlabc);
+  printf("\tsqlcode: %ld\n", sqlca.sqlcode);
+  printf("\tsqlerrp: %-.8s\n", sqlca.sqlerrp);
+  printf("\tsqlerrd:");
+  for (i = 0; i < 6; i++)
+    printf(" %ld", sqlca.sqlerrd[i]);
+  printf("\n");
+  printf("\tsqlwarn:");
+  for (i = 0; i < 8; i++)
+    printf(" %d", sqlca.sqlwarn[i]);
+  printf("\n");
+  printf("\tsqlext: %-.8s\n", sqlca.sqlext);
+}
+
+
+static void print_sqlda(SQLDA *d, int items, int item_len, int ind_len) {
+
+  int i;
+
+  printf("Descriptor allocation:  sqlald(%d, %d, %d)\n",
+	 items, item_len, ind_len);
+  printf("\tN: %li\n", d->N);
+  
+  printf("\tV: %p", d->V);
+  if (d->V != NULL) {
+    printf("\tCell values: ");
+    for (i = 0; i < items; i++)
+      printf("  %p", d->V[i]);
+  }
+  printf("\n");
+  
+  printf("\tL: %p\n", d->L);
+  
+  printf("\tT: %p\n", d->T);
+  
+  printf("\tI: %p", d->I);
+  if (d->I != NULL) {
+    printf("\tCell values: ");
+    for (i = 0; i < items; i++)
+      printf("  %p", d->I[i]);
+  }
+  printf("\n");
+  
+  printf("\tF: %li\n", d->F);
+  
+  printf("\tS: %p", d->S);
+  if (d->S != NULL) {
+    printf("\tCell values: ");
+    for (i = 0; i < items; i++)
+      printf("  %p", d->S[i]);
+  }
+  printf("\n");
+  
+  printf("\tM: %p\t", d->M);
+  if (d->M != NULL) {
+    short ok = 1;
+    for (i = 0; i < items; i++)
+      if (d->M[i] != item_len)
+	ok = 0;
+    if (ok == 0)
+      printf("NOT ");
+    printf("All entries set to %d\n", item_len);
+  }
+  
+  printf("\tC: %p\n", d->C);
+  
+  printf("\tX: %p", d->X);
+  if (d->X != NULL) {
+    printf("\tCell values: ");
+    for (i = 0; i < items; i++)
+      printf("  %p", d->X[i]);
+  }
+  printf("\n");
+  
+  printf("\tY: %p\t", d->Y);
+  if (d->Y != NULL) {
+    short ok = 1;
+    for (i = 0; i < items; i++)
+      if (d->Y[i] != ind_len)
+	ok = 0;
+    if (ok == 0)
+      printf("NOT ");
+    printf("All entries set to %d\n", ind_len);
+  }
+  
+  printf("\tZ: %p\n", d->Z);
+}
+
+#endif
+
+
+/* ======================================================================== */
+
+/*
+ *                            U T I L I T I E S
+ *                            =================
+ */
+
+/*
+ *  Capitalize the first few letters of 'wordStr', storing the sequence in
+ *  'capStr' as a string, whose total size is 'capStrLen'.
+ */
+
+static void capitalize_word(char wordStr[], char capStr[], int capStrLen) {
+
+  int i;
+
+  for (i = 0; (i < capStrLen - 1) && isalpha((int)wordStr[i]); i++)
+    capStr[i] = (char)toupper((int)wordStr[i]);
+  capStr[i] = '\0';
+}
+
+
+/*
+ *  Remove trailing blanks from a sequence of characters of length 'strlen'
+ *  by placing a null after the last non-space character.
+ */
+
+static void remove_blank_padding(char *string, int strlen) {
+
+  char *tail;
+
+  tail = string + strlen - 1;
+  while ( (*tail == ' ') && (tail >= string) )
+    tail--;
+  *(tail + 1) = '\0';
+}
+
+
+/*
+ *  Determine the type of SQL statement and return a code indicating this
+ *  type.  See p.2-2 of the "Programmer's Guide to the Oracle
+ *  Precompilers".  Transaction Control statements may adversely effect
+ *  cursors: see Chapter 6: Defining and Controlling Transactions.
+ */
+
+static SqlStmtType statement_type(char stmtString[]) {
+
+  char stmtTypeString[10];
+
+
+  capitalize_word(stmtString, stmtTypeString, 10);
+
+  /* Statements needing output arrays */
+
+  if (strcmp("SELECT",stmtTypeString) == 0)
+    return SELECT_SQL_STMT;
+
+  /* Statements needing input arrays */
+
+  else if (strcmp("INSERT",stmtTypeString) == 0)
+    return INSERT_SQL_STMT;
+
+  /* Other Data Manipulation statements */
+
+  else if (strcmp("DELETE",stmtTypeString) == 0)
+    return OTHER_SQL_STMT;
+  else if (strcmp("EXPLAIN",stmtTypeString) == 0)
+    return OTHER_SQL_STMT;
+  else if (strcmp("LOCK",stmtTypeString) == 0)
+    return OTHER_SQL_STMT;
+  else if (strcmp("UPDATE",stmtTypeString) == 0)
+    return OTHER_SQL_STMT;
+
+  /* Session and System Control statements... benign? */
+
+  else if (strcmp("ALTER",stmtTypeString) == 0) {
+    capitalize_word(stmtString + 6,stmtTypeString,10);
+    if ( (strcmp("SESSION",stmtTypeString) == 0) ||
+	 (strcmp("SYSTEM",stmtTypeString) == 0) )
+      return OTHER_SQL_STMT;
+    else
+      return CURSOR_DAMAGING_SQL_STMT;
+  }
+  else if (strcmp("SET",stmtTypeString) == 0) {
+    capitalize_word(stmtString + 4,stmtTypeString,10);
+    if (strcmp("ROLE",stmtTypeString) == 0)
+      return OTHER_SQL_STMT;
+    else
+      return CURSOR_DAMAGING_SQL_STMT;
+  }
+
+  /* The rest are either Transaction Control SQL statements or they
+     trigger a TCS.  Either way, cursors may be (partially) damaged. */
+
+  else
+    return CURSOR_DAMAGING_SQL_STMT;
+}
+
+
+/*
+ * The following functions take an internal code and return a short
+ * description of what the code represents.
+ */
+
+static char *cursor_status_as_string(CursorStatus status) {
+
+  switch (status) {
+  case UNUSED_CURSOR_STATUS:    return ("UNUSED"); break;
+  case ACTIVE_CURSOR_STATUS:    return ("ACTIVE"); break;
+  case INACTIVE_CURSOR_STATUS:  return ("INACTIVE"); break;
+  case INVALID_CURSOR_STATUS:   return ("INVALID"); break;
+  default:                      return ("UNKNOWN ???"); break;
+  }
+}
+
+
+static char *oracle_datatype_as_string(int datatype) {
+
+  switch(datatype) {
+  case VARCHAR2_ODT:      return("VARCHAR2"); break;
+  case NUMBER_ODT:        return("NUMBER"); break;
+  case INTEGER_ODT:       return("INTEGER"); break;
+  case FLOAT_ODT:         return("FLOAT"); break;
+  case STRING_ODT:        return("STRING"); break;
+  case VARNUM_ODT:        return("VARNUM"); break;
+  case LONG_ODT:          return("LONG"); break;
+  case VARCHAR_ODT:       return("VARCHAR"); break;
+  case ROWID_ODT:         return("ROWID"); break;
+  case DATE_ODT:          return("DATE"); break;
+  case VARRAW_ODT:        return("VARRAW"); break;
+  case RAW_ODT:           return("RAW"); break;
+  case LONGRAW_ODT:       return("LONG RAW"); break;
+  case UNSIGNED_ODT:      return("UNSIGNED"); break;
+  case LONGVARCHAR_ODT:   return("LONG VARCHAR"); break;
+  case LONGVARRAW_ODT:    return("LONG VARRAW"); break;
+  case CHAR_ODT:          return("CHAR"); break;
+  case CHARZ_ODT:         return("CHARZ"); break;
+  default:                return ("UNKNOWN ???"); break;
+  }
+}
+
+
+static int validateArrayDimension(int arrayType) {
+
+  if ( (int)flags[arrayType] <= 0 )
+    switch ( arrayType ) {
+    case ORA_INPUTARRAY_LENGTH:
+      xsb_warn("Oracle: Invalid input array length (%d) -> "
+	       "Using default value (%d)",
+	       (int)flags[arrayType],
+	       DEFAULT_INPUTARRAY_LENGTH);
+      flags[arrayType] = DEFAULT_INPUTARRAY_LENGTH;
+      break;
+    case ORA_INPUTARRAY_WIDTH:
+      xsb_warn("Oracle: Invalid input array width (%d) -> "
+	       "Using default value (%d)",
+	       (int)flags[arrayType],
+	       DEFAULT_INPUTARRAY_WIDTH);
+      flags[arrayType] = DEFAULT_INPUTARRAY_WIDTH;
+      break;
+    case ORA_OUTPUTARRAY_LENGTH:
+      xsb_warn("Oracle: Invalid output array length (%d) -> "
+	       "Using default value (%d)",
+	       (int)flags[arrayType],
+	       DEFAULT_OUTPUTARRAY_LENGTH);
+      flags[arrayType] = DEFAULT_OUTPUTARRAY_LENGTH;
+      break;
+    default:
+      break;
+    }
+  return( (int)flags[arrayType] );
+}
+
+
+/* ======================================================================== */
+
+/*
+ *            O R A C L E   C U R S O R   P R O C E S S I N G
+ *            ===============================================
+ */
+
+/*
+ *  PREPAREs an SQL statement and DECLAREs a cursor for it.  Locally,
+ *  symbolic names for SQL statements and cursors are created and
+ *  associated with one another.  At Oracle, the statement is parsed and a
+ *  cursor created (or at least *some* memory is reserved to store the
+ *  parsing info).
+ *
+ *  Oracle note: PREPAREing requires that the query string be a host
+ *  variable.
+ */
+
+static int oracleCursor_prepare_and_declare(CursorHandle cursorHandle,
+					    char *stmtString) {
+
+  EXEC SQL BEGIN DECLARE SECTION;
+    char *sql_stmt;
+  EXEC SQL END DECLARE SECTION;
+
+  sql_stmt = stmtString;
+
+  EXEC SQL WHENEVER SQLERROR GOTO error_handler;
+  EXEC SQL INCLUDE orastuff/prepdecl_xsb_i.h;
+
+  return SUCCESS;
+
+ error_handler:
+  oracle_error("Parse error, cursor %d, at character offset %li in SQL statement\n\n\t%s",
+	       cursorHandle, sqlca.sqlerrd[4] + 1, stmtString);
+  return ORACLE_ERROR;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Allocate and DESCRIBE a Bind Variable Descriptor.
+ * ------------------------------------------------
+ *  To allocate a descriptor, use the function sqlald():
+ *    sqlald( MAX_NUM_BVorSLI, MAX_BVorSLI_NAMELEN, MAX_INDICATOR_NAMELEN );
+ *  No indicator names are maintained, so always call with third arg 0.
+ *
+ *  An SQL DESCRIBE of the bind variables performs the following:
+ *  1) sets the number of BVs found in F;
+ *  2) enters names of placeholders and the length of each name;
+ *  3) sets the types of the input values to 0.
+ *
+ *  Oracle note: the descriptor should NOT be a host variable when
+ *  DESCRIBEing.
+ *
+ *  F is supposed to be negative if there are more BVs than room was
+ *  allocated for.  However, this isn't the case (big surprise), so an
+ *  explicit comparison between what was expected and what was found is
+ *  needed.  Should the original space be inadequate, the descriptor is
+ *  reallocated with enough room and the bind variables are reDESCRIBEd.
+ *  The descriptor is then set in the cursor structure.
+ */
+
+static int oracleCursor_describe_BVs(CursorHandle cursorHandle, int numBVs) {
+
+  SQLDA *descriptor;
+  xsbBool successful_describe;
+
+
+  do {
+    successful_describe = TRUE;
+    descriptor = sqlald(numBVs,BINDVAR_NAME_BUFFER_SIZE,0);
+    if ( IsNULL(descriptor) ) {
+      xsb_error("Oracle: Cannot allocate Bind Descriptor!");
+      return INTERFACE_ERROR;
+    }
+
+    EXEC SQL WHENEVER SQLERROR GOTO error_handler;
+    EXEC SQL INCLUDE orastuff/desc_bv_xsb_i.h;
+
+    if (SQLDA_NumEntriesFound(descriptor) < 0) {
+      #ifdef VIEW_BVs
+        printf("Number of BVs found is negative: %ld\n",
+	       SQLDA_NumEntriesFound(descriptor));
+      #endif
+      numBVs = -SQLDA_NumEntriesFound(descriptor);
+      successful_describe = FALSE;
+      sqlclu(descriptor);
+    }
+    else if (SQLDA_NumEntriesFound(descriptor) > numBVs) {
+      #ifdef VIEW_BVs
+        printf("Number of BVs found is larger (%ld) than allocated (%d)\n",
+	       SQLDA_NumEntriesFound(descriptor), numBVs);
+      #endif
+      numBVs = SQLDA_NumEntriesFound(descriptor);
+      successful_describe = FALSE;
+      sqlclu(descriptor);
+    }
+  } while (successful_describe == FALSE);
+
+  SQLDA_NumEntriesAlloced(descriptor) = SQLDA_NumEntriesFound(descriptor);
+  cursors[cursorHandle].bv.descriptor = descriptor;
+  return SUCCESS;
+
+ error_handler:
+  oracle_error("DESCRIBE of Bind Variables failed for cursor %d",
+	       cursorHandle);
+  return ORACLE_ERROR;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Allocate and DESCRIBE a Select List Item Descriptor.
+ * ---------------------------------------------------
+ *  An SQL DESCRIBE of the select list items performs the following:
+ *  1) sets the number of SLIs found in F;
+ *  2) enters names of SLIs and the length of each name;
+ *  3) sets the types of the SLIs, as defined in the database.
+ *
+ *  Oracle note: the descriptor should NOT be a host variable when
+ *  DESCRIBEing.
+ *
+ *  If more SLIs exist than room was allocated for, then the number found
+ *  has a negative sign.  Should the original space be inadequate, the
+ *  descriptor is reallocated with enough room and the select list items
+ *  are reDESCRIBEd.  The descriptor is then set in the cursor structure.
+ */
+
+static int oracleCursor_describe_SLIs(CursorHandle cursorHandle, int numSLIs) {
+
+  SQLDA *descriptor;
+  xsbBool successful_describe;
+
+
+  do {
+    successful_describe = TRUE;
+    descriptor = sqlald(numSLIs,SLI_NAME_BUFFER_SIZE,0);
+    if ( IsNULL(descriptor) ) {
+      xsb_error("Oracle: Cannot allocate Select Descriptor!");
+      return INTERFACE_ERROR;
+    }
+
+    EXEC SQL WHENEVER SQLERROR GOTO error_handler;
+    EXEC SQL INCLUDE orastuff/desc_sli_xsb_i.h;
+
+    if (SQLDA_NumEntriesFound(descriptor) < 0) {
+      #ifdef VIEW_SLIs
+        printf("Number of SLIs found is negative: %ld\n",
+	       SQLDA_NumEntriesFound(descriptor));
+      #endif
+      numSLIs = -SQLDA_NumEntriesFound(descriptor);
+      successful_describe = FALSE;
+      sqlclu(descriptor);
+    }
+    if (SQLDA_NumEntriesFound(descriptor) > numSLIs) {
+      #ifdef VIEW_SLIs
+        printf("Number of SLIs found (%ld) is larger than allocated (%d)\n",
+	       SQLDA_NumEntriesFound(descriptor), numSLIs);
+      #endif
+      numSLIs = SQLDA_NumEntriesFound(descriptor);
+      successful_describe = FALSE;
+      sqlclu(descriptor);
+    }
+  } while (successful_describe == FALSE);
+
+  SQLDA_NumEntriesAlloced(descriptor) = SQLDA_NumEntriesFound(descriptor);
+  cursors[cursorHandle].sli.descriptor = descriptor;
+  return SUCCESS;
+
+ error_handler:
+  oracle_error("DESCRIBE of Select List Items failed for cursor %d",
+	       cursorHandle);
+  return ORACLE_ERROR;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * OPEN the Cursor to Execute the Statement
+ * ----------------------------------------
+ *  When a cursor is OPENed, the statement is executed using the current
+ *  values of the input host variables.  These values usually form just a
+ *  single tuple.  However, arrayed inputs are also supported, with the
+ *  number of valid tuples that may take part identified by the subfield
+ *  'cur_entry_index'.  If the statement is a SELECT, the active set is
+ *  identified at this time.  If the OPEN is successful, this field is
+ *  reset to 0, which readies it to accept another batch of inputs.
+ *
+ *  Oracle notes:
+ *    Oracle complains if there isn't at least one valid tuple during an
+ *      OPEN.
+ *    OPENing a cursor may acquire additional resources (above those
+ *      acquired during the PREPARE) at the database.
+ */
+
+static int oracleCursor_execute(CursorHandle cursorHandle) {
+
+  SQLDA *bindDesc;
+  EXEC SQL BEGIN DECLARE SECTION;
+    int numTuples;
+  EXEC SQL END DECLARE SECTION;
+
+  numTuples = cursors[cursorHandle].bv.cur_entry_index;
+  if ( numTuples > 0 ) {
+    bindDesc = cursors[cursorHandle].bv.descriptor;
+
+    EXEC SQL WHENEVER SQLERROR GOTO error_handler;
+    EXEC SQL INCLUDE orastuff/open_xsb_i.h;
+  }
+  cursors[cursorHandle].bv.cur_entry_index = 0;
+  return SUCCESS;
+
+ error_handler:
+  oracle_error("OPEN of cursor %d failed", cursorHandle);
+  return ORACLE_ERROR;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ *  FETCH Output Values from the Active Set
+ *
+ *  Batched (or arrayed) FETCHes are supported for bringing several rows
+ *  from the database on a single request.  The Select Descriptor must
+ *  already be primed for receiving this data: buffers allocated and
+ *  desired format of output specified as an External Datatype.  When the
+ *  last of the rows have been returned, a flag is set in the cursor
+ *  substructure.
+ */
+
+static int oracleCursor_fetch(CursorHandle cursorHandle) {
+
+  SQLDA *sliDesc;
+  EXEC SQL BEGIN DECLARE SECTION;
+    unsigned int arrayLength;
+  EXEC SQL END DECLARE SECTION;
+
+
+  sliDesc = cursors[cursorHandle].sli.descriptor;
+  arrayLength = cursors[cursorHandle].sli.array_length;
+
+  EXEC SQL WHENEVER NOT FOUND GOTO nodata_handler;
+  EXEC SQL WHENEVER SQLERROR GOTO error_handler;
+  EXEC SQL INCLUDE orastuff/fetch_xsb_i.h;
+  EXEC SQL WHENEVER NOT FOUND CONTINUE;   /* turn trap off for rest of file */
+
+  return SUCCESS;
+
+
+ nodata_handler:
+  /*
+   *  A "no data found" warning is generated whenever the incremented
+   *  cursor becomes positioned after the last row of the active set.
+   *  However, since we are using arrays, *some* data may have been
+   *  returned.  If the new total returned from Oracle is the same as our
+   *  count set from the last retrieval, then no (new) data was returned.
+   *  Otherwise, the remaining rows of the active set were returned.
+   */
+
+  if (sqlca.sqlerrd[2] == cursors[cursorHandle].sli.total_rows_recvd) {
+    #ifdef VIEW_FETCH
+      printf("\tNo more rows to retrieve.\n");
+    #endif
+    return ORACLE_EXCEPTION;
+  }
+  else {
+    cursors[cursorHandle].sli.end_of_active_set = TRUE;
+    return SUCCESS;
+  }
+
+ error_handler:
+  oracle_error("FETCH failed for cursor %d", cursorHandle);
+  return ORACLE_ERROR;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ *  Close a Database Cursor
+ *
+ *  The active set becomes undefined and the resources acquired on OPENing
+ *  the cursor are freed.  The memory acquired during the PREPARE may not
+ *  be released, but the parse lock is.
+ */
+
+static int oracleCursor_close(CursorHandle cursorHandle) {
+
+  EXEC SQL WHENEVER SQLERROR GOTO close_error;
+  EXEC SQL INCLUDE orastuff/close_xsb_i.h;
+  return SUCCESS;
+
+ close_error:
+  oracle_error("CLOSE failed for cursor %d", cursorHandle);
+  return ORACLE_ERROR;
+}
+
+
+/* ======================================================================== */
+
+/*
+ *                  C U R S O R   M A I N T E N A N C E
+ *                  ===================================
+ */
+
+
+/* Interface Initialization
+ * ------------------------
+ *  Initialize cursors and institute default settings.
+ */
+
+static void initialize_interface() {
+
+  CursorHandle ch;
+
+  for(ch = 0; ch < NUM_CURSORS; ch++) {
+    cursors[ch].status = UNUSED_CURSOR_STATUS;
+    cursors[ch].bv.descriptor = NULL;
+    cursors[ch].sli.descriptor = NULL;
+  }
+  flags[ORA_INPUTARRAY_LENGTH] = DEFAULT_INPUTARRAY_LENGTH;
+  flags[ORA_INPUTARRAY_WIDTH] = DEFAULT_INPUTARRAY_WIDTH;
+  flags[ORA_OUTPUTARRAY_LENGTH] = DEFAULT_OUTPUTARRAY_LENGTH;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Freeing Cursor Resources
+ * ------------------------
+ *  Set the cursor to the UNUSED state, release any currently held
+ *  resources (deallocate local substructures and CLOSE Oracle cursor),
+ *  and set the descriptor pointers to NULL.  This amounts to a
+ *  reinitialization of the cursor.
+ */
+
+static int free_cursor_resources(CursorHandle cursorHandle) {
+
+  int ithBV;
+  SQLDA *descriptor;
+
+
+  cursors[cursorHandle].status = UNUSED_CURSOR_STATUS;
+
+  descriptor = cursors[cursorHandle].bv.descriptor;
+  if ( IsNonNULL(descriptor) ) {
+    for (ithBV = 0; ithBV < SQLDA_NumEntriesFound(descriptor); ithBV++) {
+      free( SQLDA_ItemValueArrayBase(descriptor,ithBV) );
+      free( SQLDA_IndValueArrayBase(descriptor,ithBV) );
+    }
+    sqlclu(descriptor);
+    cursors[cursorHandle].bv.descriptor = NULL;
+  }
+
+  descriptor = cursors[cursorHandle].sli.descriptor;
+  if ( IsNonNULL(descriptor) ) {
+    for (ithBV = 0; ithBV < SQLDA_NumEntriesFound(descriptor); ithBV++) {
+      free( SQLDA_ItemValueArrayBase(descriptor,ithBV) );
+      free( SQLDA_IndValueArrayBase(descriptor,ithBV) );
+    }
+    sqlclu(descriptor);
+    cursors[cursorHandle].sli.descriptor = NULL;
+  }
+  free(cursors[cursorHandle].sli.column_specs);
+
+  return oracleCursor_close(cursorHandle);
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Interface Cleanup
+ * -----------------
+ *  CLOSE and deallocate the resources of opened cursors.
+ */
+
+static int reinitialize_cursors() {
+
+  CursorHandle ch;
+  int freeStatus, finalStatus;
+
+
+  finalStatus = SUCCESS;
+  for (ch = 0; ch < NUM_CURSORS; ch++)
+    switch (cursors[ch].status) {
+    case ACTIVE_CURSOR_STATUS:
+    case INACTIVE_CURSOR_STATUS:
+    case INVALID_CURSOR_STATUS:
+      /*
+       * The following test is good enough since free_cursor_resources()
+       * currently only reports errors and not exceptions.
+       */
+      freeStatus = free_cursor_resources(ch);
+      if ( freeStatus < finalStatus )
+	finalStatus = freeStatus;
+      break;
+    default:
+      break;
+    }
+  return finalStatus;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Invalidation of Cursors
+ * -----------------------
+ *  To be used when a cursor-destroying statement is executed.  Any open
+ *  cursors are invalidated.
+ *
+ *  Not incorporated into interface yet.  I'm not convinced that this
+ *  really occurs.  How cursors are treated is dependent upon several
+ *  factors, the most important being the MODE.  I think the MODE is
+ *  ORACLE, in which case the cursors aren't closed automatically, but
+ *  instead some locks are lost.  And I don't yet understand the
+ *  ramifications of this.
+ */
+
+static int invalidate_active_cursors() {
+
+  CursorHandle ch;
+  int num_invalidated;
+
+  num_invalidated = 0;
+  for (ch = 0; ch < NUM_CURSORS; ch ++)
+    if (cursors[ch].status == ACTIVE_CURSOR_STATUS) {
+      cursors[ch].status = INVALID_CURSOR_STATUS;
+      num_invalidated++;
+    }
+  return num_invalidated;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Choosing a Cursor
+ * -----------------
+ *  Locate a suitable cursor for a query, using the following preferences:
+ *  1) Re-use a cursor (select INACTIVE cursor with same template number),
+ *  2) Choose an unused cursor,
+ *  3) Steal an INACTIVE cursor (established for another template),
+ *  4) Clobber an INVALID cursor (won't be able to recover it).
+ *
+ *  A returned cursor always has one of two forms:
+ *  1) has no associated resources, in which case its status is UNUSED, or
+ *  2) has resources suitable for reuse (consistent with 'templateNumber'),
+ *       in which case its status is INACTIVE.
+ */
+
+static CursorHandle locate_cursor(TemplateNumber templateNumber) {
+
+  CursorHandle cursorHandle;
+
+
+  /* Look for Reusable Cursor */
+
+  for (cursorHandle = 0; cursorHandle < NUM_CURSORS; cursorHandle++)
+    if ( (cursors[cursorHandle].stmt.template == templateNumber) &&
+	 (cursors[cursorHandle].status == INACTIVE_CURSOR_STATUS) )
+      return cursorHandle;
+
+
+  /* Look for Unused Cursor */
+
+  for (cursorHandle = 0; cursorHandle < NUM_CURSORS; cursorHandle++)
+    if (cursors[cursorHandle].status == UNUSED_CURSOR_STATUS)
+      return cursorHandle;
+
+
+  /* Steal an INACTIVE Cursor */
+
+  for (cursorHandle = 0; cursorHandle < NUM_CURSORS; cursorHandle++)
+    if (cursors[cursorHandle].status == INACTIVE_CURSOR_STATUS) {
+      free_cursor_resources(cursorHandle);
+      return cursorHandle;
+    }
+
+  /* Cannot Find a Suitable Cursor */
+
+  return INVALID_CURSOR_HANDLE;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Initialize Input Specifications
+ * -------------------------------
+ *  Initialize information needed for SQL statement input:
+ *  1) allocate and initialize (DESCRIBE) a bind variable descriptor
+ *  2) allocate buffers for this descriptor and assign input datatypes
+ *  3) initialize cursor fields of 'bv' substructure
+ *
+ *  Return a status code.
+ */
+
+static int init_input_specification(CursorHandle cursorHandle,
+				    int numBindVars) {
+
+  int ithBV, status;
+  int arrayLength, arrayWidth;
+  SQLDA *descriptor;
+
+
+  status = oracleCursor_describe_BVs(cursorHandle,numBindVars);
+  if ( IsFailureStatus(status) )
+    return status;
+
+  descriptor = cursors[cursorHandle].bv.descriptor;
+
+  /* Initialize C-Structure Fields */
+
+  if ( cursors[cursorHandle].stmt.type == INSERT_SQL_STMT ) {
+    cursors[cursorHandle].bv.array_length =
+      validateArrayDimension(ORA_INPUTARRAY_LENGTH);
+  }
+  else
+    cursors[cursorHandle].bv.array_length = 1;
+
+  cursors[cursorHandle].bv.cur_entry_index = 0;
+
+
+  /* Allocate Buffers for Descriptor.  Increase width by 1 to accommodate
+     null terminator for STRING_ODT datatype. */
+
+  arrayWidth = validateArrayDimension(ORA_INPUTARRAY_WIDTH) + 1;
+
+  arrayLength = cursors[cursorHandle].bv.array_length;
+  for (ithBV = 0; ithBV < SQLDA_NumEntriesFound(descriptor); ithBV++) {
+    SQLDA_ItemValueArrayBase(descriptor,ithBV) =
+      (char *) malloc( arrayLength * arrayWidth );
+    SQLDA_ItemValueArrayWidth(descriptor,ithBV) = arrayWidth;
+    SQLDA_ItemValueArrayType(descriptor,ithBV) = STRING_ODT;
+    SQLDA_IndValueArrayBase(descriptor,ithBV) =
+      (short *) malloc( arrayLength * sizeof(short) );
+    if ( IsNULL(SQLDA_ItemValueArrayBase(descriptor,ithBV)) ||
+	 IsNULL(SQLDA_IndValueArrayBase(descriptor,ithBV)) ) {
+      xsb_error("Oracle: Out of memory while allocating buffers for\n"
+		"Bind Descriptor of cursor %d.",
+		cursorHandle);
+      return INTERFACE_ERROR;
+    }
+  }
+  #ifdef VIEW_BVs
+    printf("Allocated Bind Descriptor with %ld arrays (%d X %d)\n",
+	   SQLDA_NumEntriesFound(descriptor), arrayLength, arrayWidth);
+  #endif
+  return SUCCESS;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Initialize Output Specifications
+ * --------------------------------
+ *  Initialize information needed for SQL statement (SELECT) output:
+ *  1) allocate and initialize (DESCRIBE) a select list descriptor
+ *  2) determine the best form (datatype) in which to accept the output,
+ *    and allocate appropriately-sized buffers based on this type
+ *  3) initialize the other fields of the SLI specification
+ *
+ *  Return a status code.
+ */
+
+static int init_output_specification(CursorHandle cursorHandle, int numSLIs) {
+
+  int null_status,     /* 1 = allows NULL, 0 = disallows NULL */
+      status;
+  int ithSLI, arrayLength;
+  int precision,       /* max number of digits in NUMBER */
+      scale;           /* displacement from decimal pt where rounding occurs */
+  SQLDA *descriptor;
+
+
+  status = oracleCursor_describe_SLIs(cursorHandle,numSLIs);
+  if ( IsFailureStatus(status) )
+    return status;
+
+  descriptor = cursors[cursorHandle].sli.descriptor;
+
+  /* Initialize C-Structure Fields
+     ----------------------------- */
+  cursors[cursorHandle].sli.column_specs = (ColumnSpec *)
+    malloc(SQLDA_NumEntriesFound(descriptor) * sizeof(ColumnSpec) );
+  if ( IsNULL(cursors[cursorHandle].sli.column_specs) ) {
+    xsb_error("Oracle: Allocation of internal structure failed");
+    return INTERFACE_ERROR;
+  }
+
+  /* array_length set during cursor allocation */
+  cursors[cursorHandle].sli.cur_row_index = 0;
+  cursors[cursorHandle].sli.cur_col_index = 0;
+  cursors[cursorHandle].sli.cur_row_number = 0;
+  cursors[cursorHandle].sli.total_rows_recvd = 0;
+  cursors[cursorHandle].sli.end_of_active_set = FALSE;
+
+  /* Alter datatypes and allocate buffer storage
+     ------------------------------------------- */
+  arrayLength = cursors[cursorHandle].sli.array_length;
+  for (ithSLI = 0; ithSLI < SQLDA_NumEntriesFound(descriptor); ithSLI++) {
+    /*
+     * Must always turn off high-order bit of datatype.
+     */
+    sqlnul(&SQLDA_ItemValueArrayType(descriptor,ithSLI), /* original */
+	   &SQLDA_ItemValueArrayType(descriptor,ithSLI), /* type w/bit unset */
+	   &null_status);  /* bit value */
+
+    cursors[cursorHandle].sli.column_specs[ithSLI].datatype =
+      SQLDA_ItemValueArrayType(descriptor,ithSLI);
+    cursors[cursorHandle].sli.column_specs[ithSLI].not_null = ! null_status;
+    cursors[cursorHandle].sli.column_specs[ithSLI].size =
+      SQLDA_ItemValueArrayWidth(descriptor,ithSLI);
+
+    /*
+     * When using a STRING or CHARZ external datatype, given a N-byte
+     * buffer, the Nth byte is used by ORACLE for the null terminator.
+     */
+    switch ( SQLDA_ItemValueArrayType(descriptor,ithSLI) ) {
+    case VARCHAR2_ODT:
+    case CHAR_ODT:
+      SQLDA_ItemValueArrayType(descriptor,ithSLI) = STRING_ODT;
+      SQLDA_ItemValueArrayWidth(descriptor,ithSLI)++;
+      break;
+
+    case NUMBER_ODT:
+      SQLDA_ItemValueArrayType(descriptor,ithSLI) = STRING_ODT;
+      sqlprc(& SQLDA_ItemValueArrayWidth(descriptor,ithSLI),
+	     &precision, &scale);
+      if (precision == 0)
+	precision = 40;
+      if (scale > 0)    /* leave room for sign and decimal point */
+	SQLDA_ItemValueArrayWidth(descriptor,ithSLI) = precision + 2;
+      else    /* leave room for sign */
+	SQLDA_ItemValueArrayWidth(descriptor,ithSLI) = precision + 1;
+      SQLDA_ItemValueArrayWidth(descriptor,ithSLI)++;  /* room for null */
+      break;
+
+    case LONG_ODT:
+      SQLDA_ItemValueArrayType(descriptor,ithSLI) = STRING_ODT;
+      SQLDA_ItemValueArrayWidth(descriptor,ithSLI) = LONG_TO_STRING_BUFSIZE;
+      break;
+      
+    case ROWID_ODT:
+      SQLDA_ItemValueArrayType(descriptor,ithSLI) = STRING_ODT;
+      SQLDA_ItemValueArrayWidth(descriptor,ithSLI) = ROWID_TO_STRING_BUFSIZE;
+      break;
+
+    case DATE_ODT:
+      /*
+       * STRING or VARCHAR2 should coerce DATE into default format
+       */
+      SQLDA_ItemValueArrayType(descriptor,ithSLI) = STRING_ODT;
+      SQLDA_ItemValueArrayWidth(descriptor,ithSLI) = DATE_TO_STRING_BUFSIZE;
+      break;
+
+    /*
+     * RAW data may be problematic for returning to Prolog since it does
+     * not necessarily contain character strings, but any binary data.
+     */
+    case RAW_ODT:
+    case LONGRAW_ODT:
+    default:
+      {
+	short datatype = SQLDA_ItemValueArrayType(descriptor,ithSLI);
+
+	xsb_error("Oracle: Cursor %d, SLI %d: datatype %s not supported by interface",
+		  cursorHandle, ithSLI,
+		  oracle_datatype_as_string(datatype));
+	return INTERFACE_ERROR;
+      }
+      break;
+    }
+
+    SQLDA_ItemValueArrayBase(descriptor,ithSLI) = (char *)
+      malloc(arrayLength * SQLDA_ItemValueArrayWidth(descriptor,ithSLI));
+
+    SQLDA_IndValueArrayBase(descriptor,ithSLI) =
+      (short *) malloc(arrayLength * sizeof(short));
+
+    if ( IsNULL(SQLDA_ItemValueArrayBase(descriptor,ithSLI)) ||
+	 IsNULL(SQLDA_IndValueArrayBase(descriptor,ithSLI)) ) {
+      xsb_error("Oracle: Allocation of %dth SLI buffer for cursor %d failed!",
+		ithSLI, cursorHandle);
+      return INTERFACE_ERROR;
+    }
+  }
+  return SUCCESS;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Suspending a Cursor
+ * -------------------
+ *  Don't release resources, but mark as having completed the statement.
+ */
+
+static int suspend_cursor(CursorHandle cursorHandle) {
+
+  cursors[cursorHandle].status = INACTIVE_CURSOR_STATUS;
+  return SUCCESS;
+}		
+
+/* ------------------------------------------------------------------------ */
+
+/* Resuming a Cursor
+ * -----------------
+ *  Initialization needed when reusing a cursor.  Every statement must
+ *  have a bind descriptor, but only SELECT statements have select
+ *  descriptors.  Perform needed changes on BOTH descriptors: the user may
+ *  now have specified different array dimensions from those at the time
+ *  of the original allocation.  Redimension the appropriate substructures
+ *  of the descriptor(s) as needed.
+ */
+
+static int resume_cursor(CursorHandle cursorHandle) {
+
+  int oldLength, newLength, newWidth, newSize;
+  int ithItem, status;
+  SQLDA *descriptor;
+
+
+  descriptor = cursors[cursorHandle].bv.descriptor;
+  if ( IsNULL(descriptor) ) {
+    xsb_error("Oracle: Resuming cursor (%d) with NULL bind descriptor",
+	      cursorHandle);
+    return INTERFACE_ERROR;
+  }
+  cursors[cursorHandle].bv.cur_entry_index = 0;
+
+  /* Alter input buffer sizes as directed by user flags... */
+
+  if ( SQLDA_NumEntriesFound(descriptor) > 0 ) {
+
+    if (cursors[cursorHandle].stmt.type == INSERT_SQL_STMT) {
+      newLength = validateArrayDimension(ORA_INPUTARRAY_LENGTH);
+    }
+    else
+      newLength = 1;
+
+    /* add 1 for STRING datatype */
+    newWidth = validateArrayDimension(ORA_INPUTARRAY_WIDTH) + 1;
+
+    newSize = newLength * newWidth;  
+
+    oldLength = cursors[cursorHandle].bv.array_length;
+    if (newLength != oldLength) {
+      cursors[cursorHandle].bv.array_length = newLength;
+      for (ithItem = 0; ithItem < SQLDA_NumEntriesFound(descriptor);
+	   ithItem++) {
+	SQLDA_IndValueArrayBase(descriptor,ithItem) =
+	  (short *) realloc( SQLDA_IndValueArrayBase(descriptor,ithItem),
+			     (newLength * sizeof(short)) );
+	if ( IsNULL(SQLDA_IndValueArrayBase(descriptor,ithItem)) ) {
+	  xsb_error("Oracle: Ran out of memory while reallocating buffers for\n"
+		    "Bind Descriptor of cursor %d.",
+		    cursorHandle);
+	  return INTERFACE_ERROR;
+	}
+      }
+    }
+    for (ithItem = 0; ithItem < SQLDA_NumEntriesFound(descriptor);
+	 ithItem++) {
+      SQLDA_ItemValueArrayWidth(descriptor,ithItem) = newWidth;
+      SQLDA_ItemValueArrayBase(descriptor,ithItem) = (char *)
+	realloc( SQLDA_ItemValueArrayBase(descriptor,ithItem), newSize );
+
+      if ( IsNULL(SQLDA_ItemValueArrayBase(descriptor,ithItem)) ) {
+	xsb_error("Oracle: Out of memory while reallocating buffers for\n"
+		  "Bind Descriptor of cursor %d.",
+		  cursorHandle);
+	return INTERFACE_ERROR;
+      }
+    }
+    #ifdef VIEW_BVs
+      printf("Reusing Bind Descriptor: %ld BVs, array dims: %d X %d\n",
+	     SQLDA_NumEntriesFound(descriptor), newLength, newWidth);
+    #endif
+  }
+
+  status = SUCCESS;
+  if ( cursors[cursorHandle].stmt.type == SELECT_SQL_STMT ) {
+    descriptor = cursors[cursorHandle].sli.descriptor;
+    if ( IsNULL(descriptor) )
+      /*
+       * This cursor was allocated but never made it to execution before
+       * being deallocated.  Not the norm, but we handle this contingency
+       * anyway.
+       */
+      status = init_output_specification(cursorHandle,1);
+    else {
+      cursors[cursorHandle].sli.cur_row_index = 0;
+      cursors[cursorHandle].sli.cur_row_number = 0;
+      cursors[cursorHandle].sli.total_rows_recvd = 0;
+      cursors[cursorHandle].sli.end_of_active_set = FALSE;
+      
+      oldLength = cursors[cursorHandle].sli.array_length;
+      
+      newLength = validateArrayDimension(ORA_OUTPUTARRAY_LENGTH);
+      
+      if (newLength != oldLength) {
+	cursors[cursorHandle].sli.array_length = newLength;
+	for (ithItem = 0; ithItem < SQLDA_NumEntriesFound(descriptor);
+	     ithItem++) {
+	  newWidth = SQLDA_ItemValueArrayWidth(descriptor,ithItem);
+	  SQLDA_ItemValueArrayBase(descriptor,ithItem) =
+	    (char *)realloc(SQLDA_ItemValueArrayBase(descriptor,ithItem),
+			    (newLength * newWidth));
+	  
+	  SQLDA_IndValueArrayBase(descriptor,ithItem) =
+	    (short *)realloc(SQLDA_IndValueArrayBase(descriptor,ithItem),
+			     (newLength * sizeof(short)));
+
+	  if ( (SQLDA_ItemValueArrayBase(descriptor,ithItem) == NULL) ||
+	      (SQLDA_IndValueArrayBase(descriptor,ithItem) == NULL) ) {
+	    xsb_error("Oracle: Ran out of memory while reallocating buffers for"
+		      "\nSelect Descriptor of cursor %d.",
+		      cursorHandle);
+	    return INTERFACE_ERROR;
+	  }
+	}
+      }
+    #ifdef VIEW_SLIs
+      printf("Reusing Select Descriptor: %ld SLIs, %d elements per array\n",
+	     SQLDA_NumEntriesFound(descriptor), newLength);
+    #endif
+    }
+  }
+  return status;
+}
+
+
+/* ======================================================================== */
+
+/*
+ *           O R A C L E   I N T E R F A C E   B U I L T I N S
+ *           =================================================
+ */
+
+
+/* Argument Validating Macros
+ * --------------------------
+ *  Actually, we should do an even better job than this.  The ptoc_*
+ *  functions of builtin.c do a pitiful job of conveying errors to the
+ *  caller.  ptoc_int returns 0 and ptoc_string returns "" when an error
+ *  is encountered.  This could have been made to work, except that
+ *  ptoc_string aborts the execution while ptoc_int does not.  And
+ *  aborting currently isn't the way we want to go.
+ *
+ *  The alternative is to write routines ourselves. To do this, we'd need
+ *  config.h, cell_xsb.h, deref.h, and register.h (at least).  But if we want
+ *  this stuff bullet-proof, it'll have to be done.  Until then, be VERY
+ *  careful when calling these primitives...
+ */
+
+static xsbBool isValidArg_CursorHandle(CursorHandle ch, int status_reg) {
+
+  if ( (ch >= 0) && (ch < NUM_CURSORS) ) {
+    if (cursors[ch].status == ACTIVE_CURSOR_STATUS)
+      return TRUE;
+    else
+      xsb_error("Oracle: Cursor %d is not currently active (status: %s)",
+		ch, cursor_status_as_string(cursors[ch].status));
+  }
+  else
+    xsb_error("Oracle: Invalid cursor handle: %d", ch);
+
+  ctop_int(status_reg,INTERFACE_ERROR);
+  return FALSE;
+}
+
+
+static xsbBool isValidArg_TemplateNumber(TemplateNumber template,
+				      int status_reg) {
+
+  if (template >= 0)
+    return TRUE;
+  else {
+    xsb_error("Oracle: Invalid template number: %d", template);
+    ctop_int(status_reg,INTERFACE_ERROR);
+    return FALSE;
+  }
+}
+
+
+/*
+ * 'stringDesc' should be a brief description of the string being checked,
+ * e.g., "SQL Statement".
+ */
+
+static xsbBool isValidArg_String(char *inputString, char stringDesc[],
+			      int status_reg) {
+
+  if ( strcmp(inputString,"") != 0 )    /* ptoc_string returns "" on error */
+    return TRUE;
+  else {
+    xsb_error("Oracle: Empty argument string: %s", stringDesc);
+    ctop_int(status_reg,INTERFACE_ERROR);
+    return FALSE;
+  }
+}
+
+
+/*
+ * 'countDesc' should be a brief description of the count being checked,
+ * e.g., "Bind Variables".
+ */
+
+static xsbBool isValidArg_IOCount(int io_count, char countDesc[],
+			       int status_reg) {
+
+  if ( (io_count >= 0) && (io_count <= MAX_NUM_IOVALUES) )
+    return TRUE;
+  else {
+    xsb_error("Oracle: Invalid number of %s: %d\n(Valid range: %d - %d)",
+	      countDesc, io_count, 0, MAX_NUM_IOVALUES);
+    ctop_int(status_reg,INTERFACE_ERROR);
+    return FALSE;
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Connecting to Oracle
+ * --------------------
+ *  Open a connection and initialize the interface's structures.
+ */
+
+void oracle_connect() {
+
+  const int regUserName     = 2;   /* in */
+  const int regPassword     = 3;   /* in */
+  const int regReturnStatus = 4;   /* out */
+
+  EXEC SQL BEGIN DECLARE SECTION;
+    VARCHAR  username[128];
+    VARCHAR  password[32];
+  EXEC SQL END DECLARE SECTION;
+
+
+  strcpy((char *) username.arr, ptoc_string(regUserName));
+  username.len = strlen((char *) username.arr);
+  
+  strcpy((char *) password.arr, ptoc_string(regPassword));
+  password.len = strlen((char *) password.arr);
+  
+  EXEC SQL WHENEVER SQLERROR GOTO connect_error;
+  EXEC SQL CONNECT :username IDENTIFIED BY :password;
+  
+  initialize_interface();
+  
+  ctop_int(regReturnStatus,SUCCESS);
+  return;
+
+ connect_error:
+  oracle_error("Cannot connect to ORACLE as user %s\n", username.arr);
+  ctop_int(regReturnStatus,ORACLE_ERROR);
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Establishing a Cursor
+ * ---------------------
+ *  Allocates and initializes local and remote resources for cursor support.
+ *  A successfully returned cursor handle is ready to receive input values.
+ *  Because we provide the user control over the size of the buffers, we
+ *  note the values of all such parameters at this time.
+ */
+
+void allocate_cursor() {
+
+  const int regTemplateNumber = 2;   /* in */
+  const int regSqlStmtString  = 3;   /* in */
+  const int regNumBindvars    = 4;   /* in */
+  const int regSqlStmtType    = 5;   /* out */
+  const int regCursorHandle   = 6;   /* out */
+  const int regReturnStatus   = 7;   /* out */
+
+  TemplateNumber templateNumber;
+  char *stmtString;
+  int numBindVars;
+  SqlStmtType stmtType;
+  CursorHandle cursorHandle;
+  int status_flag;
+
+
+  /* Get and validate arguments */
+
+  templateNumber = ptoc_int(regTemplateNumber);
+  if ( ! isValidArg_TemplateNumber(templateNumber,regReturnStatus) )
+    return;
+
+  stmtString = ptoc_string(regSqlStmtString);
+  if ( ! isValidArg_String(stmtString,"SQL Statement",regReturnStatus) )
+    return;
+
+  numBindVars = ptoc_int(regNumBindvars);
+  if ( ! isValidArg_IOCount(numBindVars,"Bind Variables",regReturnStatus) )
+    return;
+
+
+  /* Locate a suitable cursor */
+
+  cursorHandle = locate_cursor(templateNumber);
+  if (cursorHandle == INVALID_CURSOR_HANDLE) {
+    xsb_error("Oracle: Cannot find a suitable Cursor for template %d",
+	      templateNumber);
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+
+  /* Initialize the Cursor */
+
+  if (cursors[cursorHandle].status == UNUSED_CURSOR_STATUS) {
+    stmtType = statement_type(stmtString);
+    switch ( stmtType ) {
+    case SELECT_SQL_STMT:
+      cursors[cursorHandle].sli.array_length =
+	validateArrayDimension(ORA_OUTPUTARRAY_LENGTH);      
+      break;
+    case CURSOR_DAMAGING_SQL_STMT:
+      xsb_warn("Oracle: Cursor-damaging SQL Statement detected in cursor "
+	       "processing!\n\n\t%s",
+	       stmtString);
+      break;
+    case OTHER_SQL_STMT:
+      xsb_warn("Oracle: Statement not needing a cursor?\n\n\t%s", stmtString);
+      break;
+    default:
+      break;
+    }
+    cursors[cursorHandle].stmt.type = stmtType;
+    cursors[cursorHandle].stmt.string = stmtString;
+    cursors[cursorHandle].stmt.template = templateNumber;
+
+    status_flag = oracleCursor_prepare_and_declare(cursorHandle,stmtString);
+    if ( IsFailureStatus(status_flag) ) {
+      ctop_int(regReturnStatus,status_flag);
+      return;
+    }
+    status_flag = init_input_specification(cursorHandle,numBindVars);
+  }
+  else    /* Initialize Cursor for Reuse */
+    status_flag = resume_cursor(cursorHandle);
+
+  ctop_int(regReturnStatus,status_flag);
+  if ( IsSuccessStatus(status_flag) ) {
+    cursors[cursorHandle].status = ACTIVE_CURSOR_STATUS;
+    ctop_int(regSqlStmtType,cursors[cursorHandle].stmt.type);
+    ctop_int(regCursorHandle,cursorHandle);
+  }
+  else
+    free_cursor_resources(cursorHandle);
+ return;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Entering Input Tuple Components
+ * -------------------------------
+ *  Set a single input value, according to bind variable name.
+ */
+
+void set_input_value() {
+
+  const int regCursorHandle = 2;   /* in */
+  const int regBindvarName  = 3;   /* in */
+  const int regBindvarValue = 4;   /* in */
+  const int regBindvarType  = 5;   /* in:  0 = string, 1 = integer */
+  const int regReturnStatus = 6;   /* out */
+
+  CursorHandle cursorHandle;
+  int bufferWidth, inputStringLen;
+  int ithBV, indicator;
+  SQLDA *descriptor;
+  char *bindvarName, *entry_loc, *inputString, numberString[12], nullString[5];
+
+
+  cursorHandle = ptoc_int(regCursorHandle);
+  if ( ! isValidArg_CursorHandle(cursorHandle,regReturnStatus) )
+    return;
+
+  descriptor = cursors[cursorHandle].bv.descriptor;
+  if ( SQLDA_NumEntriesFound(descriptor) == 0 ) {
+    xsb_error("Oracle: Attempting to set input value for statement without "
+	      "bind variables (cursor %d)\n\n\t%s",
+	      cursorHandle,
+	      cursors[cursorHandle].stmt.string);
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+
+  bindvarName = ptoc_string(regBindvarName);
+  if ( ! isValidArg_String(bindvarName,"Bind Variable Name",regReturnStatus) )
+    return;
+
+  for (ithBV = 0; ithBV < SQLDA_NumEntriesFound(descriptor); ithBV++)
+    if ( strncmp(SQLDA_ItemNameBuffer(descriptor,ithBV),bindvarName,
+		 SQLDA_ItemNameLength(descriptor,ithBV)) == 0 )
+      break;
+
+  if (ithBV == SQLDA_NumEntriesFound(descriptor)) {
+    xsb_error("Oracle: Cursor %d:  Cannot find bind variable %s\n",
+	      cursorHandle, bindvarName);
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+
+  if (ptoc_int(regBindvarType) == 0) {   /* Value is given as a string */
+    inputString = ptoc_string(regBindvarValue);
+    capitalize_word(inputString, nullString, 5);
+    if ( strcmp(nullString,"NULL") == 0 ) {
+      inputStringLen = 4;
+      indicator = -1;
+    }
+    else {
+      inputStringLen = strlen(inputString);
+      indicator = 0;
+    }
+  }
+  else {  /* Value is given as an integer */
+    inputStringLen = sprintf(numberString, "%d", ptoc_int(regBindvarValue));
+    inputString = numberString;
+    indicator = 0;
+  }
+
+  bufferWidth = SQLDA_ItemValueArrayWidth(descriptor,ithBV) - 1;
+  if (cursors[cursorHandle].bv.array_length == 1) {
+    if (inputStringLen > bufferWidth) {
+      /*
+       *  We can take the full value by reallocating.  If there is not
+       *  enough memory to expand, the original buffer is left unchanged.
+       */
+      char *newBuffer =
+	realloc(SQLDA_ItemValueArrayBase(descriptor,ithBV),(inputStringLen+1));
+      if ( IsNonNULL(newBuffer) ) {
+	SQLDA_ItemValueArrayBase(descriptor,ithBV) = newBuffer;
+	SQLDA_ItemValueArrayWidth(descriptor,ithBV) = inputStringLen + 1;
+	bufferWidth = inputStringLen;
+      }
+    }
+    *SQLDA_IndValueArrayBase(descriptor,ithBV) = indicator;
+    entry_loc = SQLDA_ItemValueArrayBase(descriptor,ithBV);
+  }
+  else {   /* We're stuck with this size ;-( */
+    int iArrayEntry = cursors[cursorHandle].bv.cur_entry_index;
+
+    SQLDA_IndValueArrayBase(descriptor,ithBV)[iArrayEntry] = indicator;
+    entry_loc = SQLDA_ItemValueArrayBase(descriptor,ithBV) +
+      iArrayEntry * (bufferWidth + 1);
+  }
+  strncpy(entry_loc, inputString, bufferWidth);
+  entry_loc[bufferWidth] = '\0';
+  ctop_int(regReturnStatus,SUCCESS);
+  #ifdef VIEW_BVs
+    printf("Set bindvar %s to value %s\n", bindvarName, entry_loc);
+  #endif
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Execution for Statements with Cursors
+ * -------------------------------------
+ *  Assumes that all bind variables have been set and the statement is
+ *  ready to execute.  Hence the input tuple index is incremented,
+ *  readying the buffer for another tuple of input values (to support
+ *  arrayed inputs) and denoting the number of valid tuples presently
+ *  recorded in the buffers.  If this number is equal to the length of
+ *  the input buffer for this cursor, then the statement is executed.
+ *  Otherwise the data sits in the buffers awaiting either a flush
+ *  operation or for the buffers to become full, at which time an OPEN
+ *  is triggered, sending the data to Oracle.
+ */
+
+void execute_cursor() {
+
+  const int regCursorHandle = 2;   /* in */
+  const int regNumberSLIs   = 3;   /* in */
+  const int regReturnStatus = 4;   /* out */
+
+  CursorHandle cursorHandle;
+  int numSLIs, status;
+
+
+  cursorHandle = ptoc_int(regCursorHandle);
+  if ( ! isValidArg_CursorHandle(cursorHandle,regReturnStatus) )
+    return;
+
+  numSLIs = ptoc_int(regNumberSLIs);
+  if ( ! isValidArg_IOCount(numSLIs, "Select List Items", regReturnStatus) )
+    return;
+
+  cursors[cursorHandle].bv.cur_entry_index++;
+
+  if ( cursors[cursorHandle].bv.cur_entry_index ==
+       cursors[cursorHandle].bv.array_length ) {
+    status = oracleCursor_execute(cursorHandle);
+    if ( ! IsSuccessStatus(status) )
+      cursors[cursorHandle].bv.cur_entry_index--;
+  }
+  else
+    status = SUCCESS;
+
+  if ( (cursors[cursorHandle].stmt.type != SELECT_SQL_STMT)
+       || (! IsSuccessStatus(status)) ) {
+    ctop_int(regReturnStatus, status);
+    return;
+  }
+
+  /* Prepare the output stuff */
+
+  if ( IsNULL(cursors[cursorHandle].sli.descriptor) )
+    status = init_output_specification(cursorHandle, numSLIs);
+
+  ctop_int(regReturnStatus, status);
+}
+
+
+/*
+ * Execution for Statements without Cursors
+ * ----------------------------------------
+ *  Short-cut processing for SQL statements which either do not require
+ *  buffered data, or will not be executed often.
+ */
+
+void execute_immediate() {
+
+  const int regSqlStmtString = 2;   /* in */
+  const int regReturnStatus  = 3;   /* out */
+
+  EXEC SQL BEGIN DECLARE SECTION;
+    char *stmtString;
+  EXEC SQL END DECLARE SECTION;
+
+  SqlStmtType stmtType;
+/*  int count; */
+
+
+  stmtString = ptoc_string(regSqlStmtString);
+  if ( ! isValidArg_String(stmtString,"SQL Statement",regReturnStatus) )
+    return;
+
+  stmtType = statement_type(stmtString);
+  if (stmtType == SELECT_SQL_STMT) {
+    xsb_error("Oracle: SELECT stmts cannot be executed without a cursor!");
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+  else if (stmtType == CURSOR_DAMAGING_SQL_STMT) {
+/*    count = invalidate_active_cursors();
+    if (count > 0) */
+      xsb_warn("Oracle: Executing cursor-damaging SQL statement... ");
+/*	      "Invalidating %d active cursors\n", count); */
+  }
+
+  EXEC SQL WHENEVER SQLERROR GOTO error_handler;
+  EXEC SQL EXECUTE IMMEDIATE :stmtString;
+
+  ctop_int(regReturnStatus,SUCCESS);
+  return;
+
+ error_handler:
+  oracle_error("EXECUTE IMMEDIATE failed for SQL statement\n\n\t%s",
+	       stmtString);
+  ctop_int(regReturnStatus,ORACLE_ERROR);
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Collecting Output Tuples
+ * ------------------------
+ *  For SELECT statements, readies the next output tuple.  If there are
+ *  no more tuples left in the active set, then return an exception
+ *  status.
+ */
+
+void fetch_from_cursor() {  
+
+  const int regCursorHandle = 2;   /* in */
+  const int regReturnStatus = 3;   /* out */
+
+  CursorHandle cursorHandle;
+  SLI_Spec *sliSpec;
+  int status;
+
+
+  cursorHandle = ptoc_int(regCursorHandle);
+  if ( ! isValidArg_CursorHandle(cursorHandle,regReturnStatus) )
+    return;
+
+  if (cursors[cursorHandle].stmt.type != SELECT_SQL_STMT) {
+    xsb_error("Oracle: Attempting to fetch from non-SELECT statement "
+	      "(cursor %d)\n\n\t%s",
+	      cursorHandle,
+	      cursors[cursorHandle].stmt.string);
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+
+  sliSpec = &cursors[cursorHandle].sli;
+  #ifdef VIEW_FETCH
+    printf("\tRequesting row: %d    Rows received: %d\n",
+	   sliSpec->cur_row_number + 1, sliSpec->total_rows_recvd);
+  #endif
+  if (sliSpec->cur_row_number < sliSpec->total_rows_recvd) {
+    #ifdef VIEW_FETCH
+      printf("\tUsing buffered data (index %d of %d)\n",
+	     sliSpec->cur_row_index + 1, sliSpec->array_length - 1);
+    #endif
+    sliSpec->cur_row_number++;
+    sliSpec->cur_row_index++;
+    sliSpec->cur_col_index = 0;
+    status = SUCCESS;
+  }
+  else if (sliSpec->end_of_active_set) {
+    #ifdef VIEW_FETCH
+    printf("\tNo more rows to retrieve.\n");
+    #endif
+    status = INTERFACE_EXCEPTION;
+  }
+  else {
+    #ifdef VIEW_FETCH
+      printf("\tRetreiving more data.\n");
+    #endif
+    status = oracleCursor_fetch(cursorHandle);
+    if ( IsSuccessStatus(status) ) {
+      #ifdef VIEW_FETCH
+        printf("\tNumber of new rows received: %ld\n",
+	       sqlca.sqlerrd[2] - sliSpec->total_rows_recvd);
+      #endif
+      sliSpec->cur_row_number++;
+      sliSpec->cur_row_index = 0;
+      sliSpec->cur_col_index = 0;
+      sliSpec->total_rows_recvd = sqlca.sqlerrd[2];
+    }
+  }
+  ctop_int(regReturnStatus,status);
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Get Single Output Value
+ * -----------------------
+ *  Set to the first column of the tuple in fetch_from_cursor(), return
+ *  the current column value to Prolog and make the next column the new
+ *  current.  If all columns in the tuple have already been returned,
+ *  then return an exception status.
+ */
+
+void get_output_value() {
+
+  const int regCursorHandle = 2;   /* in */
+  const int regSLI_Value    = 3;   /* in */
+  const int regReturnStatus = 4;   /* out */
+
+  CursorHandle cursorHandle;
+  SQLDA *sliDesc;
+  int iCurColumn;        /* index (into descriptor) for current column */
+  int iCurRow;           /* index (into output array) for current row */
+  int status;
+
+
+  cursorHandle = ptoc_int(regCursorHandle);
+  if ( ! isValidArg_CursorHandle(cursorHandle,regReturnStatus) )
+    return;
+  else if ( cursors[cursorHandle].stmt.type != SELECT_SQL_STMT ) {
+    xsb_error("Oracle: Attempting to retrieve output values from non-SELECT "
+	      "statement (cursor %d)\n\n\t%s",
+	      cursorHandle,
+	      cursors[cursorHandle].stmt.string);
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+  else if ( cursors[cursorHandle].sli.total_rows_recvd == 0 ) {
+    xsb_error("Oracle: Attempting to retrieve output values before they are FETCHed!");
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+
+  sliDesc = cursors[cursorHandle].sli.descriptor;
+  iCurColumn = cursors[cursorHandle].sli.cur_col_index;
+
+  if ( iCurColumn >= SQLDA_NumEntriesFound(sliDesc) ) {
+    /*
+     * We've completed another tuple: there are no more columns left to
+     * return.  Signal this by returning an exception status.
+     */
+#ifdef VIEW_GET
+    printf("\n");
+#endif
+    ctop_int(regReturnStatus,INTERFACE_EXCEPTION);
+    return;
+  }
+  #ifdef VIEW_GET
+    printf("\tCol %d: ", iCurColumn);
+  #endif
+
+  iCurRow = cursors[cursorHandle].sli.cur_row_index;
+  if (SQLDA_IndValueArrayBase(sliDesc,iCurColumn)[iCurRow] < 0) {
+    #ifdef VIEW_GET
+      printf("NULL\n");
+    #endif
+    ctop_string( regSLI_Value, string_find("NULL",1) );
+    status = SUCCESS;
+  }
+  else {
+    short valueDataType;   /* coerced-to datatype of current column */
+    ColumnSpec *colSpec;   /* cursor substruct contains table's column specs */
+    char *pColumnValue;    /* ptr into output array to the column's value */
+    int arrayWidth;
+
+    valueDataType = SQLDA_ItemValueArrayType(sliDesc,iCurColumn);
+    arrayWidth = SQLDA_ItemValueArrayWidth(sliDesc,iCurColumn);
+    colSpec = &cursors[cursorHandle].sli.column_specs[iCurColumn];
+    pColumnValue = SQLDA_ItemValueArrayBase(sliDesc,iCurColumn) +
+                     iCurRow * arrayWidth;
+
+    if (SQLDA_IndValueArrayBase(sliDesc,iCurColumn)[iCurRow] != 0)
+      status = ORACLE_EXCEPTION;      /* value truncated */
+    else
+      status = SUCCESS;
+    if (colSpec->datatype == CHAR_ODT)
+      remove_blank_padding(pColumnValue,arrayWidth - 1);
+
+    switch ( valueDataType ) {
+    /*
+     * Currently, we coerce everything to a string.
+     */
+    case STRING_ODT:
+      ctop_string(regSLI_Value, string_find(pColumnValue,1));
+      break;
+    default:
+      xsb_error("Oracle: Cursor %d: Retrieval of SLI %d\nColumn with unexpected datatype: %s.",
+		cursorHandle, iCurColumn,
+		oracle_datatype_as_string(valueDataType));
+      status = INTERFACE_ERROR;
+      break;
+    }
+    #ifdef VIEW_GET
+      printf("type %d found: ->%s<-\n", valueDataType, pColumnValue);
+    #endif
+  }
+  cursors[cursorHandle].sli.cur_col_index++;
+  ctop_int(regReturnStatus, status);
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Releasing Hold on a Cursor
+ * --------------------------
+ *  To be called when statement processing with a cursor has completed
+ *  but the cursor may be utilized again.  For efficiency sake, neither
+ *  local nor database resources are freed at this time
+ */
+
+void deallocate_cursor() {
+
+  const int regCursorHandle = 2;   /* in */
+  const int regReturnStatus = 3;   /* out */
+
+  CursorHandle cursorHandle;
+
+
+  cursorHandle = ptoc_int(regCursorHandle);
+  if ( ! isValidArg_CursorHandle(cursorHandle,regReturnStatus) )
+    return;
+
+  ctop_int(regReturnStatus,suspend_cursor(cursorHandle));
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Freeing a Cursor
+ * ----------------
+ *  To be called when statement processing with a cursor has completed
+ *  and the cursor is no longer needed.  Resources are freed both
+ *  locally and at the database, via a CLOSE.
+ */
+
+void close_cursor() {
+
+  const int regCursorHandle = 2;   /* in */
+  const int regReturnStatus = 3;   /* out */
+
+  CursorHandle cursorHandle;
+
+
+  cursorHandle = ptoc_int(regCursorHandle);
+  if ( ! isValidArg_CursorHandle(cursorHandle,regReturnStatus) )
+    return;
+
+  ctop_int(regReturnStatus,free_cursor_resources(cursorHandle));
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Empty Cursor's Input Buffer(s)
+ * ------------------------------
+ *  To support input host arrays, any remaining data collected as input
+ *  must be sent to the database.  Flushing also occurs automatically
+ *  from execute_cursor() when the buffers are full.
+ */
+
+void flush_cursor() {
+
+  const int regCursorHandle = 2;   /* in */
+  const int regReturnStatus = 3;   /* out */
+
+  CursorHandle cursorHandle;
+
+
+  cursorHandle = ptoc_int(regCursorHandle);
+  if ( ! isValidArg_CursorHandle(cursorHandle,regReturnStatus) )
+    return;
+
+  if (cursors[cursorHandle].stmt.type != INSERT_SQL_STMT) {
+    xsb_error("Oracle: Attempting to flush non-INSERT statement (cursor %d)\n\n"
+	      "\t%s",
+	      cursorHandle, cursors[cursorHandle].stmt.string);
+    ctop_int(regReturnStatus,INTERFACE_ERROR);
+    return;
+  }
+
+  ctop_int(regReturnStatus,oracleCursor_execute(cursorHandle));
+}
+
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Reinitialize All Cursors
+ * ------------------------
+ *  Reclaims all local and database resources for cursors which are (were)
+ *  opened but never closed.
+ */
+
+void reclaim_cursors() {
+
+  const int regReturnStatus = 2;   /* out */
+
+  ctop_int(regReturnStatus,reinitialize_cursors());
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* Disconnecting from Oracle
+ * -------------------------
+ *  Close the connection to Oracle.  Before doing so, clean up the
+ *  interface by deallocating resources and closing opened database
+ *  cursors.
+ */
+
+  void oracle_disconnect() {
+
+  const int regReturnStatus = 2;   /* out */
+  int status;
+
+  status = reinitialize_cursors();
+  EXEC SQL WHENEVER SQLERROR GOTO disconnect_error;
+  EXEC SQL COMMIT WORK RELEASE;
+  ctop_int(regReturnStatus,status);
+  return;
+
+ disconnect_error:
+  oracle_error("Error during commit and disconnection from Oracle");
+  ctop_int(regReturnStatus,ORACLE_ERROR);
+}
+
+/* ======================================================================== */
+
+/*
+ *                  A D D I T I O N A L   B U I L T I N S
+ *                  =====================================
+ */
+
+
+void db_sqlcaid() 
+{	
+  ctop_string(2,(char *) string_find(sqlca.sqlcaid,1));
+}
+
+void db_sqlabc()
+{
+  ctop_int(2,sqlca.sqlabc);
+}
+
+void db_sqlcode()
+{
+  ctop_int(2,sqlca.sqlcode);
+}
+
+void db_sqlerrml()
+{
+  ctop_int(2,sqlca.sqlerrm.sqlerrml);
+}
+
+void db_sqlerrmc()
+{
+  ctop_string(2,(char *) string_find(sqlca.sqlerrm.sqlerrmc,1));
+}
+
+void db_sqlerrp()
+{
+  ctop_int(2,0);
+}
+
+void db_sqlerrd0()
+{
+  ctop_int(2,0);
+}
+
+void db_sqlerrd1()
+{
+  ctop_int(2,0);
+}
+
+void db_sqlerrd2()
+{
+  ctop_int(2,sqlca.sqlerrd[2]);
+}
+
+void db_sqlerrd3()
+{
+  ctop_int(2,0);
+}
+
+void db_sqlerrd4()
+{
+  ctop_int(2,sqlca.sqlerrd[4]);
+}
+
+void db_sqlerrd5()
+{
+  ctop_int(2,0);
+}
+
+void db_sqlwarn0()
+{
+  ctop_string(2,(char *) string_find(&sqlca.sqlwarn[0],1));
+}
+
+void db_sqlwarn1()
+{
+  ctop_string(2,(char *) string_find(&sqlca.sqlwarn[1],1));
+}
+
+void db_sqlwarn3()
+{
+  ctop_string(2,(char *) string_find(&sqlca.sqlwarn[3],1));
+}
+
+void db_sqlwarn4()
+{
+  ctop_string(2,(char *) string_find(&sqlca.sqlwarn[4],1));
+}
+
+void db_sqlwarn5()
+{
+  ctop_string(2,(char *) string_find(&sqlca.sqlwarn[5],1));
+}
+
+void db_sqlext()
+{
+  ctop_int(2,0);
+}

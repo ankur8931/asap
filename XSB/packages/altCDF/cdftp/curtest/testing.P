@@ -1,0 +1,39 @@
+
+:- [cur_tests].
+:- [altcdf].
+:- [cdftp_chkCon].
+:- import load_extensional_facts/1 from cdf_io.
+
+?- load_extensional_facts('.').
+
+%?- testall.
+
+
+testall:- 
+	testall1.
+
+testall1:- 
+	sat_test(Formula,Val),
+	writeln(sat_test(Formula,Val)),
+	testval(Formula,Val),
+	fail.
+testall1.
+
+testval(Formula,true):- 
+	(sat(Formula) -> 
+	    true 
+	  ; writeln('!!!failing'(sat_test(Formula,true)))).
+testval(Formula,false):- 
+	(\+ sat(Formula) -> 
+	    true 
+	  ; writeln('!!!failing'(sat_test(Formula,false)))).
+
+
+:- import isa/2 from cdf_init_cdf.
+%tp_subclass(A,B):- isa(A,B).
+
+tp_subclass(X,Y):- normalize(X,NewX),normalize(Y,NewY),isa(NewX,NewY).
+
+normalize(X,NewX):- nonvar(X),X = unique(cid(Id,NS)),NewX = oid(Id,NS),!.
+normalize(X,X).
+

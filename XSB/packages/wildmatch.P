@@ -1,0 +1,63 @@
+/* File:      wildcard.P
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: wildmatch.P,v 1.6 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- import xsb_configuration/2 from xsb_configuration.
+:- import bootstrap_package/2 from packaging.
+:- import abort/1 from standard.
+:- import cd/1 from shell.
+:- import expand_filename/2 from machine.
+
+
+%% bootstrap(package-dirname-as-string, package-name-as-symbol).
+%% This also asserts 
+%% package_configuration(dir(PackageName), FullPackageDirname)
+%% some packages use it.
+
+:- export glob_directory/4, wildmatch/3, convert_string/3.
+:- import do_glob_directory__/4, do_wildmatch__/3, do_convert_string__/3 from xsb_wildmatch.
+
+:- bootstrap_package('wildmatch', wildmatch),
+   (xsb_configuration(wildmatch_support, 'yes') -> [wldmtchconfig]
+     ;
+     abort('Your system does not seem to have the POSIX wildcard matching library installed.')
+     ).
+
+%% fails if can't chdir to directory or wildcard doesn't match
+glob_directory(Wildcard, Directory, MarkDirs, FileList) :-
+	expand_filename('.',CurrDir),
+	(is_list(Directory) -> Convert = 1, atom_codes(AtomDir,Directory)
+    	    ;
+	    Convert = 0, AtomDir = Directory
+	),
+	cd(AtomDir),
+	do_glob_directory__(Wildcard, MarkDirs, FileList, Convert),
+	cd(CurrDir).
+
+wildmatch(Wildcard, String, IgnoreCase) :-
+	do_wildmatch__(Wildcard, String, IgnoreCase).
+
+%% Conversion flag: From (atom/charlist), To (atom/charlist),
+%% tolower, toupper (atoms)
+convert_string(From, To, ConversionFlag) :-
+	do_convert_string__(From, To, ConversionFlag).

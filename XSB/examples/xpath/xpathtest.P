@@ -1,0 +1,47 @@
+:- import slash/1 from machine.
+:- import parse_xpath/4 from xpath.
+
+:- 
+	xpathdir(XpathDir),
+	slash(Slash),
+	writeln('***** Output redirected to .ok in the actualoutput directory'),
+	writeln('***** Compare it with .ok files in the expectedoutput directory'),
+	writeln('***** Note: w3.ok may be different, as this page constantly changes'),
+
+	(
+		path_sysop('isdir', actualoutput) -> true
+		;path_sysop( 'mkdir', actualoutput)
+	),
+
+	fmt_write_string(TestPath, '%s', f(XpathDir)),
+	fmt_write_string(OutFile1, 'actualoutput%sgreeting.ok', f(Slash)),
+	tell(OutFile1),
+	parse_xpath(string('<greeting>Hi! My name is <first>John</first> <last>Smith</last>.</greeting>'),'/greeting',O1,''),
+	writeln(O1),
+	told,
+
+        fmt_write_string(TestFile2, '%s%sexamples.xml',f(TestPath,Slash)),
+	fmt_write_string(OutFile2, 'actualoutput%sexample1.ok', f(Slash)),
+	tell(OutFile2),
+        parse_xpath(file(TestFile2),'/examples/example[@filename=''parse2.c'']', O2, ''),
+        writeln(O2),
+	told,
+
+	fmt_write_string(OutFile3, 'actualoutput%sexample2.ok', f(Slash)),
+	tell(OutFile3),
+       	parse_xpath(file(TestFile2),'/examples/example[3]', O3, ''),
+        writeln(O3),
+	told,
+
+	fmt_write_string(OutFile4, 'actualoutput%sw3.ok', f(Slash)),
+	tell(OutFile4),
+	parse_xpath(url('http://w3.org'),'/x:html/x:head/x:meta', O4, 'x=http://www.w3.org/1999/xhtml'),
+        writeln(O4),
+	told.
+
+xpathdir(XpathDir) :-
+        xsb_configuration(install_dir, PackDir),
+        slash(Slash),
+        fmt_write_string(XpathDir, '%s%sexamples%sxpath%sfiles',
+        f(PackDir, Slash, Slash, Slash)).
+

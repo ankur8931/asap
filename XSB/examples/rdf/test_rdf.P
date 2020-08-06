@@ -1,0 +1,157 @@
+/*
+** File: examples/rdf/test_rdf.P
+** Author: Aneesh Ali
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2010
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+:- module(test_rdf, [test_all/0, suite/1, test_file/1]).
+
+:- [rdf].
+
+:- use_module(library(sgml), [load_structure/4]).
+:- use_module(rdf, [load_rdf/2, xml_to_rdf/3]).	
+:- use_module(rdf_parser, [xml_to_plrdf/3,make_rdf_state/3]).	
+:- use_module(rdf_triple, [rdf_triples/2, rdf_start_file/2, rdf_end_file/1]).
+:- import slash/1 from machine.
+:- import member/2 from basics.
+:- import xsb_configuration/2 from xsb_configuration.
+
+test_all :- 
+	rdfdir(RDFDir), slash(Slash), 
+	fmt_write_string(InPath, '%s%ssuite', f(RDFDir, Slash)), 
+	fmt_write_string(OutPath, '%s%sactualoutput', f(RDFDir, Slash)), 
+	(path_sysop(isdir, OutPath); path_sysop(mkdir, OutPath)),
+	files(Files), 
+	member(File, Files), 
+	fmt_write_string(InFile, '%s%s%s.rdf', f(InPath, Slash, File)),
+	fmt_write_string(OutFile, '%s%s%s.ok', f(OutPath, Slash, File)),
+	tell(OutFile), 
+	test_file(InFile), 
+	told, 
+	fail.
+
+/*Test for load_rdf and xml_to_rdf*/
+test_all :-
+	rdfdir(RDFDir), slash(Slash), 
+	fmt_write_string(InFile, '%s%ssuite%st1.rdf', f(RDFDir, Slash, Slash)), 
+	fmt_write_string(OutFile1, '%s%sactualoutput%sload_rdf.ok', f(RDFDir, Slash, Slash)), 
+	tell(OutFile1), 
+	load_rdf(file(InFile), Triples1), 
+	writeln(Triples1), 
+	told, 
+	fmt_write_string(OutFile2, '%s%sactualoutput%sxml_to_rdf.ok', f(RDFDir, Slash, Slash)), 
+	tell(OutFile2), 
+	xml_to_rdf(element('http://www.w3.org/1999/02/22-rdf-syntax-ns#' : _,[xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#',xmlns:s='http://description.org/schema/'],[element('http://www.w3.org/1999/02/22-rdf-syntax-ns#' : _,[about='http://www.w3.org/Home/Lassila'],[element('http://description.org/schema/' : 'Creator',[],['Ora Lassila'])])]), Triples2, []), 
+	writeln(Triples2), 
+	told.
+
+test_file(File) :-
+	load_structure(file(File),
+		       [ RDFElement ],
+		       [ dialect(xmlns),
+			 space(sgml)
+		       ], _),
+	writeln('----------sgml----------'), write('\n'), 
+	writeln(RDFElement), 
+	rdf_start_file([], Cleanup),
+	make_rdf_state([base_uri('http://test.org/test/')], State, _),
+	xml_to_plrdf(RDFElement, RDF, State),
+	rdf_end_file(Cleanup),
+	write('\n'), writeln('----------RDF----------'), write('\n'), 
+	writeln(RDF), 	
+	rdf_triples(RDF, Triples),
+	write('\n'), writeln('--------Triples--------'), write('\n'), 
+	write_triples(Triples).
+
+suite(N) :-
+	string:concat_atom(['suite/t', N, '.rdf'], File),
+	test_file(File).
+
+write_triples([]) :- !.
+write_triples([H|T]) :- !,
+	write_triple(H),
+	write_triples(T).
+
+write_triple(Triple) :-
+	is_rdf_triple(Triple), !,
+	Triple = rdf(S,P,O), 
+	write('{'),
+	write(S), write(', '), 
+	write(P), write(', '), 
+	write(O), writeln('}').
+write_triple(Triple) :-
+	write('Bad Triple: '), 
+	writeln(Triple), 
+	fail.
+
+		 /*******************************
+		 *	      VALIDATE		*
+		 *******************************/
+
+is_rdf_triple(rdf(Subject, Predicate, Object)) :-
+	is_subject(Subject),
+	is_predicate(Predicate),
+	is_object(Object).
+
+is_subject(0) :- !, fail.		% Variables
+is_subject(URI) :- is_uri(URI), !.
+is_subject(each(URI)) :- is_uri(URI), !.
+is_subject(prefix(Pattern)) :-
+	atom(Pattern), !.
+
+is_predicate(0) :- !, fail.
+is_predicate(rdf:RdfPred) :- !,
+	is_rdf_predicate(RdfPred).
+is_predicate(NS:Pred) :- !,
+	atom(NS),
+	atom(Pred).
+is_predicate(Pred) :-
+	atom(Pred).
+
+is_object(0) :- !,
+	fail.
+is_object(literal(XML)) :- !,
+	is_xml(XML).
+is_object(rdf:RdfType) :- !,
+	is_rdf_type(RdfType).
+is_object(URI) :-
+	is_uri(URI).
+
+is_object(Subject) :-
+	is_subject(Subject), !.
+is_object(Pred) :-
+	is_predicate(Pred), !.
+
+is_uri(URI) :- atom(URI).
+
+is_xml(_XML). % for now
+
+is_rdf_predicate(RdfPred) :- atom(RdfPred).
+
+is_rdf_type(RdfType) :- atom(RdfType).
+
+rdfdir(RDFDir) :-
+        xsb_configuration(install_dir,PackDir),
+        slash(Slash),
+        fmt_write_string(RDFDir,'%s%sexamples%srdf', f(PackDir,Slash,Slash)).
+
+%% xsdtypes.rdf and xmllit.rdf.
+files(['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't11', 't12', 't13', 't14', 't15', 't16', 't17', 't18', 't19', 't20', 't21', 't22', 't24', 't26', 't27', 't28', 't29', 't30', 't31', 't32', 't33', 't36', 't37', 't38', 't39', 't40', 't41', 't42', 'ex_19', 'types']).
+

@@ -1,0 +1,98 @@
+%%%
+%%% A multi-threaded goal server that uses sockets to communicate
+%%% Adapted from the sockets exampleAdapted from the sockets example
+%%%
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "char_defs.h"
+
+#define Q_LENGTH  10
+
+:- import 
+     socket/1, socket_bind/2, socket_listen/2, socket_accept/2, 
+     socket_close/1, socket_recv_term/2,
+     socket_send_term/2 from hl_socket.
+:- import 
+	socket_set_option/3 from socket.
+
+:- import thread_create/1, thread_create/3 from thread.
+:- import thread_join/2 from thread.
+:- import thread_cancel/1 from thread.
+:- import thread_exit/1 from thread.
+
+
+:- thread_shared loop_id/1.
+
+%% Port on which the server is listening
+xsb_port(6500).
+
+server :-
+	socket(Sockfd0),
+	socket_set_option(Sockfd0,linger,SOCK_NOLINGER),
+	xsb_port(XSBPort),
+	socket_bind(Sockfd0, XSBPort),
+	socket_listen(Sockfd0,Q_LENGTH),
+	thread_create(server_loop(Sockfd0),X,[]),
+	assert(loop_id(X)),
+	thread_join(X,_).
+
+server_loop(Sockfd0) :-
+	socket_accept(Sockfd0, Sockfd0_out1),
+	thread_create(serve_client(Sockfd0_out1)),
+	fail.
+server_loop(Sockfd0) :-
+	server_loop(Sockfd0).
+
+serve_client(Sockfd) :-
+    write('Waiting for input... '),
+    catch( socket_recv_term(Sockfd, Goal), 
+	   socket(_), 
+	   Goal = end_of_file
+	 ),
+    writeln(received(Goal)),
+    (Goal==end_of_file -> 
+        writeln('End of file or communication error'),
+	writeln('Client quits...'),
+	socket_close(Sockfd)
+    ;	
+	writeln(goal(Goal)),
+	(
+	Goal=exit ->
+		retract(loop_id(Tid)),
+		thread_cancel(Tid),
+		socket_close(Sockfd),
+		thread_exit(0)
+	;
+		true
+	),
+	((Goal=h(_); Goal=g(_)) ->
+	    call(Goal), writeln(answer(Goal)),
+	    socket_send_term(Sockfd, Goal)
+	;   write('Invalid goal: '), writeln(Goal),
+	    socket_send_term(Sockfd, invalid_goal(Goal))
+	),
+	fail
+    ).
+
+serve_client(Sockfd) :-
+	socket_send_term(Sockfd, end),
+	serve_client(Sockfd).
+  
+
+
+
+g(1).
+g(2).
+g(3).
+g(4).
+g(5). 
+
+
+
+h(a).
+h(b).
+h(c).
+h(d).
+h(e).
+

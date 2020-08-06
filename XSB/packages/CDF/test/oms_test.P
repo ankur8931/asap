@@ -1,0 +1,274 @@
+
+:- [cdf].
+:- ensure_loaded(oms_io).
+
+load_test_file(File):- 
+	load_dync(File),
+	merge_omsext.
+
+gen_nondet_solutions(Input):- 
+	findall(Input,Input,L),
+	sort(L,L1),
+	writeq(L1).
+
+test_nondet_solutions(Input,Output):- 
+	findall(Input,Input,L),
+	sort(Output,O1),
+	sort(L,L1),
+	O1 = L1,!.
+test_nondet_solutions(Input,_Output):- 
+	abort(['Fails or does not match prescribed output on ',Input]).
+
+test_det_call(Input,Output):- 
+	call(Input),
+	Input == Output,!.
+test_det_call(Input,_Output):- 
+	abort(['Fails or does not match prescribed output on ',Input]).
+
+test_det_call_u(Input,Output):- 
+	call(Input),
+	Input = Output,!.
+test_det_call_u(Input,_Output):- 
+	abort(['Fails or does not match prescribed output on ',Input]).
+
+test_det_fail(Input):- 
+	call(Input),!,
+	abort(['Improperly succeeded on ',Input]).
+test_det_fail(_Input).
+
+name_memberof(Obj,Class):- 
+	nonvar(Obj),nonvar(Class),!,
+	object(Onum,Obj,_,_),
+	class(Cnum,Class,_,_),
+	memberof(Onum,Cnum).
+name_memberof(Obj,Class):- 
+	nonvar(Obj),var(Class),!,
+	object(Onum,Obj,_,_),
+	memberof(Onum,Cnum),
+	class(Cnum,Class,_,_).
+name_attribute(Obj,Class):- 
+	abort(['unexpected calling modes in name memberof ',(Obj,Class)]).
+
+name_attribute(Obj,Rel,Attr):- 
+	nonvar(Obj),nonvar(Rel),!,
+	object(Onum,Obj,_,_),
+	class(Rnum,Rel,_,_),
+	attribute(Onum,Rnum,Anum),
+	class(Anum,Attr,_,_).
+name_attribute(Obj,Rel,Attr):- 
+	nonvar(Obj),var(Rel),!,
+	object(Onum,Obj,_,_),
+	attribute(Onum,Rnum,Anum),
+	class(Anum,Attr,_,_),
+	class(Rnum,Rel,_,_).
+name_attribute(Obj,Rel,Attr):- 
+	var(Obj),var(Rel),!,
+	attribute(Onum,Rnum,Anum),
+	object(Onum,Obj,_,_),
+	class(Anum,Attr,_,_),
+	class(Rnum,Rel,_,_).
+name_attribute(Obj,Rel,Attr):- 
+	abort(['unexpected calling modes in name attribute ',(Obj,Rel,Attr)]).
+
+name_attribute_object(Obj,Rel,Attr):- 
+	nonvar(Obj),nonvar(Rel),!,
+	object(Onum,Obj,_,_),
+	class(Rnum,Rel,_,_),
+	attribute_object(Onum,Rnum,Anum),
+	object(Anum,Attr,_,_).
+name_attribute_object(Obj,Rel,Attr):- 
+	nonvar(Obj),var(Rel),!,
+	object(Onum,Obj,_,_),
+	attribute_object(Onum,Rnum,Anum),
+	object(Anum,Attr,_,_),
+	class(Rnum,Rel,_,_).
+name_attribute_object(Obj,Rel,Attr):- 
+	var(Obj),var(Rel),!,
+	attribute_object(Onum,Rnum,Anum),
+	object(Onum,Obj,_,_),
+	object(Anum,Attr,_,_),
+	class(Rnum,Rel,_,_).
+name_attribute(Obj,Rel,Attr):- 
+	abort(['unexpected calling modes in name attribute ',(Obj,Rel,Attr)]).
+
+name_immediate_attribute(Obj,Rel,Attr):- 
+	nonvar(Obj),nonvar(Rel),!,
+	object(Onum,Obj,_,_),
+	class(Rnum,Rel,_,_),
+	immediate_attribute(Onum,Rnum,Anum),
+	class(Anum,Attr,_,_).
+name_immediate_attribute(Obj,Rel,Attr):- 
+	nonvar(Obj),var(Rel),!,
+	object(Onum,Obj,_,_),
+	immediate_attribute(Onum,Rnum,Anum),
+	class(Anum,Attr,_,_),
+	class(Rnum,Rel,_,_).
+name_immediate_attribute(Obj,Rel,Attr):- 
+	var(Obj),var(Rel),!,
+	immediate_attribute(Onum,Rnum,Anum),
+	object(Onum,Obj,_,_),
+	class(Anum,Attr,_,_),
+	class(Rnum,Rel,_,_).
+name_immediate_attribute(Obj,Rel,Attr):- 
+	abort(['unexpected calling modes in name attribute ',(Obj,Rel,Attr)]).
+
+name_relationship(Conc,Rel,Targ):- 
+	nonvar(Conc),nonvar(Rel),!,
+	class(Cnum,_,Conc,_),
+	class(Rnum,_,Rel,_),
+	relationship(Cnum,Rnum,Tnum),
+	transform_class(Tnum,Targ).
+name_relationship(Conc,Rel,Targ):- 
+	nonvar(Conc),var(Rel),!,
+	class(Cnum,_,Conc,_),
+	relationship(Cnum,Rnum,Tnum),
+	class(Rnum,Rel,_,_),
+	transform_class(Tnum,Targ).
+name_relationship(Conc,Rel,Targ):- 
+	var(Conc),nonvar(Rel),!,
+	class(Rnum,_,Rel,_),
+	relationship(Cnum,Rnum,Tnum),
+	class(Cnum,Conc,_,_),
+	transform_class(Tnum,Targ).
+name_relationship(Conc,Rel,Targ):- 
+	var(Conc),var(Rel),!,
+	relationship(Cnum,Rnum,Tnum),
+	class(Rnum,_,Rel,_),
+	class(Cnum,_,Conc,_),
+	transform_class(Tnum,Targ).
+name_relationship(Conc,Rel,Targ):- 
+	abort(['unexpected calling modes in name relationship ',
+		(Conc,Rel,Targ)]).
+
+/* For Fiigs and INCs */
+/* TLS: change this!  */
+nid_relationship(Cnid,Rel,Tnid):- 
+	var(Cnid),nonvar(Rel),!,
+	class(Rnum,Rel,_,_),
+	relationship(Cnum,Rnum,Tnum),
+	class(Cnum,_,Cnid,_),
+	class(Tnum,_,Tnid,_).
+nid_relationship(Cnid,Rel,Tnid):- 
+	nonvar(Cnid),nonvar(Rel),!,
+	class(Rnum,Rel,_,_),
+	class(Cnum,_,Cnid,_),
+	relationship(Cnum,Rnum,Tnum),
+	transform_class_nid(Tnum,Tnid).
+nid_relationship(Conc,Rel,Targ):- 
+	abort(['unexpected calling modes in nid relationship ',
+		(Conc,Rel,Targ)]).
+
+transform_class(Tnum,Targ):- 
+	integer(Tnum),!,
+	class(Tnum,Targ,_,_).
+transform_class(Targ,Targ):- ground(Targ).
+
+transform_class_nid(Tnum,Targ):- 
+	integer(Tnum),!,
+	class(Tnum,_,Targ,_).
+transform_class_nid(Targ,Targ):- ground(Targ).
+
+/* sometimes dont want reflexivity */
+name_subclass_nr(Name1,Name2):- 
+	name_subclass(Name1,Name2),
+	Name1 \== Name2.
+
+name_immediate_subclass(Name1,Name2):- 
+	nonvar(Name2),var(Name1),!,
+	class(Num2,Name2,_Nid2,_Ont2),
+	immediate_subclass(Num1,Num2),
+	class(Num1,Name1,_Nid1,_Ont1).
+name_immediate_subclass(Name1,Name2):- 
+	var(Name2),nonvar(Name1),!,
+	class(Num1,Name1,_Nid1,_Ont1),
+	immediate_subclass(Num1,Num2),
+	class(Num2,Name2,_Nid2,_Ont2).
+name_immediate_subclass(Name1,Name2):- 
+	nonvar(Name2),nonvar(Name1),!,
+	class(Num1,Name1,_Nid1,_Ont1),
+	class(Num2,Name2,_Nid2,_Ont2),
+	immediate_subclass(Num1,Num2).
+name_immediate_subclass(Name1,Name2):- 
+	var(Name2),var(Name1),!,
+	immediate_subclass(Num1,Num2),
+	class(Num1,Name1,_Nid1,_Ont1),
+	class(Num2,Name2,_Nid2,_Ont2a).
+
+internal_name_subclass(Name1,Name2):- 	% bf
+	nonvar(Name1),var(Name2),!,
+	class(Num1,_,Name1,_),
+	subclass(Num1,Num2),
+	class(Num2,_,Name2,_Ont2).
+internal_name_subclass(Name1,Name2):- 
+	nonvar(Name2),var(Name1),!,
+	class(Num2,_,Name2,_Ont2),
+	subclass(Num1,Num2),
+	class(Num1,_,Name1,_Ont1).
+internal_name_subclass(Name1,Name2):- 
+	nonvar(Name2),nonvar(Name1),!,
+	class(Num1,_,Name1,_Ont1),
+	class(Num2,_,Name2,_Ont2),
+	subclass(Num1,Num2).
+internal_name_subclass(Name1,Name2):- 
+	var(Name2),var(Name1),!,
+	subclass(Num1,Num2),
+	class(Num1,_,Name1,_Ont1),
+	class(Num2,_,Name2,_Ont2a).
+
+my_name_subclass(Name1,Name2):- 
+	nonvar(Name1),var(Name2),!,
+	get_internal_form(Name1,Num1),
+	my_subclass(Num1,Num2),
+	get_external_form(Num2,Name2).
+my_name_subclass(Name1,Name2):- 
+	nonvar(Name2),var(Name1),!,
+	class(Num2,Name2,_Nid2,_Ont2),
+	my_subclass(Num1,Num2),
+	class(Num1,Name1,_Nid1,_Ont1).
+my_name_subclass(Name1,Name2):- 
+	nonvar(Name2),nonvar(Name1),!,
+	get_internal_form(Name1,Num1),
+	get_internal_form(Name2,Num2),
+	my_subclass(Num1,Num2).
+my_name_subclass(Name1,Name2):- 
+	var(Name2),var(Name1),!,
+	my_subclass(Num1,Num2),
+	class(Num1,Name1,_Nid1,_Ont1),
+	class(Num2,Name2,_Nid2,_Ont2a).
+
+get_internal_form(Class,Int):- atom(Class),!,class(Int,Class,_,_).
+get_internal_form(Class,Int):- 
+	Class =.. [F|R],
+	get_internal_form_list(R,R1),
+	Int =.. [F|R1].
+	
+get_internal_form_list([],[]).
+get_internal_form_list([Name|R],[Int|R1]):- 
+	get_internal_form(Name,Int),
+	get_internal_form_list(R,R1).
+
+get_external_form(Int,Class):- integer(Int),!,class(Int,Class,_,_).
+get_external_form(Class,Int):- 
+	Class =.. [F|R],
+	get_external_form_list(R,R1),
+	Int =.. [F|R1].
+	
+get_external_form_list([],[]).
+get_external_form_list([Name|R],[Int|R1]):- 
+	get_external_form(Name,Int),
+	get_external_form_list(R,R1).
+
+
+end_of_file.
+
+get_vars(Term,Vars):-
+	get_vars_1(Term,In,Out).
+
+get_vars_1(X,[X|R],R):- var(X),!.
+get_vars_1(X,R,R):- atomic(X),!.
+get_vars_1([H|T],Rin,Rout):- !,
+	get_vars_1(H,Rin,Rmid),
+	get_vars_1(T,Rmid,Rout):- 
+get_vars_1(Struct,Rin,Rout):- 
+	Struct =.. [_|L],
+	get_vars_1(L,Rin,Rout).

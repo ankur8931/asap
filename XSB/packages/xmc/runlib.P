@@ -1,0 +1,92 @@
+/* File:      runlib.P	-- runtime library for dynamic transition
+** Author(s): Yifei Dong
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: runlib.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+%% ------------------------------------------------------------------
+%% handle channel for parallel process
+
+handlechan(GChan, LChan, R) :-
+	%% compute the restriction level: maximum of global channels
+	maxchan(GChan, R),
+	%% enumerate local channels
+	enumlocal(LChan, R).
+
+maxchan(C, M) :-
+	max(C, 0, M).
+max([], M, M).
+max([H|T], CurMax, Max) :-
+	(H > CurMax -> NewMax = H ; NewMax = CurMax),
+	max(T, NewMax, Max).
+
+enumlocal([],_).
+enumlocal([Next|T], From) :-
+	Next is From+1,
+	enumlocal(T, Next).
+
+%% ------------------------------------------------------------------
+%% general rules for parallel process
+
+trans(par(_,end,end,X), nop, X).
+
+trans(par(R,P1,Q1,X), A, par(R,P2,Q2,X)) :-
+	partrans(R,A,P1,Q1,P2,Q2);
+	partrans(R,A,Q1,P1,Q2,P2).
+
+partrans(R,A,P1,Q1,P2,Q2) :-
+    (var(A); A == tau) ->
+	(
+	    %% autonomous action
+	    (
+		A = A1, Q2 = Q1,
+		(A1 = action(_); A1 = nop; A1 = tau),
+		trans(P1, A1, P2)
+	    )
+	;
+	    (
+		A1 = out(C,D),
+		trans(P1, A1, P2),
+		(C > R ->
+		    %% local communication: synchronous
+		    A = tau, trans(Q1,in(C,D),Q2)
+		;   %% global communication
+		    ((A = A1, Q2 = Q1);		% autonomous
+		     (A = tau, trans(Q1,in(C,D),Q2))) % synchronous
+		)
+	    )
+	)
+    ;   
+	(
+	    Q2 = Q1,
+	    trans(P1, A, P2),
+	    %% only observable communication is allowed
+	    ((A = out(C,_); A = in(C,_)) -> C =< R; true)
+	).
+
+
+%% ------------------------------------------------------------------
+%% symbol table lookup for parallel process
+
+symlookup(par(_,P1,P2,_), PName, Pos, VarNames) :-
+	symlookup(P1, PName, Pos, VarNames);
+	symlookup(P2, PName, Pos, VarNames).

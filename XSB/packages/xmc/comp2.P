@@ -1,0 +1,311 @@
+%% File: comp.P	-- XL Optimizing Compiler
+
+%% Version:	1.0
+%% Author:	Yifei Dong
+
+%% ------------------------------------------------------------------
+
+xlcomp :- 
+	reset_labels,
+	load_dyn(runlib),
+	compile_all,
+	%% cleanup
+	retractall(npdef(_,_,_,_)),
+	retractall(processlabel(_,_)),
+	retractall(directcall(_,_)),
+	retractall(quad(_,_,_,_,_)).
+	
+compile_all :-
+	%% get a process definition
+	clause(npdef(PHead, PBody, _Chans, Vars),_),
+	PHead = [PName,_],
+	not compiled(PName),
+	once(comp_proc(PHead, PBody, Vars)),
+	fail.
+compile_all.
+
+is_process(P) :-
+	copy_term(P,Q),
+	clause(npdef([Q,_],_,_,_),_).
+
+%% ------------------------------------------------------------------
+%% comp_proc(+ProcName, +ProcBody, +Variables)
+%%
+%% Goal: 1. transition rules	(Entry, Action, Exit, Cond/Comp)
+%%	 2. symbol table	(State, Position, ArgumentList)
+
+comp_proc([PHead,_PLoc], PBody, Vars) :-
+	new_start_state(PHead, PBody, Vars, StartState),
+	assert(compiling(PHead)),
+	comp_stmt,
+	retract(compiling(PHead)), % assume no parameter conflict
+	assert(compile(PHead)).
+
+%% ------------------------------------------------------------------
+%% Compile statement
+%% generate:
+%%	open rules
+%%	closed rules
+%%	predicate leading to the first closed state
+%% ------------------------------------------------------------------
+
+%% action: transition label
+comp_stmt([Stmt, _Pos],
+	  _ProcName, _VarNames,
+	  _Entry, _Exit,
+	  [ quad(_,Stmt,_,[]) ]
+	 )
+:-
+	is_action(Stmt), !.
+
+is_action(in(_,_)).
+is_action(out(_,_)).
+is_action(action(_,_)).
+
+%% termination of process = return
+comp_stmt([end, _Pos],
+	  _ProcName, _VarNames,
+	  _Entry, _Exit,
+	  [ quad(_,_,end([]),[]) ]
+	 )
+:- !.
+
+%% termination without continuation = deadlock
+comp_stmt([zero, _Pos],
+	  _ProcName, _VarNames,
+	  Entry, _Exit,
+	  [ quad(_,_,Entry,[]) ]
+	 )
+:- !.
+
+
+%% com
+
+
+%% parallel process
+comp_stmt([par(S1,S2), _Pos],
+	  ProcName, VarNames,
+	  Entry, Exit,
+	  [ quad(_,_,par(R,Start1,Start2,Exit),StartCode) ]
+	 )
+:-
+	!,
+	%% compile subprocesses
+	get_state_var(Exit, XVars),
+	comp_stmt(S1,ProcName,VarNames,_,end(XVars), ... Start1, Code1),
+	comp_stmt(S2,ProcName,VarNames,_,end(XVars), ... Start2, Code2),
+
+	%% link together
+	append(Code1, Code2, StartCode).
+
+%% prefix
+comp_stmt([pref(S1,S2), _Pos],
+	  ProcName, VarNames,
+	  Entry, Exit,
+	  Quad)
+:-
+	comp_stmt(S1, ProcName,VarNames,Entry,Exit, Q1),
+	comp_stmt(S2, ProcName,VarNames,Entry,Exit, Q2),
+	link_open(Q1,Q2,Quad).
+
+%% choice
+comp_stmt(
+	[choice(S1, S2), _Pos],
+	ProcName,	VarNames,
+	Entry,		Exit,
+	Quad)
+:-
+	comp_stmt(S1, ProcName,VarNames,Entry,Exit, Q1),
+	comp_stmt(S2, ProcName,VarNames,Entry,Exit, Q2),
+        append(Q1,Q2,Q),
+	close_entry(Q,ProcName,VarNames,Quad).
+
+%% condition
+comp_stmt(
+	[if(Cond, S1), [L1,C1,L2,C2]],
+	ProcName,	VarNames,
+	Entry,		Exit,
+	Quad)
+    :-
+	comp_stmt([if(Cond, S1, [true,[L2,C2,L2,C2]]), [L1,C1,L2,C2]],
+		ProcName, VarNames,
+		Entry, Exit,
+		Quad).
+
+comp_stmt(
+	[if([Cond, _], S1, S2), _Pos],
+	ProcName,	VarNames,
+	Entry,		Exit,
+	Quad)
+:-
+	comp_stmt(S1, ProcName,VarNames,Entry,Exit, Q1),
+	comp_stmt(S2, ProcName,VarNames,Entry,Exit, Q2),
+	add_open_code(Q1, Cond, NQ1),
+	add_open_code(Q2, not(Cond), NQ2),
+	append(NQ1, NQ2, Quad).
+
+%% process invokation
+:- import startstate/3, startstate/4 from usermod.
+comp_stmt([Call, _Pos],
+	  ProcName, _VarNames,
+	  _Entry, Exit,
+	  [ quad(_,_StartState,_,StartCode),
+	    quad(Exit,_,_,[]) ]
+	 )
+:-
+	is_process(Call), !,
+	functor(Call, CallName, Arity),
+	test_assert(direct_call(Proc,CallName)),
+	copy_term(Call, CCall),
+	( compiled(CCall) ->
+	    %% no recursive call to the current process
+	    startstate(Call, Exit, StartState, StartCode)
+	 
+	 ;  (compiling(CCall) ->
+		%% recursive call
+		startstate(Call, Exit, StartState),
+		StartCode = []
+
+	     ;  %% not compiled yet
+		%% compile all possible definition
+	        functor(Def, CallName, Arity),
+	        ( clause(npdef([Def,Pos], Body, _, Vars),_),
+		  not compiled(Def),
+		  once(comp_proc([Def,Pos], Body, Vars)),
+		  fail;
+		  true
+		),
+		startstate(Call, Exit, StartState, StartCode)
+	    )
+	).
+
+%% computation
+comp_stmt([Comp, _Pos],
+	  _ProcName, _VarNames,
+	  _Entry, _Exit,
+	  [ quad(_,_,_,[Comp]) ]).
+
+%% ----------------------------------------------------------------------
+%% Output transition rules
+%% ----------------------------------------------------------------------
+
+translate_quad(quad(Entry, Action, Exit, Code)) :-
+	gen_state_name(Entry, S, State1),
+	gen_exit_stack(Exit, S, Stack2),
+	Entry = state(ProcName, _,_),
+	rec_quad(ProcName, State1, Action, Stack2, Code).
+
+%% ------------------------------------------------------------------
+%% State management
+%%
+%% A state contains:
+%%	control state
+%%	data 
+%%	continuation
+
+reset_labels :-
+	retractall(processlabel(_,_)).
+
+get_new_label(ProcName, Label) :-
+	(retract(processlabel(ProcName, L)); L = 0), !,
+	Label is L+1,
+	assert(processlabel(ProcName, Label)).
+
+new_start_state(Proc, Body, Vars, State) :-
+	Proc =.. [Name | Args],
+	Body = [_Exp, [L,C|_]],
+	State = state(Name, 0, Args),
+	gen_symbol_table(State, (L,C), Vars),
+	gen_state_name(State, end, StateExpr),
+	assert(startstate(Proc, StateExpr)).
+
+new_state(ProcName,VarNames, [_,[L,C|_]], BeforeVars,AfterVars, State) :-
+	get_new_label(ProcName, Label),
+	abs_intersect(BeforeVars, AfterVars, LiveVars),
+	State = state(ProcName, Label, LiveVars),
+	/* write symbol table */
+	gen_symbol_table(State, (L,C), VarNames).
+
+get_state_var(end(Var), Var).
+get_state_var(state(_, _, Var), Var).
+
+is_end_state(end(_)).
+
+% generate state name for transition
+gen_state_name(state(ProcName,PC,LiveVars), S, State) :-
+	number_chars(PC, PCList),
+	atom_chars(PCStr, PCList),
+	str_cat(ProcName, '_', PCName1),
+	str_cat(PCName1, PCStr, PCName),
+	append(LiveVars, [S], Args),
+	State =.. [PCName | Args].
+
+gen_state_name(proc(P), S, State) :-
+	P =.. [CallName | CallArgs],
+	gen_state_name(state(CallName,0,CallArgs), S, State).
+
+gen_state_name(par(R,P1,P2), S, par(R,P1,P2,S)).
+
+gen_exit_stack([],S,S) :- !.
+gen_exit_stack([State|StateT], S, Stack) :-
+	gen_exit_stack(StateT, S, StackT),
+	gen_state_name(State, StackT, Stack).
+	
+
+%% ------------------------------------------------------------------
+%% Symbol table generation
+						% stupid!!! double scan
+get_var_name(V, [(X,Xname,_Xtype)|T], Vname) :-
+	V == X ->
+		Vname = Xname
+	;	get_var_name(V, T, Vname).
+
+get_var_name_list([], _, []).
+get_var_name_list([H|T], VarNames, [(Hname=H)|Tnames]) :-
+	get_var_name(H, VarNames, Hname), !,
+	get_var_name_list(T, VarNames, Tnames).
+get_var_name_list([_|T], VarNames, Tnames) :-
+	% do not list channel variable
+	get_var_name_list(T, VarNames, Tnames).
+
+gen_symbol_table(state(ProcName, Label, LiveVars), (L,C), VarNames) :-
+	get_var_name_list(LiveVars, VarNames, StateVarNames),
+	gen_state_name(state(ProcName, Label, LiveVars), _, State),
+	assert(symlookup(State, ProcName, (L,C), StateVarNames)).
+
+%% ----------------------------------------------------------------------
+%% Variable management
+%% ----------------------------------------------------------------------
+
+%% extract the variable list from an expression
+get_expr_var(Expr, Vars) :-
+	var(Expr), !,
+	Vars = [Expr].
+
+get_expr_var([], []) :- !.
+get_expr_var([H|T], Vars) :-
+	!,
+	get_expr_var(H, Vh),
+	get_expr_var(T, Vt),
+	absmerge(Vh, Vt, Vars).
+
+get_expr_var(Expr, Vars) :-
+	!,
+	Expr =.. [_ | Args],
+	get_expr_var(Args, Vars).
+
+%% append an expression's variable list to the first list
+append_var_list(Vars, Expr, NewVars) :-
+	get_expr_var(Expr, OV),
+	absmerge(Vars, OV, NewVars).
+
+%% ------------------------------------------------------------------
+%% channel
+
+get_data_vars([],[]).
+get_data_vars([(H,_,_)|T], [H|TVars]) :- get_data_vars(T,TVars).
+	
+% get channel variables from all variable list
+get_channel(Vars, VarNames, Chan) :-
+	get_data_vars(VarNames, DataVars),
+	abs_exclude(Vars, DataVars, Chan).

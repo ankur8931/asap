@@ -1,0 +1,167 @@
+\section{XSB Caching for XJ}
+	   
+When XSB is used in conjunction with (XJ and) InterProlog, caching may
+be useful for efficiency and consistency.  Information in the CDF is
+maintained in XSB, so that Java calls XSB goals in order to create or
+refresh displays.  When displays are refreshed, XSB goals may be
+repeatedly reexecuted.  Caching helps such goals to be re-executed
+efficiently, and also helps ensure consistency in the order tuples are
+returned from goals.  The caching system also maintains information
+that may be used by a graphical interface such as the number of
+answers to a goal, along with a numbering of these answers.  Thus the
+user can ask for a range of answers for a goal, a feature that is
+useful, for instance in the lazy lists that form the basis of various
+XJ components.  Finally, the caching system uses {\tt sorting templates}
+\index{sorting templates}
+to indicate whether answers are to be indexed in ascending or
+descending sorted order, or simply in the order that they are derived.
+
+%--------------------------
+\subsection{Maintaining Correct Caches in the Presence of Updates}
+\label{sec:cache-maint}
+
+While caches are useful, it must be ensured that a cache for a goal
+$G$ is invalidated when an update to the knowledge base may add or
+delete answers to $G$.  For example, suppose we have a rule defining
+{\tt p(X,Y) :- r(X,Z),s(Z,Y)}. and we are caching a call to {\tt p/2}.
+If {\tt s/2} is modified in such a way that the cache for a {\tt p/2}
+goal may be changed, we want to invalidate the cache for that goal.
+One way to do this is for a user to invalidate caches herself, using
+the predicate {\tt cache\_invalidate(Goal)} which invalidates all
+caches that unify with {\tt Goal}.  Alternately, the user can
+invalidate caches bases on a predicate {\tt
+cache\_inv(MutableGoal,CachedGoal)} that for each form of a mutable
+goal, indicates the forms of the cached goals that should be
+invalidated.  So for the example above, if {\tt s/2} is mutable, we
+will have a fact: {\tt cache\_inv(s(\_,Y),p(\_,Y))}. which indicates
+that if, say, {\tt s(b,a)} is asserted, then all goals of the form
+{\tt p(\_,a)} in the cache must be invalidated.
+
+The predicate {\tt generate\_cache\_invalidators(File)} generates the
+appropriate \pred{cache\_inv/2} facts.  The file it is given must
+contain the rules that define the cached predicates. It must in
+addition define 3 more predicates: {\tt cached/1} which provides the
+skeletons of all the cached predicates; {\tt mutable/1} which provides
+the skeletons of all predicates that can be modified; and {\tt
+immutable/1} which contains the skeletons of all predicates that are
+used in the definitions of the cached predicates but not defined in
+this file.  It need not include standard XSB predicates.  Predicates
+in {\tt immutable/1} are assumed to be universally true.  {\tt
+generate\_cache\_invalidators(File)} dynamically loads the indicated
+File and generates a file called \file{cache\_inv\_gen.P} that
+contains the definition of {\tt cache\_inv/2}.  The algorithm used is
+quite simple.  It can do a little optimization for simple selections,
+but in more complex cases will just invalidate all cached goals for a
+predicate.
+
+In {\tt File}, the user may also place \pred{cache\_inval/2} facts.
+These are user-defined invalidation facts of the same form as will be
+generated for {\tt cache\_inv/2} in the external file.  These facts
+are simply checked to be sure the first argument is a mutable
+predicate term and the second is a cached predicate term.  The
+algorithm used by {\tt generate\_cache\_invalidators/1} generates {\tt
+cache\_inval} facts for all cached predicates that do not have facts
+defined for them in {\tt cache\_inval/2}.  (That is, if the user gives
+explicit invalidate facts, then none are automatically generated.)
+
+\begin{description}
+\ourpredmoditem{cache\_set\_auto\_commit/1}{prologCache}
+{\tt cache\_set\_auto\_commit(?OnOrOff)} sets the auto\_commit state
+for caching notification on or off.  If it is called with a variable,
+it returns the current auto\_commit state.  If auto\_commit is {\tt
+on}, then every update that invalidates a cache causes notifications
+from XSB to Jave to be invoked (sent).  If auto\_commit is {\tt off},
+then notifications are accumulated as pending but not sent.  They
+later can be sent with an explicit call to
+\pred{cache\_invoke\_pending\_notifications/0}.  If there are pending
+notifications when {\tt cache\_set\_auto\_commit/1} is called, it
+fails.
+
+\ourpredmoditem{cache\_count/4}{prologCache}
+{\tt cache\_count(+Goal,+Template,+NotifierGoal,-Count)} takes a goal
+{\tt Goal}, a {\tt Template} indicating how answers to the goal are to
+be sorted, and a notifier goal, and returns the number of (not
+necessarily distinct) answers for {\tt Goal}.  If {\tt Goal} has been
+cached, this information is found from the cache; if not, the
+predicate creates a cache for {\tt Goal} and returns the count.  In
+either case, the cache is sorted according to {\tt Template}.  If {\tt
+Template} is a constant, the cache is unsorted; if the main functor
+symbol of {\tt Template} is {\tt asc}, the tuples are sorted in
+ascending order; otherwise they are sorted in descending order.  {\tt
+NotifierGoal} is a goal that will be called when the cache for {\tt
+Goal} becomes invalid due to underlying updates.
+
+\ourpredmoditem{cache\_range/5}{prologCache}
+{\tt cache\_range(\#Goal,+SortTemp,+Notifier,+From,+To)} takes a goal
+{\tt Goal}, a template for sorting, a notifier goal, and a pair of
+integers {\tt From} and {\tt To}.  Upon success, this predicate
+unifies {\tt Goal} with the element of the cache indexed by {\tt
+From}; upon backtracking {\tt Goal} is unified with successive
+elements of the cache up to the element indexed by {\tt To}.  For
+example, a call to {\tt cache\_range(p(X,Y),asc(\_),cacheWarn,25,50)}
+eventually returns different bindings for {\tt X} and {\tt Y}, from
+the call to {\tt p(X,Y)} (assuming it includes at least 50 tuples.)
+If {\tt Goal} is not cached, {\tt cache\_range/3} creates a cache for
+{\tt Goal} and then returns bindings in the requested range; otherwise
+the tuples are retrieved from the cache and returned.  {\tt Template}
+and {\tt Notifier} are as described in {\tt cache\_count/4}.
+
+% TLS: see skeleton in XSB manual.
+\ourpredmoditem{cache\_index/4}{prologCache}
+{\tt cache\_index(+Goal,+Sort,\#Skel,-Index)} is called with a cached
+goal, {\tt Goal},a sorting template (as elsewhere), and a (normally
+ground) skeleton, {\tt Skel}.  {\tt cache\_index} will return the
+successive indices of the {\tt Skel}, binding variables if {\tt Skel}
+is not ground.
+
+% TLS: some questions about notification.
+
+\ourpredmoditem{nocache\_but\_notify/2}{prologCache}
+{\tt nocache\_but\_notify(+Goal,+Notifier)} saves {\tt Notifier} to call when
+this goal is invalidated.  It then calls {\tt Goal}.  This is for use
+instead of {\tt cache\_range/5}, when notification on invalidation is
+required, but caching is not desired.
+
+\ourpredmoditem{just\_notify/2}{prologCache}
+{\tt just\_notify(+Goal,+Notifier)} saves Notifier to call when this
+goal is invalidated.  It does NOT call the {\tt Goal}.
+
+
+\ourpredmoditem{cache\_remove\_notifier/4}{prologCache}
+{\tt cache\_remove\_notifier(+Goal,+Template,+Notifier,+IfCache)} is
+called with a {\tt Goal}, which must be a cached (or nocached) goal, a
+sorting template (as elsewhere), a notifier goal, and an indication of
+whether {\tt Goal} is cached ({\tt cache}) or not cached ({\tt
+nocache}). {\tt Notifier} is assumed to be assoiciated with {\tt
+Goal}, and {\tt cache\_remove\_notifier/4} removes that notifier.  It
+could delete the cache if there are no other notifiers associated with
+it, but at this time, this is not done.
+
+\ourpredmoditem{cache\_invalidate/1}{prologCache}
+ {\tt cache\_invalidate(+Goal)} removes from the cache all goals (and
+ their answers) that unify with Goal. If auto\_commit is set on, then
+ it invokes the notifiers of the invalidated caches.  If auto\_commit
+ is set off, then the notifiers are saved as pending.
+
+\ourpredmoditem{generate\_cache\_invalidators/1}{prologCache}
+{\tt generate\_cache\_invalidators(+File)} takes as input a file, and
+generates cache invalidators as described in
+Section~\ref{sec:cache-maint}.
+
+\ourpredmoditem{cache\_invalidate\_for/1}{prologCache}
+{\tt cache\_invalidate\_for(UpdGoal)} assumes {\tt cache\_inv/2} is
+defined, and uses it to invalidate all caches that could be changed by
+an assert or retract of (any instance of) {\tt UpdGoal}.
+
+\ourpredmoditem{cache\_print\_goals/0}{prologCache}
+{\tt cache\_print\_goals} prints out all goals that are currently in the
+cache and the count of tuples in each.
+
+\mycomment{
+\ourpredmoditem{cache\_print/0}{prologCache}
+{\tt cache\_print} prints out all goals that are currently in the cache
+and all their tuples.  (This is mostly a debugging predicate, since
+normally one doesn't want to print so much data.
+}
+
+\end{description}

@@ -1,0 +1,181 @@
+%%% XML Parser ( Version 1.0/December 2002)
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This module provides several interfaces for constructing a Prolog representation of
+%%% XML documents. It follows almost completely the recommendation XML Information Sets 
+%%% (http://www.w3.org/TR/xml-infoset).  
+%%% 
+%%% XML Namespaces and XML Base are fully supported, including resolution of relative URI References.
+%%%
+%%%
+
+
+:- import open_input_stream/2 from iostream.
+:- import read_stream/5 from iostream.
+:- import close_input_stream/1 from iostream.
+:- import read_octets_till/5 from iostream.
+:- import read_octets/5 from iostream.
+:- import eos/1 from iostream.
+
+:- import xml_document/7 from xmlparser.
+:- import xml_declaration0/7 from xmlparser.
+
+:- import parseIRIref/3 from iri.
+:- import filename2uri/3 from iri.
+
+:- import absolute_filename/2 from builtins.
+:- import x_time/1 from builtins.
+
+:- export parse_xml_document/3.
+:- export parse_xml_document/4.
+:- export parse_xml_document/5.
+
+:- export xml_document/4.
+
+:- ensure_loaded( iostream ).
+:- ensure_loaded( iri ).
+:- ensure_loaded( xmlparser ).
+:- ensure_loaded( xmldom ).
+:- ensure_loaded( utilities ).
+:- ensure_loaded( builtins ).
+
+%%% parse_xml_document is the main predicate. It can be used in 3 different ways:
+%%%
+%%%   parse_xml_document( +Name, ?Encoding, -Document )
+%%%	parse_xml_document( +Name, +DocURI, ?Encoding, -Document )
+%%%	parse_xml_document( +Name, +DocURI, ?Encoding, -Document, -Timing )
+%%%
+%%% where:
+%%%   - Name is a character list, an atom (converted to a character list), or a term of the form stream(StreamName)
+%%%	- Encoding is an optional argument with the encoding information of the document. Currently, 'US-ASCII', 
+%%%     'ISO-8859-1, 'UTF-8', 'UTF-16', 'UTF-16LE', 'UTF-16BE', 'UTF-32', 'UTF-32LE', and 'UTF-32BE' are recognized.
+%%%	  If you know the encoding of your document, then this argument should be provided. The detection of encoding 
+%%%     information is rather inefficient.
+%%%   - DocIRI is a character list with the Document Base IRI (see RFC-2396 for details)
+%%%   - Document is a complex prolog representation of the document, according to XML INFOSET.
+%%%   - Timing is a term of the form time(LoadTime,ParseTime) providing the reading time of the document and the parsing
+%%%     timing (in msecs).
+%%%
+
+parse_xml_document( Name, Encoding, Document ) :-
+	parse_xml_document( Name, [], Encoding, Document, _ ).
+
+parse_xml_document( Name, DocURI, Encoding, Document ) :-
+	parse_xml_document( Name, DocURI, Encoding, Document, _ ).
+
+parse_xml_document( Name, DocURI, Encoding, Document, time(LoadTime,ParseTime) ) :-
+	x_time(TStart),
+	read_xml_document( Name, Encoding, XMLText ),
+	x_time(TRead),
+	baseIRI( DocURI, Name, BaseURI ),
+	xml_document( XMLText, BaseURI, Encoding, Document ),
+	x_time(TEnd),
+	LoadTime is TRead - TStart,
+	ParseTime is TEnd - TRead.
+
+%%% If you want to skip the reading phase, you can use directly the xml_document/3 predicate:
+%%%
+%%% 	xml_document( + UnicodeCharacterList, + BaseURI, - Document )
+%%%
+%%% If the document is not well-formed then this predicate fails. Otherwise, it returns the document 
+%%% in a complex prolog representation, according to XML INFOSET.
+%%%
+
+xml_document( [LookAhead|XMLText], BaseURI, Encoding, Document ) :-
+	eos( EOS ),
+	xml_document( LookAhead, XMLText, BaseURI, Encoding, Document, EOS, [] ).
+ 
+%%% baseIRI/3 generates a base IRI from the (optionally) provided base URI or from the stream Name.
+%%% If both are not given, then it uses an internal counter and generates a IRI of the form "/N"
+
+baseIRI( [], stream(Name), BaseURI ) :- !,
+	absolute_filename( Name, FileName ),
+	atom_codes( FileName, AuxCodes ),
+	filename2uri( AuxCodes, BaseCodes, [-1] ),
+	parseIRIref( yes, BaseCodes, BaseURI ).
+baseIRI( [], _, BaseURI ) :- !,
+	document_number( N ),
+	number_codes( N, NCodes ),
+	parseIRIref( no, [0'/|NCodes], BaseURI ).
+baseIRI( Base, _, BaseURI ) :-
+	parseIRIref( no, Base, BaseURI ).
+
+:- dynamic '$docsread'/1.
+
+document_number( N1 ) :-
+	retract( '$docsread'(N) ), !,
+	N1 is N + 1,
+	assert( '$docsread'(N1) ).
+document_number( 1 ) :-
+	assert( '$docsread'(1) ).
+
+%%% read_xml_document/3 obtains the UNICODE character list from the stream.
+%%% If the encoding is given, it simply reads the document. Otherwise, it tries to detect the encoding from
+%%% the first 4 octets in the document. If it cannot obtain it this way, then it parses the XML declaration.
+%%%
+%%% Notice that, if there is no XML declaration then it might read the full document twice!
+%%% This can only happen if the document is not well-formed by having whitespace before the XML declaration.
+%%%
+
+% Encoding was provided or already detected
+read_xml_document( Name, Encoding, Text ) :-
+	nonvar( Encoding ), !,
+	eos( EOS ),
+	open_input_stream( Name, Stream ),
+	read_stream( Encoding, Stream, Text, [EOS], _ ),
+	close_input_stream( Stream ).
+
+% Autodetects encoding from file's initial 4 octets
+read_xml_document( Name, Encoding, Text ) :-
+	detect_encoding( Name, Encoding, Internal ), !,
+	read_xml_document( Name, Internal, Text ).
+
+% Obtains encoding from XML declaration
+read_xml_document( Name, Encoding, Text ) :-	
+	eos( EOS ),
+	open_input_stream( Name, Stream ),
+	read_octets_till( Stream, 0'>, Octets, [EOS], _ ),
+	close_input_stream( Stream ),
+	get_encoding_from_declaration( Octets, Encoding ),
+	read_xml_document( Name, Encoding, Text ).
+
+% Reads first four octets and then attempts to detect the encoding
+detect_encoding( Name, Encoding, Internal ) :-
+	open_input_stream( Name, Stream ),
+	read_octets( 4, Stream, Octets4, [], _ ),
+	close_input_stream( Stream ),
+	encoding( Octets4, Encoding, Internal ).
+	
+% Detection of encodings with byte-order marks 
+encoding( [0,0,254,255], 'UTF-32','UTF-32BE' ) :- !.
+encoding( [255,254,0,0], 'UTF-32','UTF-32LE' ) :- !.
+
+encoding( [254,255,_,_], 'UTF-16','UTF-16BE' ) :- !.
+encoding( [255,254,_,_], 'UTF-16','UTF-16LE' ) :- !.
+encoding( [239,187,191,_], 'UTF-8','UTF-8' ) :- !.
+
+
+% Detection of encodings without byte-order marks
+encoding( [0,0,0,0'<], 'UTF-32BE','UTF-32BE' ) :- !.
+encoding( [0'<,0,0,0], 'UTF-32LE','UTF-32LE' ) :- !.
+
+encoding( [0,0'<,0,0'?], 'UTF-16BE','UTF-16BE' ) :- !.
+encoding( [0'<,0,0'?,0], 'UTF-16LE','UTF-16LE' ) :- !.
+
+encoding( [76,111,167,148], 'EBCDIC','EBCDIC' ) :- !.
+
+encoding( [0'<|Rest], 'UTF-8','UTF-8' ) :- Rest \= "?xm", !.
+
+% Does a first pass in the document declaration to extract the declared encoding
+get_encoding_from_declaration( [Code|CodeList], Encoding ) :- 
+%	whitespace0( Code, CodeList, LookAhead, RestCodes ),
+	xml_declaration0( Code, CodeList, _, Encoding, _, _, _ ).
+
+
+

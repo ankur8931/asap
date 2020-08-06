@@ -1,0 +1,86 @@
+/* A simple definition of FIRST_k, to compute the first k terminal symbols
+generated from a sentential form given a context-free grammar.  The grammar is
+defined using the operator ==> and the RHS as a list.  Nonterminals are
+symbols appearing on the LHS; all other symbols are assumed to be terminals.
+This predicate requires tabling; otherwise it will go into an infinite loop.
+Note that this is almost an exact transliteration of the definition of first
+into Horn clauses.
+*/
+
+% import necessary utilities
+:- import append/3,length/2 from basics.
+:- import abolish_table_info/0 from machine.
+
+% declare first as tabled; otherwise it infinitely loops.
+:- table(first/3).
+
+% operator for defining CFGs
+:- op(500,xfx,==>).
+
+% shorthand for clearing out the memo table.
+at :- abolish_table_info.
+% and do it whenever loading.
+:- at.
+
+demo :-
+	nt(NTS,Tests),		% get a ``grammar''
+	writeln('Grammar:'),
+	write_rules(NTS),
+	run_tests(Tests),	% run it
+	fail.
+demo.
+
+% The definition of FIRST:
+% first(SentForm,K,FirstList) computes firsts for a context-free grammar.
+first(_,0,[]).
+first([],K,[]) :- K>0.
+first([S|R],K,L) :- K>0,
+	S ==> B,		% S is a nonterminal
+	first(B,K,L1),
+	length(L1,K1),
+	Kr is K - K1,
+	first(R,Kr,L2),
+	append(L1,L2,L).
+first([S|R],K,[S|L]) :- K>0,
+	\+ (S ==> _),		% S is a terminal
+	K1 is K-1,
+	first(R,K1,L).
+
+
+% to print out answers
+write_rules([]) :- nl.
+write_rules([Nt|_Nts]) :-
+	(Nt ==> Bod),
+	tab(2),writeln((Nt ==> Bod)),
+	fail.
+write_rules([_|Nts]) :- write_rules(Nts).
+
+run_tests([]).
+run_tests([Call|_Calls]) :-
+	write('Test: '),writeln(Call),
+	call(Call),
+	tab(2),
+	writeln(Call),
+	fail.
+run_tests([_|Calls]) :- nl,nl,run_tests(Calls).
+
+% Some very simple grammars
+% example query: first([s],3,L).
+nt([s],[first([s],3,_)]).
+s ==> [a,s].
+s ==> [a].
+
+% :- first([s1],4,L).
+nt([s1,a1,b1],[first([s1],4,_)]).
+s1 ==> [].
+s1 ==> [a,a,a1].
+a1 ==> [s1,b1].
+b1 ==> [a,b].
+
+nt([s2],[first([s2],3,_)]).
+s2 ==> [s2,a].
+s2 ==> [a].
+
+nt([s3],[first([s3],3,_)]).
+s3 ==> [s3,a].
+s3 ==> [].

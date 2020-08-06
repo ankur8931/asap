@@ -1,0 +1,345 @@
+
+\chapter{Programming with CDF}
+
+\section{CDF as a Constraint Language}
+
+As do most description logics, Type-1 CDF Ontologies have the ability
+to express a large class of constraint problems in a succinct manner.
+
+\begin{example} \rm
+As a simple example of the relationship between ontologies and
+constraints, we consider a simplified ontology of manufactured metal
+alloys.  Metal alloys are characterized by a number of characteristics
+such as chemical composition and the form in which the alloy is
+primarily manufactured.  For example, the Americal Society for
+Technical Manufacturers alloy ASTM B 107 is manufactured as a form
+TUBE, WIRE, or ROD, while the Sikorsky Corporation specification SS
+9705 indicates that the metal has the form BAR or TUBE.  This
+information is obtained by the fragment.
+%------------------------
+{\tt  {\small 
+\begin{tabbing} foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> necessCond\_ext(cid('SS 9705',specs), \\
+\> \> \>              vid(exists(rid(hasForm,specs),(cid(bar,specs) ; cid(tube,specs)) ), \\
+\> \> \> 	              atMost(1,rid(hasForm,specs)) ) \\
+\\
+\> necessCond\_ext(cid('ASTM B 107',specs), \\
+\>\> \>              vid(exists(rid(hasForm,specs),
+	(cid(wire,specs) ; cid(tube,specs) ; cid(rod,specs)) ), \\
+\\
+\> necessCond\_ext(cid(bar,specs),vid(not(wire,specs))) \\
+\> necessCond\_ext(cid(bar,specs),vid(not(tube,specs))) \\
+\> necessCond\_ext(cid(bar,specs),vid(not(rod,specs))) \\
+\> necessCond\_ext(cid(rod,specs),vid(not(tube,specs))) \\
+\> necessCond\_ext(cid(rod,specs),vid(not(wire,specs))) \\
+\> necessCond\_ext(cid(tube,specs),vid(not(wire,specs))) 
+\end{tabbing} }}
+%------------------------
+CDF has been used in systems that read technical drawings of airplane
+parts and infer properties about the parts.  If a given part {\tt
+oid(p1,specs)} were described by both ASTM B 107 and SS 9705 the goal
+{\tt
+allModelsEntails(oid(p1,specs),exists(rid(hasForm,specs),cid(tube,specs)))}
+would succeed, indicating that the part must have the form of a tube.
+Such information could be useful in automatically deciding that the
+part must be manufactured by a supplier with specialized tube-bending
+machinery, which is often not available for suppliers who perform
+general machining.
+\end{example}
+
+The next example is more abstract, and indicates how CDF ontologies
+can represent propositional clauses.  As discussed in Section
+\ref{sec:type1query}, in \version, the CDF theorem prover is not
+especially efficient, and should not be used for
+
+\begin{example} \rm
+Consider the propositional clauses, $p \vee q \vee \neg r$ and $\neg p
+\vee \neg q \vee r$.  These clauses can be represented by the ontology
+%------------------------
+{\tt  {\small 
+\begin{tabbing} foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> necessCond\_ext(oid(o1,prop), 
+	(cid(p,prop) ; cid(q,prop) ; not(cid(r,prop))) ), \\
+\> necessCond\_ext(oid(o1,prop), 
+	(not(cid(p,prop)) ; not(cid(q,prop)) ; cid(r,prop)) ), \\
+\end{tabbing} }}
+%------------------------
+The consistency of the two clauses can be determined by checking the
+consistency of {\tt oid(o1,prop)}.
+\end{example}
+
+It is no surprise to a reader familiar with description logics that a
+CDF ontology can represent even more expressive theories. A modal
+formula, such as $\square p \vee \Diamond (q \wedge r)$ can easily be
+expressed as a class expression
+
+{\small {\tt 
+all(rid(rel,modal),(cid(p,modal) ; exists(rid(rel,modal),(cid(q,modal) , cid(r,modal)))) } }
+
+and incorporated into an ontology.  It is easy to see from
+Chapter~\ref{chap:type1} that CDF class expressions express {\em
+  multi-modal} formulas, in which more than one relation can exist
+within a relational quantifier, and allows numeric constraints on
+relational quantifiers as well.  On the other hand \version{} of CDF
+does not allow specification of transitive relations~footnote{Soon!},
+and so does not allow the representation of temporal logics such as
+CTL* or the modal-$\mu$ calculus (see e.g. \cite{Stir94}).
+
+\section{Non-Monotonic Reasoning and CDF}
+
+XSB supports non-monotonic reasoning through its implementation of the
+well-founded semantics, its support of ASP through the XASP package.
+As a result, a number of non-monotonic formalisms have been
+implemented in XSB and used for a variety of applications
+(e.g.~\cite{Swif99a,CuSw02,AlPS03} However the use of negation within
+CDF class expressions differs significantly from the use of negation
+in XSB.  Consider an example taken from medical reasoning in which a
+patient in the US with fever and headache is assumed to have influenza
+unless other knowledge about the cause of the symptoms, say
+menengitis, is present.  Such reasoning is easy to represent in
+Prolog.
+
+{\tt has\_influenza:- has\_fever, has\_headache, tnot(menengitis). }
+
+If {\tt has\_fever}, and {\tt has\_headache} are both true, but
+nothing is known about {\tt menengitis}, the atom {\tt has\_influenza}
+will be inferred.  Consider a translation of the above rule to a class
+expression: 
+
+{\tt has\_influenza or not(has\_fever and  has\_headache and notmenengitis) }
+
+Now if {\tt has\_fever}, and {\tt has\_headache} are both true the
+above formula reduces to 
+
+{\tt has\_influenza or  menengitis}.
+
+So that either influenza or menengitis is consistent with the class
+expression In other words, the preference for non-monotonically
+inferring {\tt has\_infuenza} is not expressable with a simple class
+expression.  Only a limited amount of work has been done to relate
+reasoning in description logics to non-monotonic reasoning
+(e.g. \cite{BaaH95}), and non-monotonic reasoning is not supported
+within \version{} of CDF.  However, there is no restriction on using
+non-monotonic negation within intentional rules.  Accordingly, the
+above example could be written as
+%
+\begin{verbatim}
+hasAttr_int(oid(Patient,ex),rid(hasDiagnosis,ex),cid(influenza,ex)):-
+     has_fever,has_headache,tnot(menengitis).
+
+hasAttr_int(oid(Patient,ex),rid(hasDiagnosis,ex),cid(menengitis,ex)):-
+     menengitis.
+\end{verbatim}
+%
+This example indicates a simple programming architecture for CDF.
+Below and above CDF are any XSB rules that are used by intensional
+rules, and these rules may use non-monotonic negation, numeric
+constraints, or other features.  As long as, say, CDF intensional
+rules do not depend non-monotonically on other CDF relations the
+semantic properties of CDF will be preserved.  Of course, more
+sophisticated notions of stratification of non-monotonic negation can
+be explored, such as the ability of two disjoint CDF components to be
+non-monotonically related.  In any case, \version{} of CDF does not
+prohibit non-monotonic dependencies among CDF components, but a user
+who programs such dependencies should fully understand the difference
+between classical and non-monotonic negation and ensure that
+non-monotonic dependencies do not compromise consistency and
+entailment checking.
+
+%-----------------------------------------------------------------------------------
+\section{Using CDF Relations in Rules}
+
+%-----------------------------------------------------------------------------------
+\section{CDF and FLORA-2}
+
+% f-logic arrows
+\newcommand{\fd}{\ensuremath{{\rightarrow}}}                   % scalar
+\newcommand{\bfd}{\ensuremath{{\bullet\!\!\!\fd}}}            % " + inheritable
+\newcommand{\mvd}{\ensuremath{{\rightarrow\!\!\!\!\rightarrow}}}  % multivalued
+\newcommand{\bmvd}{\ensuremath{{\bullet\!\!\!\mvd}}}              % " + inheritable
+\newcommand{\Fd}{\ensuremath{{\Rightarrow}}}                      % scalar signature
+\newcommand{\Mvd}{\ensuremath{{\Rightarrow\!\!\!\!\Rightarrow}}}  % multiv signature
+\newcommand{\isa}{\,{\bf{:}}\,}
+\newcommand{\subcl}{\,{\bf{::}}\,}
+
+The Type-0 ontologies of CDF have an ``object-oriented'' or
+frame-based flavor.  However, CDF is not the only object-oriented
+packaged for XSB: the {\em FLORA-2} package \cite{YaKZ05} is also a
+sophisticated package that allows object-oriented logic programming
+based on the semantics of F-Logic \cite{KiLW95} and that has a growing
+user community.  It is natural to ask about the relation between CDF
+and F-Logic.  Figure~\ref{fig:flogic-model} (from \cite{YaKZ05}) is an introductory
+example of an FLORA-2 object base concerning publications.  We explain
+its semantics in terms of a translation into CDF
+(Figure~\ref{fig:flogic-cdf}).  
+%
+%-----------------------------------------------------------------------------------
+\begin{figure}[htb]
+{\small 
+\begin{tabular}{c}
+  \begin{tabular}{l}
+    {\bf Schema:}\\
+    conf\_p\subcl paper. \\
+    journal\_p\subcl paper.\\
+    paper[authors\Mvd  person, title\Fd string].\\
+    journal\_p[in\_vol\Fd journal\_vol]. \\
+%    conf\_p[at\_conf\Fd conf\_proc].\\
+    journal\_vol[of \Fd journal, volume\Fd integer, 
+               year\Fd integer].\\  
+    journal[name\Fd string, publisher\Fd string,
+            editors\Mvd person]. \\
+    person[name\Fd string, affil(integer)\Fd institution]. \\
+    institution[name\Fd string, address\Fd string].\smallskip\\
+
+    {\bf Objects:}\\
+    $o_{j1}$\isa journal\_p[%
+      title\fd 'Records, Relations, Sets, and Entities',
+      authors\mvd$\{o_{mes}\}$, in\_vol\fd $o_{i11}$]. \\
+    $o_{i11}$\isa journal\_vol[of\fd $o_{is}$, volume\fd 1, year\fd1975]. \\
+    $o_{is}$\isa journal[name\fd'Information Systems', editors\mvd $\{o_{mj}\}$]. \\
+    $o_{mes}$\isa person[name\fd'Michael E. Senko',affil(1976)\fd $o_{rwt}$]. \\
+    $o_{rwt}$\isa institution[name\fd'RWTH\_Aachen'].
+\end{tabular}
+\end{tabular}
+}
+\caption{Part of a Publications Object Base and its Schema in {\em FLORA}-2}
+  \label{fig:flogic-model}
+\end{figure}
+%-----------------------------------------------------------------------------------
+%
+From comparing the two figures, (or
+the formal semantics of FLORA-2 and CDF) it can be seen that the
+FLORA-2 schema operator {\tt ::/2} corresponds to an {\tt isa/2}
+relation between two classes, while the object operator {\tt :/2}
+corresponds to an {\tt isa/2} relation between an object and a class.
+Other relations for classes and objects have a rather different syntax
+in FLORA-2 than in CDF.  First note that in FLORA-2, the molecule {\tt
+institution[name => string, address => string]} corresponds to two
+simpler molecules {\tt institution[name => string]} and {\tt
+institution[address => string]}.  Each of these latter molecules can
+be translated into 2 CDF facts, an {\tt allAttr\_ext/3} fact to denote
+the typing and a {\tt maxAttr/4} fact to denote the cardinality.  The
+FLORA-2 operator {\tt =>>} indicates a non-functional schema
+dependency and can be translated using an {\tt allAttr\_ext/3} fact
+alone.  At the object level, the operators {\tt ->} and {\tt ->>} are
+each handled by a {\tt hasAttr\_ext} fact for the appropriate object:
+information that the dependency is functional in a {\tt -> } relation
+is handled by the CDF schema and does not need to be repeated.  Also
+note that the FLORA-2 {\tt @} operator, which is used to handle the
+non-binary (i.e. parameterized) attribute {\tt affil} for a person is
+reflected by the CDF product class.
+
+FLORA-2 syntax is more succinct for this example than CDF syntax for
+three reasons: the use of F-Logic molecules in FLORA-2, the use of
+components in CDF identifiers, and the need for both a {\tt
+allAttr\_ext/3} and a {\tt maxAttr/4} fact in the translation of each
+{\tt =>} operator.  These features stem from the different design
+choices behind CDF and FLORA-2.  FLORA-2 is intended for programmers
+who want to program in an object-oriented logic, while CDF is intended
+as a Prolog-based repository for logically structured knowledge.  From
+this latter perspective the use of components in CDF means that
+objects can have more meaningful identifiers than shown in
+Figure~\ref{fig:flogic-model} -- {\tt oid('Michael E. Senko',flora)}
+would have a different meaning and different properties than a
+'Michael E. Senko' taken from a different ontology and having a
+different component.  Furthermore, the necessity of using an {\tt
+allAttr/3} along with a {\tt maxAttr/3} relation to represent {\tt =>
+} arises from the ability of CDF to represent fine shades of meaning
+within the schema of an ontology.  For instance, it may be the case
+that a heterosexual male has many lovers, all of whom are women, but
+that only one of the women is a primary lover.  It is difficult to
+express this meaning in FLORA-2, but it can be represented in CDF as
+
+{\tt 
+\begin{tabular}{l}
+isa\_ext(rid(hasPrimaryLover,ex),rid(hasLover,ex)). \\
+allAttr\_ext(cid(heteroMale,ex),rid(hasLover,ex),cid(woman,ex)). \\
+maxAttr\_ext(cid(heteroMale,ex),rid(hasPrimaryLover,Ex),cid(woman,ex)).
+\\
+\end{tabular}
+}
+
+\noindent
+The above differences, however, are relatively minor compared to the
+main differences between the systems.  CDF supports consistency and
+entailment checking for Type-1 ontologies which FLORA-2 does not
+support; FLORA-2 however has support for non-monotonic inheritance
+which is not supported in CDF (nor in description logics).  By and
+large a determined programmer could obtain most of the benefits of
+FLORA-2 using a combination of CDF and XSB, while a determined FLORA-2
+programmer could obtain most of the benefits of CDF within FLORA-2
+(perhaps even by translating monotonic FLORA-2 knowledge bases to
+class expressions and calling the CDF theorem prover).
+
+%-----------------------------------------------------------------------------------
+\begin{figure}[htb]
+{\small
+\begin{tabular}{c}
+  \begin{tabular}{l}
+    {\bf Schema:}\\
+    isa\_ext(cid(conf\_p,flora),cid(paper,flora)). \\
+    isa\_ext(cid(journal\_p,flora),cid(paper,flora)). \\
+\ \\
+%    hasAttr\_ext(cid(paper,flora),rid(authors,flora),cid(person,flora)). \\
+    allAttr\_ext(cid(paper,flora),rid(authors,flora),cid(person,flora)).  \\
+%    hasAttr\_ext(cid(paper,flora),rid(title,flora),cid(allAtoms,cdfpt)). \\
+    allAttr\_ext(cid(paper,flora),rid(title,flora),cid(allAtoms,cdfpt)).  \\
+    maxAttr\_ext(cid(paper,flora),rid(title,flora),cid(allAtoms,cdfpt)). \\
+\ \\    
+%    hasAttr\_ext(cid(journal\_p,flora),rid(in\_vol,flora),cid(journal\_volume,flora)). \\
+    allAttr\_ext(cid(journal\_p,flora),rid(in\_vol,flora),cid(journal\_volume,flora)).  \\
+    maxAttr\_ext(cid(journal\_p,flora),rid(in\_vol,flora),cid(journal\_volume,flora)).  \\
+\ \\
+    allAttr\_ext(cid(journal\_vol,flora),rid(of,flora),cid(journal,flora)). \\
+    maxAttr\_ext(1,cid(journal\_vol,flora),rid(of,flora),cid(journal,flora)). \\
+    allAttr\_ext(cid(journal\_vol,flora),rid(volume,flora),cid(allIntegers,cdfpt)). \\
+    maxAttr\_ext(1,cid(journal\_vol,flora),rid(volume,flora),cid(allIntegers,cdfpt)). \\
+%    allAttr\_ext(cid(journal\_vol,flora),rid(number,flora),cid(allIntegers,cdfpt)).\\
+%    maxAttr\_ext(1,cid(journal\_vol,flora),rid(number,flora),cid(allIntegers,cdfpt)).\\
+    allAttr\_ext(cid(journal\_vol,flora),rid(year,flora),cid(allIntegers,cdfpt)).\\
+    maxAttr\_ext(1,cid(journal\_vol,flora),rid(year,flora),cid(allIntegers,cdfpt)).\\
+\ \\
+    allAttr\_ext(cid(journal,flora),rid(name,flora),cid(allAtoms,cdfpt)). \\
+    maxAttr\_ext(1,cid(journal,flora),rid(name,flora),cid(allAtoms,cdfpt)). \\
+    allAttr\_ext(cid(journal,flora),rid(publisher,flora),cid(allAtoms,cdfpt)). \\
+    maxAttr\_ext(1,cid(journal,flora),rid(publisher,flora),cid(allAtoms,cdfpt)). \\
+    allAttr\_ext(cid(journal,flora),rid(editors,flora),cid(person,flora)). \\
+\ \\
+    allAttr\_ext(cid(person,flora),rid(name,flora),cid(allAtoms,cdfpt)). \\
+    maxAttr\_ext(1,cid(person,flora),rid(name,flora),cid(allAtoms,cdfpt)). \\
+    allAttr\_ext(cid(person,flora),rid(affil,flora),cid(pair(cid(institution,flora),cid(allIntegers,cdfpt)))). \\
+    maxAttr\_ext(1,cid(person,flora),rid(affil,flora),cid(pair(cid(institution,flora),cid(allIntegers,cdfpt)))). \\
+\ \\
+    allAttr\_ext(cid(institution,flora),rid(name,flora),cid(allAtoms,cdfpt)). \\
+    maxAttr\_ext(1,cid(institution,flora),rid(name,flora),cid(allAtoms,cdfpt)). \\
+    allAttr\_ext(cid(institution,flora),rid(address,flora),cid(allAtoms,cdfpt)). \\
+    maxAttr\_ext(1,cid(institution,flora),rid(address,flora),cid(allAtoms,cdfpt)). \\
+\ \\    
+    {\bf Objects:}\\
+    isa\_ext(oid($o_{j1}$,flora),cid(journal,flora)). \\
+    hasAttr\_ext(oid($o_{j1}$,flora),rid(title,flora),cid('Records, Relations, Sets, and Entities',cdfpt)). \\
+    hasAttr\_ext(oid($o_{j1}$,flora),rid(authors,flora),oid($o_{mes}$,flora)). \\
+    hasAttr\_ext(oid($o_{j1}$,flora),rid(in\_vol,flora),oid($o_{i11}$,flora)). \\
+\ \\
+    hasAttr\_ext(oid($o_{i11}$,flora),rid(of,flora),oid($o_{is}$,flora)) \\
+%    hasAttr\_ext(oid($o_{i11}$,flora),rid(number,flora),oid(1,cdfpt)) \\
+    hasAttr\_ext(oid($o_{i11}$,flora),rid(volume,flora),oid(1,cdfpt)) \\
+    hasAttr\_ext(oid($o_{i11}$,flora),rid(year,flora),oid(1976,cdfpt)) \\
+\ \\
+    hasAttr\_ext(oid($o_{mes}$,flora),rid(name,flora),
+	oid('Michael E. Senko',cdfpt)). \\
+    hasAttr\_ext(oid($o_{mes}$,flora),rid(affil,flora),
+	oid(pair(oid($o_{rwt}$,flora),oid(1976,cdfpt)). \\
+\ \\
+    hasAttr\_ext(oid($o_{rwt}$,flora),rid(name,flora),
+	oid('RWTH\_Aachen',cdfpt)). 
+\end{tabular}
+\end{tabular}
+}
+\caption{CDF Encoding for FLORA-2}
+  \label{fig:flogic-cdf}
+\end{figure}
+%-----------------------------------------------------------------------------------
+
+
+% equality.

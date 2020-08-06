@@ -1,0 +1,99 @@
+
+%-----------
+% Ex 1
+
+isa_ext(cid(first,mknf),cid(second,mknf)).
+isa_ext(cid(third,mknf),cid(fourth,mknf)).
+
+%-----------
+% Ex 2
+
+necessCond_ext(cid(win1,mknf),vid(not(cid(win2,mknf)))).
+necessCond_ext(cid(win3,mknf),vid(not(cid(win4,mknf)))).
+
+%-----------
+% Ex 3
+
+%-----------
+% Ex 4
+
+necessCond_ext(oid(a4,mknf),vid(not(cid(two4,mknf)))).
+
+%-----------
+% Ex 5
+% question about proper semantics.
+
+%isa_ext(oid(a5,mknf),cid(p_or_q5,mknf)).
+%isa_ext(oid(a5,mknf),cid(r5,mknf)).
+necessCond_ext(cid(p_or_q5,mknf),vid(';'(cid(p5,mknf),cid(q5,mknf)))).
+necessCond_ext(cid(r5,mknf),vid(not(';'(cid(p5,mknf),cid(q5,mknf))))).
+
+%-----------
+% Ex 6
+
+% NaturalDeath ⊑ Pay
+isa_ext(cid(naturalDeath,mknf),cid(pay,mknf)).
+
+% Suicide ⊑ ¬Pay (cheating here)
+necessCond_ext(cid(suicide,mknf),vid(not(cid(pay,mknf)))).
+
+necessCond_ext(oid(j1,mknf),vid(not(cid(naturalDeath,mknf)))).
+
+%-----------
+% Ex 7
+
+isa_ext(oid(a7,mknf),cid(notp7,mknf)).
+nessesCond_ext(cid(notp7,mknf),vid(not(cid(p7,mknf)))).
+
+%-----------
+% Ex 8
+
+isa_ext(cid(second8,mknf),cid(first8,mknf)).
+isa_ext(oid(david,mknf),cid(fourth8,mknf)).
+
+%-----------
+% Ex 9
+
+isa_ext(oid(p9_2,mknf),cid(nine_2,mknf)).
+
+%-----------
+% Ex 10
+
+%-----------
+% Ex 11
+% all rules.
+
+%-----------
+% Ex 12
+
+isa_ext(cid(a12,mknf),cid(b12,mknf)).
+
+%-----------
+% Ex 13
+
+isa_ext(cid(a13,mknf),cid(b13,mknf)).
+isa_ext(oid(o13,mknf),cid(a13,mknf)).
+
+%-----------
+% Ex 14
+
+isa_ext(cid(a14,mknf),cid(b14,mknf)).
+isa_ext(cid(c14,mknf),cid(d14,mknf)).
+
+%-----------
+% Ex 15
+
+isa_ext(oid(o15,mknf),cid(c15,mknf)).
+
+%-----------
+% Ex 16
+
+%isa_ext(cid(c16,mknf),cid(b16,mknf)).
+%isa_ext(cid(b16,mknf),cid(c16,mknf)).
+
+%-----------
+% Ex 17
+
+%isa_ext(oid(o16,mknf),cid(b16,mknf)).
+
+

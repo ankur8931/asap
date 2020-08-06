@@ -1,0 +1,13 @@
+
+% test with parameterized classes.
+%	sanity test of class, including param. and int.
+
+test:- 
+  test_det_call_u(class(_,_,h(r2,test,ic1,int,integer(_),'OMS'),int),
+         class(h(_,_,integer(3)),myh,h(r2,test,ic1,int,integer(3),'OMS'),int)),
+  test_det_call_u(class(_,_,f(c1,test,g(integer(1),'OMS',ic1,int),test),test),
+	class(f(_,g(integer(_),_)),myf,f(c1,test,g(integer(1),'OMS',ic1,int),test),test)).
+
+
+
+end_of_file.

@@ -1,0 +1,79 @@
+/* File:     formula.P --- process formula after parsing for modelchecker 
+** Author(s): Yifei Dong
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: formula.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+comp_form :-
+	clause(fdef(Form, Expr), _),
+	comp_form(Expr, RExpr),
+	assert(fDef(Form, RExpr)),
+	fail.
+
+comp_form :-
+	retractall(fdef(_,_)),
+	retractall(fneg(_,_)).
+
+comp_form(tt, tt).
+comp_form(ff, ff).
+
+comp_form(form(E), form(E)).
+comp_form(neg_form(E), neg_form(E)).
+comp_form(neg(E), R) :-
+	fneg(E, R).
+
+comp_form(and(E1,E2), fAnd(R1,R2)) :-
+	comp_form(E1,R1), comp_form(E2,R2).
+
+comp_form(or(E1,E2),  fOr(R1,R2))  :-
+	comp_form(E1,R1), comp_form(E2,R2).
+
+comp_form(diam(A,E), fDiam(A, R)) :-
+	comp_form(E, R).
+
+comp_form(diamMinus(A,E), fDiamMinus(A,R)) :-
+	comp_form(E, R).
+
+comp_form(diamSet(A,E), fDiamSet(A,R)) :-
+	comp_form(E, R).
+
+comp_form(diamMinusSet(A,E), fDiamSetMinus(A,R)) :-
+	comp_form(E, R).
+
+comp_form(diamAll(E), fDiamSetMinus([],R)) :-
+	comp_form(E, R).
+
+comp_form(box(A,E), fBox(A, R)) :-
+	comp_form(E, R).
+
+comp_form(boxMinus(A,E), fBoxMinus(A,R)) :-
+	comp_form(E, R).
+
+comp_form(boxSet(A,E), fBoxSet(A,R)) :-
+	comp_form(E, R).
+
+comp_form(boxMinusSet(A,E), fBoxSetMinus(A,R)) :-
+	comp_form(E, R).
+
+comp_form(boxAll(E), fBoxSetMinus([],R)) :-
+	comp_form(E, R).
+

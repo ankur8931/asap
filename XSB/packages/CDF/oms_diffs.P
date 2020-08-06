@@ -1,0 +1,782 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export gen_oms_diffs/2, gen_oms_schema_diffs/2,
+	load_oms_for_diffs/1, load_oms_for_schema_diffs/1,
+	gen_oms_diffs_int/1, gen_oms_schema_diffs_int/1,
+	apply_oms_diffs/1, dump_oms_diffs/1,
+	diff_merge_oms/1.
+
+:- ensure_loaded(oms_io).
+
+:- import concat_atom/2 from string.
+:- import call0/1 from machine.
+:- import count_solutions/2 from stdutils.
+
+:- dynamic oms_cn_o/4, oms_sc_o/2, oms_rln_o/3, oms_strel_o/3, oms_schrel_o/3.
+:- dynamic oms_obj_o/4, oms_mo_o/2, oms_at_o/3, oms_ao_o/3.
+
+:- comment(module, "This module contains routines to create diffs
+between two OMSs and to apply generated diffs to an OMS.  Diffs are
+stored in memory in a trie-indexed predicate diff/2.  One can create
+multiple sets of diffs in memory at the same time.  The first argument
+of a diff/2 fact is a tag (normally an atom) that indicates the
+particular set of diffs.  Diffs are created that will turn an OMS
+stored in a directory into the OMS currently in memory.  The second
+argument of a diff fact is a term whose main functor symbol is of the
+form add_*, or ret_*, where the * represents the few-letter name of
+the OMS relations which are named oms_*, e.g., add_cn, ret_cn.  A term
+add_cn(aaa,bbb,ccc) would indicate that to turn the stored OMS into
+the in-memory OMS, the class with <Name,Native ID,Source> of
+<aaa,bbb,ccc> must be added. A term of ret(eee,fff,ggg) indicates that
+the corresponding class must be removed.  The subfields in these terms
+correspond to the arguments of the external form of the corresponding
+predicate.  And so on.").
+
+:- comment(gen_oms_diffs/2, "@tt{gen_oms_diffs(+Tag,Dir)} generates a
+set of diffs in memory that can be used to change the OMS in Dir into
+the OMS currently resident in memory.  Tag is a name given to this set
+of diffs.").
+
+gen_oms_diffs(Dir) :- gen_oms_diffs('',Dir).
+gen_oms_diffs(Tag,Dir) :-
+	load_oms_for_diffs(Dir),
+	gen_oms_diffs_int(Tag).
+
+:- comment(gen_oms_schema_diffs/2,
+"@tt{gen_oms_schema_diffs(+Tag,Dir)} is similar to
+@tt{gen_oms_diffs/2} but it generates diffs only for the 5 schema
+relations of the OMS.").
+
+gen_oms_schema_diffs(Tag,Dir) :-
+	load_oms_for_schema_diffs(Dir),
+	gen_oms_schema_diffs_int(Tag).
+
+
+:- dynamic diff/2.
+:- index(diff/2,trie).
+:- dynamic diff_tag/1.
+
+:- comment(gen_oms_diffs_int/1, "@tt{gen_oms_diffs_int(+Tag)} generates a
+set of predicates that contain diffs that will turn the
+OMS-loaded-for-diff into the in-memory OMS.  Tag provides a name for
+the set of diffs, in case several sets of diffs need to be developed
+in memory at the same time.").
+
+gen_oms_diffs_int :- gen_oms_diffs_int('').
+gen_oms_diffs_int(Tag) :-
+	cputime(Time0),
+	retractall(diff(Tag,_)),
+	(diff_tag(Tag)
+	 ->	true
+	 ;	assert(diff_tag(Tag))
+	),
+	gen_cn_diffs(Tag),
+	gen_sc_diffs(Tag),
+	gen_rln_diffs(Tag),
+	gen_schrel_diffs(Tag),
+	gen_strel_diffs(Tag),
+
+	gen_obj_diffs(Tag),
+	gen_mo_diffs(Tag),
+	gen_at_diffs(Tag),
+	gen_ao_diffs(Tag),
+
+	retractall(oms_cn_o(_,_,_,_)),
+	retractall(oms_obj_o(_,_,_,_)),
+	cputime(Time1),
+	Time is Time1 - Time0,
+	writeln('Diffs generated '(Time)).
+
+:- comment(gen_oms_schema_diffs_int/1,
+"@tt{gen_oms_schema_diffs_int(+Tag)} is like @tt{gen_oms_diffs_int/1}
+except it generates diffs only for the 5 OMS schema relations.").
+
+gen_oms_schema_diffs_int(Tag) :-
+	cputime(Time0),
+	retractall(diff(Tag,_)),
+	(diff_tag(Tag)
+	 ->	true
+	 ;	assert(diff_tag(Tag))
+	),
+	gen_cn_diffs(Tag),
+	gen_sc_diffs(Tag),
+	gen_rln_diffs(Tag),
+	gen_schrel_diffs(Tag),
+	gen_strel_diffs(Tag),
+
+	retractall(oms_cn_o(_,_,_,_)),
+	cputime(Time1),
+	Time is Time1 - Time0,
+	writeln('Schema diffs generated '(Time)).
+
+gen_cn_diffs(Tag) :-
+	oms_cn(_,B,C,D),
+	\+ oms_cn_o(_,_B,C,D),
+	assert(diff(Tag,add_cn(B,C,D))),
+	fail.
+gen_cn_diffs(Tag) :-
+	oms_cn_o(_,B,C,D),
+	\+ oms_cn(_,_B,C,D),
+	assert(diff(Tag,ret_cn(B,C,D))),
+	fail.
+gen_cn_diffs(_Tag).
+
+gen_sc_diffs(Tag) :-
+	oms_sc(A,B),
+	oms_cn(A,_,NA,SA),
+	oms_cn(B,_,NB,SB),
+	\+ (oms_cn_o(AO,_,NA,SA),
+	    oms_cn_o(BO,_,NB,SB),
+	    oms_sc_o(AO,BO)),
+	assert(diff(Tag,add_sc(NA,SA,NB,SB))),
+	fail.
+gen_sc_diffs(Tag) :-
+	oms_sc_o(A,B),
+	oms_cn_o(A,_,NA,SA),
+	oms_cn_o(B,_,NB,SB),
+	\+ (oms_cn(AO,_,NA,SA),
+	    oms_cn(BO,_,NB,SB),
+	    oms_sc(AO,BO)),
+	assert(diff(Tag,ret_sc(NA,SA,NB,SB))),
+	fail.
+gen_sc_diffs(_Tag) :- retractall(oms_sc_o(_,_)).
+
+gen_rln_diffs(Tag) :-
+	oms_rln(A,B,C),
+	oms_cn(A,_,NA,SA),
+	oms_cn(B,_,NB,SB),
+	oms_cn(C,_,NC,SC),
+	\+ (oms_cn_o(AO,_,NA,SA),
+	    oms_cn_o(BO,_,NB,SB),
+	    oms_cn_o(CO,_,NC,SC),
+	    oms_rln_o(AO,BO,CO)),
+	assert(diff(Tag,add_rln(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_rln_diffs(Tag) :-
+	oms_rln_o(A,B,C),
+	oms_cn_o(A,_,NA,SA),
+	oms_cn_o(B,_,NB,SB),
+	oms_cn_o(C,_,NC,SC),
+	\+ (oms_cn(AO,_,NA,SA),
+	    oms_cn(BO,_,NB,SB),
+	    oms_cn(CO,_,NC,SC),
+	    oms_rln(AO,BO,CO)),
+	assert(diff(Tag,ret_rln(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_rln_diffs(_Tag) :- retractall(oms_rln_o(_,_,_)).
+
+gen_schrel_diffs(Tag) :-
+	oms_schrel(A,B,C),
+	oms_cn(A,_,NA,SA),
+	oms_cn(B,_,NB,SB),
+	oms_cn(C,_,NC,SC),
+	\+ (oms_cn_o(AO,_,NA,SA),
+	    oms_cn_o(BO,_,NB,SB),
+	    oms_cn_o(CO,_,NC,SC),
+	    oms_schrel_o(AO,BO,CO)),
+	assert(diff(Tag,add_schrel(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_schrel_diffs(Tag) :-
+	oms_schrel_o(A,B,C),
+	oms_cn_o(A,_,NA,SA),
+	oms_cn_o(B,_,NB,SB),
+	oms_cn_o(C,_,NC,SC),
+	\+ (oms_cn(AO,_,NA,SA),
+	    oms_cn(BO,_,NB,SB),
+	    oms_cn(CO,_,NC,SC),
+	    oms_schrel(AO,BO,CO)),
+	assert(diff(Tag,ret_schrel(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_schrel_diffs(_Tag) :- retractall(oms_schrel_o(_,_,_)).
+
+gen_strel_diffs(Tag) :-
+	oms_strel(A,B,C),
+	oms_cn(A,_,NA,SA),
+	oms_cn(B,_,NB,SB),
+	oms_cn(C,_,NC,SC),
+	\+ (oms_cn_o(AO,_,NA,SA),
+	    oms_cn_o(BO,_,NB,SB),
+	    oms_cn_o(CO,_,NC,SC),
+	    oms_strel_o(AO,BO,CO)),
+	assert(diff(Tag,add_strel(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_strel_diffs(Tag) :-
+	oms_strel_o(A,B,C),
+	oms_cn_o(A,_,NA,SA),
+	oms_cn_o(B,_,NB,SB),
+	oms_cn_o(C,_,NC,SC),
+	\+ (oms_cn(AO,_,NA,SA),
+	    oms_cn(BO,_,NB,SB),
+	    oms_cn(CO,_,NC,SC),
+	    oms_strel(AO,BO,CO)),
+	assert(diff(Tag,ret_strel(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_strel_diffs(_Tag) :- retractall(oms_strel_o(_,_,_)).
+
+gen_obj_diffs(Tag) :-
+	oms_obj(_,B,C,D),
+	\+ oms_obj_o(_,_B,C,D),
+	assert(diff(Tag,add_obj(B,C,D))),
+	fail.
+gen_obj_diffs(Tag) :-
+	oms_obj_o(_,B,C,D),
+	\+ oms_obj(_,_B,C,D),
+	assert(diff(Tag,ret_obj(B,C,D))),
+	fail.
+gen_obj_diffs(_Tag).
+
+gen_mo_diffs(Tag) :-
+	oms_mo(A,B),
+	oms_obj(A,_,NA,SA),
+	oms_cn(B,_,NB,SB),
+	\+ (oms_obj_o(AO,_,NA,SA),
+	    oms_cn_o(BO,_,NB,SB),
+	    oms_mo_o(AO,BO)),
+	assert(diff(Tag,add_mo(NA,SA,NB,SB))),
+	fail.
+gen_mo_diffs(Tag) :-
+	oms_mo_o(A,B),
+	oms_obj_o(A,_,NA,SA),
+	oms_cn_o(B,_,NB,SB),
+	\+ (oms_obj(AO,_,NA,SA),
+	    oms_cn(BO,_,NB,SB),
+	    oms_mo(AO,BO)),
+	assert(diff(Tag,ret_mo(NA,SA,NB,SB))),
+	fail.
+gen_mo_diffs(_Tag) :- retractall(oms_mo_o(_,_)).
+
+gen_at_diffs(Tag) :-
+	oms_at(A,B,C),
+	oms_obj(A,_,NA,SA),
+	oms_cn(B,_,NB,SB),
+	oms_cn(C,_,NC,SC),
+	\+ (oms_obj_o(AO,_,NA,SA),
+	    oms_cn_o(BO,_,NB,SB),
+	    oms_cn_o(CO,_,NC,SC),
+	    oms_at_o(AO,BO,CO)),
+	assert(diff(Tag,add_at(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_at_diffs(Tag) :-
+	oms_at_o(A,B,C),
+	oms_obj_o(A,_,NA,SA),
+	oms_cn_o(B,_,NB,SB),
+	oms_cn_o(C,_,NC,SC),
+	\+ (oms_obj(AO,_,NA,SA),
+	    oms_cn(BO,_,NB,SB),
+	    oms_cn(CO,_,NC,SC),
+	    oms_at(AO,BO,CO)),
+	assert(diff(Tag,ret_at(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_at_diffs(_Tag) :- retractall(oms_at_o(_,_,_)).
+
+gen_ao_diffs(Tag) :-
+	oms_ao(A,B,C),
+	oms_obj(A,_,NA,SA),
+	oms_cn(B,_,NB,SB),
+	oms_obj(C,_,NC,SC),
+	\+ (oms_obj_o(AO,_,NA,SA),
+	    oms_cn_o(BO,_,NB,SB),
+	    oms_obj_o(CO,_,NC,SC),
+	    oms_ao_o(AO,BO,CO)),
+	assert(diff(Tag,add_ao(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_ao_diffs(Tag) :-
+	oms_ao_o(A,B,C),
+	oms_obj_o(A,_,NA,SA),
+	oms_cn_o(B,_,NB,SB),
+	oms_obj_o(C,_,NC,SC),
+	\+ (oms_obj(AO,_,NA,SA),
+	    oms_cn(BO,_,NB,SB),
+	    oms_obj(CO,_,NC,SC),
+	    oms_ao(AO,BO,CO)),
+	assert(diff(Tag,ret_ao(NA,SA,NB,SB,NC,SC))),
+	fail.
+gen_ao_diffs(_Tag) :- retractall(oms_ao_o(_,_,_)).
+
+
+
+:- comment(load_oms_for_diffs/1,
+"@tt{load_oms_for_diffs(OMS_Directory)} loads an OMS from
+OMS_DIrectory into memory into predicates separate from the standard
+predicates used to store an OMS.  It is used to load an OMS in
+preparation for finding the diffs between in and a regularly loaded
+OMS.  These routines do NOT work when there are intensional
+definitions.  All OMS facts must be in the stored oms_* predicates.").
+
+load_oms_for_diffs(Dir) :-
+	cputime(Time0),
+	seeing(OFile),
+
+	init_o_schema_index_std,
+	oms_fix_dir(Dir,DirS),
+	concat_atom([DirS,'schema_oms.P'],SFile),
+	see(SFile),
+	read_schema_o,
+	seen,
+
+	init_o_data_index_std,
+	concat_atom([DirS,'data_oms.P'],DFile),
+	see(DFile),
+	read_data_o,
+	seen,
+
+	see(OFile),
+	cputime(Time1),
+	Time is Time1-Time0,
+	writeln('OMS Loaded '(Time)).
+
+:- comment(load_oms_for_schema_diffs/1,
+"@tt{load_oms_for_schema_diffs(OMS_Directory)} is like
+@tt{load_oms_for_schema_diffs/1} except it loads only the schema
+relations from the schema.P file.").
+
+load_oms_for_schema_diffs(Dir) :-
+	cputime(Time0),
+	seeing(OFile),
+
+	init_o_schema_index_std,
+	oms_fix_dir(Dir,DirS),
+	concat_atom([DirS,'schema_oms.P'],SFile),
+	see(SFile),
+	read_schema_o,
+	seen,
+
+	see(OFile),
+	cputime(Time1),
+	Time is Time1-Time0,
+	writeln('OMS Schema Loaded '(Time)).
+
+init_o_schema_index_std :-
+	%% oms_cn_o(Cid,Label,NatCid,Sou)
+	index(oms_cn_o(_,_,_,_),[1,2,3]),
+	retractall(oms_cn_o(_,_,_,_)),
+	%% oms_sc_o(SubCid,SupCid)
+	index(oms_sc_o(_,_),[1,2]),
+	retractall(oms_sc_o(_,_)),
+	%% oms_rln_o(SCid,RCid,TCid)
+	index(oms_rln_o(_,_,_),[1+2,1,2+3]),
+	retractall(oms_rln_o(_,_,_)),
+	%% oms_strel_o(SCid,RCid,TCid)
+	index(oms_strel_o(_,_,_),[1+2,1]),
+	retractall(oms_strel_o(_,_,_)),
+	%% oms_schrel_o(SCid,RCid,TCid)
+	index(oms_schrel_o(_,_,_),[1+2,1]),
+	retractall(oms_schrel_o(_,_,_)).
+
+init_o_data_index_std :-
+	%% oms_obj_o(Oid,Name,Native_Id,Src)
+	%% TLS, objects will "mostly" be unique w.o. source, so to save
+	%% a little space, I'm not changing the index yet.
+	index(oms_obj_o(_,_,_,_),[1,3]),
+	retractall(oms_obj_o(_,_,_,_)),
+	%% oms_mo_o(Oid,Cid)
+	index(oms_mo_o(_,_),[1,2]),
+	retractall(oms_mo_o(_,_)),
+	%% oms_at_o(Oid,RCid,TCid)
+	index(oms_at_o(_,_,_),[1+2,1,2+3]),
+	retractall(oms_at_o(_,_,_)),
+	%% oms_ao_o(Oid,RCid,TOid)
+	index(oms_ao_o(_,_,_),[1+2]),
+	retractall(oms_ao_o(_,_,_)).
+
+read_schema_o :-
+	repeat,
+	read_canonical(Term),
+	(Term == end_of_file
+	 ->	!
+	 ;	cvt_schema_to_oterm(Term,OTerm),
+		asserta(OTerm),
+		fail
+	).
+
+cvt_schema_to_oterm(oms_cn(A,B,C,D),oms_cn_o(A,B,C,D)).
+cvt_schema_to_oterm(oms_sc(A,B),oms_sc_o(A,B)).
+cvt_schema_to_oterm(oms_rln(A,B,C),oms_rln_o(A,B,C)).
+cvt_schema_to_oterm(oms_schrel(A,B,C),oms_schrel_o(A,B,C)).
+cvt_schema_to_oterm(oms_strel(A,B,C),oms_strel_o(A,B,C)).
+
+read_data_o :-
+	repeat,
+	read_canonical(Term),
+	(Term == end_of_file
+	 ->	!
+	 ;	cvt_data_to_oterm(Term,OTerm),
+		asserta(OTerm),
+		fail
+	).
+
+cvt_data_to_oterm(oms_obj(A,B,C,D),oms_obj_o(A,B,C,D)).
+cvt_data_to_oterm(oms_mo(A,B),oms_mo_o(A,B)).
+cvt_data_to_oterm(oms_at(A,B,C),oms_at_o(A,B,C)).
+cvt_data_to_oterm(oms_ao(A,B,C),oms_ao_o(A,B,C)).
+
+:- comment(apply_oms_diffs/1, "@tt{apply_oms_diffs(+Tag)} applies the
+in-memory diffs, named by Tag, which were created by gen_oms_diffs, to
+the currently loaded OMS.  This is destructive and the diffs are
+deleted during application, to try to reduce space usage.  Thus if the
+diffs are to be retained, they should be dumped before being
+applied.").
+	   
+apply_oms_diffs :- apply_oms_diffs('').
+apply_oms_diffs(Tag) :-
+	cputime(Time0),
+	apply_cn_diffs(Tag),
+	apply_sc_diffs(Tag),
+	apply_rln_diffs(Tag),
+	apply_schrel_diffs(Tag),
+	apply_strel_diffs(Tag),
+
+	apply_obj_diffs(Tag),
+	apply_mo_diffs(Tag),
+	apply_at_diffs(Tag),
+	apply_ao_diffs(Tag),
+
+	cputime(Time1),
+	Time is Time1 - Time0,
+	writeln('Diffs applied '(Time)).
+
+apply_cn_diffs(Tag) :-
+	diff(Tag,ret_cn(A,B,C)),
+	retractall_class(_,A,B,C),
+	fail.
+apply_cn_diffs(Tag) :-
+	diff(Tag,add_cn(A,B,C)),
+	newClass(A,unk,B,C,_),
+	fail.
+apply_cn_diffs(_Tag).
+
+apply_sc_diffs(Tag) :-
+	diff(Tag,ret_sc(AN,AS,BN,BS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	retractall(oms_sc(A,B)),
+	fail.
+apply_sc_diffs(Tag) :-
+	diff(Tag,add_sc(AN,AS,BN,BS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	asserta(oms_sc(A,B)),
+	fail.
+apply_sc_diffs(_Tag).
+
+apply_rln_diffs(Tag) :-
+	diff(Tag,ret_rln(AN,AS,BN,BS,CN,CS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	retractall(oms_rln(A,B,C)),
+	fail.
+apply_rln_diffs(Tag) :-
+	diff(Tag,add_rln(AN,AS,BN,BS,CN,CS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	asserta(oms_rln(A,B,C)),
+	fail.
+apply_rln_diffs(_Tag).
+
+apply_schrel_diffs(Tag) :-
+	diff(Tag,ret_schrel(AN,AS,BN,BS,CN,CS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	retractall(oms_schrel(A,B,C)),
+	fail.
+apply_schrel_diffs(Tag) :-
+	diff(Tag,add_schrel(AN,AS,BN,BS,CN,CS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	asserta(oms_schrel(A,B,C)),
+	fail.
+apply_schrel_diffs(_Tag).
+
+apply_strel_diffs(Tag) :-
+	diff(Tag,ret_strel(AN,AS,BN,BS,CN,CS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	retractall(oms_strel(A,B,C)),
+	fail.
+apply_strel_diffs(Tag) :-
+	diff(Tag,add_strel(AN,AS,BN,BS,CN,CS)),
+	class(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	asserta(oms_strel(A,B,C)),
+	fail.
+apply_strel_diffs(_Tag).
+
+apply_obj_diffs(Tag) :-
+	diff(Tag,ret_obj(A,B,C)),
+	retractall_object(_,A,B,C),
+	fail.
+apply_obj_diffs(Tag) :-
+	diff(Tag,add_obj(A,B,C)),
+	newObject(A,unk,B,C,_),
+	fail.
+apply_obj_diffs(_Tag).
+
+apply_mo_diffs(Tag) :-
+	diff(Tag,ret_mo(AN,AS,BN,BS)),
+	object(A,_,AN,AS),
+	class(B,_,BN,BS),
+	retractall(oms_mo(A,B)),
+	fail.
+apply_mo_diffs(Tag) :-
+	diff(Tag,add_mo(AN,AS,BN,BS)),
+	object(A,_,AN,AS),
+	class(B,_,BN,BS),
+	asserta(oms_mo(A,B)),
+	fail.
+apply_mo_diffs(_Tag).
+
+apply_at_diffs(Tag) :-
+	diff(Tag,ret_at(AN,AS,BN,BS,CN,CS)),
+	object(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	retractall(oms_at(A,B,C)),
+	fail.
+apply_at_diffs(Tag) :-
+	diff(Tag,add_at(AN,AS,BN,BS,CN,CS)),
+	object(A,_,AN,AS),
+	class(B,_,BN,BS),
+	class(C,_,CN,CS),
+	asserta(oms_at(A,B,C)),
+	fail.
+apply_at_diffs(_Tag).
+
+apply_ao_diffs(Tag) :-
+	diff(Tag,ret_ao(AN,AS,BN,BS,CN,CS)),
+	object(A,_,AN,AS),
+	class(B,_,BN,BS),
+	object(C,_,CN,CS),
+	retractall(oms_ao(A,B,C)),
+	fail.
+apply_ao_diffs(Tag) :-
+	diff(Tag,add_ao(AN,AS,BN,BS,CN,CS)),
+	object(A,_,AN,AS),
+	class(B,_,BN,BS),
+	object(C,_,CN,CS),
+	asserta(oms_ao(A,B,C)),
+	fail.
+apply_ao_diffs(Tag) :-
+	retractall(diff_tag(Tag)),
+	(diff_tag(_)
+	 ->	retractall(diff(Tag,_))
+	 ;	retractall(diff(_,_))
+	).
+
+:- comment(dump_oms_diffs/1, "@tt(dump_oms_diffs(+FileName)} saves the
+current in-memory diffs (all named sets) into the file named FileName.
+The diffs can be reloaded into memory with load_dync/1.").
+
+dump_oms_diffs(File) :-
+	tell(File),
+	write_canonical((:- dynamic diff/2)),writeln('.'),
+	write_canonical((:- index(diff/2,trie))),writeln('.'),
+	(diff(Tag,Diff),
+	 writeq(diff(Tag,Diff)),writeln('.'),
+	 fail
+	 ;
+	 true),
+	told.
+
+:- comment(diff_merge_oms/2,
+"@tt{diff_merge_oms(CommonSourceOMS,OtherDerivedOMS)} finds the
+difference between the in-memory OMS and the CommonSourceOMS, and
+applyes those diffs to the in-memory OMS.  It is intended to be
+applied in the situation in which the in-memory OMS and the
+OtherDerivedOMS are both the result of editing the CommonSourceOMS.
+In this case the resulting OMS will incorporate both changes.  The
+resulting OMS is not guaranteed to be consistent, and this predicate
+calls oms_clean on the result.").
+
+diff_merge_oms(CommonSourceOMS,OtherDerivedOMS) :-
+	gen_oms_diffs(CommonSourceOMS),
+	load_oms(OtherDerivedOMS),
+	apply_oms_diffs,
+	oms_clean.
+
+:- comment(diff_gen_conflicts/2, "@tt{diff_gen_conflicts(Tag1,Tag2)}
+checks for potential conflicts between the sets of diffs named by Tag1
+and Tag2.  This assumes that these are diffs for two OMS's derived
+from a single source OMS.  The idea is to identify potential conflicts
+in which one branch wants to use something that the other branch has
+deleted or changed.  This predicate copies the potentially conflicting
+diff terms into a predicate diff_conflict/2.").
+
+:- dynamic diff_conflict/1.
+:- index(diff_conflict/1,trie).
+
+:- dynamic diff_used/2.
+:- index(diff_used/2,trie).
+
+diff_gen_conflicts(Tag1,Tag2) :-
+	retractall(diff_used(_,_)),
+	set_modified_cls_objs(Tag1,Tag2),
+	set_modified_cls_objs(Tag2,Tag1),
+	set_used_cls_objs(Tag1),
+	set_used_cls_objs(Tag2),
+	generate_conflicts(Tag1,Tag2),
+	generate_conflicts(Tag2,Tag1).
+
+generate_conflicts(Tag1,Tag2) :-
+	diff_used(Tag1,cn_mod(N,S)),
+	diff_used(Tag2,cn(N,S)),
+	assert(diff_conflict(cn(N,S))),
+	fail.
+generate_conflicts(Tag1,Tag2) :-
+	diff_used(Tag1,obj_mod(N,S)),
+	diff_used(Tag2,obj(N,S)),
+	assert(diff_conflict(cn(N,S))),
+	fail.
+generate_conflicts(_Tag1,_Tag2).
+
+set_modified_cls_objs(Tag1,Tag2) :-
+	diff(Tag1,ret_cn(L,N,S)),
+	\+ diff(Tag2,ret_cn(L,N,S)),
+	assert(diff_used(Tag1,cn_mod(N,S))),
+	fail.
+set_modified_cls_objs(Tag1,Tag2) :-
+	diff(Tag1,add_cn(L,N,S)),
+	\+ diff(Tag2,add_cn(L,N,S)),
+	assert(diff_used(Tag1,cn_mod(N,S))),
+	fail.
+set_modified_cls_objs(Tag1,Tag2) :-
+	diff(Tag1,ret_obj(L,N,S)),
+	\+ diff(Tag2,ret_obj(L,N,S)),
+	assert(diff_used(Tag1,obj_mod(N,S))),
+	fail.
+set_modified_cls_objs(Tag1,Tag2) :-
+	diff(Tag1,add_obj(L,N,S)),
+	\+ diff(Tag2,ret_obj(L,N,S)),
+	assert(diff_used(Tag1,obj_mod(N,S))),
+	fail.
+set_modified_cls_objs(_Tag1,_Tag2).
+
+set_used_cls_objs(Tag) :-
+	diff(Tag,ret_sc(N1,S1,N2,S2)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,add_sc(N1,S1,N2,S2)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,ret_rln(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,add_rln(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,ret_schrel(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,add_schrel(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,ret_strel(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,add_strel(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,cn(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,ret_mo(N1,S1,N2,S2)),
+	assert(diff_used(Tag,obj(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,add_mo(N1,S1,N2,S2)),
+	assert(diff_used(Tag,obj(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,ret_at(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,obj(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,add_at(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,obj(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,cn(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,ret_ao(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,obj(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,obj(N3,S3))),
+	fail.
+set_used_cls_objs(Tag) :-
+	diff(Tag,add_ao(N1,S1,N2,S2,N3,S3)),
+	assert(diff_used(Tag,obj(N1,S1))),
+	assert(diff_used(Tag,cn(N2,S2))),
+	assert(diff_used(Tag,obj(N3,S3))),
+	fail.
+set_used_cls_objs(_Tag).
+
+
+
+%%end_of_file.
+%% testing help.
+
+diff_size :- diff_size('').
+diff_size(Tag) :-
+	count_solutions(diff(Tag,_),N),
+	writeln('Number in diffs '(N)).
+
+show_diffs :- show_diffs('').
+show_diffs(Tag) :-
+	diff(Tag,Diff),
+	writeq(Diff),writeln(.),
+	fail.
+show_diffs.
+
+test(OMS1,OMS2) :-
+	load_oms(OMS1),
+	gen_oms_diffs(OMS2),
+	dump_oms_diffs(tempdiffs1),
+	diff_size,
+	load_oms(OMS2),
+	apply_oms_diffs,
+	gen_oms_diffs(OMS1),
+	dump_oms_diffs(tempdiffs2),
+	diff_size.
+
+testsch(OMS1,OMS2,OMS3) :- % OMS3 is merge of OMS1 and OMS2
+	load_oms(OMS3),
+	gen_oms_schema_diffs(a,OMS1),
+	gen_oms_schema_diffs(b,OMS2),
+	dump_oms_diffs(tempdiffs),
+	(oms_cn(A,B,C,D),
+	 \+diff(a,add_cn(B,C,D)),
+	 \+diff(b,add_cn(B,C,D)),
+	 writeq(com_cls(A,B,C,D)),nl,
+	 fail
+	 ;
+	 true
+	),		 
+	diff_size(_).

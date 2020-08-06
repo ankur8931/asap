@@ -1,0 +1,642 @@
+/* File:      wf_examples.P
+** Author(s): David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: wf_examples.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+
+:- op(500,fx,(~)).
+
+/* Example 1: */
+% xoldt_find(demo1(append(_,_,[a,b,c])),ANSWERS).
+test(demo1(append(_,_,[a,b,c]))).
+
+%:- prolog clause1/2.
+demo1(true).
+demo1((A,B)) :- demo1(A),demo1(B).
+demo1(G) :- clause1(G,B),demo1(B).
+
+clause1(append([],L,L),true).
+clause1(append([X|L1],L2,[X|L3]),append(L1,L2,L3)).
+
+
+/* Example 2: */
+% test1(ps2(_,_),ANSWERS).
+test(ps2(_,_)).
+
+%:- prolog a2/2.
+ps2(X,Y) :- a2(X,Y).
+ps2(X,Y) :- a2(X,Z),ps2(Z,Y).
+
+a2(a,b).
+a2(a,c).
+a2(b,d).
+a2(b,e).
+a2(c,f).
+a2(c,g).
+a2(f,h).
+a2(f,a).
+
+
+/* Example 3: */
+% test1(ps3(_,_),ANSWERS).
+test(ps3(_,_)).
+
+%:- prolog a3/2.
+ps3(X,Y) :- a3(X,Y).
+ps3(X,Y) :- ps3(X,Z),ps3(Z,Y).
+
+%a3(a,b).
+a3(a,c).
+%a3(b,d).
+%a3(b,e).
+a3(c,f).
+%a3(c,g).
+%a3(f,h).
+a3(f,a).
+
+
+/* Example 4: */
+% test1(p4(_,_),ANSWERS).
+test(p4(_,_)).
+
+%:- prolog(e4/2).
+e4(a,b).
+e4(a,d).
+e4(b,c).
+e4(c,e).
+e4(d,c).
+e4(d,e).
+p4(X,Y) :- e4(X,Y).
+p4(X,Z) :- e4(X,Y),p4(Y,Z).
+
+
+/* Example 5: */
+% test1(a5,ANSWERS).
+test(a5).
+test(b5).
+
+c5.
+a5 :- c5,? .
+b5 :- b5,? .
+
+
+/* Example 6: */
+% test1(p6,ANSWERS).
+test(p6).
+p6 :- q6,~r6.
+q6.
+r6 :- fail.
+
+/* Example 7: */
+% test1(p7,ANSWERS).
+test(p7).
+
+p7 :- q7,~r7.
+q7.
+r7 :- ~s7.
+s7 :- ~t7.
+t7 :- fail.
+
+/* Example 8: */
+% test1(p8,ANSWERS).
+test(p8).
+
+p8 :- q8,~r8,s8.
+q8.
+r8 :- ~s8.
+s8.
+
+/* Example 9: */
+test(p9).
+test(q9).
+
+p9 :- ~q9.
+q9 :- ~p9.
+q9 :- r9.
+r9 :- ~s9.
+s9 :- fail.
+
+/* Example 10: */
+test(p10).
+
+p10 :- q10.
+p10 :- r10.
+r10 :- ~q10.
+q10 :- ~r10.
+
+/* Example 11: */
+test(win11(_)).
+
+%:- prolog(m11/2).
+win11(X) :- m11(X,Y),~win11(Y).
+
+m11(a,b).
+m11(b,c).
+m11(c,d).
+m11(b,d).
+
+/* Example 12: */
+test(win12(_)).
+
+%:- prolog(m12/2).
+win12(X) :- m12(X,Y),~win12(Y).
+
+m12(a,b).
+m12(b,a).
+m12(b,c).
+
+/* Example 13: */
+test(win13(_)).
+
+%:- prolog(m13/2).
+win13(X) :- m13(X,Y),~win13(Y).
+
+m13(a,b).
+m13(b,a).
+m13(b,c).
+m13(c,d).
+
+/* Example 14: */
+test(p14).
+
+p14 :- ~p14.
+
+/* Example 15: */
+test(s15).
+test(p15).
+
+s15 :- ~p15,~q15,~r15. 
+p15 :- ~s15,~r15,q15.
+q15 :- ~p15,r15.
+r15 :- ~q15,p15. 
+
+/* Example 16: */
+test(s16).
+
+s16 :- ~p16,~q16,~r16. 
+p16 :- q16,~s16,~r16.
+q16 :- r16,~p16.
+r16 :- p16,~q16.
+
+/* Example 17: nested multiple dependency */
+%test(s17).
+
+s17 :- ~p17,~q17,~r17,s117. 
+p17 :- ~r17,~s17,s117,q17.
+q17 :- ~p17,s117,r17.
+r17 :- ~q17,s17,p17. 
+s117 :- ~p117,~q117,~r117,s217. 
+p117 :- ~r117,~s117,s217,q117.
+q117 :- ~p117,s217,r117.
+r117 :- ~q117,s217,p117. 
+s217 :- ~p217,~q217,~r217,s317. 
+p217 :- ~r217,~s217,s317,q217.
+q217 :- ~p217,s317,r217.
+r217 :- ~q217,s317,p217. 
+s317 :- ~p317,~q317,~r317,s417. 
+p317 :- ~r317,~s317,s417,q317.
+q317 :- ~p317,s417,r317.
+r317 :- ~q317,s417,p317. 
+s417 :- ~p417,~q417,~r417,s517. 
+p417 :- ~r417,~s417,s517,q417.
+q417 :- ~p417,s517,r417.
+r417 :- ~q417,s517,p417. 
+s517 :- ~p517,~q517,~r517. 
+p517 :- ~s517,~r517,q517.
+q517 :- ~p517,r517.
+r517 :- ~q517,p517. 
+
+test(p18).
+
+p18 :- q18,r18.
+p18 :- r18.
+q18.
+r18.
+
+test(r19(_,_)).
+
+%:- prolog(q19/2).
+r19(X,Y) :- p19(X,Y),~p19(Y,X).
+p19(X,Y) :- q19(X,Y).
+p19(X,Y) :- q19(X,Z),p19(Z,Y).
+
+q19(a,b).
+q19(b,c).
+q19(c,d).
+q19(d,b).
+
+
+% Przymusinski's example 9.1 (PODS'89)
+% a should fail.
+test(a20).
+
+a20 :- ~b20,~c20.
+b20 :- a20.
+c20.
+
+% Przymusinski's examples
+% T = {c} U = {a,b}
+test(a21).
+test(b21).
+
+a21 :- ~b21,c21.
+b21 :- ~a21.
+c21.
+
+% Przymusinski's example 4.1 (PODS'89)
+% ans: T={b}, F={a,c}, U={p,q}
+test(p22).
+test(q22).
+test(c22).
+
+b22 :- ~a22.
+c22 :- ~b22.
+c22 :- a22,~p22.
+p22 :- ~q22.
+q22 :- ~p22,b22.
+a22 :- fail.
+
+% van Gelder's example 5.1 (PODS'89)
+% AFP = {c,~p,~q,~r,~s,~t}
+test(p23).
+test(q23).
+test(r23).
+test(s23).
+test(t23).
+
+d23 :- a23,c23,a23.
+a23 :- ~b23,c23.
+b23 :- ~a23.
+c23.
+p23 :- ~r23,q23.
+p23 :- ~s23,r23.
+p23 :- t23.
+q23 :- p23.
+r23 :- q23.
+r23 :- ~c23.
+s23 :- fail.
+t23 :- fail.
+
+% Ross's example 3.2 (from Przymusinsk{a,i}) (PODS'89)
+% (X=p;X=q;X=r;X=s),que(X,p10).
+test(p24).
+
+p24 :- ~s24,q24,~r24.
+q24 :- r24,~p24.
+r24 :- p24,~q24.
+s24 :- ~p24,~q24,~r24.
+
+% Ross's example 3.2 (from Przymusinsk{a,i}) (PODS'89)
+% WFM = {s}
+test(p25).
+
+p25 :- q25,~s25,~r25.
+q25 :- r25,~p25.
+r25 :- p25,~q25.
+s25 :- ~p25,~q25,~r25.
+
+% Ross's example 3.2 (from Przymusinsk{a,i}) (PODS'89)
+% WFM = {s}
+test(m26).
+test(l26).
+
+l26 :- ~p26,s26.
+m26 :- ~s26.
+n26 :- ~p26.
+p26 :- ~s26,~r26,q26.
+q26 :- ~p26,r26.
+r26 :- ~q26,p26.
+s26 :- ~p26,~q26,~r26.
+
+% Ross's example 3.2 (from Przymusinsk{a,i}) (PODS'89)
+% WFM = {s}
+test(p27).
+
+p27 :- ~r27,ns27,q27.
+ns27 :- ~s27.
+q27 :- r27,~p27.
+r27 :- p27,~q27.
+s27 :- ~p27,~q27,~r27.
+
+% Ross's example 3. (from vanGelder) (PODS'89)
+% xwam goes into an infinite loop on w(0).
+% test1(w28(0),ANSWERS). loop
+e28(s(0),s(s(0))).
+e28(s(0),0).
+e28(s(X),s(s(X))) :- e28(X,s(X)).
+e28(s(X),0) :- e28(X,0).
+w28(X) :- ~u28(X).
+w28(X) :- e28(Y,X),~w28(Y).
+
+% Subrahmanian's example showing difference between Stable and WF.
+% WFM: p is ?ef; Stable: p is true
+test(p29).
+
+p29 :- q29.
+p29 :- ~r29.
+r29 :- ~q29.
+q29 :- ~r29.
+
+% a variant.
+test(p29a).
+
+p29a :- q29a.
+p29a :- r29a.
+r29a :- ~q29a.
+q29a :- ~r29a.
+
+% Example to show that ?ef's must be propagated
+test(q31(_)).
+
+q31(X) :- p31(X),eq31(X,b).
+eq31(Y,Y).
+p31(a).
+p31(_X) :- r31.
+r31 :- ~r31.
+
+% Example 3.1 VanG,Ross,Schlipf PODS'88
+% {~p,~q,~r,~s,c}
+test(a32).
+test(b32).
+test(p32).
+test(q32).
+test(r32).
+
+a32 :- c32,~b32.
+b32 :- ~a32.
+c32.
+p32 :- q32,~r32.
+p32 :- r32,~s32.
+q32 :- p32.
+r32 :- q32.
+
+% Example 5.1 VanG,Ross,Schlipf PODS'88
+% {}
+test(a33).
+
+a33 :- ~b33.
+b33 :- ~a33.
+
+% Example 6.1 VanG,Ross,Schlipf PODS'88
+test(p34).
+
+a34 :- ~b34.
+b34 :- ~a34.
+p34 :- ~p34.
+p34 :- ~b34.
+
+% Example 6.2 VanG,Ross,Schlipf PODS'88
+% {}
+test(a35).
+
+a35 :- ~b35.
+a35 :- ~c35.
+b35 :- ~a35.
+c35 :- a35,b35.
+
+% Example 7.1 VanG,Ross,Schlipf PODS'88
+% {loaded(0),~shoots(0),succ(0,1),loaded(1),shoots(1),noise(1),~noise(0)}
+test(loaded36(1)).
+test(noise36(1)).
+
+noise36(1) :- loaded36(1),shoots36(1).
+loaded36(1) :- succ36(0,1),loaded36(0),~shoots36(0).
+loaded36(0).
+succ36(0,1).
+shoots36(1).
+
+% Example 7.2 VanG,Ross,Schlipf PODS'88
+% call a(X,Y)
+test(a37(_,_)).
+
+p37(X,Y) :- b37(X,Y).
+p37(X,Y) :- b37(X,U),p37(U,Y).
+e37(X,Y) :- g37(X,Y).
+e37(X,Y) :- g37(X,U),e37(U,Y).
+a37(X,Y) :- e37(X,Y),~p37(X,Y).
+b37(1,2).
+b37(2,1).
+g37(2,3).
+g37(3,2).
+
+
+% These 3 are from Teodor:
+test(a39(_)).
+
+b39(s) :- ~b39(s).
+a39(A) :- b39(A).
+
+% ???
+% this one might oughta be fixed, by subsumption?
+test(a40(_)).
+test(b40(_)).
+
+b40(s) :- ~b40(s).
+a40(A) :- b40(A).
+a40(_A).
+
+
+% but note that it SHOULD flounder
+%test(a41(_)).
+a41(A) :- ~a41(A).
+a41(_A).
+
+
+% took >3 mins CPU and >1.7 meg of mem!
+%test(r42(_,_)).
+
+%:- prolog(q42/2).
+r42(X,Y) :- p42(X,Y),~(p42(Y,X)).
+
+p42(X,Y) :- q42(X,Y).
+p42(X,Y) :- q42(X,Z),p42(Z,Y).
+
+q42(a,b).
+q42(b,c).
+q42(c,d).
+q42(d,e).
+q42(e,f).
+q42(f,g).
+q42(g,h).
+q42(h,i).
+q42(i,j).
+q42(j,k).
+q42(k,l).
+q42(l,b).
+
+% vanGelder (alternating fix point) ex 5.2.a
+test(w43(_)).
+
+%:- prolog(m43/2).
+w43(X) :- m43(X,Y),~(w43(Y)).
+
+m43(a,b).
+m43(a,e).
+m43(b,c).
+m43(b,d).
+m43(e,f).
+m43(e,g).
+m43(g,h).
+m43(g,i).
+
+% vanGelder (alternating fix point) ex 5.2.b
+test(w44(_)).
+
+%:- prolog(m44/2).
+w44(X) :- m44(X,Y),~w44(Y).
+
+m44(a,b).
+m44(b,a).
+m44(b,c).
+m44(c,d).
+
+% vanGelder (alternating fix point) ex 5.2.c
+test(w45(_)).
+
+%:- prolog(m45/2).
+w45(X) :- m45(X,Y),~w45(Y).
+
+m45(a,b).
+m45(b,a).
+m45(b,c).
+
+% answers(q,p46..
+% answers(p(_X),p46,[tv(p(a),maybe),tv(p(b),yes)])).
+test(p46(_)).
+q46 :- ~r46.
+r46 :- p46(_).
+p46(a) :- ~p46(a).
+p46(b).
+
+
+
+test(q47).
+test(l47).
+test(p47).
+
+l47 :- ~p47.
+p47 :- ~q47.
+p47.
+q47 :- ~p47.
+
+test(p48).
+
+p48 :- ~q48.
+p48 :- ~r48.
+p48 :- ~s48.
+q48 :- ~p48.
+r48 :- ~p48.
+s48 :- fail.
+
+
+test(p50).
+p50 :- q50,~r50.
+q50.
+r50 :- ~s50.
+s50.
+
+test(q51(_X)).
+q51(X) :- u51(X), ~s51(X).
+q51(X) :- q51(Y), t51(X,Y).
+p51(X) :- u51(X), ~q51(X).
+p51(X) :- p51(Y), t51(X,Y).
+u51(2).
+u51(3).
+s51(2).
+t51(2,1).
+t51(3,2).
+t51(4,3).
+
+
+test(p52).
+p52 :- ~p52.
+
+test(p53).
+l53 :- ~p53.
+p53 :- ~q53,~r53.
+q53 :- ~s53.
+s53 :- ~q53.
+
+r53 :- ~t53.
+t53 :- ~r53.
+
+test(p54).
+p54.
+
+
+test(t55).
+test(p55).
+
+t55 :- ~s55.
+s55 :- ~p55.
+p55 :- q55.
+p55 :- r55.
+r55 :- ~q55.
+q55 :- ~r55.
+
+
+test(p56).
+p56 :- ~q56,~r56.
+p56 :- ~u56.
+
+q56 :- ~s56.
+q56 :- ~u56.
+
+s56 :- ~q56.
+
+r56 :- ~t56.
+t56 :- ~r56.
+
+u56 :- ~v56.
+v56 :- ~u56.
+
+
+test(p57).
+p57 :- q57.
+q57 :- ~q57.
+
+
+test(l58).
+l58 :- ~p58.
+p58 :- ~q58.
+p58 :- q58.
+p58 :- ~r58.
+
+q58 :- ~s58.
+s58 :- ~q58.
+
+r58 :- ~t58.
+t58 :- ~r58.
+
+test(p59).
+p59 :- ~p59.
+p59 :- q59.
+q59 :- q59.
+
+
+% stest(s60,ANS).
+test(p60).
+test(s60).
+p60 :- ~s60,~q60,r60.
+q60 :- ~r60,p60.
+r60 :- ~p60,q60.
+s60 :- ~p60,~q60,~r60.

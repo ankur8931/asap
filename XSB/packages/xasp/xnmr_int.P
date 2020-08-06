@@ -1,0 +1,403 @@
+/* File:      xnmr_int.P
+** Author(s): David Warren (I think)
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: xnmr_int.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,xpp_on,ciao_directives]).
+
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+#include "standard.h"
+#include "char_defs.h"
+
+:- dynamic atomhandle/2.
+
+:- comment(module,"This module provides the interface from the
+@tt{xnmr} module to Smodels.  It does not use the @tt{sm_int}
+interface, but rather directly calls the Smodels C interface, and can
+be thought of as a special-purpose alternative to @tt{sm_int}. ").
+
+/* counter of atoms to be passed to Smodels */
+:- local '_$smctr'/0.
+
+:- local '_$smissm'/0.
+
+:- dynamic atomtrie/1.
+
+:- index(atomhandle(_,_),[1,2],1001).
+
+:- comment(init_smodels/1,"@pred{init_smodels(+Query)}: initializes
+smodels with the residual program produced by evaluationg @tt{Query}.
+@tt{Query} must be a call to a tabled predicate that is currently
+completely evaluated (and should have a delay list)").
+
+init_smodels(Query) :-
+	close_smodels,
+	conset('_$smissm',0),
+	conset('_$smctr',0),
+	new_trie(AtomTrie),
+	trie_intern(Query,AtomTrie,Leaf,Flag,_Skel),
+	Flag =:= 0,   % first one better be new
+	give_atom_handle(Handle,Leaf),
+	num_resid(Query,Handle,AtomTrie,Rules,[]),
+	conget('_$smctr',NumAtoms),
+	assert(atomtrie(AtomTrie)),
+	send_pgm_to_smodels(Rules,NumAtoms),
+	fail.   % fail in order to reclaim space.
+init_smodels(_).   % init_smodels has only side-effects.
+
+give_atom_handle(Handle,Leaf) :-
+	coninc('_$smctr'), conget('_$smctr',Handle),
+	assert(atomhandle(Handle,Leaf)).
+
+num_resid(Query,QHandle,AtomTrie,Rules0,Rules) :-
+	get_the_delay_lists(Query,DLs),
+	num_resid_lists(DLs,QHandle,AtomTrie,Rules0,Rules).
+
+num_resid_lists([],_,_,Rules,Rules).
+num_resid_lists([DL|DLs],HHandle,AtomTrie,[[HHandle|NumDL]|Rules0],Rules) :-
+	num_resid_list(DL,AtomTrie,NumDL,[],Rules0,Rules1),
+	num_resid_lists(DLs,HHandle,AtomTrie,Rules1,Rules).
+
+num_resid_list([],_,NumDL,NumDL,Rules,Rules).
+num_resid_list([Lit|Lits],AtomTrie,[NumLit|NumDL0],NumDL,Rules0,Rules) :-
+	(Lit = tnot(Rlit)
+         ->     NumLit = tnot(Handle)
+         ;      Rlit = Lit, NumLit = Handle
+        ),
+	trie_intern(Rlit,AtomTrie,Leaf,Flag,_),
+	(Flag =:= 0   % new
+         ->     give_atom_handle(Handle,Leaf),
+		num_resid(Rlit,Handle,AtomTrie,Rules0,Rules1)
+         ;      atomhandle(Handle,Leaf),
+	        Rules1 = Rules0
+	),
+	num_resid_list(Lits,AtomTrie,NumDL0,NumDL,Rules1,Rules).
+
+get_the_delay_lists(Query,DLs) :-
+	excess_vars(Query,[],[],Vars),
+	get_calls(Query,S,R),
+	is_most_general_term(Vars),
+	table_state(S,complete),
+	!,
+	% combine delay lists of subsuming answers.
+	findall(DLS,get_DLs(R,S,DLS),DLsList),
+	append_lists(DLsList,DLs).
+get_the_delay_lists(Query, _) :-
+	abort(('init_smodels: Query not completely evaluated: ',Query)).
+
+get_DLs(R,S,DLs) :-
+	copy_term(R,R1),
+	get_returns(S,R1,Leaf),
+	subsumes_chk(R,R1),subsumes_chk(R1,R),
+	get_delay_lists(Leaf,DLs).
+
+append_lists([],[]) :- !.
+append_lists([X],X) :- !.
+append_lists([X|Xs],Xss) :-
+	append_lists(Xs,TXs), append(X,TXs,Xss).
+
+get_delay_lists(A,B) :- get_delay_lists(A,B).  % inline
+
+smodels_initted :-
+	atomtrie(_AtomTrie)
+         ->     true
+         ;      warning('SModels not initialized by init_smodels'),
+	        fail.
+
+close_smodels :-
+	(retract(atomtrie(OldTrie))
+         ->     delete_trie(OldTrie),
+                retractall(atomhandle(_Handle,_Leaf)),
+		conset('_$smctr',0),
+		conset('_$smissm',0)
+         ;      true
+        ).
+	
+:- comment(atom_handle/2,"@tt{atom_handle(?Atom,?AtomHandle)} is set
+by @pred{init_smodels/1} to be an integer uniquely identifying each
+atoms in the residual program (and thus each atom in the Herbrand base
+of the program for which the stable models are to be derived.  The
+initial query given to init_smodels has the atom-handle of 1.").
+
+atom_handle(Atom,Handle) :-
+	smodels_initted,
+	atomtrie(AtomTrie),
+	(nonvar(Handle)
+         ->     atomhandle(Handle,Leaf),
+	        trie_interned(Atom1,AtomTrie,Leaf,_Skel),
+		Atom = Atom1
+	 ; var(Atom)   % if both vars, backtrack through all
+	 ->     trie_interned(Atom,AtomTrie,Leaf,_Skel),
+		atomhandle(Handle,Leaf)
+	 ;      excess_vars(Atom,[],[],Vars),
+	        trie_interned(Atom,AtomTrie,Leaf,Skel),
+		is_most_general_term(Skel),
+		is_most_general_term(Vars),
+		atomhandle(Handle,Leaf)
+	).
+
+:- comment(hide,set_query_true/1).
+
+%TLS: need new documentation.
+/*set smodels so as to compute only partial stable
+models where the give query is true*/
+
+set_query_true(Neg) :-
+	smodels_initted,	
+	(Neg =:= 1
+	->  smodelsSetNegCompute(1)
+	;   smodelsSetPosCompute(1)).
+
+:-comment(in_all_stable_models/2,
+"@tt{in_all_stable_models(+AtomHandle,+Neg)} is true if @tt{Neg} is 0
+and the atom numbered AtomHandle is true in all stable models (of the
+residual program set by the previous call to @tt{init_smodels/1}).  If
+@tt{Neg} is nonzero, then it is true if the atom is in NO stable
+model.").
+
+in_all_stable_models(Handle,Neg) :-
+	smodels_initted,
+	conget('_$smctr',NumAtoms),
+	(integer(Handle),Handle>0,Handle=<NumAtoms
+         ->     true
+         ;      abort(('in_all_stable_models: illegal atom number: ',Handle))
+        ),
+	in_all_stable_models1(Handle,Neg).
+
+in_all_stable_models1(Handle,Neg) :-
+	(Neg =:= 0
+         ->     smodelsSetNegCompute(Handle)
+	 ;      smodelsSetPosCompute(Handle)
+        ),
+	smodelsExistsModel(Ret),
+	!,
+	close_smodels,
+	Ret =:= 0.         
+
+:- comment(pstable_model/3,"@tt{pstable_model(+Query,-Model,+Flag)}
+returns nondeterministically a list of atoms true in the partial
+stable model total on the atoms relevant to instances of @tt{Query},
+if @tt{Flag} is 0.  If @tt{Flag} is 1, it only returns models in which
+the instance of @tt{Query} is true.").
+
+pstable_model(Query0,Model,Flag) :-
+	make_call(Query0,Query,QueryVars,Neg),
+	get_calls(Query, S, R),
+	is_most_general_term(R),
+	is_most_general_term(QueryVars),
+	get_returns(S,R,Leaf),
+	get_delay_lists(Leaf,DLs),
+	(DLs == []
+         ->     (Neg =:= 0
+                 ->     Model = [Query0]
+	         ;      fail
+	        )
+	 ;      init_smodels(Query),
+	        (Flag =:= 1
+	         ->     (Neg =:= 0
+	                 ->     smodelsSetPosCompute(1)
+		         ;      smodelsSetNegCompute(1)
+		        )
+		 ;      true
+	        ),
+		a_stable_model,
+		current_stable_model(Model)
+	).
+
+
+/*
+answer_set(+Query) true if Query is true in all partial stable models
+total on the subgoals relevant to Query.  And false otherwise. 
+*/
+%TLS hidden because of semantic difficulties.
+:- comment(hide,answer_set/1).
+
+answer_set(Query0) :-
+	make_call(Query0,Query,QueryVars,Neg),
+	get_calls(Query, S, R),
+	is_most_general_term(R),
+	is_most_general_term(QueryVars),
+	get_returns(S,R,Leaf),
+	get_delay_lists(Leaf,DLs),
+	(DLs == []
+         ->     true
+	 ;      init_smodels(Query),
+	        in_all_stable_models1(1,Neg)
+	).
+
+/*
+full_answer_set(+Query,-Res) where Res is true if Query is true in all
+partial stable models total on subgoals relevant to Query; Res is
+false if the query -Query (the explicit negation of Query, where the
+dash (-) is the explicit negation operator) is true in all such
+partial stable models; it fails otherwise.
+*/
+
+%TLS hidden because of semantic difficulties.
+:- comment(hide,full_answer_set/2).
+
+full_answer_set(Query,true) :-
+	answer_set(Query).
+full_answer_set(Query,false) :-
+	answer_set(-Query).
+
+make_call(Query0,Query,QueryVars,Neg) :-
+	excess_vars(Query0,[],[],QueryVars),
+	(Query0 = tnot(Query1)
+         ->     (QueryVars \== []
+                 ->     abort(('answer_set: variables in scope of tnot/1: ',Query0))
+	         ;      Neg = 1
+	        )
+         ;      Query1 = Query0, Neg = 0
+        ),
+	table_state(Query1,State),
+	(State == undef
+         ->     Query = table_call(Query1),
+                (table_call(Query1),fail ; true)
+         ; State \== complete
+         ->     Query = Query1,
+	        (call(Query1),fail ; true)
+	 ;      Query = Query1
+        ).
+
+:- table table_call/1.
+table_call(Q) :- call(Q).
+
+:- comment(a_stable_model/0,"This predicate invokes Smodels to find a
+(new) stable model (of the program set by the previous invocation of
+@pred{init_smodels/1}.)  It will compute all stable models through
+backtracking.  If there are no (more) stable models, it fails.  Atoms
+true in a stable model can be examined by
+@pred{in_current_stable_model/1}.").
+
+a_stable_model :-
+	smodels_initted,
+	repeat,
+	smodelsExistsModel(Ret),
+	(Ret =:= 0
+         ->     !,
+	        close_smodels,
+	        fail
+         ;      conset('_$smissm',1)
+	).
+
+have_sm :-
+	conget('_$smissm',F),
+	(F =\= 0
+         ->     true
+         ;      abort('smodels: no current stable model')
+        ).
+
+:- comment(in_current_stable_model/1,
+"@tt{in_current_stable_model(?AtomHandle)} is true of handles of atoms
+true in the current stable model (set by an invocation of
+@pred{a_stable_model/0}.)").
+
+in_current_stable_model(Handle) :-
+	smodels_initted,
+	have_sm,
+	conget('_$smctr',NumAtoms),
+	(integer(Handle),Handle>0,Handle=<NumAtoms
+         ->     true
+         ;      abort(('in_current_stable_model: illegal atom number: ',
+			Handle))
+        ),
+	smodelsCheckAtom(Handle,Ret),
+	Ret =\= 0.
+	
+:-comment(current_stable_model/1,"@tt{current_stable_model(-AtomList)}
+returns the list of atoms true in the current stable model.").
+
+current_stable_model(Atoms) :-
+	smodels_initted,
+	have_sm,
+	findall(Atom,true_in_csm(Atom),Atoms).
+
+true_in_csm(Atom) :-
+	atomtrie(AtomTrie),
+	conget('_$smctr',NumAtoms),
+	for(Hand,1,NumAtoms),
+	smodelsCheckAtom(Hand,Ret),
+	Ret =\= 0,
+	atomhandle(Hand,Leaf),
+	trie_interned(Atom,AtomTrie,Leaf,_Skel).
+
+:- comment(print_current_stable_model/0,"prints the current stable
+model to the stream to which answers are sent.(stdfbrk)").
+
+print_current_stable_model :-
+	current_stable_model(SM),
+	file_write(STDFDBK,'{'),
+	(SM = [Atom|Atoms]
+         ->     file_write(STDFDBK,Atom),
+                write_list_tail(Atoms,STDFDBK)
+	 ;      true
+        ),
+	file_write(STDFDBK,'}'),
+	fail.
+print_current_stable_model.
+
+write_list_tail([],_).
+write_list_tail([Atom|Atoms],Port) :-
+	file_write(Port,'; '),
+	file_write(Port,Atom),
+	write_list_tail(Atoms,Port).
+
+for(L,L,H) :- L =< H.
+for(I,L,H) :- L < H, L1 is L+1, for(I,L1,H).
+
+send_pgm_to_smodels(Rules,NumAtoms) :-
+	smodelsInit,
+	smodelsNumAtoms(NumAtoms),
+	send_rules(Rules),
+	smodelsCommitRules.
+
+send_rules([]).
+send_rules([[Head|Body]|Rules]) :-
+	smodelsBeginBasicRule,
+	smodelsAddHead(Head),
+        send_body(Body),
+	smodelsEndRule,
+	send_rules(Rules).
+
+send_body([]).
+send_body([tnot(Handle)|Rest]) :- !,
+	smodelsAddNegBody(Handle),
+	send_body(Rest).
+send_body([Handle|Rest]) :- 
+	smodelsAddPosBody(Handle),
+	send_body(Rest).
+
+/*
+:- op(1050,xfx,(<-)).
+%% for testing
+get_delay_lists(Query,DLs) :-
+	findall(Body,(Query<-Body),DLs).
+
+a <- [b,c,tnot(d)].
+b <- [a,tnot(b),c].
+b <- [tnot(d),a].
+c <- [tnot(a),tnot(b)].
+d <- [d,c,tnot(c)].
+*/

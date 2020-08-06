@@ -1,0 +1,13 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : dc = http://purl.org/metadata/dublin_core#,xmlns : l = http://mycorp.com/schemas/my-schema#],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://www.webnuts.net/Jan97.html],[element(http://purl.org/metadata/dublin_core# : Subject,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : value = 020 - Library Science,http://mycorp.com/schemas/my-schema# : Classification = Dewey Decimal Code],[])])])
+
+----------RDF----------
+
+[description(description,about(http://www.webnuts.net/Jan97.html),[http://purl.org/metadata/dublin_core# : Subject = description(description,_h644,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : value = literal(020 - Library Science),http://mycorp.com/schemas/my-schema# : Classification = literal(Dewey Decimal Code)])])]
+
+--------Triples--------
+
+{__Description544, http://www.w3.org/1999/02/22-rdf-syntax-ns#value, literal(020 - Library Science)}
+{__Description544, http://mycorp.com/schemas/my-schema#Classification, literal(Dewey Decimal Code)}
+{http://www.webnuts.net/Jan97.html, http://purl.org/metadata/dublin_core#Subject, __Description544}

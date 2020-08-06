@@ -1,0 +1,544 @@
+/* Routines to write RDF files (for daml) 8? */
+:- assert(library_directory('C:/xsbsys/XSBCVS/lib/oms')).
+
+:- import append/3 from basics.
+
+:- import ensure_loaded/2 from consult.
+:- ensure_loaded(oms_daml_names,dync).
+
+/**********************************************************************/
+/*		 dump_daml_classes(ClassList,OutFile)		      */
+/**********************************************************************/
+
+dump_daml_classes(Cids,OutFile) :-
+	Cids = [FCid|_],
+	class(FCid,_,_,DefNS),
+	abolish_all_tables,
+	telling(OldOutFile),
+	tell(OutFile),
+	write_xml_header,
+	abolish_all_tables,
+	init_referenced_ns,
+	find_referenced_class_name_spaces(Cids),
+	setof(Oid,Cid^ (member(Cid,Cids),memberof(Oid,Cid)),AllOids),
+	find_referenced_object_name_spaces(AllOids),  %% could take weeks; if right, fix performance
+	fill_namespace_table,
+	write_doctype,
+	writeln('<rdf:RDF'),
+	write_ns_abbrevs(DefNS),
+
+	setof(SubCid,Cid^ (member(Cid,Cids),subclass(SubCid,Cid)),AllCids),
+	write_r_classes(AllCids,DefNS),
+
+	write_r_objects(AllOids,DefNS),
+
+	nl,
+	writeln('</rdf:RDF>'),
+	told,
+	tell(OldOutFile).
+	
+write_r_classes(Cids,NS) :-
+	retractall(classes_output(_)),
+	write_r_classes1(Cids,NS).
+
+write_r_classes1([],_).
+write_r_classes1([Cid|Cids],NS) :-
+	write_one_r_class(Cid,NS),
+	write_r_classes1(Cids,NS).
+
+write_one_r_class(Cid,NS) :-
+	class(Cid,Name,NatID,Sou),
+	(is_a_relation(Cid)
+	 ->	write_relationship_class(Cid,Name,NatID,Sou,NS)
+	 ;	write_thing_class(Cid,Name,NatID,Sou,NS)
+	),
+	fail.
+write_one_r_class(_,_).
+
+
+/**********************************************************************/
+/*		 dump_daml_schema(NameSpace,OutFile)		      */
+/*	fix to generate own name_table 				      */
+/**********************************************************************/
+
+/* dump_daml_schema takes a NameSpace (Source) and the name of an
+output file, and generates an RDF document representing the DAML facts
+relevent to the NameSpace. */
+
+dump_daml_schema(DefNS,OutFile) :-
+	abolish_all_tables,
+	telling(OldOutFile),
+	tell(OutFile),
+
+	write_xml_header,
+	init_referenced_ns,
+	find_referenced_name_spaces(DefNS),
+	fill_namespace_table,
+	write_doctype,
+	writeln('<rdf:RDF'),
+	write_ns_abbrevs(DefNS),
+
+	write_classes(DefNS),
+
+	nl,
+	writeln('</rdf:RDF>'),
+	told,
+	tell(OldOutFile).
+
+write_xml_header :-
+	writeln('<?xml version=''1.0'' encoding=''ISO-8859-1''?> ').
+
+write_doctype :-
+	writeln('<!DOCTYPE uridef['),
+	(referenced_ns(NS),
+	 name_table(AA,NS),
+	 write('  <!ENTITY '),
+	 write(AA),write(' "'),
+	 write(NS),
+	 writeln('">'),
+	 fail
+	 ;
+	 true
+	),
+	writeln(']>').
+		 
+write_ns_abbrevs(NS) :-
+	(referenced_ns(ANS),
+	 name_table(AA,ANS),
+	 write('  xmlns'),
+	 write(':'),write(AA),
+	 write(' = '),
+	 write('"&'),write(AA),writeln(';#"'),
+	 fail
+	 ;
+	 true
+	),
+	write('  xmlns = "'),
+	(name_table(AA,NS)
+	 ->	write('&'),write(AA),write(';#')
+	 ;	write(NS)
+	),
+	writeln('"'),
+	
+	writeln('>').
+
+:- dynamic classes_output/1.
+:- index(classes_output/1,trie).
+write_classes(NS) :-
+	retractall(classes_output(_)),
+	class(Cid,Name,NatID,NS),
+	(is_a_relation(Cid)
+	 ->	write_relationship_class(Cid,Name,NatID,NS,NS)
+	 ;	write_thing_class(Cid,Name,NatID,NS,NS)
+	),
+	fail.
+write_classes(_NS).
+
+write_thing_class(Cid,Name,NatID,NS,DefNS) :-
+	(NatID == 'Thing',NS == 'http://www.daml.org/2001/03/daml+oil'
+	 ->	true
+/***	 ; (class(ThingCid,_,'Thing','http://www.daml.org/2001/03/daml+oil'),
+	    immediate_subclass(Cid,ThingCid))
+	 ->	something ***/
+	 ;	immediate_subclass(Cid,SCid),
+		(classes_output(SCid)
+		 ->	write_thing_class1(Cid,Name,NatID,NS,DefNS)
+		 ;	assert(classes_output(SCid)),
+			class(SCid,SName,SNatID,SNS),
+			write_thing_class(SCid,SName,SNatID,SNS,DefNS),
+			write_thing_class1(Cid,Name,NatID,NS,DefNS)
+		)
+	).
+
+write_thing_class1(Cid,Name,NatID,NS,DefNS) :-
+	nl,
+	write('<daml:Thing rdf:'),
+	write_id_or_about(NatID,NS,DefNS),
+	writeln('>'),
+
+	(Name \== NatID
+	 ->	write('  <daml:label>'),
+		write(Name),
+		writeln('</daml:label>')
+	 ;	true
+	),
+	(immediate_subclass(Cid,SupCid),
+	 class(SupCid,_,SupNatID,SupNS),
+	 write('  <rdfs:subClassOf rdf:resource='),
+	 %% could use daml:, but we don't want cyclic defs, (now)
+	 write_quoted_reference(SupNatID,SupNS,DefNS),
+	 writeln('/>'),
+	 fail
+	 ;
+	 true
+	),
+
+	write_comments(Cid),
+
+	write_properties(Cid,DefNS),
+
+	writeln('</daml:Thing>'),
+	fail.
+write_thing_class1(_,_,_,_,_).
+
+write_comments(Cid) :-
+	class(CommentCid,_,'comment','http://www.w3.org/2000/01/rdf-schema'),
+	strel(Cid,CommentCid,atom(Comment)),
+	write(' <rdfs:comment>'),write(Comment),writeln('</rdfs:comment>'),
+	fail.
+write_comments(Cid) :-
+	class(CommentCid,_,'comment','http://www.daml.org/2001/03/daml+oil'),
+	strel(Cid,CommentCid,atom(Comment)),
+	write(' <daml:comment>'),write(Comment),writeln('</daml:comment>'),
+	fail.
+write_comments(_Cid).
+
+write_properties(Cid,DefNS) :-
+	immediate_relationship(Cid,RCid,TCid),
+	class(RCid,_,RNatCid,RSou),
+	write_a_property(RNatCid,RSou,TCid,DefNS),
+	fail.
+write_properties(_Cid,_DefNS).
+
+write_a_property(RNatCid,RSou,TCid,DefNS) :-
+	write('  <'),write_class_rdfname(RNatCid,RSou,DefNS),
+	(TCid = atom(Atom)
+	 ->	write('>'),
+		write(Atom),
+		write('</'),write_class_rdfname(RNatCid,RSou,DefNS),
+		writeln('>')
+	 ;	write(' rdf:resource='),
+		class(TCid,_,TNatCid,TSou),
+		write_quoted_reference(TNatCid,TSou,DefNS),
+		writeln('/>')
+	).
+
+write_relationship_class(Cid,_,NatID,NS,DefNS) :-
+	immediate_subclass(Cid,PropCid),
+	class(PropCid,_,PNatID,PNS),
+	PNS \== 'OMS',
+	(daml_property(PNatID,PNS)
+	 ->	true
+	 ; (PNatID == 'DAML Properties',PNS == 'http://www.daml.org/2001/03/daml+oil')
+	 ->	true
+	 ;	telling(OF),tell(user),
+		write('%ERROR%: No DAML Property for: '),
+		writeln(class(PNatID,PNS)),
+		tell(OF),
+		fail
+	),
+	nl,
+	write('<'),write_class_rdfname(PNatID,PNS,DefNS),
+	write(' rdf:ID="'),write_class_exp_rdfname(NatID,NS,DefNS),writeln('">'),
+
+	write_comments(Cid),
+
+	write_properties(Cid,DefNS),
+
+	(class(DomCid,_,domain,'http://www.daml.org/2001/03/daml+oil'),
+	 class(RanCid,_,range,'http://www.daml.org/2001/03/daml+oil'),
+	 relationship(Cid,DomCid,_),
+	 relationship(Cid,RanCid,_)
+	 ->	true
+	 ; (class(DomCid,_,domain,'http://www.w3.org/2000/01/rdf-schema'),
+	    class(RanCid,_,range,'http://www.w3.org/2000/01/rdf-schema'),
+	    relationship(Cid,DomCid,_),
+	    relationship(Cid,RanCid,_))
+	 ->	true
+	 ; schrel(DomCidA,Cid,RanCidA) % pick one randomly
+	 ->	write_a_property(domain,'http://www.w3.org/2000/01/rdf-schema',DomCidA,DefNS),
+		write_a_property(range,'http://www.w3.org/2000/01/rdf-schema',RanCidA,DefNS)
+	 ;	true
+	),
+	
+	write('</'),write_class_rdfname(PNatID,PNS,DefNS),writeln('>').
+
+/**********************************************************************/
+/* 		dump_daml_objects(Oids,OutFile)			      */
+/**********************************************************************/
+
+/* dump_daml_objects takes a list of internal Oids and the name of an
+output file and generates into the file a DAML document that
+represents the facts relevant to the objects in the list. */
+
+dump_daml_objects(Oids,OutFile) :-
+	(get_common_obj_namespace(Oids,DefNS)
+	 ->	true
+	 ;	writeln('ERROR: Objects have different sources'),
+		fail
+	),
+
+	findall(Oid,attrib_connected(Oids,Oid),EOids),
+	sort(EOids,SEOids),
+
+	telling(OldOutFile),
+	tell(OutFile),
+	write_xml_header,
+
+	abolish_all_tables,
+	init_referenced_ns,
+	find_referenced_object_name_spaces(SEOids),
+	fill_namespace_table,
+	write_doctype,
+	writeln('<rdf:RDF'),
+	write_ns_abbrevs(DefNS),
+
+	write_r_objects(SEOids,DefNS),
+
+	nl,
+	writeln('</rdf:RDF>'),
+	told,
+	tell(OldOutFile).
+
+get_common_obj_namespace([],_).
+get_common_obj_namespace([Oid|Oids],NS) :-
+	object(Oid,_,_,NS),
+	get_common_obj_namespace(Oids,NS).
+
+attrib_connected(Oids,Oid) :-
+	member(SOid,Oids),
+	(Oid = SOid
+	 ;
+	 attribute_object(SOid,_ROid,Oid)
+	).
+
+write_r_objects([],_).
+write_r_objects([Oid|Oids],DefNS) :-
+	write_one_r_object(Oid,DefNS),
+	write_r_objects(Oids,DefNS).
+
+write_one_r_object(Oid,DefNS) :-
+	object(Oid,_,NatOid,OSou),
+	nl,
+	write('  <rdf:Description rdf:'),
+	write_id_or_about(NatOid,OSou,DefNS),
+	writeln('>'),
+	
+	(immediate_memberof(Oid,Cid),
+	 tab(2), write('  <rdf:type rdf:resource="'),
+	 write_class_exp_rdfname(Cid,DefNS),writeln('"/>'),
+	 fail
+	 ;
+	 true
+	),
+
+	write_attributes(Oid,DefNS),
+	write_attribute_objects(Oid,DefNS),
+	writeln('  </rdf:Description>').
+
+write_id_or_about(NatID,OSou,DefNS) :-
+	(DefNS == OSou
+	 ->	write('ID="'),
+		write(NatID)
+	 ;	write('about="'),
+		write_object_exp_rdfname(NatID,OSou,DefNS)
+	),
+	write('"').
+
+write_attributes(Oid,DefNS) :-
+	immediate_attribute(Oid,RCid,TCid),
+	\+ TCid = object(_),	% a_o will get it by inheritance.
+	class(RCid,_,RNatCid,RSou),
+	tab(2),
+	write_a_property(RNatCid,RSou,TCid,DefNS),
+	fail.	
+write_attributes(_Oid,_DefNS).
+
+write_attribute_objects(Oid,DefNS) :-
+	findall(p(RCid,TOid),attribute_object(Oid,RCid,TOid),ALL),
+	sort(ALL,SALL),
+	member(p(RCid,TOid),SALL),
+	class(RCid,_,RNatCid,RSou),
+	tab(2),
+	write_an_attribute_object(RNatCid,RSou,TOid,DefNS),
+	fail.	
+write_attribute_objects(_Oid,_DefNS).
+
+write_an_attribute_object(RNatCid,RSou,TOid,DefNS) :-
+	write('  <'),write_class_rdfname(RNatCid,RSou,DefNS),
+	write(' rdf:resource='),
+	object(TOid,_,TNatCid,TSou),
+	write_quoted_reference(TNatCid,TSou,DefNS),
+	writeln('/>').
+
+write_class_exp_rdfname(Cid,DefNS) :-
+	class(Cid,_,NatCid,Sou),
+	write_class_exp_rdfname(NatCid,Sou,DefNS).
+
+write_class_exp_rdfname(NatCid,Sou,DefNS) :-
+	(Sou == DefNS
+	 ->	write('#')
+	 ; Sou == global
+	 ->	true
+	 ; name_table(Abbrev,Sou)
+	 ->	write(Abbrev),write(':')
+	 ;	write(Sou),write(':')
+	),
+	write(NatCid).
+
+
+write_class_rdfname(Cid,DefNS) :-
+	class(Cid,_,NatCid,Sou),
+	write_class_rdfname(NatCid,Sou,DefNS).
+	
+write_class_rdfname(NatCid,Sou,DefNS) :-
+	(Sou == DefNS
+	 ->	true
+	 ; name_table(Abbrev,Sou)
+	 ->	write(Abbrev),write(':')
+	 ;	write(missing_Abbreviation_ERROR)
+	),
+	write(NatCid).
+	
+write_object_exp_rdfname(NatOid,Sou,DefNS) :-
+	write_class_exp_rdfname(NatOid,Sou,DefNS).
+
+write_quoted_reference(NatID,NS,DefNS) :-
+	write('"'),
+	write_class_exp_rdfname(NatID,NS,DefNS),
+	write('"').
+/**write_quoted_reference(SupNatID,SupNS,NS) :-
+	write('"'),
+	(NS \== SupNS
+	 ->	(name_table(Abbrev,SupNS)
+		 ->	write(Abbrev),
+			write(':')
+		 ; SupNS == global
+		 ->	true
+		 ;	write(SupNS),
+			write('#')
+		)
+	 ;	write('#')
+	),
+	write(SupNatID),
+	write('"').**/
+
+:- dynamic referenced_ns/1.
+:- index(referenced_ns/1,trie).
+
+find_referenced_class_name_spaces(Cids) :-
+	member(SCid,Cids),
+	subclass(Cid,SCid),
+	add_oid_ns(Cid),
+	fail.
+find_referenced_class_name_spaces(Cids) :-
+	member(SCid,Cids),
+	add_relns_ns(SCid).
+
+find_referenced_name_spaces(Namespace) :-
+	class(Cid,_,_,Namespace),
+	connect_cid_ns(Cid),
+	fail.
+find_referenced_name_spaces(_Namespace).
+	
+connect_cid_ns(Cid) :-
+	add_cid_ns(Cid),
+	immediate_subclass(Cid,Cid2),
+	add_cid_ns(Cid2),
+	fail.
+connect_cid_ns(Cid) :-
+	add_relns_ns(Cid).
+	
+add_relns_ns(Cid) :-
+	(immediate_relationship(Cid,RCid,TCid)
+	 ;
+	 immediate_schrel(Cid,RCid,TCid)
+	 ;
+	 strel(Cid,RCid,TCid)
+	),
+	add_cid_ns(RCid),
+	add_cid_ns(TCid),
+	fail.
+add_relns_ns(_Cid).
+
+:- table add_cid_ns/1.
+add_cid_ns(Cid) :-
+	class(Cid,_,_,RNS),
+	assert(referenced_ns(RNS)).
+
+:- table add_oid_ns/1.
+add_oid_ns(Oid) :-
+	object(Oid,_,_,RNS),
+	assert(referenced_ns(RNS)).
+
+init_referenced_ns :-
+	retractall(referenced_ns(_)),
+	assert(referenced_ns('http://www.w3.org/1999/02/22-rdf-syntax-ns')),
+	assert(referenced_ns('http://www.w3.org/2000/01/rdf-schema')),
+	assert(referenced_ns('http://www.w3.org/2000/10/XMLSchema')),
+	assert(referenced_ns('http://www.daml.org/2001/03/daml+oil')).
+
+find_referenced_object_name_spaces(Oids) :-
+	member(Oid,Oids),
+	add_oid_ns(Oid),
+	(immediate_memberof(Oid,Cid),
+	 add_cid_ns(Cid),
+	 fail
+	 ;
+	 true
+	),
+	(immediate_attribute(Oid,RCid,TCid),
+	 add_cid_ns(RCid),
+	 add_cid_ns(TCid),
+	 fail
+	 ;
+	 true
+	),
+	(attribute_object(Oid,RCid,TOid),
+	 add_cid_ns(RCid),
+	 add_oid_ns(TOid),
+	 fail
+	 ;
+	 true
+	),
+	fail.	
+find_referenced_object_name_spaces(_).
+	 
+:- dynamic name_table/2.
+:- index(name_table/2,2).
+
+fill_namespace_table :-
+	retractall(name_table(_,_)),
+	referenced_ns(NS),
+	(predefined_ns(NS,Abbr)
+	 ->	true
+	 ;	atom_codes(NS,NSC),
+		(lappend(_,[0'/|Suffix],NSC)
+		 ->	(append(AbbrC,[0'.|_],Suffix)
+			 ->	true
+			 ;	AbbrC = Suffix
+			)
+		 ;	AbbrC = NSC
+		),
+		lowercase_codes(AbbrC,LCAbbrC),
+		atom_codes(Abbr,LCAbbrC)
+	),
+	assert(name_table(Abbr,NS)),
+	fail.
+fill_namespace_table.
+
+lappend([X|L1],L2,[X|L3]) :- lappend(L1,L2,L3).
+lappend([],L,L).
+
+lowercase_codes([],[]).
+lowercase_codes([UC|UCs],[LC|LCs]) :-
+	(UC =< 0'Z, UC >= 0'A
+	 ->	LC is UC + 0'a - 0'A
+	 ;	LC = UC
+	),
+	lowercase_codes(UCs,LCs).
+
+
+predefined_ns('http://www.w3.org/1999/02/22-rdf-syntax-ns', rdf).
+predefined_ns('http://www.w3.org/2000/01/rdf-schema',       rdfs).
+predefined_ns('http://www.w3.org/2000/10/XMLSchema',        xsd).
+predefined_ns('http://www.daml.org/2001/03/daml+oil',       daml).
+
+end_of_file.
+
+fix Ontology: to output daml:Ontology...
+
+Work on constraints.....
+
+AtomicProcess in Process? I get subclassof disjointUnion and they get subclassof Process?
+   and SimpleProcess, too.

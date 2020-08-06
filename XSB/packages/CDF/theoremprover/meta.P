@@ -1,0 +1,176 @@
+
+:- ensure_loaded(metafront).
+:- ensure_loaded(metaback).
+:- ensure_loaded(meta_io).
+
+:- import sysin/2 from scrptutl.
+
+:- import smcCommitProgram/0, smComputeModel/0 from sm_int.
+:- import smcSetCompute/1 from sm_int.
+:- import smcExamineModel/1, smEnd/0 from sm_int.
+:- import print_cache/0 from sm_int.
+
+%------------------------------
+% Set up switches.
+
+backend(smodels).
+%backend(dlv).
+
+:- dynamic interface/1.
+%:- index(interface/1,0,0).
+
+:- dynamic debug_mode/1.
+%:- index(debug_mode/1,0,0).
+
+:- [xasp].
+
+%?- use_capi.
+?- use_files.
+
+%?- init_capi_if_needed.
+
+init_capi_if_needed:- interface(capi),[xasp].
+init_capi_if_needed:- \+ interface(capi).
+
+use_capi:- retractall(interface(_)),assert(interface(capi)).
+use_files:- retractall(interface(_)),assert(interface(files)).
+
+?- set_debug_on.
+
+set_debug_on:- retractall(debug_mode(_)),assert(debug_mode(on)).
+set_debug_off:- retractall(debug_mode(_)),assert(debug_mode(off)).
+%------------------------------
+
+sat(Expr):- 
+	metafront(Expr,Mid),
+	writeln(Mid),nl,
+	metaback(Mid,_).
+
+sat(Expr,File):- 
+	tell(File),
+	metafront(Expr,Mid),
+	metaback(Mid,_),
+	told.
+
+testval(Formula,Val):- 
+	(backend(smodels) -> 
+	    testval_smodels(Formula,Val)
+	  ; 
+	    testval_dlv(Formula,Val) ).
+
+testval_smodels(Formula,Val):- 
+	interface(Iface),
+	(Iface == files -> 
+	    testval_smodels_files(Formula,Val)
+	  ;
+	    testval_smodels_capi(Formula,Val) ).
+
+%---------
+testval_smodels_files(Formula,Val):- 
+	shell('rm -f temp.lp'),
+	sat(Formula,'temp.lp'),
+	shell('rm -f foo'),
+	(xsb_configuration(os_type,windows) -> 
+	    shell('lparse.exe --true-negation temp.lp | smodels.exe > foo')
+	  ; shell('lparse --true-negation temp.lp | smodels > foo') ),
+	check_smodels_answer(Val,Formula).
+
+check_smodels_answer(true,Formula):- 
+	(sysin('grep True foo',_F) -> 
+	     true
+          ;  writeln('!!!!failing'(Formula)) ).
+check_smodels_answer(false,Formula):- 
+	(sysin('grep False foo',_F) -> 
+  	     true
+          ;  writeln('!!!!failing'(Formula)) ).
+
+%---------
+testval_smodels_capi(Formula,Val):- 
+	sat_capi(Formula,Cstmt),
+%	print_cache,
+	check_smodels_answer_capi(Val,Formula,Cstmt),
+	debug_mode(Mode),
+	(Mode == on -> 	smcExamineModel(Model),write(Model),nl ; true),
+	smEnd,!.
+
+sat_capi(Expr,Cstmt):- 
+	metafront(Expr,Mid),
+	metaback(Mid,Cstmt),
+	!.
+
+check_smodels_answer_capi(true,Formula,Cstmt):- 
+	smcSetCompute([Cstmt]),
+	cputime(A),	
+	smcCommitProgram,
+	cputime(B),C is B - A,
+	writeln(committime(C)),
+	(smComputeModel -> 
+	     true
+          ;  writeln('!!!!failing'(Formula)) ).
+check_smodels_answer_capi(false,Formula,Cstmt):- 
+	smcSetCompute([Cstmt]),
+	cputime(A),	
+	smcCommitProgram,
+	cputime(B),C is B - A,
+	writeln(committime(C)),
+	(\+ smComputeModel -> 
+  	     true
+          ;  writeln('!!!!failing'(Formula)) ).
+
+testval_dlv(Formula,Val):- 
+	shell('rm -f temp.dlv'),
+	sat(Formula,'temp.dlv'),
+	shell('rm -f foo'),
+	(xsb_configuration(os_type,windows) -> 
+	     shell('dl.exe -n=1 -stats -FB temp.dlv > foo')
+	  ;  shell('dl -n=1 -stats -FB temp.dlv > foo') ),
+	check_dlv_answer(Val,Formula).
+
+check_dlv_answer(true,Formula):- 
+	(sysin('grep "bravely true" foo',_F) -> 
+	     true
+          ;  writeln('!!!!failing'(Formula)) ).
+
+check_dlv_answer(false,Formula):- 
+	((sysin('grep "bravely false" foo',_F) ; 
+  	  sysin('grep "inconsistency" foo',_F) ) -> 
+  	     true
+          ;  writeln('!!!!failing'(Formula)) ).
+
+%-----------
+
+benchval(Formula,Val):- 
+	cputime(One),
+	benchval_smodels_capi(Formula,Val),
+	cputime(Two),
+	Tot is Two - One,
+	writeln(total_is(Tot)),nl.
+
+benchval_smodels_capi(Formula,Val):- 
+%	index('sm_atomnum/2',trie),
+	set_debug_off,
+	bench_capi(Formula,Cstmt),
+	check_smodels_answer_capi(Val,Formula,Cstmt),
+	smEnd.
+
+bench_capi(Expr,Cstmt):- 
+	cputime(One),
+	metafront(Expr,Mid),
+	cputime(Two),
+	Front is Two - One,
+	writeln(front_time(Front)),
+	metaback(Mid,Cstmt),
+	cputime(Three),
+	Back is Three - Two,
+	writeln(back_time(Back)).
+
+make_files:- 
+	shell('cp tp_debug.df tp_debug.h'),
+	compile([tp_utils,meta_io]),
+	[tp_utils,meta_io].
+
+make_capi:- 
+	shell('cp tp_debug.none tp_debug.h'),
+	compile([tp_utils,meta_io]),
+	[tp_utils,meta_io].
+

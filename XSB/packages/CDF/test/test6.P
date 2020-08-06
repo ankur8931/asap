@@ -1,0 +1,9 @@
+
+% Testing proper dumping of structured classes via _oms routines.
+
+test:- 
+	load_oms(test6dir),
+	dump_oms(test6dir),
+	shell('sh get_internal_diff.sh test6dir').
+
+end_of_file.

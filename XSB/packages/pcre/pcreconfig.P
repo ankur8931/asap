@@ -1,0 +1,163 @@
+/*
+** File: packages/pcre/pcreconfig.P
+** Author: Mandar Pathak
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2002-2016
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+:- compiler_options([xpp_on]).
+#include "extensions_xsb.h"
+
+
+:- import xsb_running_under/1, force_rename_file/2 from packaging.
+:- import slash/1, str_cat/3 from machine.
+:- import search_module/6 from consult.
+:- import path_sysop/3, path_sysop/2, fmt_write_string/3 from file_io.
+:- import xsb_configuration/2 from xsb_configuration.
+:- import concat_atom/2 from string.
+
+
+'_$_pcrematch_make_pcrematchH'(CC, CC_opts) :-
+        slash(Slash),
+        xsb_configuration(configuration, XSBconfiguration),
+        ((xsb_running_under(unix) ; xsb_running_under(darwin)) ->
+            xsb_configuration(loader_flags, LoaderFlagsBase), 
+            concat_atom([LoaderFlagsBase, ' -lpcre'], LoaderFlags),
+            LD_flags = LoaderFlags
+        ; %% Cygwin. Under Windows this option is ignored
+            LD_flags = ' -lpcre'
+        ),
+
+        package_configuration(dir(pcre), PcreDir),
+        fmt_write_string(LD_directives_file,
+                         '%s%scc%spcre4pl.H', f(PcreDir, Slash, Slash)),
+        telling(OldTell),
+        tell(LD_directives_file),
+        writeln('%% This file is generated on-the-fly by pcreconfig.P'),
+        writeln('%% Do not edit--any changes will be written over.'),
+        write('%% config:    '), writeln(XSBconfiguration),
+        write('%% CC:        '), writeln(CC),
+        write('%% CC Opts: '), writeln(CC_opts), 
+        writeln(':- export pl_trymatch/4, pl_substitute/4.'),
+        write(':- ldoption('''),
+        write(LD_flags),
+        writeln(''').'),
+        told,
+        tell(OldTell).
+
+
+:- package_configuration(dir(pcre), PcreDir),  
+        slash(Slash),
+        Basename = pcre4pl,
+        fmt_write_string(Module,
+                         '%s%scc%s%s',
+                         f(PcreDir,Slash,Slash,Basename)),
+        xsb_configuration(compiler, CC),
+        xsb_configuration(config_dir, ConfigDir),
+        xsb_configuration(compiler_flags, CCflags),
+        xsb_configuration(config_bindir, ConfigBinDir),
+        xsb_configuration(config_libdir, ConfigLibDir),
+        
+        (xsb_running_under(windows64) -> PkgDlls = bin64
+        ; PkgDlls = bin
+        ),
+        fmt_write_string(WindPcrematchDlls,
+                         '%s%scc%s%s%s*.dll',
+                         f(PcreDir,Slash,Slash,PkgDlls,Slash)),
+        fmt_write_string(WindPcrematchLibs,
+                         '%s%scc%s%s%s*.lib',
+                         f(PcreDir,Slash,Slash,PkgDlls,Slash)),
+
+        str_cat(Module, XSB_OBJ_EXTENSION_ATOM, ObjfileX),
+        fmt_write_string(LibObjFileX,
+                         '%s%s%s%s',
+                         args(ConfigLibDir,Slash,Basename,XSB_OBJ_EXTENSION_ATOM)),
+        fmt_write_string(CC_opts,
+                         ' %s -I %s',
+                         f(CCflags, ConfigDir)),
+
+        ((xsb_running_under(windows) ; xsb_running_under(cygwin)) ->
+            fmt_write_string(ConfigSharedMod,
+                             '%s%s%s.dll',
+                             f(ConfigBinDir, Slash, Basename))
+        ; xsb_running_under(darwin) ->
+            fmt_write_string(ConfigSharedMod,
+                             '%s%s%s.dylib',
+                             f(ConfigLibDir, Slash, Basename))
+        ;
+            fmt_write_string(ConfigSharedMod,
+                             '%s%s%s.so',
+                             f(ConfigLibDir, Slash, Basename))
+        ),
+        ( %% avoid recompilation
+            search_module(Basename,Dir,_Mod,_Ext,_BaseDir,ModuleO),
+            str_cat(Module, '.c', ModuleSourceFile),
+            path_sysop(newerthan,ModuleO,ModuleSourceFile),
+            path_sysop(newerthan,ConfigSharedMod,ModuleSourceFile)
+        %% module compiled and is current, so just load
+        -> [Basename]
+        ;
+            %% Cygwin isn't supported: XSB's C interface no longer works with it
+            '_$_pcrematch_make_pcrematchH'(CC, CC_opts),
+            (xsb_running_under(cygwin) ->
+                shell(['copy /B /Y ', '"', WindPcrematchDlls, '"', ' ', '"', ConfigBinDir, '"']),
+                shell(['copy /B /Y ', '"', WindPcrematchLibs, '"', ' ', '"', ConfigBinDir, '"']),
+
+                str_cat(Module, '.dll', SharedLib),
+                consult(Module, [cc(CC), cc_opts(CC_opts)]),
+                force_rename_file(SharedLib, ConfigSharedMod),
+                force_rename_file(ObjfileX, LibObjFileX),
+                str_cat(Module, '.o', ObjfileO),
+                fmt_write_string(LibObjFileO,
+                                 '%s%s%s.o',
+                                 f(ConfigBinDir, Slash, Basename)),
+                force_rename_file(ObjfileO, LibObjFileO),
+                str_cat(Module, '.a', ObjfileA),
+                fmt_write_string(LibObjFileA,
+                                 '%s%s%s.a',
+                                 f(ConfigBinDir, Slash, Basename)),
+                force_rename_file(ObjfileA, LibObjFileA),
+                str_cat(Module, '.def', ObjfileDef),
+                fmt_write_string(LibObjFileDef,
+                                 '%s%s%s.def',
+                                 f(ConfigBinDir, Slash, Basename)),
+                force_rename_file(ObjfileDef, LibObjFileDef)
+
+            ; xsb_running_under(windows) ->
+                shell(['copy /B /Y ', '"', WindPcrematchDlls, '"', ' ', '"', ConfigBinDir, '"']),
+                shell(['copy /B /Y ', '"', WindPcrematchLibs, '"', ' ', '"', ConfigBinDir, '"']),
+                [Basename],
+                (path_sysop(exists,ObjfileX) ->
+                    force_rename_file(ObjfileX, LibObjFileX)
+                ; true
+                )
+
+
+            ; %% unix and the module isn't compiled or is old -- recompile
+                (xsb_running_under(darwin) -> LibrarySuffix='.dylib'
+                ;  LibrarySuffix='.so'
+                ),
+                str_cat(Module, LibrarySuffix, SharedLib),
+
+                consult(Module, [cc(CC), cc_opts(CC_opts)]),
+                force_rename_file(ObjfileX, LibObjFileX),
+                force_rename_file(SharedLib,ConfigSharedMod)
+            )
+        ).
+

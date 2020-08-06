@@ -1,0 +1,258 @@
+/* File:      print_chrd.P
+**
+** Adapted for chrd printing from pretty_print.P (details of which follow)
+** Code from Bart Demoen and Ciao combined by Swift.  Any bugs are likely mine.
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: print_chrd.P,v 1.5 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- import numbervars/3 from num_vars.
+
+:- import nl/0 from standard.
+:- import writeln/1 from standard.
+:- import writeq/1 from standard.
+:- import tab/1 from standard.
+:- import put/1 from standard.
+:- import (\=)/2 from standard.
+:- import write/1 from standard.
+:- import length/2, copy_term/2 from basics.
+
+
+%:- import from lists.
+
+print_chrd([]):- !.
+print_chrd([(Cl,Dict)|T]) :- !,
+	print_chrd_clause(Cl,Dict),
+	print_chrd(T).
+print_chrd([Cl|T]) :- !,
+	print_chrd_clause(Cl),
+	print_chrd(T).
+print_chrd((Cl,Dict)) :- !,
+	print_chrd_clause(Cl,Dict).
+print_chrd(Cl) :- 
+	print_chrd_clause(Cl).
+
+print_chrd_clause(Cl):- 
+	instantiate_term([],Cl),
+	ppfail(Cl),
+	(separator(yes) -> nl ; true).
+print_chrd_clause(Clause,Dict) :-
+	instantiate_term(Dict,Clause),
+	ppfail(Clause),
+	(separator(yes) -> nl ; true).
+
+instantiate_term([],Clause):- !,numbervars(Clause,0,_).
+instantiate_term(Dict,Clause):- 
+	instantiate_term_1(Dict,Clause).
+
+instantiate_term_1([],Clause):- 
+	copy_term(Clause,Clause_copy),
+	numbervars(Clause_copy,1,Num),
+	NegNum is 0 - Num,
+	numbervars(Clause,NegNum,_).
+instantiate_term_1([Const = Var|R],Clause):- 
+	'$VAR'(Const) = Var,
+	instantiate_term_1(R,Clause).
+
+
+separator(yes).  % or no.
+
+ppfail(Clause):- print_chrd1(Clause),fail ; true.
+
+print_chrd1(directive(D)):- !,
+	write(':- '), 
+	writeq(D).
+print_chrd1((H :- B)) :- !,
+	print_chrd2(H,B).
+print_chrd1(pragma(R,IDs,Pragmas)) :- !,
+	print_chrd_chr(R,IDs,Pragmas).
+print_chrd1(H):-
+	print_chrd2(H,true).
+
+print_chrd2(H,true) :- !, 	writeq(H),write('.'),nl.
+print_chrd2(H,!) :- !, print_chrd3(H,0), write(' :- !').
+print_chrd2(H,B) :- print_chrd3(H,0), write(' :-'), nl, print_chrd3(B,8),
+	                 writeln('.').
+
+print_chrd3((true,B),Space) :- !,
+	print_chrd3(B,Space).
+print_chrd3((A,B),Space) :-
+	all_true(B), !,
+	print_chrd3(A,Space).
+print_chrd3((A,B),Space) :- !,
+	print_chrd3(A,Space),
+	put(0',),nl,
+	print_chrd3(B,Space).
+print_chrd3((A->B;_),Space) :-
+	all_true(A), !,
+	print_chrd3(B,Space).	
+print_chrd3((A->B;C),Space) :- !,
+	tab(Space), put(0'(),
+	print_chrd_ite((A->B;C),Space),nl,
+	tab(Space), put(0')).
+print_chrd3((A->B),Space) :-
+	all_true(A), !,
+	print_chrd3(B,Space).
+print_chrd3((A->B),Space) :- !,
+	tab(Space), put(0'(), nl,
+	Space1 is Space+2,
+	Space2 is Space+5,
+	print_chrd3(A,Space1),
+	write(' ->'), nl,
+	print_chrd3(B,Space2),nl,
+	tab(Space), put(0')).
+print_chrd3((A;B),Space) :- !,
+	tab(Space), put(0'(), nl,
+	print_chrd_disj((A;B),Space),nl,
+	tab(Space), put(0')).
+print_chrd3(A:G,Space) :- !,
+ 	tab(Space),
+	writeq(A), put(0':), writeq(G).
+print_chrd3(A,Space) :-
+ 	tab(Space),
+	writeq(A).
+
+all_true(true).
+all_true((true,B)) :-
+	all_true(B).
+
+print_chrd_ite(G,Space) :-
+	Space1 is Space+2,
+	Space2 is Space+5,
+	( G = (A->B;C) ->
+		( simple_goal(A) ->
+			print_chrd3(A,2)
+		;	
+			nl,
+			print_chrd3(A,Space1)
+		),
+		write(' ->'),
+		nl,
+		print_chrd3(B,Space2),nl,
+		tab(Space), put(0';), 
+%		print_chrd_ite(C,Space)
+		nl, print_chrd3(C,Space2)
+	; G = (A -> B) ->
+		( simple_goal(A) ->
+			print_chrd3(A,2)
+		;
+			nl,
+			print_chrd3(A,Space1)
+		),
+		write(' ->'),
+		nl,
+		print_chrd3(B,Space2)
+	;
+		nl,
+		print_chrd3(G,Space2)
+	).
+
+print_chrd_disj(G,Space) :-
+	Space1 is Space+5,
+	( G = (A;B), A \= (_ -> _) -> 
+		print_chrd_disj(A,Space),nl,
+		tab(Space), put(0';), nl,
+		print_chrd_disj(B,Space)
+	;
+		print_chrd3(G,Space1)
+	).
+
+simple_goal(G) :-
+	G \= (_ , _),
+	G \= (_ ; _),
+	G \= (_ -> _).
+
+
+print_chrd_chr(Rule,IDs,Pragmas) :-
+	Rule = rule(H1,H2,_Guard,_Body),
+	(H1 = []
+	 -> print_chrd_propagation(Rule,IDs,Pragmas)
+	  ; (H2 = []
+	     -> print_chrd_simplification(Rule,IDs,Pragmas)
+	      ; print_chrd_simpagation(Rule,IDs,Pragmas)
+	    )
+	).
+
+print_chrd_propagation(Rule,_IDs,_Pragmas) :-
+	Rule = rule([],HeadL,Guard,Body),
+	print_chrd_list(HeadL),	
+	write(' ==> '),
+	print_chrd_guard(Guard),
+	and2list(Body,BodyL),
+	print_chrd_list(BodyL),
+	writeln('.').
+
+print_chrd_simplification(Rule,_IDs,_Pragmas) :-
+	Rule = rule(HeadL,[],Guard,Body),
+	print_chrd_list(HeadL),
+	write(' <=> '),
+	print_chrd_guard(Guard),
+	and2list(Body,BodyL),
+	print_chrd_list(BodyL),
+	writeln('.').
+
+print_chrd_simpagation(Rule,_IDs,_Pragmas) :-
+	Rule = rule(Head1L,Head2L,Guard,Body),
+	print_chrd_list(Head2L),
+	write(' \ '),
+	print_chrd_list(Head1L),	
+	write(' <=> '),
+	print_chrd_guard(Guard),
+	and2list(Body,BodyL),
+	print_chrd_list(BodyL),
+	writeln('.').
+
+
+print_chrd_list([X]) :-
+	!, writeq(X).
+print_chrd_list([X|Xs]) :-
+	writeq(X),
+	write(', '),
+	print_chrd_list(Xs).
+
+
+print_chrd_guard(true) :- !.
+print_chrd_guard(Guard) :-
+	and2list(Guard,GL),
+	clean_chrd_guard_list(GL,CleanGL),
+	print_chrd_list(CleanGL),
+	write(' | ').
+
+clean_chrd_guard_list([],[]).
+clean_chrd_guard_list([G|Gs],GL) :-
+	clean_chrd_guard_list(Gs,GL1),
+	(G = true
+	 -> GL = GL1
+	  ; GL = [G|GL1]
+	).
+
+
+end_of_file.
+
+:- import writeq/1,
+	  write/1,
+          nl/0,
+	  put/1,
+	  tab/1,
+	  (\=)/2,
+	  (=..)/2,
+	  atomic/1
+   from standard.

@@ -1,0 +1,46 @@
+:- export find_indexed_name/2, find_indexed_native_id/2.
+
+:- import concat_atom/2 from string.
+:- import class/4 from usermod.
+
+/*
+Find a name for a new class. If class with SuggestedName exists, append an index
+to the SuggestedName, so that there is no class with the new Name.
+*/
+find_indexed_name(SuggestedName,Name):-
+	atom(SuggestedName),
+	(class(_,SuggestedName,_,_)
+	 ->	find_indexed_name(SuggestedName,1,Name)
+	 ;	Name=SuggestedName
+	).
+
+find_indexed_name(SuggestedName,Ind,Name):-
+	number_codes(Ind,IndC),
+	atom_codes(IndA,IndC),
+	concat_atom([SuggestedName,IndA],NewName),
+	(class(_,NewName,_,_)
+	 ->	Ind1 is Ind+1,
+		find_indexed_name(SuggestedName,Ind1,Name)
+	 ;	Name=NewName
+	).
+
+/*
+Find a native id for a new class. If class with SuggestedNativeID exists, append an index
+to the SuggestedNativeID, so that there is no class with the new NativeID.
+*/
+find_indexed_native_id(SuggestedNativeID,NativeID):-
+	atom(SuggestedNativeID),
+	(class(_,_,SuggestedNativeID,_)
+	 ->	find_indexed_native_id(SuggestedNativeID,1,NativeID)
+	 ;	NativeID=SuggestedNativeID
+	).
+
+find_indexed_native_id(SuggestedNativeID,Ind,NativeID):-
+	number_codes(Ind,IndC),
+	atom_codes(IndA,IndC),
+	concat_atom([SuggestedNativeID,IndA],NewNativeID),
+	(class(_,_,NewNativeID,_)
+	 ->	Ind1 is Ind+1,
+		find_indexed_native_id(SuggestedNativeID,Ind1,NativeID)
+	 ;	NativeID=NewNativeID
+	).

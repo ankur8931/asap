@@ -1,0 +1,225 @@
+/* File:      simgui.P -- Prolog interface procedures for simulator
+** Author(s): Ping Yang
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2001
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: simgui.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+%------------------------------------------------------------
+%  get_processes -- get all the processes of a protocal
+%------------------------------------------------------------
+get_processes(Procname):-
+	clause(npdef([Process|_],_,_,_),_),
+	functor(Process,Procname,_),
+	conset(channum,1).
+
+
+%------------------------------------------------------------
+%  get_pchans -- get the parameters(chan) of a specific process
+%  get_pvars -- get the parameters(var) of a specific process
+%-------------------------------------------------------------
+get_pchans(Procname,Channame) :-
+ 	clause(npdef([Process|_],_,Chans,_),_),
+        Process =.. [Procname|Args],
+        member(Arg, Args),
+        memberpara(Arg, Chans,Channame),
+	conget(channum, N),
+	assert(channels(N, Channame)),
+	N1 is N + 1,
+	conset(channum, N1).
+
+get_pvars(Procname,Varname) :-
+        clause(npdef([Process|_],_,_,Vars),_),
+        Process =.. [Procname|Args],
+        member(Arg,Args),
+        memberpara(Arg,Vars,Varname).
+
+%----------------------------------------------------------------------
+% memberpara: check whether a variable is in a variable list
+%----------------------------------------------------------------------
+memberpara(Arg,[Para|_],Paraname) :-
+	Para = (Arg1, Paraname,_),
+	Arg == Arg1.
+memberpara(Arg,[_|Atail],Paraname) :-
+	memberpara(Arg,Atail,Paraname).
+
+%------------------------------------------------------------------
+%  get_local_startstate -- get the startstate of a specific process
+%-----------------------------------------------------------------
+get_local_startstate(Proc,Startstate) :-
+	startstate(Proc,Startstate).
+
+
+%----------------------------------------------------------------
+%  get_local_child -- get the local child of a specific state
+%----------------------------------------------------------------
+get_local_child(Parent,Child,Tran,Cond) :-
+	clause(translookup(Parent,Tran,Child,Cond,_),_),
+	(Tran = in(_,_)
+		-> true
+		; call(Cond)
+	).
+
+
+%-------------------------------------------------------------------
+% get_conditional_child -- get the child which satisfies condition
+%-------------------------------------------------------------------
+get_conditional_child(Child,Tran,Seq,Cond,AnsChild,Result) :-
+	Tran = in(_,A),
+	A = Seq,
+	(call(Cond) 
+		-> AnsChild = Child,
+		   Result = true
+		;  Result = false
+	).
+
+
+%----------------------------------------------------------------
+% get_local_process -- used for simulation
+%----------------------------------------------------------------
+get_local_process(State,Proc,Line,Char,Var) :-
+	symlookup(State,Proc,(Line,Char),Var).
+
+
+%-----------------------------------------------------------------
+% replace_trans, eg, to replace in(s,Seq) with in(s,1).
+%-----------------------------------------------------------------
+replace_trans(VarTrans,Seq,NovarTrans):-
+	VarTrans = in(_,A),
+	A = Seq,
+        NovarTrans = VarTrans.
+
+
+%-----------------------------------------------------------------
+%   translate_channel: we maintain a table with channel name and its
+%	corresponding number. Here, given the number, we get the
+%	channel name
+%-----------------------------------------------------------------
+translate_channel(Channum,Channame) :-
+	Channum = in(Num,InputTerm),
+	clause(channels(Num,Name),_),
+	Channame = in(Name,InputTerm),!.
+
+translate_channel(Channum,Channame) :-
+	Channum = out(Num,OutputTerm),
+	clause(channels(Num,Name),_),
+	Channame = out(Name,OutputTerm),!.
+
+translate_channel(Channum,Channame) :-
+	Channame = Channum.
+
+
+%-----------------------------------------------------------------
+% translate_trans: translate transition id into transition name
+%-----------------------------------------------------------------
+translate_trans(Parent, Trans, Child, TransName):-
+	clause(translookup(Parent,Trans,Child,_,Sym),_),
+	(compound(Trans)
+		-> translate_channel(Trans, TransNum),
+		   translate_term(TransNum, Sym, '', TransName)
+		;
+		   TransName = Trans
+	).
+
+%----------------------------------------------------------------
+% get_namelist: get a list of names corresponds to var id
+%----------------------------------------------------------------
+%get_namelist([], Nlist, Nlist, _).
+%get_namelist([Var|Varrest], Nlist, Namelist, Sym) :-
+%        (var(Var)
+%		-> symget_varname(Var, Sym, Name),
+%		   append([Name], Nlist, Namelist1)
+%		;  append([Var], Nlist, Namelist1)
+%	),
+%	get_namelist(Varrest, Namelist1, Namelist, Sym).
+
+
+%-----------------------------------------------------------------
+% translate_input_channel
+%-----------------------------------------------------------------
+translate_input_channel(VarTrans,Seq,Channame) :-
+	replace_trans(VarTrans,Seq,Novartrans),
+	translate_channel(Novartrans,Channame).
+
+
+%----------------------------------------------------------------
+% get_input_var: translate a term to a list of variable, then get
+% the variable one by one
+%----------------------------------------------------------------
+get_input_var(Parent, Trans, Child, Name):-
+	clause(translookup(Parent,Trans,Child,_,Sym),_),
+        trie_intern(Trans,Id,Varterm),
+        Varterm =.. [ret|Varlist],
+        member(Var,Varlist),
+	symget_varname(Var, Sym, Name),
+        trie_interned(Trans,Id,_). 
+
+%-----------------------------------------------------------------
+% get_all_input: get all values of a specified term
+%-----------------------------------------------------------------
+get_all_input(Parent, Trans, Child, Name):-	
+	clause(translookup(Parent,Trans,Child,_,Sym),_),
+	Trans = in(_, Term),
+	(var(Term)
+		-> symget_varname(Term, Sym, Name)
+		;  translate_term(Term, Sym, '', Name)
+	).
+
+translate_term(Term, Sym, String, Output):-
+	Term =.. [Func|Vars],
+	str_cat(String, '{', String1),
+	str_cat(String1, Func, String2),
+	translate_vars(Vars, Sym, String2, String3),
+	str_cat(String3, '}', Output).
+
+translate_vars([], _Sym, String, String):- !.
+translate_vars([Var|Varlist], Sym, String, Output):-
+	atomic(Var),!,
+	(number(Var)
+		-> number_chars(Var, [Varchar]),
+                   str_cat(String, ' ', String1),
+                   str_cat(String1, Varchar, String2)
+                ;                                     
+		   str_cat(String, ' ', String1),
+		   str_cat(String1, Var, String2)
+	),
+	translate_vars(Varlist, Sym, String2,Output).
+translate_vars([Var|Varlist], Sym, String, Output):-
+	var(Var),!,
+	symget_varname(Var, Sym, Name),
+	str_cat(String, ' ', String1),
+	str_cat(String1, Name, String2),
+	translate_vars(Varlist, Sym, String2,Output).
+translate_vars([Var|Varlist], Sym, String, Output):-
+	compound(Var),!,
+	str_cat(String, ' ', String1),
+	translate_term(Var, Sym, String1, String2),
+	translate_vars(Varlist, Sym, String2, Output).
+
+
+%-------------------------------------------------------------
+% symget_varname: get variable names corresponding to varible id
+%--------------------------------------------------------------
+symget_varname(Input, [First|Rest], Name):-
+	First = (A = B),
+	( B == Input
+		-> Name = A
+		;  symget_varname(Input, Rest, Name)
+	).

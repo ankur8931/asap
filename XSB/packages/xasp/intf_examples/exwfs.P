@@ -1,0 +1,13 @@
+:- table win/1, p/0, q/0, r/0.
+
+win(X) :- move(X,Y), tnot(win(Y)).
+
+move(a,b).
+move(b,a).
+move(b,c).
+move(c,d).
+
+p :- tnot(q).
+q :- tnot(p).
+r :- p.
+r :- q.

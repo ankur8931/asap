@@ -1,0 +1,19 @@
+
+		XSB Coding Guidelines
+		---------------------
+
+1. Naming conventions (to be converted to gradually)
+
+   a. #define constants and macros:
+	  Must be prefixed with XSB_ (e.g., XSB_STRUCT).
+	  Function-looking macros should be capitalized (e.g., XSB_Deref())
+
+   b. Typedefs:
+	  Must be prefixed with xsb and capitalized (e.g., xsbBool).
+
+   c. All external function calls:
+	  Must be prefixed with xsb and capitalized (e.g., xsbString_find).
+
+   d. C interface routines, like c2p_int, p2p_arg, etc.
+	  Leave as is (no prefixes).
+

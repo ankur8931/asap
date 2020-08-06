@@ -1,0 +1,308 @@
+/* File:      db_clause.P
+** Author(s): David S. Warren, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: dbclause.P,v 1.31 2006/07/14 16:57:45 tswift Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+#include "builtin.h"
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+#include "biassert_defs.h"
+
+/*======================================================================*/
+
+:- set_inthandler('_$clause_int'(_), MYSIG_CLAUSE).
+
+/************************************************************************/
+/* Module dbclause defines routines to step through clauses and 	*/
+/* return them, and also to delete clauses for retracting. Space is	*/
+/* reclaimed. (See module assert for formats of data structures.	*/
+/************************************************************************/
+% db_retract(+Head,+Body,+PredEP,+PSC) deletes clauses and reclaims space
+
+db_retract(Head,Body,PredEP,PSC) :-
+%	writeln(db_retract(Head,Body,PredEP,PSC)),
+	goal_cut_trans_a(Body,Tbody,_),
+	db_get_clauses(PredEP,0,Head,0,Clref,Typ,EntryP),
+	chk_if_trie_assert(Clref,Result,TrieNodeAddr),
+	(Result == trie
+	 ->	call_trie_retract(Head,Body,Clref,TrieNodeAddr)
+	 ;	db_clause_match(Head,Tbody,EntryP),
+		db_do_retract(Typ,Clref,0,PSC)
+	).
+
+%-------
+
+% db_retractall(+Call,+PredEP,+PSC) deletes all clauses matching a pattern
+/* TLS: passing down PSC now to check for shared/private */
+
+db_retractall(Call,PredEP,Psc) :-
+%	writeln(db_retractall(Call,PredEP,Psc)),
+	( is_most_general_term(Call) ->	db_retract_abol(PredEP,Psc)
+ 	;   db_retractall_1(Call,PredEP,Psc)
+ 	),
+	fail.
+db_retractall(_,_,_).
+
+% Used within non-open retractall
+db_retractall_1(Head,PredEP, PSC) :-
+	dynamic_code_function(MARK_CPSTACK_RETRACTALL,CantReclaim,_,_,_),
+	db_get_clauses(PredEP,0,Head,0,Clref,Typ,EntryP),
+	chk_if_trie_assert(Clref,Result,TrieNodeAddr),
+	(Result == trie
+	  ->	call_trie_retract(Head,_Body,Clref,TrieNodeAddr)
+	 ;	db_clause_match(Head,_Tbody,EntryP),
+	        db_do_retractall(Typ,Clref,CantReclaim,PSC)
+	),
+	fail.
+db_retractall_1(_Head, _PredEP, _PSC):- 
+	dynamic_code_function(UNMARK_CPSTACK_RETRACT,_,_,_,_).
+
+%-------
+
+%% Don't reclaim space
+db_retract_nr(Head,Body,PredEP,PSC) :-
+	goal_cut_trans_a(Body,Tbody,_),
+	db_get_clauses(PredEP,0,Head,0,Clref,Typ,EntryP),
+	chk_if_trie_assert(Clref,Result,TrieNodeAddr),
+	(Result == trie
+	 ->	call_trie_retract_nr(Head,Body,TrieNodeAddr)
+	 ;	db_clause_match(Head,Tbody,EntryP),
+		db_do_retract(Typ,Clref,1,PSC) % 1 -> Don''t reclaim space! *****
+	).
+
+db_do_retract(1,_Clref,_,_PSC) :- !, fail.
+db_do_retract(2,_Clref,_,_PSC) :- !, abort('Cannot erase compiled code').
+db_do_retract(_Typ,Clref,DontReclaim,PSC) :-
+	db_retract0(Clref,DontReclaim,PSC).
+
+db_do_retractall(1,_Clref,_,_PSC) :- !, fail.
+db_do_retractall(2,_Clref,_,_PSC) :- !, abort('Cannot erase compiled code').
+db_do_retractall(_Typ,Clref,DontReclaim,PSC) :-
+	dynamic_code_function(DB_RETRACTALL0,Clref,DontReclaim,PSC,_).
+
+% transform a goal to turn cuts (!) into '_$cutto's. Differs from
+% goal_cut_trans in that variables are not wrapped with call/1,
+% but are left unchanged.
+
+goal_cut_trans_a(X,X,_) :- var(X),!.
+goal_cut_trans_a([X|Y],Z,_) :- !, hack_consult([X|Y],Z). %  a HACK!
+goal_cut_trans_a(!,'_$cutto'(Cutpoint),Cutpoint) :- !.
+goal_cut_trans_a('_$load_undef'(X),Y,_) :- !,
+	(atom(X) -> conname(X,Y1),Y=Y1 ; Y=X).
+goal_cut_trans_a((A,B),(Na,Nb),Cutpoint) :- !,
+	goal_cut_trans_a(A,Na,Cutpoint),
+	goal_cut_trans_a(B,Nb,Cutpoint).
+goal_cut_trans_a((A;B),(Na;Nb),Cutpoint) :- !,
+	goal_cut_trans_a(A,Na,Cutpoint),
+	goal_cut_trans_a(B,Nb,Cutpoint).
+goal_cut_trans_a((A->B),(A->Nb),Cutpoint) :- !,
+	goal_cut_trans_a(B,Nb,Cutpoint).
+goal_cut_trans_a(X,X,_).
+
+hack_consult([X],consult(X)) :- !.
+hack_consult([X|Y],(consult(X),Z)) :- !,hack_consult(Y,Z).
+
+
+
+/* This predicate works as follows.  It starts with a pointer from a
+PSC record, and finds the PrRef.  If the predicate is tabled (via a
+transformation) the single-clause tabled predicate is skipped.  Then
+we look to the instruction in the PrRef.  If the instruction is a
+jump, it must be pointing to trie code.  We check that it is (probably
+unnecessary at this point) and then call gen_retract_all.  Non-trie
+dynamic code has in it an instruction of jumptbreg (I think) which
+sets a choice point so that cuts in asserted code may be handled, and
+then jumps. */
+
+%%:- import writeln/1 from standard.
+db_retract_abol(PredEP1,PSC) :-
+	gen_retract_all(PredEP1,PSC).
+
+/* db_abolish(+Psc) deletes all clauses of a predicate and abolishes
+its prref structures.   */
+
+db_abolish(Psc) :-
+	psc_ep(Psc, PredEP),
+%	db_retract_abol(PredEP,Psc).
+        db_abolish0(PredEP,Psc).
+
+% db_clause(+Head,?Body,+PredEP,-Clref) retrieves a clause, and implements clause/2.
+db_clause(Head,Body,PredEP,Clref) :-
+	goal_cut_trans_a(Body,Tbody,_),
+	db_get_clauses(PredEP,0,Head,0,Clref,Typ,EntryP),
+	(Typ =:= 2	% compiled code
+	 ->	chk_if_trie_assert(Clref,Result,_),
+		(Result == trie
+		 ->	Body = true,
+			db_clause_match_trassert(Head)
+		 ; 	Body = '$compiled'	% this should be an error!
+		)
+	 ;      db_clause_match(Head,Tbody,EntryP)
+	).
+
+% db_clause_match(+Call,+Body,+Entry)
+%	Determines whether Clref contains a clause whose head matches Call.
+%	Type indicates the kind	of Clref (indexed or not). 
+
+db_clause_match(Head,Body,Entry) :-
+	globalvar(GlobVar),
+	log_ith(0,GlobVar,BodyStore),
+	BodyStore = '_$body'(true), % init first time, and match subsequent
+	%% must do all three in following condition because cut may handle
+	%% interrupts, and handling interrupts trashes BodyStore --dsw
+	(db_do_call(Entry,Head),stat_set_flag(CLAUSE_INT,0),BodyStore = '_$body'(Body0)
+	 ->	(Body0 == true
+		 ->	Body = true
+		 ;	term_set_arg(BodyStore,1,true,1), % reset for next alt
+			goal_cut_trans_a(Body0, Body1, _),
+			(atom(Body1)
+			 ->	conname(Body1,Body2),
+				Body = Body2
+			 ;	Body = Body1
+			)
+		)
+	 ;	stat_set_flag(CLAUSE_INT,0),
+	 	fail
+	).
+
+db_clause_match_trassert(Head) :-
+%%	stat_set_flag(CLAUSE_INT,0),  % why was this here?
+	call_c(Head).
+
+
+% db_do_call(+CodeEntry, +Head)
+%	Makes the call to Head on the heap after setting the interrupt flag
+%	that will retrieve the code from the heap.  By this time we finally
+%	know that Head is "dynamic" (psc_type = T_DYNA) so there is no need to
+%	retrieve the type.  If at some later version we need the psc type 
+%	the following should appear:
+%			conpsc(Head, PSC), psc_type(PSC, Type),
+%	BEFORE stat_set_flag/2.  Under NO circumstances, should code be put
+%	between stat_set_flag/2 and code_call/3, because the hack of building
+%	the body of the call on the heap will not work!!.
+
+db_do_call(Entry, Head) :-
+	stat_set_flag(CLAUSE_INT, 1),   % set clause interrupt on (CLAUSE_INT)
+	code_call(Entry, Head, 1).	% Type =:= 1 means dynamic predicate.
+
+%%:- dynamic(db_body_save(_)).
+
+'_$clause_int'(Call) :-
+	stat_set_flag(CLAUSE_INT,0),	% turn clause intercept off
+	globalvar(GlobVar),
+	log_ith(0,GlobVar,BodyStore),
+	term_set_arg(BodyStore,1,Call,1).
+
+
+%% db_get_clauses(+PredEP,+Ind, +Term, +Failed, -Clref,-Typ,Entp) returns Clrefs
+%%       for each clause whose head might unify with Term. It uses the SOB 
+%%       index blocks to efficiently find them. It may return clauses whose
+%%	head won''t unify with Term. (Ind is no longer used.)
+%%	Failed means fetch retract(ed)_nr clauses.
+
+db_get_clauses( PredEP, _Index1, Head, Failed, ClRef, Typ, EntryP ) :-
+	db_get_clauses0( PredEP, Head, Failed, ClRef, Typ, EntryP ).
+	
+
+%% db_get_clauses0 calls the builtin, db_get_clause, to get the next ClRef.  It
+%% 	uses db_get_clauses1 to do a one clause look-ahead, so that a 
+%%	deterministic retract doesn''t lay down a choice point.  This makes
+%%	the semantics of the new C retract more consistent with the old.
+
+db_get_clauses0(PrRef,Head,Failed,ClRef,Typ,EntryP) :-
+	db_get_clause(0,0,0,PrRef,Head,Failed,ClRef0,Typ0,EntryP0,NLev,NInd),
+	(ClRef0 =:= 0
+	 ->	!,fail
+	 ;	db_get_clauses1(ClRef0,NLev,NInd,PrRef,Head,Failed,
+			ClRef,Typ,EntryP,Typ0,EntryP0)
+	).
+
+db_get_clauses1(ClRef0,CurrILvl0,CurrInd0,PrRef,Head,Failed,
+			ClRef,Typ,EntryP,Typ0,EntryP0) :-
+	db_get_clause(ClRef0,CurrILvl0,CurrInd0,PrRef,Head,Failed,
+		      ClRef1,Typ1,EntryP1,NLev,NInd),
+	(ClRef1 =:= 0
+	 ->	!,
+		ClRef = ClRef0, Typ = Typ0, EntryP = EntryP0
+	 ;	(ClRef = ClRef0, Typ = Typ0, EntryP = EntryP0
+		 ;
+		 db_get_clauses1(ClRef1,NLev,NInd,PrRef,Head,Failed,
+			ClRef,Typ,EntryP,Typ1,EntryP1)
+		)
+	).
+
+
+/************************************************************************/
+/* The following routine cleans up by reclaiming space for all clauses	*/
+/* that were erased without reclaiming their space.			*/
+/************************************************************************/
+
+db_reclaim_space(Head,PredEP):-
+	db_get_clauses(PredEP,0,Head,1,Clref,Typ,_IndLevel),
+	db_reclaim0(Clref,Typ),
+	fail.
+db_reclaim_space(_,_).
+
+%==================================================
+% Trie Assert related code
+%==================================================
+
+root_is_not_null(NodeAddr) :-
+	trie_assert_hdr_info(0,NodeAddr,Root), Root =\= 0.
+
+chk_if_trie_assert(Clref,trie,TrieNodeAddr) :-
+	trie_assert_hdr_info(1,Clref,TrieNodeAddr),
+	!.
+chk_if_trie_assert(_,nottrie,_).
+
+
+call_trie_retract(Head,true,Clref,NodeAddr) :-
+	repeat,
+	(root_is_not_null(NodeAddr),
+	 trie_retract_clref(0), % Make Last Node Save to 0
+	 call_c(Head)
+	 ->	trie_retract_clref(Clref)
+	 ;	!,fail
+	).
+
+trie_retract_clref(_Clref) :- '_$builtin'(TRIE_RETRACT).
+trie_retract_clref_nr(_WhatToDo) :- '_$builtin'(TRIE_RETRACT_SAFE).
+
+% not safe
+% if call(Head) results in Backtracking through
+% program clauses which may call trie code disaster
+% will result.
+
+call_trie_retract_nr(Head,true,NodeAddr) :-
+	%write(call_trie_retract_nr(Head)),write(':'),
+	repeat,
+	(trie_retract_clref(0), % Zero out Last_Nod_Sav
+	 root_is_not_null(NodeAddr),
+	 call_c(Head),
+	 trie_retract_clref_nr(1)
+	 ->	true
+	 ;	!,fail
+	).
+
+?- dynamic_code_function(INIT_DBCLAUSE_CGC_BLOCKS,_,_,_,_).

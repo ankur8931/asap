@@ -1,0 +1,319 @@
+/* File:      tp_var.P
+** Author(s): Saumya Debray, Kostis Sagonas, Terrance Swift, David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: tp_var.P,v 1.18 2011-06-25 02:54:47 dwarren Exp $
+** 
+*/
+
+
+getvarinst(VPrag, N, Pil, Pilr, Tin) :-
+	vprag_type1(VPrag, Typ),
+	vprag_loc(VPrag,Loc),
+	vprag_occ(VPrag, Occ),
+	( ( Occ == v ; Occ == f ) -> getvar_f(Typ,Loc,N,Pil,Pilr)
+	; ( Occ == l ; Occ == s ) -> getvar_s(Typ,Loc,N,Pil,Pilr,Tin)
+	).
+
+putvarinst(VPrag, N, Pil, Pilr, Tabled) :-
+        vprag_type1(VPrag, Typ),
+        vprag_loc(VPrag,Loc),
+        vprag_occ(VPrag, Occ),
+        ( ( Occ == v ) -> putvoid(Typ,Loc,N,Pil,Pilr)
+        ; ( Occ == f) -> putvar_f(Typ,Loc,N,Pil,Pilr)
+        ; ( Occ == l ; Occ == s ) -> putvar_s(Typ,Loc,N,Tabled,Pil,Pilr)
+        ).
+
+/** Previous is Bart's suggested fix of a bug arising from nonglobalization
+putvarinst(VPrag, N, Pil, Pilr, Tabled) :-
+	vprag_type1(VPrag, Typ),
+	vprag_loc(VPrag,Loc),
+	vprag_occ(VPrag, Occ),
+	( ( Occ == v ; Occ == f ) -> putvar_f(Typ,Loc,N,Pil,Pilr)
+	; ( Occ == l ; Occ == s ) -> putvar_s(Typ,Loc,N,Tabled,Pil,Pilr)
+	).
+**/
+
+getvar_f(p,Loc,N,[getpvar(Loc,N)|Pil],Pil).
+getvar_f(t,Loc,N,Pil,Pilr) :-
+	( Loc =:= N -> Pil = Pilr ; Pil = [movreg(N,Loc)|Pilr] ).
+getvar_f(d,Loc,N,[getpvar(Loc,N)|Pil],Pil) :- warning('getdvar happen!').
+getvar_f(u,Loc,N,[getpvar(Loc,N)|Pil],Pil) :- warning('getuvar happen!').
+
+getvar_s(p,Loc,N,[getpval(Loc,N)|Pil],Pil,_).
+getvar_s(t,Loc,N,[gettval(Loc,N)|Pil],Pil,_).
+getvar_s(d,Loc,N,[getpval(Loc,N)|Pil],Pil,_).
+getvar_s(u,Loc,N,[putuval(Loc,N1),gettval(N1,N)|Pil],Pil,T) :-
+	getreg(T,N1), N1 =\= N.
+
+putvar_f(p,Loc,N,[putpvar(Loc,N)|Pil],Pil).
+putvar_f(t,Loc,N,[puttvar(Loc,N)|Pil],Pil).
+
+%%putvoid(p,Loc,N,[putpvar(Loc,N),putuval(Loc,N)|Pil],Pil). %% ??why both??
+putvoid(p,Loc,N,[putuval(Loc,N)|Pil],Pil).
+putvoid(t,Loc,N,[puttvar(Loc,N)|Pil],Pil).
+
+/* tabled predicates always need an environment */
+/* warning !!! don't unify Tab in these clauses */
+putvar_s(t,Loc,N,_Tabd,Pil,Pilr) :-
+	( Loc =:= N -> Pil = Pilr ; Pil = [movreg(Loc,N)|Pilr] ).
+putvar_s(p,Loc,N,_Tabd,[putpval(Loc,N)|Pil],Pil).
+putvar_s(u,Loc,N,Tab,[Inst|Pil],Pil):-
+	Tab =:= 1 -> Inst = putpval(Loc,N) ; Inst = putuval(Loc,N).
+putvar_s(d,Loc,N,Tab,[Inst|Pil],Pil):-
+	Tab =:= 1 -> Inst = putpval(Loc,N) ; Inst = putdval(Loc,N).
+
+univarinst(VPrag, Pil, Pilr, Tin, Tout) :-
+	vprag_type1(VPrag, Typ),
+	vprag_occ(VPrag, Occ),
+	(Occ == v
+	 ->	%%univar_v(Typ,Loc,Pil,Pilr)
+		(vprag_loc(VPrag,256) -> true ; true), % bind to dummy
+		Pil = [uniavar|Pilr],
+		Tout = Tin
+	; Occ == f
+	 ->	alloc_reg(VPrag,Tin,Tout),
+		vprag_loc(VPrag,Loc),
+		univar_f(Typ, Loc, Pil, Pilr)
+	; (Occ == l ; Occ == s)
+	 ->	Tout = Tin,
+		vprag_loc(VPrag,Loc),
+		univar_s(Typ, Loc, Pil, Pilr)
+	).
+
+univar_f(p,Loc,[unipvar(Loc)|Pilr],Pilr).
+univar_f(t,Loc,[unitvar(Loc)|Pilr],Pilr).
+
+univar_s(p,Loc,[unipval(Loc)|Pilr],Pilr).
+univar_s(t,Loc,[unitval(Loc)|Pilr],Pilr).
+univar_s(d,Loc,[unipval(Loc)|Pilr],Pilr).
+univar_s(u,Loc,[unipval(Loc)|Pilr],Pilr).
+
+bldvarinst(VPrag, Pil, Pilr, Tin, Tout) :-
+	vprag_type(VPrag, Typ),
+	vprag_occ(VPrag, Occ),
+	(Occ == v
+	 ->	Tout = Tin,
+		%%bldvar_v(Typ,Loc,Pil,Pilr)
+		(vprag_loc(VPrag,256) -> true ; true),
+		Pil = [bldavar|Pilr]
+	; Occ == f
+	 ->	alloc_reg(VPrag,Tin,Tout),
+		vprag_loc(VPrag,Loc),
+		bldvar_f(Typ,Loc,Pil,Pilr)
+	; (Occ == l ; Occ == s)
+	 ->	Tout = Tin,
+		vprag_loc(VPrag,Loc),
+		bldvar_s(Typ,Loc,Pil,Pilr)
+	).
+
+bldvar_f(p,Loc,[bldpvar(Loc)|Pilr],Pilr).
+bldvar_f(t,Loc,[bldtvar(Loc)|Pilr],Pilr).
+
+bldvar_s(p,Loc,[bldpval(Loc)|Pilr],Pilr).
+bldvar_s(t,Loc,[bldtval(Loc)|Pilr],Pilr).
+
+/*======================================================================*/
+/* Register allocation/deallocation utilities --- used by tprog.P	*/
+/* and tp_*.P								*/
+/*    reserve(+RegNo, +CurUsage, -NewUsage)				*/
+/*		reserve registers Reg 1 through Reg RegNo		*/
+/*    hold(+RegNo, +CurUsage, -NewUsage)				*/
+/* 		reserve register Reg RegNo only				*/
+/*    release(+RegNo, +CurUsage, -NewUsage)				*/
+/*		release register Reg RegNo				*/
+/*	+RegNo: the number of the register to be operated on		*/
+/*	+CurUsage: a (closed) list of register numbers in use.		*/
+/*	-NewUsage: updated usage list.					*/
+/*======================================================================*/
+
+reserve(N, In, Out) :- 
+	( N =:= 0 -> In = Out
+	; ( memberchk(N, In) -> Out = Out1 ; Out = [N|Out1] ),
+	  N1 is N - 1,
+	  reserve(N1, In, Out1)
+	).
+
+hold(N, In, Out) :- ( memberchk(N, In) -> Out = In ; Out = [N|In] ).
+
+:- index release/3-2.
+
+/* Disturbing property... If we delete all copies of the register here
+in release/3, instead of just the first as here, then it doesn't pass
+the testsuite, several ai_tests in particular.  Note the sort above in
+getreg is OK, since it doesn't return the de-duplicated list it
+generates.  Next time I'm here, I should try to figure out why this
+is.... dsw - look at Kostis's comment in release_if_done/6. */
+
+release(_, [], []).
+release(N, [Reg|R], Rest) :-
+	( N =:= Reg -> Rest = R ; Rest = [Reg|T], release(N, R, T) ).
+
+
+/*======================================================================*/
+/* getreg(+TRList, -Reg)						*/
+/* get an unused register (not in TRList)				*/
+/*======================================================================*/
+
+getreg(TRList, Reg) :-
+	sort(TRList,STRList),
+	choose_reg_not_in(STRList,1,Reg).
+
+choose_reg_not_in([],N,N) :-
+	(N =< 256
+	 ->	true
+	 ;	error('Out of registers! ... aborting compilation'),
+		abort
+	).
+choose_reg_not_in([UReg|STRList],N,Reg) :-
+	(UReg =:= N
+	 ->	N1 is N+1,
+		choose_reg_not_in(STRList,N1,Reg)
+	 ;	Reg = N
+	).
+
+/****getreg(TRList, Reg) :-
+	computil_choose(1,Reg),
+	\+ memberchk(Reg, TRList).
+
+
+computil_choose(N,N) :-
+	(N < 256
+	 ->	true
+	 ;	error('Out of registers! ... aborting compilation'), abort
+	).
+computil_choose(M,N) :-
+	M < 256,
+	M1 is M+1,
+	computil_choose(M1,N).****/
+
+/***computil_choose(1).
+computil_choose(N) :- 
+	computil_choose(N1),
+	N is N1 + 1,
+	( N =< 256
+	; N > 256, error('Out of registers! ... aborting compilation'), abort
+	).***/
+
+/*======================================================================*/
+/* alloc_reg1(+VPrag, +ArgPos, +Tin, -Tout)				*/
+/*======================================================================*/
+
+alloc_reg1(VPrag,N,Tin,Tout) :-
+	vprag_use(VPrag, Use),
+	vprag_nouse(VPrag, Nouse),
+	( member2(N,Use); \+ member2(N,Nouse) ),
+	vprag_loc(VPrag, N),
+	hold(N,Tin,Tout).
+alloc_reg1(Prag,_N,Tin,Tout) :- alloc_reg(Prag,Tin,Tout).
+
+alloc_reg(VPrag,Tin,Tout) :-
+	vprag_type(VPrag, t),
+	vprag_occ(VPrag, Occ), ( Occ == f; Occ == v ),
+	!,
+	vprag_loc(VPrag, R0),
+	(var(R0)
+	 ->	R = R0, computil_find_reg(VPrag,Tin,R)
+	 ; memberchk(R0,Tin)
+	 ->	%%writeln(userout,register_reallocation(VPrag,R0,Tin)),
+		vprag_locnew(VPrag,R),
+		computil_find_reg(VPrag,Tin,R)
+	 ;	R0 = R
+	),
+	hold(R, Tin, Tout).
+alloc_reg(_Prag,T,T).
+
+computil_find_reg(VPrag,T,R) :-
+	vprag_use(VPrag, Use),	/* find reg in "use" list that's available */
+	computil_find_reg1(Use,T,R),
+	!.
+computil_find_reg(VPrag,T,R) :-
+	vprag_nouse(VPrag, Nouse),
+	!,
+	append(Nouse,T,T1),
+	getreg(T1,R).		/* find available reg not in "nouse" list */
+computil_find_reg(_VPrag,T,R) :- getreg(T,R).
+
+computil_find_reg1([Reg|Rest],Tin,OReg) :-
+	(member2(Reg,Tin)
+	 ->	computil_find_reg1(Rest,Tin,OReg)
+	 ;	OReg = Reg
+	).
+
+/*======================================================================*/
+/* release_if_done(+Vid, +RegNo, +VarPrag, HoldR, +Tin, -Tout)		*/
+/*	Release the register RegNo if "done"				*/
+/*	Vid is a tvar, RegNo is the current location of the var;	*/
+/*	VarPrag is the pragma info of the var(occ); Tin is the list of	*/
+/*	registers in use, and Tout is the result;			*/
+/*======================================================================*/
+
+%:- import tell/1, telling/1, told/0, write/1, nl/0 from standard.
+
+release_if_done(Vid,R,VPrag,HoldR,Tin,Tout) :-
+	vprag_type(VPrag, T),
+	( T == t -> 
+	    vprag_loc(VPrag, L),
+	    vprag_occ(VPrag, Occ),
+	    ( nonvar(L), release_if_done1(Vid,R,HoldR,Tin,Tout,L,Occ)
+	    ; var(L), Tout = [R|Tin]	% Changed Kostis (12/18/92) to fix bug.
+				% Now two terms share this reg, so on list TWICE!
+	    )
+	; release(R, Tin, Tout)		% T is one of: p, d, u, vh
+	).
+   %telling(X),tell(userout),
+   %write('called to release register: '),write(R),
+   %write('  Tin= '),write(Tin),write('  Tout= '),write(Tout),nl,told,tell(X).
+release_if_done(_,_,_,_,T,T).
+
+release_if_done1(Vid,R,HoldR,Tin,Tout,L,Occ) :-
+	\+ memberchk(Vid,HoldR),
+	(Occ == l
+	 ->	release(R,Tin,Tmid),
+		(R =:= L
+		 ->	Tmid = Tout
+		 ;	release(L,Tmid,Tout)
+		)
+	 ; R =\= L
+	 ->	release(R,Tin,Tout)
+	 ;	Tout = Tin
+	).
+
+/*======================================================================*/
+/* release_if_done0(+Arg, +Reg, +Hold, +Tin, -Tout)			*/
+/*	It is called by tcond_relop/10 (in tp_cond) after a binary	*/
+/*	arithmetic comparison, to release the registers used in the	*/
+/*	comparison.							*/
+/*	if Arg is not a variable, the register can surely be released;	*/
+/*	but if Arg is a variable, whether it can be released depends on	*/
+/*	   a) Reg is not a register allocated for the variable		*/
+/*	or b) 								*/
+/*======================================================================*/
+
+release_if_done0(varocc(Vid,Prag),R,HoldR,Tin,Tout) :-
+	!,
+	release_if_done(Vid,R,Prag,HoldR,Tin,Tout).
+release_if_done0(_Term,R,_,Tin,Tout) :-
+	release(R,Tin,Tout).
+
+/*======================================================================*/
+/*======================================================================*/
+
+force_tp_var_loaded.

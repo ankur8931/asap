@@ -1,0 +1,49 @@
+%%%	xmc.P:  Startup file for XMC
+
+%% $Id: xmc.in,v 1.5 2010-08-19 15:03:35 spyrosh Exp $
+
+%% ----------------------------------------------------------------------
+%%	xlc(S): compile XL program to trans rules.
+%% ----------------------------------------------------------------------
+
+:- import bootstrap_package/2 from packaging.
+:- bootstrap_package('xmc',xmc).
+
+:- assert(xmc_directory('@prefix@/packages/xmc')).
+
+:- [mucalculus].
+
+xlc(File) :-
+	cleanup,
+	str_cat(File, '.xl', XLFile),
+	str_cat(XLFile, 'o', XLOFile),
+	parse(XLFile, XLOFile, stderr),
+	typecheck(XLOFile),
+	comp_form,
+	xlcomp.
+
+cleanup :-
+	retractall(trans(_,_,_)),
+	retractall((trans(_,_,_) :- _)),
+	retractall((trans(_,_,_,_,_) :- _)),
+	retractall(startstate(_,_)),
+	retractall(symlookup(_,_,_,_)),
+	retractall(atype(_,_)),			% from type checker
+	retractall(fDef(_,_)),
+	abolish_all_tables.
+
+%% ----------------------------------------------------------------------
+%%	mck(P, F): Top level modelcheck predicate:
+%%		   Does process named P model formula named F?
+%% ----------------------------------------------------------------------
+
+mck(P, F) :-
+	startstate(P, S),
+	models(S, form(F)).
+
+xmc_gui :- check_gui('@itkwish_path@').
+check_gui(no) :-
+	write('Incr Tcl/Tk has not been found during configuration.'),
+	!, fail.
+check_gui(_) :-
+	exec('@prefix@/packages/xmc/xmc-gui').

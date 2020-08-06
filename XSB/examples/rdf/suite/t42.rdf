@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+
+<!-- Test space handling for mixed literal/compound -->
+
+<rdf:RDF
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description about="John_Smith">
+    <a1>John</a1>
+    <a2>
+      <rdf:Description>
+        <v>200</v>
+      </rdf:Description>
+    </a2>
+  </rdf:Description>
+</rdf:RDF>

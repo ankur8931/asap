@@ -1,0 +1,56 @@
+:- ensure_loaded(xasp).
+
+:- import smcInit/0, smcAddRule/2, smcCommitProgram/0 from sm_int.
+:- import smcSetCompute/1, smComputeModel/0, smcExamineModel/1, smEnd/0 
+					from sm_int.
+
+cookex_all :-
+	smcInit,
+	smcAddRule(a,[]),
+	smcAddRule(b,[]),
+	smcAddRule(d,[a,not(c)]),
+	smcAddRule(c,[b,not(d)]),
+	smcCommitProgram,
+	write('All Solutions: '),nl,
+	(   smComputeModel,
+	    smcExamineModel(Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd  ).
+
+cookex_c :-
+	smcInit,
+	smcAddRule(a,[]),
+	smcAddRule(b,[]),
+	smcAddRule(d,[a,not(c)]),
+	smcAddRule(c,[b,not(d)]),
+	smcSetCompute([c]),
+	smcCommitProgram,
+	write('All Solutions: '),nl,
+	(   smComputeModel,
+	    smcExamineModel(Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd  ).
+
+cookex_notc :-
+	smcInit,
+	smcAddRule(a,[]),
+	smcAddRule(b,[]),
+	smcAddRule(d,[a,not(c)]),
+	smcAddRule(c,[b,not(d)]),
+	smcSetCompute([not(c)]),
+	smcCommitProgram,
+	write('All Solutions: '),nl,
+	(   smComputeModel,
+	    smcExamineModel(Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd  ).
+
+end_of_file.
+
+

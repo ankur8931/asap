@@ -1,0 +1,218 @@
+/* File:      xsb_profiling.P
+** Author(s): David S. Warren
+**
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-2013
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+
+#include "flag_defs_xsb.h"
+
+/* This call can only be used if XSB has been compiled with
+XSB_PROFILING defined.  profile_call(Goal) will call Goal and then
+print out a profile of percentage of time spent in each predicate.  It
+uses a "sampling" method so the results may vary some from run to
+run.*/
+
+profile_call(Goal) :-
+	%% test xsb_configuration(xsb-profiling) so works when running with nonprof xsb
+	cputime(T0),
+	(prof_cmd(1)		% start profiling
+	 ->	(catch(Goal,Ball,handle_profile_catch(Ball))
+		 ;
+		 prof_cmd(2),
+		 print_profile(fail,T0,Goal),
+		 fail
+		),
+		prof_cmd(2),	% stop profiling
+		print_profile(succeed,T0,Goal)
+	 ;	call(Goal),	% profiling not enabled (xsb -p)
+		cputime(T1),
+		Time is T1-T0,
+		telling(OF),tell(userout),write('PROFILE FOR: '),write_term(Goal,[max_depth(3)]),
+		write('  Total cputime: '),write(Time),writeln(' seconds'),
+		tell(OF)
+	).
+
+handle_profile_catch(Ball) :-
+	prof_cmd(2),
+	writeln('Throw out of profiling. Profiling turned off.'),
+	throw(Ball).
+
+print_profile(Fail,T0,Goal) :-
+	cputime(T1),
+	Time is T1-T0,
+	telling(OF),tell(userout),write('PROFILE FOR: '),write_term(Goal,[max_depth(3)]),
+	(Fail == fail -> write(' FAILED') ; true),
+	write('  Total cputime: '),write(Time),writeln(' seconds'),
+	dump_profile,
+	tell(OF).
+
+
+get_profile_tuple(Node,Tuple,NNode) :- prof_cmd(3,Node,Tuple,NNode).
+
+start_profiling :- prof_cmd(1).
+stop_profiling :- prof_cmd(2).
+
+prof_cmd(_CODE) :- '_$builtin'(237).
+prof_cmd(_Code,_Node,_Tuple,_NNode) :- '_$builtin'(237).
+
+profile_tuple(Tuple) :-
+	get_profile_tuple(0,Tuple0,NodePtr),
+	profile_tuple(NodePtr,Tuple0,Tuple).
+
+profile_tuple(NodePtr,Tuple0,Tuple) :-
+	(Tuple = Tuple0
+	 ;
+	 NodePtr =\= 0,
+	 get_profile_tuple(NodePtr,Tuple1,NextNodePtr),
+	 profile_tuple(NextNodePtr,Tuple1,Tuple)
+	).
+
+dump_profile :-
+	findall(Tuple,profile_tuple(Tuple),Tuples),
+	parsort(Tuples,[asc(2),asc(1)],0,[p(PSC,MPSC,Cnt)|STuples]),
+	sum_profile(STuples,Cnt,Total),
+	nl, write('Total Count: '),writeln(Total), nl,
+	(Total > 0
+	 ->	dump_profile(STuples,Total,PSC,MPSC,Cnt,Cnt)
+	 ;	true
+	).
+
+sum_profile([],Sum,Sum).
+sum_profile([p(_,_,Cnt)|STuples],Sum0,Sum) :-
+	    Sum1 is Sum0 + Cnt,
+	    sum_profile(STuples,Sum1,Sum).
+
+dump_profile([],Total,OPSC,OMPSC,OCnt,ACnt) :-
+	(OPSC =:= 0
+	 ->	OPName = 'Unknown', OPArity = ('?')
+	 ; OPSC =:= 1
+	 ->	OPName = 'Garbage Collecting', OPArity = ('')
+	 ;	psc_name(OPSC,OPName),psc_arity(OPSC,OPArity)
+	),
+	Percent is (OCnt*200+Total) // (2*Total),
+	tab(20), write(Percent),write('%'),write(' '(OCnt)),tab(2),
+	write(OPName),write('/'),writeln(OPArity),
+	MPercent is (ACnt*200+Total) // (2*Total),
+	write(MPercent),write('%'),write(' '(ACnt)),tab(2),
+	(OMPSC =:= 0
+	 ->	MName = 'Unknown'
+	 ;	psc_name(OMPSC,MName)
+	),
+	writeln(MName).
+dump_profile([p(PSC,MPSC,Cnt)|STuples],Total,OPSC,OMPSC,OCnt,ACnt) :-
+	(OPSC =:= 0
+	 ->	OPName = 'Unknown', OPArity = ('?')
+
+	 ; OPSC =:= 1
+	 ->	OPName = 'Garbage Collecting', OPArity = ('')
+	 ;	psc_name(OPSC,OPName),psc_arity(OPSC,OPArity)
+	),
+	Percent is (OCnt*200+Total) // (2*Total),
+	tab(20), write(Percent),write('%'),write(' '(OCnt)),tab(2),
+	write(OPName),write('/'),writeln(OPArity),
+	(MPSC =\= OMPSC
+	 ->	MPercent is (ACnt*200+Total) // (2*Total),
+		write(MPercent),write('%'),write(' '(ACnt)),tab(2),
+		(OMPSC =:= 0
+		 ->	MName = 'Unknown'
+		 ;	psc_name(OMPSC,MName)
+		),
+		writeln(MName),
+		dump_profile(STuples,Total,PSC,MPSC,Cnt,Cnt)
+	 ;	NACnt is Cnt+ACnt,
+		dump_profile(STuples,Total,PSC,MPSC,Cnt,NACnt)
+	).
+
+
+:- dynamic modes_called/2.
+:- index(modes_called/2,trie).
+
+profile_mode_init :-
+	retractall(modes_called(_,_)).
+
+profile_mode_call(Term) :-
+	term_psc(Term,PSC),
+	term_new(PSC,ModeTerm),
+	psc_arity(PSC,Arity),
+	gen_mode_term(Arity,Term,ModeTerm),
+	(modes_called(ModeTerm,Ctr)
+	 ->	coninc(Ctr)
+	 ;	gensym('_mctr',Ctr),
+		conset(Ctr,1),
+		assert(modes_called(ModeTerm,Ctr))
+	),
+	call_c(Term).
+
+profile_mode_dump :-
+	findall(mc(T,C),modes_called(T,C),MCs),
+	sort(MCs,SMCs),
+	(member(mc(T,C),SMCs),
+	 conget(C,Cnt),
+	 write(userout,T),write(userout,': '),writeln(userout,Cnt),
+	 fail
+	 ;
+	 true
+	).
+
+gen_mode_term(Arity,Term,ModeTerm) :-
+	(Arity =< 0
+	 ->	true
+	 ;	arg(Arity,Term,Arg),
+		(ground_term(Arg)
+		 ->	arg(Arity,ModeTerm,b)
+		 ;	arg(Arity,ModeTerm,f)
+		),
+		Arity1 is Arity-1,
+		gen_mode_term(Arity1,Term,ModeTerm)
+	).
+
+
+%profile_unindexed_calls(X): X=off, X=on, X=once, X=Skel
+profile_unindexed_calls(off) :- !,
+	stat_set_flag(LOG_UNINDEXED,0).  % set off
+profile_unindexed_calls(on) :- !,
+	stat_set_flag(LOG_UNINDEXED,2).
+profile_unindexed_calls(once) :- !,
+	stat_set_flag(LOG_UNINDEXED,1).
+profile_unindexed_calls(M:P/A) :- !,
+	functor(Term,P,A),
+	term_new_mod(M,Term,MTerm),
+	term_psc(MTerm,PSC),
+	stat_set_flag(LOG_UNINDEXED,PSC).
+profile_unindexed_calls(P/A) :- !,
+	functor(Term,P,A),
+	term_psc(Term,PSC),
+	stat_set_flag(LOG_UNINDEXED,PSC).
+profile_unindexed_calls(M:Term) :- !,
+	term_new_mod(M,Term,MTerm),
+	term_psc(MTerm,PSC),
+	stat_set_flag(LOG_UNINDEXED,PSC).
+profile_unindexed_calls(Term) :-
+	compound(Term),	% cant index 0-ary predicate
+	!,
+	term_psc(Term,PSC),
+	stat_set_flag(LOG_UNINDEXED,PSC).
+profile_unindexed_calls(Term) :-
+	warning(('Illegal parameter to profile_unindexed_calls: ',
+		 Term,'; must be (off,on,once,term_spec)')).

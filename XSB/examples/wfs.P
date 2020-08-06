@@ -1,0 +1,121 @@
+/* File:      wfs.P
+** Author(s): David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: wfs.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+
+/* Trying to implement WFS in our system, without delay.  Under current design
+our system gives unpredictable results when findall is called recursively.
+The idea here is ultimately to use the DCG transformation to effect a WFS
+evaluator.  */
+
+:- import tfindall/3, get_calls_for_table/3,
+	table_state/2, get_returns_for_call/2
+	from tables.
+:- import ground/1,memberchk/2,load_dyn/1 from basics.
+:- import variant/2 from subsumes.
+:- import abolish_table_info/0 from machine.
+
+:- op(500,fx,(~)).
+~ _.	% hack to define ~/1 so clause/2 will work right. Sorry.
+
+:- load_dyn(wf_examples),writeln('Example data loaded').  % load examples
+
+demo :- 
+	cputime(T1),
+	(test(Call),nl,writeln(Call),
+	 wfs(Call,V),tab(3),write(wfs(Call,V)),nl,fail
+	 ;
+	 cputime(T2), Etime is T2-T1, write('CPU Time: '),
+	 write(Etime), writeln(' secs.')
+	).
+
+
+% interpreter
+
+:- table(wfs/3).
+
+wfs(G,V) :- abolish_table_info, wfs(G,V,[]).
+
+wfs(G,V,C) :- clause(G,B),wfs_c(B,V,C).
+
+wfs_c(G,V,C) :-
+	(G = true
+	 ->	V=true
+	 ; G == ?
+	 ->	V=und
+	 ; G = (A,B)
+	 ->	wfs_c(A,V1,C),wfs_c(B,V2,C),xand(V1,V2,V)
+	 ; G = ~ A
+	 ->	(ground(A)
+		 ->	(memberchk(A,C)
+			 ->	V = und
+			 ;	sort([A|C],Negs),
+				tfindall(V1,wfs(A,V1,Negs),VS),
+				xnot(VS,V)
+			)
+		 ;	writeln(flounder(G))
+		)
+	 ; G = (A;B)
+	 ->	(wfs_c(A,V,C) ; wfs_c(B,V,C))
+	 ; predicate_property(G,built_in)
+	 ->	call(G)
+% this following subcondition makes it faster for some
+%		and slower for many others!
+%	 ; wf_tab_subsumed(G,C,Call)
+%	 ->	get_returns_for_call(Call,Ret), 
+%		Ret = wfs(G,V,_)
+	 ;	wfs(G,V,C)
+	).
+
+
+wf_tab_subsumed(G,C,Call) :- 
+	get_calls_for_table(wfs(_,_,_),Call,Empty),
+	table_state(Call,complete),
+	Call = wfs(G1,_,C1),
+	variant(G1,G),
+	wf_answers(Empty,Call,Res),
+	(Res \== und, !
+	;
+	 subset(C1,C), !
+	).
+
+subset([],_).
+subset([E|L1],L2) :- memberchk(E,L2), subset(L1,L2).
+
+wf_answers(empty,_,fail).
+wf_answers(notempty,Call,und) :-
+	get_returns_for_call(Call,R1),R1=wfs(G,V1,_),
+	V1 == und,
+	\+ (get_returns_for_call(Call,R2),R2=wfs(G1,V2,_),
+		variant(G,G1),var(V2)),
+	!.
+wf_answers(notempty,_,true).
+
+xand(true,true,true) :- !.
+xand(_,_,und).
+
+xnot(Vs,_) :- memberchk(true,Vs),!,fail.
+xnot([],true) :- !.
+xnot(_,und).
+
+

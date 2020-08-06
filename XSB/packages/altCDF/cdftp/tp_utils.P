@@ -1,0 +1,102 @@
+
+:- export  tp_prettyPrintCE/2,
+              tp_gensym/2, tp_gennum/1, reset_gennum/0, tp_testgennum/1,
+	  tp_writeln/2, set_debug_on/1, set_debug_off/0, get_debug_level/1.
+
+:- import conset/2,conget/2 from gensym.
+:- import member/2 from basics.
+
+?- reset_gennum.
+
+reset_gennum:- conset(tp_gennum_val, 0).  
+
+/*----gennum------------------------------------------------------------*/
+
+tp_gennum(N) :- 
+	conget(tp_gennum_val, O), N is O + 1, conset(tp_gennum_val, N).
+
+/*----gensym------------------------------------------------------------*/
+
+tp_testgennum(N):- conget(tp_gennum_val, N).
+
+tp_gensym(_Root, N) :- 
+	conget(tp_gennum_val, O), 
+	N is O + 1, 
+	conset(tp_gennum_val, N).
+
+/*----gennum------------------------------------------------------------*/
+
+tp_prettyPrintCE(N,CE):-
+	debugging(X),
+	(X >= N -> prettyPrintCE(CE) ; true).
+
+prettyPrintCE(CE):- prettyPrintCE(CE,3,_).
+
+prettyPrintCE(','(A,B),N,Last):- !,
+	(Last = and -> N1 = N ; N1 is N + 3),
+	prettyPrintCE(A,N1,and),
+	tab(N),writeln('and'),
+	prettyPrintCE(B,N1,and).
+prettyPrintCE(';'(A,B),N,Last):- !,
+	(Last = or -> N1 = N ; N1 is N + 3),
+	prettyPrintCE(A,N1,or),
+	tab(N),writeln('or'),
+	prettyPrintCE(B,N1,or).
+prettyPrintCE(exists(R,CE),N,_Last):-!,
+	tab(N),write('exists('),write(R),write(','),
+	writeEmbeddedCE(CE,N).
+prettyPrintCE(all(R,CE),N,_Last):- !,
+	tab(N),write('all('),write(R),write(','),
+	writeEmbeddedCE(CE,N).
+prettyPrintCE(atLeast(N,R,CE),N,_):-!,
+	tab(N),write('atLeast('),write(N),write(','),write(R),write(','),
+	writeEmbeddedCE(CE,N).
+prettyPrintCE(atMost(N,R,CE),N,_):-!,
+	tab(N),write('atMost('),write(N),write(','),write(R),write(','),
+	writeEmbeddedCE(CE,N).
+prettyPrintCE(CE,N,_):- tab(N),writeln(CE).
+	    
+writeEmbeddedCE(CE,N):- 
+	(largeCE(CE) -> 
+	    nl,
+	    N1 is N + 12,
+	    prettyPrintCE(CE,N1,_),
+	    tab(N1),writeln(')')
+	;
+	    write(CE),writeln(')') ).
+
+largeCE(CE):- 
+	functor(CE,F,_),
+	member(F,[',' , ';' , exists , all, atMost , atLeast]).
+
+%---------------------------------------------------------
+/* Dont know if this is consistent, but 
+   0 is everything
+   1 show all ids checked, LCEs and structures
+   2 shows all ids checked and LCEs
+   3 shows ids checked
+*/
+
+:- local debugging/1.
+
+:- dynamic debugging/1.
+
+:- set_debug_on(2).
+
+get_debug_level(N):- debugging(N).
+
+set_debug_off:- 
+	retractall(debugging(_)),
+	assert(debugging(0)).
+
+set_debug_on(N):- 
+	retractall(debugging(_)),
+	assert(debugging(N)).
+
+tp_writeln(N,Term):-
+	debugging(X),
+	(X >= N -> tab(N),writeln(Term) ; true).
+
+%---------------------------------------------------------
+end_of_file.
+

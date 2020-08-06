@@ -1,0 +1,176 @@
+/* File:      asm.P
+** Author(s): Saumya Debray, Terrance Swift, Jiyang Xu, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: asm_inst.P,v 1.27 2011-12-14 22:41:03 dwarren Exp $
+** 
+*/
+
+
+asm_inst(label(_T,_X),		0,	-2,	[]).
+asm_inst(getpvar(V,R),		4,	0,	[p, v(V), r(R)]	).
+asm_inst(getpval(V,R),		4,	1,	[p, v(V), r(R)]	).
+asm_inst(getstrv(V,I),		8,	2,	[pp, v(V), s(I)]).
+asm_inst(gettval(R,R1),		4,	3,	[p, r(R), r(R1)]).
+asm_inst(getcon(R,I),		8,	4,	[pp, r(R), c(I)]).
+asm_inst(getnil(R),		4,	5,	[pp, r(R)]	). 
+asm_inst(getstr(R,I),		8,	6,	[pp, r(R), s(I)]).
+asm_inst(getlist(R),		4,	7,	[pp, r(R)]	).
+asm_inst(unipvar(V),		4,	8,	[pp, v(V)]	).
+asm_inst(unipval(V),		4,	9,	[pp, v(V)]	).
+asm_inst(unitvar(R),		4,	10,	[pp, r(R)]	).
+asm_inst(unitval(R),		4,	11,	[pp, r(R)]	).
+asm_inst(unicon(I),		8,	12,	[ppp, c(I)]	). 
+asm_inst(uninil,		4,	13,	[ppp]		).
+asm_inst(getnumcon(R,N),	8,	14,	[pp, r(R), n(N)]).
+asm_inst(putnumcon(R,N),	8,	15,	[pp, r(R), n(N)]).
+asm_inst(putpvar(V,R),		4,	16,	[p, v(V), r(R)]	).
+asm_inst(putpval(V,R),		4,	17, 	[p, v(V), r(R)]	).
+asm_inst(puttvar(R,R1),		4,	18,	[p, r(R), r(R1)]).
+asm_inst(putstrv(V,I),		8,	19,	[pp, v(V), s(I)]).
+asm_inst(putcon(R,I),		8,	20,	[pp, r(R), c(I)]).
+asm_inst(putnil(R),		4,	21,	[pp, r(R)]	).
+asm_inst(putstr(R,I),		8,	22,	[pp, r(R), s(I)]).
+asm_inst(putlist(R),		4,	23,	[pp, r(R)]	).
+asm_inst(bldpvar(V),		4,	24,	[pp, v(V)]	).
+asm_inst(bldpval(V),		4,	25,	[pp, v(V)]	).
+asm_inst(bldtvar(R),		4,	26,	[pp, r(R)]	).
+asm_inst(bldtval(R),		4,	27,	[pp, r(R)]	).
+asm_inst(bldcon(I),		8,	28,	[ppp, c(I)]	).
+asm_inst(bldnil,		4,	29,	[ppp]		).
+asm_inst(uninumcon(N),		8,	30,	[ppp, n(N)]	). 
+asm_inst(bldnumcon(N),		8,	31,	[ppp, n(N)]	).
+
+asm_inst(uniavar,		4,	33,	[ppp]		).
+asm_inst(bldavar,		4,	34,	[ppp]		).
+asm_inst(unitvar_getlist_uninumcon(R,A1,A2),4,35,[r(R),a(A1),a(A2)]).
+asm_inst(bldtval_putlist_bldnumcon(R,A1,A2),4,36,[r(R),a(A1),a(A2)]).
+asm_inst(bldtvar_list_numcon(R,A1,A2),4,37,[r(R),a(A1),a(A2)]).
+asm_inst(getkpvars(K,V,R),	4,	38,	[a(K), v(V), r(R)]).
+
+asm_inst(cmpreg(R,R1),		4,	44,	[p, r(R), r(R1)]).
+asm_inst(addintfastuni(T,S,I),	4,	45,	[r(T),r(S),a(I)]).
+asm_inst(addintfastasgn(T,S,I),	4,	46,	[r(T),r(S),a(I)]).
+asm_inst(xorreg(R,R1),	        4,	47,	[p, r(R), r(R1)]).
+
+asm_inst(getlist_tvar_tvar(R0,R1,R2), 4,72,	[r(R0), r(R1), r(R2)]	).
+
+asm_inst(getfloat(R,Float),	8,	128,	[pp, r(R), n(Float)]	).
+asm_inst(putfloat(R,Float),	8,	129,	[pp, r(R), n(Float)]	).
+asm_inst(unifloat(Float),	8,	130,	[ppp, n(Float)]	).
+asm_inst(bldfloat(Float),	8,	131,	[ppp, n(Float)]	).
+asm_inst(getdfloat(R,Float),	12,	132,	[pp, r(R), d(Float)]	).
+asm_inst(putdfloat(R,Float),	12,	133,	[pp, r(R), d(Float)]	).
+
+asm_inst(trymeelse(A,L),	8,	160,	[pp, a(A), l(L)]).
+asm_inst(retrymeelse(A,L),	8,	161,	[pp, a(A), l(L)]).
+asm_inst(trustmeelsefail(A),	4,	162,	[pp, a(A)]	).
+asm_inst(try(A,L),		8,	163,	[pp, a(A), l(L)]).
+asm_inst(retry(A,L),		8,	164,	[pp, a(A), l(L)]).
+asm_inst(trust(A,L),		8,	165,	[pp, a(A), l(L)]).
+asm_inst(getpbreg(V),		4,	166,	[pp, v(V)]	).
+asm_inst(gettbreg(R),		4,	167,	[pp, r(R)]	).
+asm_inst(putpbreg(V),		4,	168,	[pp, v(V)]	).
+asm_inst(puttbreg(R),		4,	169,	[pp, r(R)]	).
+asm_inst(jumpsavebreg(A,L),	8,	170,	[pp, a(A), l(L)]).
+
+asm_inst(getVn(V),              4,      171,    [pp, v(V)]      ).
+asm_inst(test_heap(A,N),        8,      172,    [pp, a(A), n(N)]).
+asm_inst(putpbreg_ci(V,N,A),	4,	173,	[v(V), a(N), a(A)]).
+asm_inst(puttbreg_ci(R,N,A),	4,	174,	[r(R), a(N), a(A)]).
+
+asm_inst(switchonterm(R,L,L1),	12,	176,	[pp, r(R), l(L), l(L1)]	).
+
+asm_inst(switchonbound(R, L, N), 12,	179,	[pp, r(R), i(L), i(N)]	).
+asm_inst(switchon3bound(R1, R2, R3, L, N),
+			12,	180,	[r(R1), r(R2), r(R3), i(L), i(N)] ).
+	% label is preprocessed
+
+asm_inst(trymeorelse(A,L),	8,	183,	[pp, a(A), l(L)]).
+asm_inst(retrymeorelse(A,L),	8,	184,	[pp, a(A), l(L)]).
+asm_inst(trustmeorelsefail(A),	4,	185,	[pp, a(A)]	).
+
+asm_inst(tabletrysingle(A,L,Tbi),12,	192,	[pp, a(A), l(L), i(Tbi)]).
+asm_inst(tabletry(A,L,Tbind),   12,     193,    [pp, a(A), l(L), i(Tbind)]).
+asm_inst(tableretry(A,L),	8,	194,	[pp, a(A), l(L)]).
+asm_inst(tabletrust(A,L), 	8,     	195,    [pp, a(A), l(L)]).
+asm_inst(check_interrupt(S,B),  8,	206,	[pp, a(B), s(S)]).
+asm_inst(new_answer_dealloc(A1,A2), 4,  207,    [p, a(A1), a(A2)]).
+
+asm_inst(term_comp(R1,R2,R),	4,	208,	[r(R1),r(R2),r(R)]).
+asm_inst(movreg(R,R1),		4,	209,	[p, r(R), r(R1)]).
+asm_inst(negate(R),		4,	210,	[pp,r(R)]	).
+asm_inst(and(R,R1),		4,	211,	[p, r(R), r(R1)]).
+asm_inst(or(R,R1),		4,	212,	[p, r(R), r(R1)]).
+asm_inst(logshiftl(R,R1),	4,	213,	[p, r(R), r(R1)]).
+asm_inst(logshiftr(R,R1),	4,	214,	[p, r(R), r(R1)]).
+asm_inst(addreg(R,R1),		4,	215,	[p, r(R), r(R1)]).
+asm_inst(subreg(R,R1),		4,	216,	[p, r(R), r(R1)]).
+asm_inst(mulreg(R,R1),		4,	217,	[p, r(R), r(R1)]).
+asm_inst(divreg(R,R1),		4,	218,	[p, r(R), r(R1)]).
+asm_inst(idivreg(R,R1),		4,	219,	[p, r(R), r(R1)]).
+asm_inst(fdivreg(R,R1),		4,	189,	[p, r(R), r(R1)]).
+asm_inst(int_test_z(R,I,L),     12,	220,	[pp, r(R), n(I), l(L)]).
+asm_inst(int_test_nz(R,I,L),    12,	221,	[pp, r(R), n(I), l(L)]).
+asm_inst(fun_test_ne(R1,R2,L),  8,	222,	[p, r(R1), r(R2), l(L)]).
+
+asm_inst(powreg(R,R1),	        4,	223,	[p, r(R), r(R1)]).
+asm_inst(putdval(V,R),		4,	224,	[p, v(V), r(R)]	).
+asm_inst(putuval(V,R),		4,	225,	[p, v(V), r(R)]	).
+asm_inst(minreg(R,R1),	        4,	226,	[p, r(R), r(R1)]).
+asm_inst(maxreg(R,R1),	        4,	227,	[p, r(R), r(R1)]).
+asm_inst(allocate_gc(A1,A2),    4,      231,    [p, a(A1), a(A2)]).
+asm_inst(call(S,B),		8,	232,	[pp, a(B), s(S)]).
+	% Address has been preprocessed
+asm_inst(allocate,		4,	233,	[ppp]		).
+asm_inst(deallocate,		4,	234,	[ppp]		).
+asm_inst(proceed,		4,	235,	[ppp]		).
+asm_inst(execute(S),		8,	236,	[ppp, s(S)]	).
+asm_inst(proceed_gc,		4,	238,	[ppp]		).
+	% Address has been preprocessed
+asm_inst(calld(L,B),		8,	239,	[pp, a(B), n(L)]).
+	% not used by the compiler; Address has been preprocessed
+asm_inst(executed(I),		8,	240,	[ppp, n(I)]	).
+	% only used in assembler; executed = jump except addr is preprocessed
+asm_inst(jump(L),		8,	240,	[ppp, l(L)]	).
+asm_inst(jumpz(R,L),		8,	241,	[pp, r(R), l(L)]).
+asm_inst(jumpnz(R,L),		8,	242,	[pp, r(R), l(L)]).
+asm_inst(jumplt(R,L),		8,	243,	[pp, r(R), l(L)]).
+asm_inst(jumple(R,L),		8,	244,	[pp, r(R), l(L)]).
+asm_inst(jumpgt(R,L),		8,	245,	[pp, r(R), l(L)]).
+asm_inst(jumpge(R,L),		8,	246,	[pp, r(R), l(L)]).
+asm_inst(cases(A,I,N),		10,	247,	[a(A), n(I), n(N)]). 
+	% only used in index block
+asm_inst(fail,			4,	248,	[ppp]		).
+asm_inst(noop(A),		4,	249,	[pp, a(A)]	).
+asm_inst(halt,			4,	250,	[ppp]		).
+asm_inst(builtin(W),		4,	251,	[pp, a(W)]	).
+asm_inst(unifunc(W,R),		4,	252,	[p, a(W), r(R)]	).
+%  asm_inst(straight_noop,	4,	252,	[ppp]		).
+asm_inst(jumpcof(W,R,L),	8,	254,	[p, a(W), r(R), l(L)]).
+
+asm_inst(arglabel(d, I, L),	13,	-3,	[t(d), d(I), l(L)]) :- !.
+asm_inst(arglabel(T, I, L),	9,	-3,	[t(T), n(I), l(L)]).
+	% only used in index block
+asm_inst(arglabel(T, L),	5,	-3,	[t(T), l(L)]	).
+	% only used in index block
+asm_inst(endfile(_P,_A),	8,	255,	[ppp, n(0)]	).
+
+force_asm_inst_loaded.

@@ -1,0 +1,443 @@
+/* File:      xnmr.P
+** Author(s): David Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: xnmr.P,v 1.5 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,xpp_on,ciao_directives]).
+
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+#include "standard.h"
+#include "char_defs.h"
+
+:- local '_$xnmrmode'/0.
+:- local '_$answers_found'/0.
+
+:- set_nmr_mode.
+
+?- import(from(set_nmr_mode/0,xnmr)).
+?- import(from(set_answerset_mode/0,xnmr)).
+?- import(from((-)/1,xnmr)).
+
+
+:- comment(module,"@include{xnmr.doc}").
+
+:- nmr.
+
+:- comment(nmr/0,"@pred{nmr}: sets up top read-eval-print loop, very
+much as is done in @tt{x_interp.P}").
+nmr :-
+        set_inthandler('_$keyboard_int'(_), MYSIG_KEYB),
+        version_message,
+        prompt('nmr| ?- ',[]),
+        prompt(' ? ',[],'_$more_prompt'(_)),
+        prompt(' ? ',[],'_$debug_prompt'(_)),
+        fail.
+nmr :-
+	retractall('$$exception_ball'(_)),
+	repeat,
+	catch(nmr1(_),Ball,default_error_handler(Ball)),
+	fail.
+
+/* repeat, read user query, and process it appropriately */
+nmr1(_) :-
+	repeat,
+	trimcore,
+	stat_set_flag(HIDE_STATE, 0), %% hide call interceptions.
+	stat_set_flag(INVOKE_NUM, 0),
+	conset('_$break_level', 0),
+	print_debug_state,
+	prompt(Prompt,Prompt),
+	file_write(STDFDBK, Prompt),
+	file_flush(STDFDBK, _),
+
+	file_read(STDIN, X, Vars),
+	(nonvar(X), read_in_stop(X)	% end of top loop; halt
+	->  !
+	;   (conget('_$xnmrmode',0)
+	    ->	process_query(X,Vars)
+	    ;	process_eneg_query(X,Vars)
+	    )
+	).
+
+read_in_stop(halt) :- halt.     % quit entire system, regardless of break level
+read_in_stop(end_of_file).	% pop a break level, out if at top
+
+:- comment(process_query/1,"@pred{process_query(+Query,+Vars)}
+processes a user query if not in xnmrmode, i.e., not with extended
+programs with explicit negation.  @tt{Query} is the user query to call
+and @tt{Vars} is a list of terms of form @tt{vv(VarName,Var)}
+representing the variables in the query.").
+process_query(X,Vars) :-
+	 abolish_all_tables,
+	 compute_query(X,Q1),
+	 process_nmr_query(Q1, Vars).
+
+:- comment(process_nmr_query/2,"@tt{process_nmr_query(Query,Vars)}
+processes answers to the tabled query @tt{Query} with variables
+@tt{Vars} (a list with terms of the form @tt{vv('VarName',Var)}).
+@tt{Query} has already been called and the table filled.  This
+predicate calls @tt{nmr_get_residual} to get variable bindings and the
+associated residual program.  It prints the variable bindings and
+then, depending on the user's request, processes the residual program
+by passing it to SModels and appropriately displaying the results.
+And then fails so the next query can be processed.").
+process_nmr_query(X, Vars) :- 
+	prompt(MorePrompt,MorePrompt,'_$more_prompt'(_)),
+	stat_flag(LETTER_VARS, LetterVars),
+	nmr_get_residual(X,Vars,Res),
+	(var(Vars),Res == []
+         ->     !,
+	        file_nl(STDFDBK), file_write(STDFDBK, yes), file_nl(STDFDBK),
+		fail
+	 ;      true
+        ),
+	(LetterVars =:= 0
+         ->     print_answer(Vars),
+	        print_delay_lists(Res)
+	 ;      (numbervars([Vars,Res]), 
+	         print_answer(Vars), 
+		 print_delay_lists(Res),
+		 fail
+	         ; 
+		 true
+	        )
+	),
+	file_write(STDFDBK, MorePrompt),
+	file_flush(STDFDBK, _),
+	no_more(C),
+	(C =:= 10
+         ->	!,
+	        file_nl(STDFDBK), file_write(STDFDBK, yes), file_nl(STDFDBK)
+         ; C =:= 0's   % 'print stable models
+         ->     (Res \== []
+	         ->     process_stable_models(X,_)
+	         ;      true
+	        )
+         ; C =:= 0't   % 'print "strict" stable models
+         ->     (Res \== []
+	         ->     process_stable_models(X,1)
+	         ;      true
+	        )
+	 ; C =:= 0'a   % 'answer set semantics
+         ->     (Res \== []
+	         ->     process_answerset_semantics(X)
+	         ;      true
+	        )
+	 ;      true
+        ),
+	fail.
+process_nmr_query(_,_) :- 
+	file_nl(STDFDBK), file_write(STDFDBK, no), file_nl(STDFDBK),
+	fail.
+
+print_delay_lists([]) :- !.
+print_delay_lists([DL|DLs]) :-
+	file_nl(STDFDBK),
+	file_write(STDFDBK,'DELAY LIST = '),
+	file_write(STDFDBK,DL),
+	print_delay_lists(DLs).
+
+no_more(X) :- 
+	file_get(0, C), 
+	(C =:= -1 /* end_of_file */
+         ->     X = 10
+         ; C =:= 10
+         ->     X = 10
+         ;      X = C,
+	        scan_to_nl
+         ).
+
+scan_to_nl :-
+	file_get(0, X), 
+	(X =:= -1 /* end_of_file */
+         ->     true
+         ; X =:= 10
+         ->     true
+         ;      scan_to_nl
+         ).
+	
+:- comment(compute_query/2,"@pred{compute_query(+UserGoal,-GoalCalled)}
+invokes a user-entered query, passed as @tt{UserGoal}.  If the goal is
+for a tabled predicate, then it calls it directly (after twiddling
+debug/trace bits appropriately.)  If the goal is *not* tabled, then it
+calls a tabling call so it is tabled.  The tabling call is the
+predicate '{}'/1, so that when it is printed for the user, it looks
+very much like the goal itself (just wrapped in braces.)  So either
+the goal itself is returned in @tt{GoalCalled} or the goal wrapped in
+'{}' is returned there.  @tt{GoalCalled} is required by caller in
+order to get answers out of the table.").
+compute_query(Q,Q1) :-
+	(Q == []
+	 ->	State = undef
+	 ; Q = [_|_]
+	 ->	State = undef
+	 ;	table_state(Q,State)
+	),
+	(State == undef
+	 ->	Q1 = {Q},
+		('{}'(Q),fail ; true)
+	 ;	Q1 = Q,
+		(untable_call(Q),fail ; true)
+	).
+
+:- table '{}'/1.
+:- use_variant_tabling '{}'(_).
+'{}'(Q) :- 
+	'_$savecp'(C), 
+	goal_cut_trans(Q,X,C),
+	( stat_set_flag(HIDE_STATE, 0)         %% expose tracing
+%	; stat_set_flag(HIDE_STATE, 1), fail   %% hide again when backtrack
+	),
+	call_expose(X).
+
+untable_call(Q) :- 
+	'_$savecp'(C), 
+	goal_cut_trans(Q,X,C),
+	( stat_set_flag(HIDE_STATE, 0)         %% expose tracing
+%	; stat_set_flag(HIDE_STATE, 1), fail   %% hide again when backtrack
+	),
+	call_expose(X).
+
+nmr_get_residual(CallSkel, Vars, DelayList) :-
+	get_calls(CallSkel, S, R),
+	is_most_general_term(R),
+	all_distinct_vars(Vars),
+	get_returns(S,R,Leaf),
+	get_delay_lists(Leaf, DLs),
+	DelayList = DLs.
+
+% inline builtin
+get_delay_lists(Leaf, DLs) :- get_delay_lists(Leaf, DLs).
+
+print_answer([]) :- !.
+print_answer([vv(Name, Val)|Tail]) :-
+	file_nl(STDFDBK), file_write(STDFDBK, Name), 
+	file_write(STDFDBK, ' = '), file_write(STDFDBK, Val),
+	print_answer(Tail).
+
+conset(Con, Val) :- conpsc(Con, PSC), psc_set_prop(PSC, Val).
+
+all_distinct_vars(Vars) :-
+	\+ \+ all_distinct1(Vars).
+all_distinct1([]).
+all_distinct1([vv(_Name,Var)|Rest]) :-
+	var(Var),
+	Var=[],
+	all_distinct1(Rest).
+
+process_stable_models(Query,Strict) :-
+	prompt(MorePrompt,MorePrompt,'_$more_prompt'(_)),
+	(Query = {tnot(Q)}
+         ->     Neg = 1
+         ;      Q = Query, Neg = 0
+        ),
+	init_smodels(Q),
+	file_nl(STDFDBK),
+	file_write(STDFDBK,'Stable Models: '),
+	(var(Strict)
+	->  true
+	;   set_query_true(Neg)),
+	a_stable_model,
+	file_nl(STDFDBK),
+	file_write(STDFDBK,'  '),
+	print_current_stable_model,
+	file_write(STDFDBK, MorePrompt),
+	file_flush(STDFDBK, _),
+	no_more(Cmd),
+	(Cmd =:= 10
+         ->     !,
+	        file_write(STDFDBK, '  yes'), 
+		file_nl(STDFDBK)
+	 ; true
+        ),
+	fail.
+process_stable_models(_,_) :-
+        file_write(STDFDBK, '  no'), 
+	file_nl(STDFDBK).
+
+
+process_answerset_semantics(Query) :-
+	(Query = {tnot(Q)}
+         ->     Neg = 1
+         ;      Q = Query, Neg = 0
+        ),
+	init_smodels(Q),
+	(in_all_stable_models(1,Neg)
+	 ->     file_write(STDFDBK,'  yes')
+	 ;      file_write(STDFDBK,'  no')
+	),
+	file_nl(STDFDBK).
+
+test_answerset_semantics(Query) :-
+	(Query = {tnot(Q)}
+	->  Neg = 1
+	;   Q = Query, Neg = 0
+	),
+	init_smodels(Q),
+	(in_all_stable_models(1,Neg)
+	->  true
+	;   fail
+	).
+
+prompt(New,Old) :- prompt(New,Old,'_$nmr_main_prompt'(_)).
+
+prompt(New,Old,Pstore) :- 
+	(Old == []
+	 ->	true
+	 ;	get_prompt(Pstore,Old)
+	),
+	(Old \== New
+	 ->	set_prompt(Pstore,New)
+	 ;	true
+	).
+
+get_prompt(Pstore,Prompt) :-
+	term_psc(Pstore, Psc),
+	psc_prop(Psc, Buff),	
+	intern_string(Buff, String),	%% temp solution, since ALIAS not work
+	Prompt = String.		%% for double word.
+
+set_prompt(Pstore,Prompt) :-
+	term_psc(Pstore, Psc),
+	psc_set_type(Psc, 8),			%% T_CSET
+	conname(Prompt, String),
+	psc_set_prop(Psc, String).
+
+print_debug_state :-
+	stat_flag(TRACE,Trace),
+	stat_flag(DEBUG_ON,Debug),
+	stat_flag(QUASI_SKIPPING,QuasiSkip),
+	( (Trace > 0, QuasiSkip =:= 0)
+	  ->	file_write(STDDBG,[trace]), file_nl(STDDBG)
+	  ; (Debug > 0; (Trace > 0, QuasiSkip > 0))
+	  ->	file_write(STDDBG,[debug]), file_nl(STDDBG)
+	; true
+	).
+
+version_message :-
+	file_nl(STDMSG),
+	slash(Slash),
+	xsb_configuration(config_dir, ConfigDir),
+	fmt_write_string(ConfMsg, '%s%sbanner.msg', f(ConfigDir,Slash)),
+	print_file_contents(ConfMsg, STDMSG).
+
+
+% answer set semantics with explicit negation
+
+set_answerset_mode :-
+        prompt('ans| ?- ',[]),
+	coninc('_$xnmrmode').
+
+set_nmr_mode :-
+        prompt('nmr| ?- ',[]),
+	conset('_$xnmrmode',0).
+
+% processes querys in the context of extended logic programs
+% in this implementation, deals with answerset semantics, only
+process_eneg_query(X,Vars) :-
+	conset('_$answers_found',0),
+	process_eneg_query0(X,Vars).
+
+process_eneg_query0(X,Vars) :-
+	abolish_all_tables,
+	compute_query(X,Q1),
+	process_ans_eneg_query(Q1,Vars,yes).
+process_eneg_query0(X,Vars) :-
+	abolish_all_tables,
+	explicitly_negate_query(X,X1),
+	compute_query(X1,Q1),
+	process_ans_eneg_query(Q1,Vars,no).
+process_eneg_query0(_X,_Vars) :-
+	conget('_$answers_found',0),
+	file_write(STDFDBK, 'unknown'),
+	file_nl(STDFDBK),
+	fail.
+
+% processes querys according to the answerset semantics for
+% extended logic programs
+process_ans_eneg_query(X,Vars,YesNo) :-
+	prompt(MorePrompt,MorePrompt,'_$more_prompt'(_)),
+	stat_flag(LETTER_VARS,LetterVars),
+	nmr_get_residual(X,Vars,Res),
+	(var(Vars), Res == []
+	->  !,
+	    file_write(STDFDBK,YesNo),
+	    coninc('_$answers_found'),
+	    file_nl(STDFDBK),
+	    fail
+	;   true
+	),
+	(LetterVars =:= 0
+	->  true
+	;   numbervars([Vars,Res])
+	),
+	(Res == []
+	->  file_write(STDFDBK,YesNo),
+	    coninc('_$answers_found'),
+	    file_write(STDFDBK,': '),
+	    print_answer(Vars)
+	;   (test_answerset_semantics(X)
+	    ->	(var(Vars)
+		->  !,
+		    file_write(STDFDBK,YesNo),
+		    coninc('_$answers_found'),
+		    file_nl(STDFDBK),
+		    fail
+		;   file_write(STDFDBK,YesNo),
+		    file_write(STDFDBK,': '),
+		    print_answer(Vars)
+		)
+	    ;	fail
+	    )
+	),
+	file_write(STDFDBK, MorePrompt),
+	file_flush(STDFDBK, _),
+	no_more(C),
+	(C =:= 10
+	->  !,
+%	    file_nl(STDFDBK),
+%	    file_write(STDFDBK, YesNo),
+	    file_nl(STDFDBK)
+	;   true
+	),
+	fail.
+
+% creates the explicit negation of a query
+explicitly_negate_query(X,X1) :-
+	X = '{}'(T1),!,
+	explicitly_negate_query(T1,T2),
+	X1 = '{}'(T2).
+explicitly_negate_query(X,X1) :-
+	X = tnot(T1), !,
+	explicitly_negate_query(T1,T2),
+	X1 = tnot(T2).
+explicitly_negate_query(X,X1) :-
+	X = '-'(X1),!.
+explicitly_negate_query(X,X1) :-
+	X1 = '-'(X),!.
+
+% some explicitly-negated predicates
+-xnmr_dummy :- true.
+
+%-true :- fail.

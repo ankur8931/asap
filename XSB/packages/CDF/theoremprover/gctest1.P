@@ -1,0 +1,16 @@
+
+:- [bench,meta].
+
+:- bench_chain1(32000).
+
+:- bench_chain2(32000).
+
+:- bench_abdchain1(3200).
+
+:- bench_abdchain2(3200).
+
+:- bench_abdchain3(400).
+
+:- bench_confchain1(6400).
+
+:- bench_confchain2(6400).

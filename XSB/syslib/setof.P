@@ -1,0 +1,214 @@
+/* File:      setof.P
+** Author(s): Kostis Sagonas, David S. Warren, Bart Demoen
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: setof.P,v 1.8 2010/04/30 16:14:45 dwarren Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,xpp_on]).
+
+#include "builtin.h"
+
+/*======================================================================*/
+/* setof(?Template, +Call, ?Set)					*/
+/*======================================================================*/
+
+%% The bagof1 hack is needed to make sure that setof is traced properly 
+%% by the debugger. That is, bagof/3 is printed, but nothing is traced 
+%% after that until we hit the call to Generator.
+setof(Template, Generator, Set) :-
+	bagof1(Template, Generator, Bag),
+	sort(Bag, Set0),
+	Set=Set0.
+
+%% MK: the tabled versions: tbagof/tsetof/tfindall aren't traced
+%% properly by the debugger. Can be done the same way as I did
+%% for bagof/setof/findall
+tsetof(Template, Generator, Set) :-
+	tbagof(Template, Generator, Bag),
+	sort(Bag, Set0),
+	Set=Set0.
+
+
+/*======================================================================*/
+/* bagof(?Template, +Call, ?Bag)					*/
+/*======================================================================*/
+
+bagof(Template, Generator, Bag) :- bagof1(Template, Generator, Bag).
+%% The bagof1 hack is needed to make sure that bagof is traced properly 
+%% by the debugger. That is, bagof/3 is printed, but nothing is traced 
+%% after that until we hit the call to Generator.
+bagof1(Template, Generator, Bag) :-
+	excess_vars(Generator, Template, [], VarList), 
+	(VarList \== []
+	 ->	Key =.. ['$'|VarList],
+		bfindall(Key-Template, Generator, Bags0, []),
+		keysort(Bags0, Bags), % This performs the groupby
+		pick(Bags, Key, Bag)
+	 ;	bfindall(Template, Generator, Bag, []),
+		Bag \== []	% If Bag=[] then bagof/3 and setof/3 should fail.
+	).
+
+tbagof(Template, Generator, Bag) :-
+	excess_vars(Generator, Template, [], VarList), 
+	VarList \== [], !,
+	Key =.. ['$'|VarList],
+	clean_existentials(Generator, CleanGen),
+	tfindall(Key-Template, CleanGen, Bags0),
+	keysort(Bags0, Bags),	% This performs the groupby
+	pick(Bags, Key, Bag).
+tbagof(Template, Generator, Bag) :-
+	clean_existentials(Generator, CleanGen),
+	tfindall(Template, CleanGen, Bag),
+	Bag \== [].	% If Bag=[] then tbagof/3 and tsetof/3 should fail.
+
+
+clean_existentials(X,Y) :- var(X), !, Y=X.
+clean_existentials(_^X,Y) :- !, clean_existentials(X,Y).
+clean_existentials(X,X).
+
+/* The following 3 preds are a result of a bug fix by Kostis,
+   with a little help from Bart */
+pick([K-X|Bags], Key, Bag) :-
+        parade(Bags, K, Bag1, Bags1),
+	decide(Bags1, [X|Bag1], K, Key, Bag).
+
+parade([K-X|L1], Key, Bag1, L) :-
+	variant(K, Key),
+	!,
+	K = Key,
+	Bag1 = [X|B1],
+	parade(L1, Key, B1, L).
+parade(L, _, [], L).
+
+decide([], Bag, Key, Key, Bag) :- !.
+decide(_, Bag, Key, Key, Bag).
+decide(Bags, _, _, Key, Bag) :- pick(Bags, Key, Bag).
+
+excess_vars(Term,Tmpl,PVars,Vars) :- excess_vars(Term,Tmpl,PVars,1,Vars).
+
+term_variables(Term,Vars) :- excess_vars(Term,[],[],0,Vars).
+
+%% use builtin
+excess_vars(_Term,_Tmpl,_PVars,_IfExist,_Vars) :- '_$builtin'(EXCESS_VARS).
+
+
+/* -------------------------------------------------------------------- */
+/*	Sorting now is implemented in C via qsort(). 			*/
+/* -------------------------------------------------------------------- */
+
+sort(List, SortedList) :- sort(List, SortedList).
+
+keysort(List, SortedList) :- keysort(List, SortedList).
+
+/*======================================================================*/
+
+_X^P :- call(P).
+
+/*======================================================================*/
+/* findall(?Template, +Call, ?List)					*/
+/*	The first word in buffer is the size of the buffer; not used	*/
+/*	The second word is the pointer to the argument position where	*/
+/*		the current answer should be be put.			*/
+/*		This location is initialized to [] before writing.	*/
+/*	The third word is a pointer to the next free location in buffer	*/
+/*	The rest of buffer contains the answer (a list)			*/
+/*======================================================================*/
+
+findall(Template,Goal,List) :- bfindall(Template,Goal,List,[]).
+
+findall(Template,Goal,List,Tail) :- bfindall(Template,Goal,List,Tail).
+
+% (dsw renamed to fix tracing, since findall/4 is now standard, 4/30/10)
+% bfindall/4
+% by Bart Demoen - Christmas period 1996
+% inspiration from a very old ALP newsletter and some Portuguese people
+% with a twist for the fact that findalls are not strictly nested due to
+% tabling donated to XSB
+
+bfindall(Template,Goal,List,Tail) :-
+	'$$findall_init'(I,Closed),
+	(
+	  call(Goal), '$$findall_add'(Template,I,Closed), fail
+	;
+	  '$$findall_get_solutions'(L,T,I,Closed), List = L , Tail = T
+	) .
+
+
+find_n(N,Template,Goal,List) :-
+	findall(Template,n_times(N,Goal),List).
+
+n_times(N,Goal) :-
+	integer(N),
+	N > 0,
+	gensym(n_times_cnt_,Sym),
+	conset(Sym,0),
+	call(Goal),
+	coninc(Sym,CCnt),
+	(CCnt < N
+	 ->	true
+	 ;	!
+	).
+
+find_n_m(N,M,Template,Goal,List) :-
+	findall(Template,n_m_times(N,M,Goal),List).
+
+n_m_times(N,M,Goal) :-
+	integer(N),
+	N > 0,
+	integer(M),
+	M >= N,
+	gensym(n_m_times_cnt_,Sym),
+	conset(Sym,0),
+	call(Goal),
+	coninc(Sym,CCnt),
+	CCnt >= N,
+	(CCnt =< M
+	 ->	true
+	 ;	!
+	).
+
+
+
+/*
+TLS: would like to make findall catch errors gracefully, as in this code, 
+suggested by Bart.  The problem is that it breaks the ret_attv test?!?! and 
+I need to understand better why this might be.
+
+findall(Template,Goal,List,Tail) :-
+	'$$findall_init'(I,Closed),
+	(
+	     catch(Goal,Ball,findall_handler(Ball,I)),
+	     writeln(catch(Ball,I)),
+	     '$$findall_add'(Template,I,Closed), fail
+	;
+	  '$$findall_get_solutions'(L,T,I,Closed), List = L , Tail = T
+	) .
+
+:- import writeln/1 from standard.
+
+findall_handler(Ball,I):- 
+	writeln(findall_handler(Ball,I,_Goal)),
+	'$$findall_free'(I),  % this one calls the C version of findall_free
+        throw(Ball).
+*/
+
+/* ----------------------- end of file setof.P ------------------------ */

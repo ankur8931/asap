@@ -1,0 +1,179 @@
+
+=====================================================================
+
+			       XMC 1.0
+
+	       A Logic-Programming-Based Model Checker
+
+	      Copyright (c) 2000,  SUNY at Stony Brook.
+
+		      Contact: lmc@cs.sunysb.edu
+
+=====================================================================
+
+
+XMC is a model checker implemented using the XSB tabled logic
+programming system. XMC is an explicit-state, local model checker for
+processes specified in XL, a sugared version of value-passing CCS, and
+the alternation-free fragment of the modal mu-calculus. The XMC system
+is a result of the LMC (Logic-Programming-Based Model Checking)
+project at Stony Brook.
+
+The LMC project is funded by a four-year grant from NSF's Experimental
+Software Systems (ESS) program.  The project aims to combine the
+latest developments in concurrency research and in logic programming
+to advance the state-of-the art of system specification and
+verification.  For more information on the LMC project, see
+http://www.cs.sunysb.edu/~lmc.
+
+This Readme.txt file contains:
+	1. Terms of Use
+	2. Installation Notes
+	3. Usage Notes
+
+
+1. Terms of Use:
+----------------
+This is the first public release of XMC, dated April 2000.  You may
+freely copy and distribute verbatim copies of the XMC system, provided
+this Readme.txt file is prominently placed in every copy. You may also
+modify any of the sources of the XMC system, and redistribute the
+modifications. However, (1) the modified sources must be freely
+available, under the same terms as the original XMC system; (2) the
+modified system should prominently state the complete revision history.
+
+The software is provided "AS-IS" with NO WARRANTIES of any kind,
+express or implied including, but not limited to, the implied
+warranties of merchantability and fitness for a particular purpose.
+The entire risk as to the quality and performance of the program is
+with you.  Should the XMC system prove defective, you assume the cost
+of all necessary servicing, repair or correction.
+ 
+In no event unless required by applicable law will SUNY at Stony Brook
+and/or any other party who may modify and redistribute XMC as
+permitted above, be liable to you for damages, including any lost
+profits, lost monies, or other special, incidental or consequential
+damages arising out of the use or inability to use (including but not
+limited to loss of data or data being rendered inaccurate or losses
+sustained by third parties or a failure of the program to operate with
+any other program) the program, even if you have been advised of the
+possibility of such damages, or for any claim by any other party.
+ 
+
+2. Installation:
+----------------
+For using XMC, the XSB system (version 2.0 or higher) must be
+installed first.  XSB is a full-fledged Prolog system extended with
+tabled resolution, and is available for many platforms including Unix
+(SunOS, Solaris, HPUX, Linux, IRIX, etc.), Windows 95, and Windows NT.
+To obtain a free copy of XSB and associated documentation (including
+installation notes) see http://www.cs.sunysb.edu/~sbprolog/.
+
+The GUI components of the system are implemented in iTCL/Tk, which is
+available from http://www.tcltk.com/itcl/.  The web site
+includes links to a source distribution and installation notes.  This
+distribution of iTcl/Tk can be run on Unix systems, Windows 95/NT as
+well as Macintosh systems.
+
+The XMC system release consists of source files and examples in
+tarred, compressed (gzip) form.  Once unpacked, the XMC system will
+contain the following files and directories:
+
+	GUI/	        source programs for XMC user interface
+	Examples/	a collection of example specifications
+	Readme.txt	this file
+	System/		source programs for the XMC model checker
+	install.sh	installation script
+
+XMC is implemented starting from a simple specification of the SOS
+semantics of CCS and modal mu-calculus as logic programs, (see files
+System/ccs.P and System/mucalculus.P). The syntactic sugar in the
+input specifications are stripped away and some preprocessing is
+performed by the XMC compiler "xlc". The file System/xmc.P contains
+the top-level code for the XMC system.
+
+To install the XMC system, first unpack the tarball using
+   tar zxvf xmc.tar.gz
+or
+   gunzip -c xmc.tar.gz | tar xvf -
+
+This will create a directory xmc-1.0 which contains install.sh.
+Simply run ./install.sh to install the XMC system; the script
+will prompt you for 3 installation parameters:
+
+1. The full path name of the XSB executable
+2. The C compiler to use (cc or gcc)
+3. The full path name of itkwish executable
+
+At the end of the installation, the script will give you an
+option to send the installation summary by email, along with
+a user registration. Registered users will be informed of
+major XMC releases and bug fixes.
+
+
+3. Usage Notes:
+---------------
+The XMC system can now be started by using the shell script
+System/xmc. Any arguments used in the command line are passed to the
+XSB system. This can be used, for example, to set the default stack
+sizes of the XSB system. For instance:
+	xmc -m 50000
+makes the XSB system start with a global/local stack size of 50M.  For
+other command line options of the XSB system, please see the XSB
+manual pages--- manual subdirectory of your XSB installation, or see
+http://www.cs.sunysb.edu/~sbprolog/manual1/.
+
+Once the XMC system is invoked, you will see a series of loader
+messages followed by a prompt ('| ?- ').  From the prompt, you can
+compile and load XL specification files using xlc(_)
+command, or modelcheck using mck(_,_) command. The following is an
+example session for modelchecking the alternating bit protocol
+specification in Examples/ABP. [The commands typed by the user are
+underlined with ^^^ ; the rest are the responses of the XMC system].
+
+	$ xmc
+	  ^^^
+	[xsb_configuration loaded]
+	[sysinitrc loaded]
+	[packaging loaded]
+
+	XSB Version 2.1 (Skol) of November 25, 1999
+	[sparc-sun-solaris2.6; mode: optimal; engine: chat; scheduling: batched]
+
+	Evaluating command line goal:  
+	| ?-  consult('/usr/pkg/XMC/System/xmc').
+	[xmc loaded]
+	[mucalculus loaded]
+
+
+	| ?- xlc(buggyabp).
+	     ^^^^^^^^^^^^^^
+	[/usr/pkg/XMC/System/stdtype.P dynamically loaded, cpu time used: 0.0190 seconds]
+	[./buggyabp.xlo dynamically loaded, cpu time used: 0.0390 seconds]
+	typechecking ...
+
+	medium           :  $type(chan(_h766)) * $type(chan(_h766))
+	sender           :  $type(chan(_h872)) * $type(chan($type(integer))) * $type(integer)
+	sendnew          :  $type(chan(_h656)) * $type(chan($type(integer))) * $type(integer)
+	receiver         :  $type(chan($type(integer))) * $type(chan($type(integer))) * $type(integer)
+	abp              :  
+	[/usr/pkg/XMC/System/runlib.P dynamically loaded, cpu time used: 0.0190 seconds]
+
+	yes
+	| ?- mck(abp, drop_packet).
+	     ^^^^^^^^^^^^^^^^^^^^^^
+
+	++Warning: Removing incomplete tables...
+
+	yes
+	| ?- halt.
+	     ^^^^^
+	End XSB (cputime 0.42 secs, elapsetime 28.70 secs)
+	$
+
+For measuring the time taken to modelcheck or the space consumed,
+you can use XSB's built-in predicates cputime(_) and statistics.
+Please see XSB manual for usage notes on these built-ins.
+
+Please send comments about the XMC system, suggestions for improvements,
+and bug reports to lmc@cs.sunysb.edu.

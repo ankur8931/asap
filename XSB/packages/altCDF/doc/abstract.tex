@@ -1,0 +1,45 @@
+
+\begin{abstract}
+The {\em Cold Dead Fish} system (CDF), also known as the {\em Coherent
+Description System}, seeks to extend logic programming with facilities
+for ontology management.  CDF includes features standard to
+frame-based ontology systems, including support for inheritance,
+updates, and a visual editor.  CDF furthermore checks consistency of
+ontologies by means of both logic programming and theorem-proving
+techniques, incorporating advantages of ${\cal ALC}$-like description
+logics.  Features novel to CDF are its integration of
+description-logic style specifications with Prolog-style querying, a
+module-like component system with support for concurrent editing of
+ontologies, and a flexible rule interface that supports, among other
+features, a lazy database access mechanisms.  CDF has been used to
+construct many commercial ontology-based systems for textual
+extraction and understanding, and many of its features are
+open-source.  The semantics of CDF ontologies is formalized along with
+the relation between CDF ontologies and description logics.  Finally,
+results on preservation of submodels in Type-0 ontologies are
+presented, providing a starting point for formalizing ontology
+updates.
+\end{abstract}
+
+\mycomment{
+In order to meet these dual goals, CDF distinguishes between Type 0
+and Type 1 ontologies.  Type 1 ontologies represent classes using an
+expressive language in which common problems are $P$-space complete.
+However many ontologies do not require the full expressive power of
+Type 1 ontologies, so Type 0 ontologies are introduced as a
+restriction in which common reasoning problems require only polynomial
+time.  This paper presents a first-order logical semantics for Type 0
+ontologies, and characterizes when such ontologies are consistent and
+when they have free models (in which equality does not hold for any
+two distinct elements of the universe).  Type 0 ontologies contain
+features that are not common in description logics, such as product
+identifiers, non-inheritable relations and individuals.  These
+features are formalized, and the relation between Type 0 ontologies
+and description logics is shown.  Finally, results on preservation of
+submodels in Type-0 ontologies are presented, providing a starting
+point for formalizing ontology updates.
+
+Cdf, the {\em Cold Dead Fish System}, is an experimental platform to
+combine features of description logics and frame-based ontology
+systems with logic programming.
+}

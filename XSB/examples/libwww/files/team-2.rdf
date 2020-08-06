@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:h="http://www.w3.org/1999/xhtml" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sched="foo:not-assigned-yet" xmlns="http://www.w3.org/1999/xhtml">
+<sched:Event>
+<sched:label>team 2 plays on 
+Sunday - April 9th
+</sched:label>
+<sched:who rdf:resource="http://www.bvsoccer.org/schedules/pre-k.html#team-2"/>
+<sched:when>
+<sched:Time>
+<sched:day>
+Sunday - April 9th
+</sched:day>
+<sched:hour>
+1:00</sched:hour>
+</sched:Time>
+</sched:when>
+<sched:where>
+Northwest Field
+</sched:where>
+</sched:Event>
+<sched:Event>
+<sched:label>team 2 plays on 
+Sunday - April 16th
+</sched:label>
+<sched:who rdf:resource="http://www.bvsoccer.org/schedules/pre-k.html#team-2"/>
+<sched:when>
+<sched:Time>
+<sched:day>
+Sunday - April 16th
+</sched:day>
+<sched:hour>
+1:20</sched:hour>
+</sched:Time>
+</sched:when>
+<sched:where>
+Northeast Field
+</sched:where>
+</sched:Event>
+<sched:Event>
+<sched:label>team 2 plays on 
+Sunday - April 30th
+</sched:label>
+<sched:who rdf:resource="http://www.bvsoccer.org/schedules/pre-k.html#team-2"/>
+<sched:when>
+<sched:Time>
+<sched:day>
+Sunday - April 30th
+</sched:day>
+<sched:hour>4:10</sched:hour>
+</sched:Time>
+</sched:when>
+<sched:where>
+Southeast Field
+</sched:where>
+</sched:Event>
+<sched:Event>
+<sched:label>team 2 plays on 
+Sunday - May 7th
+</sched:label>
+<sched:who rdf:resource="http://www.bvsoccer.org/schedules/pre-k.html#team-2"/>
+<sched:when>
+<sched:Time>
+<sched:day>
+Sunday - May 7th
+</sched:day>
+<sched:hour>
+12:20</sched:hour>
+</sched:Time>
+</sched:when>
+<sched:where>
+Northeast Field
+</sched:where>
+</sched:Event>
+<sched:Event>
+<sched:label>team 2 plays on 
+Sunday - May 14th
+</sched:label>
+<sched:who rdf:resource="http://www.bvsoccer.org/schedules/pre-k.html#team-2"/>
+<sched:when>
+<sched:Time>
+<sched:day>
+Sunday - May 14th
+</sched:day>
+<sched:hour>4:10</sched:hour>
+</sched:Time>
+</sched:when>
+<sched:where>
+Southeast Field
+</sched:where>
+</sched:Event>
+<sched:Event>
+<sched:label>team 2 plays on 
+Sunday - May 21st
+</sched:label>
+<sched:who rdf:resource="http://www.bvsoccer.org/schedules/pre-k.html#team-2"/>
+<sched:when>
+<sched:Time>
+<sched:day>
+Sunday - May 21st
+</sched:day>
+<sched:hour>
+1:00</sched:hour>
+</sched:Time>
+</sched:when>
+<sched:where>
+Northwest Field
+</sched:where>
+</sched:Event>
+</rdf:RDF>

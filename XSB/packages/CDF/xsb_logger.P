@@ -1,0 +1,432 @@
+%-header--------------------------------------------------------------%
+:- compiler_options([xpp_on,ciao_directives]).
+
+#include "flag_defs_xsb.h"
+#include "standard.h"
+
+:- import message/2, messageln/2, datime/1 from standard.
+:- import concat_atom/2 from string.
+
+
+:- dynamic current_log_level/3.
+:- dynamic current_log_writer/2.
+
+:- index(current_log_level, trie).
+
+:- comment(module, "This module contains an implementation of the logger. The 
+logger is based on the Log4j(tm) system developed by The Apache Software Foundation
+(http://jakarta.apache.org/log4j/docs/index.html). 
+
+There are four default log levels and one system level, 
+{DEBUG < INFO < WARN < ERROR < SYS}. The system level is reserved for log writers 
+and for the logger itself. Log levels have precedence, of the default levels the 
+DEBUG level has the lowest and the SYS level has the highest precedence. Only 
+messages at or above the set log level are logged. Calls to log messages at lower 
+levels result only in unification of the top most predicate. The system allows 
+for custom levels to be added in addition to the default levels, using 
+log_add_log_level/2.
+
+Logging occurs at the module level, i.e. it is possible for to set module A to 
+log at INFO level and module B at WARN level and all other modules at DEBUG level. 
+When this file is loaded the default log level is set to INFO and applies to all
+modules. This can be changed by calling log_set_default_level/1, this predicate
+should be called before setting any module specific levels as it removes them.
+As designed it is possible for the logger to be used for predicate level logging 
+by replacing predicate names with module names in the calls. This is discouraged 
+since for each module the logger asserts several facts.
+
+To log messages at a particular level the user simply calls the pertinent log 
+predicate, e.g. for the DEBUG level the predicate is log_debug, for warn level 
+it would log_warn and so on. Each log level has two predicates associated with it, 
+log_debug(ModuleName, PredicateName, Message) and  
+log_debug(ModuleName, PredicateName, Message, List).
+
+Log messages are written using a log writer. The logger contains a default log
+writer which writes log messages to a stream and is used at startup. The user 
+has the option to implement his/her own log writer. All implementations of the 
+log writer must follow these rules (assuming the name of the writer is 
+myLogWriter) :
+   1. The main predicate must have an arity of 5. 
+      myLogWriter(+ErrorLevel, +ModuleName, +PredicateName, +Message, +List)
+   2. The log writer must also have predicates to start and stop the writer,
+      myLogWriter_stop(+List), myLogWriter_start(+List) 
+   3. Log writer should take into account the fact that XSB has only one thread
+      and should ensure that all log messages are preserved.
+   4. Even if a log writer has been stopped, the main predicate should not fail.
+   5. Log writer should also be efficient, since they will be called repeatedly
+      during the execution of a program.
+   6. Log writer should possibly use xsb_exit_hook to ensure all log messages 
+      are written to the log before exiting.
+   7. Log writers' should use the SYS level to report on internal state if needed.
+
+ 
+The following is a sample config file for the logger :
+
+:- config_logger.
+
+config_logger :-
+   [xsb_logger],                             %initiates default level to WARN
+   [odbc_log_writer],                        %my custom log writer                            
+   
+   log_set_default_level(debug),             %change the default level
+
+   %custom log level
+   log_add_log_level(enter,201),
+   log_add_log_level(exit,202),     
+       
+   log_set_level(my_module_a, error),
+   log_set_level(my_module_b, info),
+
+   %change the log writer
+   log_set_writer(odbc_log_writer, [password(lumber), user(jack)]),
+   
+   log_sys(config_logger,'config_logger/0','Logger initialized'),
+   log_exit(config_logger,'config_logger/0','exiting').
+").
+
+%$Id: xsb_logger.P,v 1.6 2010-08-19 15:03:38 spyrosh Exp $
+%---------------------------------------------------------------------%
+% Log levels between 0-999 with sys being highest at 999. 
+% log_level(Level, Level_num, Level_name, Level_pred).
+default_log_level(debug,200,'DEBUG', log_debug).
+default_log_level(info, 400,'INFO',  log_info).
+default_log_level(warn, 600,'WARN',  log_warn).
+default_log_level(error,800,'ERROR', log_error).
+default_log_level(sys,  999,'SYS',   log_sys).
+
+log_default_log_level(info).
+log_default_timestamp('[%d-%02d-%02d %02d:%02d:%02d GMT]').
+log_default_writer(default_log_writer).
+log_default_writer_props([]).
+
+%---------------------------------------------------------------------%
+
+:- log_default_log_level(Default_level), log_init(Default_level).
+
+
+:- comment(log_init/1,"Initializes the logger with the default log writer at the 
+default level. Is called when this file is loaded by the fact above. (?Log_level) ").
+
+log_init(DefaultLevel) :-
+   '_$log_add_default_log_levels',
+
+   log_level(DefaultLevel, _, _, _),
+   log_set_default_level(DefaultLevel),
+   
+   log_default_timestamp(Format),
+   assert(log_timestamp_format(Format)),
+
+   log_default_writer(Writer),                          % default log writer
+   log_default_writer_props(Props),
+   log_set_writer(Writer,Props).
+
+
+:- comment(log_writer_stop/0,"Stops the current log writer.").
+log_writer_stop :-
+   (log_get_writer(WriterName, Props)  
+   -> log_get_stop_pred(WriterName, StopPredicateName),
+      StopWriter =..[StopPredicateName, Props],
+      call(StopWriter)
+   ;  true).
+
+:- comment(log_writer_start/0,"Starts the current logger.").
+log_writer_start :-
+   log_get_writer(WriterName, Props),
+   log_get_start_pred(WriterName, StartPredicateName),
+   StartWriter =..[StartPredicateName, Props],
+   call(StartWriter).
+
+%-Log Level-----------------------------------------------------------%
+:- comment(log_set_default_level/1, "Sets the default level of the logger. 
+Calling this predicate will remove all module level rules.  (+Default_level) ").
+
+log_set_default_level(Default_level) :-
+   log_level(Default_level, Default_num, _, _),
+   log_level(sys, Sys_num, _, _),
+   Default_num =\= Sys_num,
+
+   retractall(default_log_level(_)),
+   assert(default_log_level(Default_level)),
+   
+   (log_level(Level, Level_num, _Level_label, Level_pred),
+   Log_pred3 =..[Level_pred, _AllModules, B, C],
+   Log_pred4 =..[Level_pred, _AllModules, E, F, G],
+   retractall(Log_pred3),
+   retractall(Log_pred4),
+   (Level_num >= Default_num
+   -> assertz( (Log_pred3 :- log_msg(Level, _AllModules, B, C)) ),
+      assertz( (Log_pred4 :- log_msg(Level, _AllModules, E, F, G)) )
+   
+   ;  assertz(Log_pred3),
+      assertz(Log_pred4) ),
+   fail
+   ;  
+   true).
+
+:- comment(log_reassert_default_level/1,"Reasserts the default level rules for 
+logger. Does not remove any of the old default rules. (+Default_level) ").
+
+log_reassert_default_level(Default_level) :-
+   log_level(Default_level, Default_num, _, _),
+   log_level(sys, Sys_num, _, _),
+   Default_num =\= Sys_num,
+
+   retractall(default_log_level(_)),
+   assert(default_log_level(Default_level)),
+   
+   (log_level(Level, Level_num, _Level_label, Level_pred),
+   Log_pred3 =..[Level_pred, _AllModules, B, C],
+   Log_pred4 =..[Level_pred, _AllModules, E, F, G],
+
+   (Level_num >= Default_num
+   -> assertz( (Log_pred3 :- log_msg(Level, _AllModules, B, C)) ),
+      assertz( (Log_pred4 :- log_msg(Level, _AllModules, E, F, G)) )
+   
+   ;  assertz(Log_pred3),
+      assertz(Log_pred4) ),
+   fail
+   ;  
+   true).
+
+:- comment(log_set_level/1,"Changes the log level to any level lower than the
+system level. All log messages at or above this level will be displayed, all 
+others will be ignored. (+Log_level) ").
+
+log_set_level(Module, Log_level) :-
+   nonvar(Log_level),  atom(Module),
+   log_level(Log_level, Log_num, _, _),
+   log_level(sys,Sys_num, _, _),
+   Log_num =\= Sys_num,
+   
+   retractall(current_log_level(Module, _, _)),
+   
+   (log_level(Level, Level_num, Level_label, Level_pred),
+   Log_pred3 =..[Level_pred, Module, B, C],
+   Log_pred4 =..[Level_pred, Module, E, F, G],
+   retractall(Log_pred3),
+   retractall(Log_pred4),
+   
+   (Level_num >= Log_num
+   -> assert(current_log_level(Module, Level, Level_label)),
+      asserta( (Log_pred3 :- log_msg(Level, Module, B, C)) ),
+      asserta( (Log_pred4 :- log_msg(Level, Module, E, F, G)) )
+   
+   ;  asserta(Log_pred3),
+      asserta(Log_pred4) ),
+   fail
+   ;  
+   default_log_level(Default_level),
+   log_reassert_default_level(Default_level) ).
+
+
+:- comment(log_at_default_level/1,"Changes the log level for this module to 
+be the default log level. (+Module) ").
+
+log_at_default_level(Module) :-
+   atom(Module),
+   retractall(current_log_level(Module, _, _)),
+   
+   (log_level(_Level, _Level_num, _Level_label, Level_pred),
+   Log_pred3 =..[Level_pred, Module, _, _],
+   Log_pred4 =..[Level_pred, Module, _, _, _],
+   retractall(Log_pred3),
+   retractall(Log_pred4),
+   fail
+   ;
+   default_log_level(Default_level),
+   log_reassert_default_level(Default_level) ).
+
+
+:- comment(log_get_level/3,"Returns all the the log levels that are currently
+available. (+Module, ?Level, ?Level_name) ").
+
+log_get_level(Module, Level, Level_name) :-
+   current_log_level(Module, Level, Level_name)
+   ;  
+   %assume default log level
+   log_level(Level, _Level_num, Level_name, _Level_pred).
+
+%-Add/Remove Log Levels-----------------------------------------------%
+'_$log_add_default_log_levels' :-
+   (default_log_level(Level, Level_num, Level_label, Level_pred),
+   assert(log_level(Level, Level_num, Level_label, Level_pred)),
+   fail
+   ;  
+   true).
+
+:- comment(log_add_log_level/2, "Adds a log level, if not previously defined.
+Label for the level is the same as the level just in  upper case. Level predicate
+is log_ + Level. (+Level, +Level_num) ").
+
+log_add_log_level(Level, Level_num) :-
+   atom(Level), integer(Level_num),
+   upper_case(Level, Level_label),
+   concat_atom([log, '_', Level], Level_pred),
+   
+   (log_level(Level, A, B, C)
+   -> writeln(userout, 'Log level is already defined.'-Level-A-B-C)
+   ;  (log_level(D, Level_num, E, F)
+      -> writeln(userout, 'Log level is already defined.'-D-Level_num-E-F)
+      ;  assert(log_level(Level, Level_num, Level_label, Level_pred)) ) ),
+   
+   default_log_level(Default_level),
+   log_level(Default_level, Default_num, _, _),
+   Log_pred3 =..[Level_pred, _AllModules, G, H],
+   Log_pred4 =..[Level_pred, _AllModules, I, J, K],
+   (Level_num >= Default_num
+   -> assert( (Log_pred3 :- log_msg(Level, _AllModules, G, H)) ),
+      assert( (Log_pred4 :- log_msg(Level, _AllModules, I, J, K)) )
+   
+   ;  assert(Log_pred3),
+      assert(Log_pred4) ).
+
+
+%-Log Writer----------------------------------------------------------%
+
+:- comment(log_set_writer/2,"Changes the writer the logger uses to print log
+messages. (+WriterName) "). 
+
+log_set_writer(WriterName, Props) :-
+   log_writer_stop,                             %stop the old writer.
+   
+   retractall(current_log_writer(_, _)),
+   assert(current_log_writer(WriterName, Props)),
+   
+   log_writer_start.                            %start the new writer.
+
+log_get_writer(WriterName, Props) :-
+   current_log_writer(WriterName, Props).
+
+log_get_stop_pred(WriterName, StopPredicateName) :-
+   concat_atom([WriterName, '_stop'], StopPredicateName).
+log_get_start_pred(WriterName, StopPredicateName) :-
+   concat_atom([WriterName, '_start'], StopPredicateName).
+
+%-Timestamp-----------------------------------------------------------%
+
+:- comment(log_set_timestamp_format/1,"Changes the format in which the timestamp
+is printed inside the log. The default time stamp is of the form 
+[YYYY-MM-DD HH:MM:SS GMT]. THIS PREDICATE IS NOT YET FULLY IMPLEMENTED (+Format)").
+
+log_set_timestamp_format(_Format) :-
+   writeln(userout,'NOT IMPLEMENTED').
+   %retractall(log_timestamp_format(_)),
+   %assert(log_timestamp_format(Format)).
+log_get_timestamp_format(Format) :-
+   log_timestamp_format(Format).
+
+
+:- comment(log_get_timestamp/1,"Uses the current format to build and return the 
+timestamp. (-TimeStamp) ").
+ 
+log_get_timestamp(TimeStamp) :-
+   datime(Time),
+   log_timestamp_format(Format),
+   fmt_write_string(TimeStamp, Format, Time).
+
+%-Log Predicates------------------------------------------------------%
+
+log_msg(Level, Module, Predicate,  Message) :-
+   (log_get_level(Module, Level, _)
+   -> current_log_writer(Appender, _),
+      Call =..[Appender, Level, Module, Predicate, Message, []],
+      call(Call)
+   ;  true).
+
+log_msg(Level, Module, Predicate, Message, List) :-
+   (log_get_level(Module, Level, _)
+   -> is_list(List),
+      current_log_writer(Appender, _),
+      Call =..[Appender, Level, Module, Predicate, Message, List],
+      call(Call)
+   ;  true).
+
+%-utils---------------------------------------------------------------%
+upper_code(Lower, Upper) :-
+	(Lower >= 0'a, Lower =< 122
+	->	Upper is Lower - 32
+   ;	Upper = Lower ).
+
+upper_codes([],[]).
+upper_codes([Lower_c|Lower_cs], [Upper_c|Upper_cs]) :-
+	upper_code(Lower_c, Upper_c),
+   upper_codes(Lower_cs, Upper_cs).
+
+upper_case(Lower, Upper) :-
+	atom_codes(Lower, Lower_c),
+	upper_codes(Lower_c, Upper_c),
+	atom_codes(Upper, Upper_c).
+
+%-Default Logger------------------------------------------------------%
+:- comment(get_log_stream/2, "Depending on the error level writes to different 
+streams. If error_level < INFO then STDMSG, if INFO < error_level < ERROR
+then STDWARN, if ERROR =< error_level < SYS then STDERR, if SYS = error_level 
+then STDOUT. (+Level_num, ?Stream) ").
+ 
+'_$get_log_stream'(Level_num, STDMSG) :-
+   default_log_level(info, Info_num, _, _),
+   Level_num =< Info_num.
+'_$get_log_stream'(Level_num, STDWARN) :-
+   default_log_level(error, Err_num, _, _),
+   default_log_level(info, Info_num, _, _),
+   Level_num < Err_num , Level_num > Info_num.
+'_$get_log_stream'(Level_num, STDERR) :-
+   default_log_level(error, Err_num, _, _),
+   default_log_level(sys, Sys_num, _, _),
+   Level_num >= Err_num , Level_num < Sys_num.
+'_$get_log_stream'(Level_num, STDOUT) :-
+   default_log_level(sys, Level_num, _, _).
+
+
+:- comment(default_log_writer/5,"Writes log messages to a stream.  Uses 
+get_log_stream/2 to find the correct stream to send the message to. Flushes 
+the stream after each write.").
+
+default_log_writer(Error_level, Module, Pred, Message, List) :-
+   (default_log_writer_state(started)
+   -> nonvar(Error_level),
+      log_get_timestamp(TimeStamp),
+      log_get_level(Module, Error_level, Error_label),
+      log_level(Error_level, Error_num, Error_label, _),
+ 
+      '_$get_log_stream'(Error_num, Log_port),
+      '_$log_eol'(EOL),
+      message([TimeStamp, ' ', Error_label, ' [', Module, ':', Pred, '] :: ', Message, EOL], Log_port),
+      
+      log_writelist(List, Log_port),      
+      file_flush(Log_port, _)
+
+   ;  true).
+
+default_log_writer_stop(Arg) :-
+   retractall(default_log_writer_state(_)),
+   assert(default_log_writer_state(stopped)),
+   default_log_writer(sys, 'xsb_logger','default_log_writer_stop/1', 
+      'default log writer stopped.', Arg).
+
+default_log_writer_start(Arg) :-
+   retractall(default_log_writer_state(_)),
+   assert(default_log_writer_state(started)),
+   atom_codes(EOL,[10]), assert('_$log_eol'(EOL)), 
+   default_log_writer(sys, 'xsb_logger','default_log_writer_start/1', 
+      'default log writer started.', Arg).
+
+%-Default Log Writer utils--------------------------------------------%
+
+:- comment(log_writelist/2,"Writes list to the stream with one element
+on each line. (+List, +Log_port) ").
+
+log_writelist([], _Log_port).
+log_writelist(List, Log_port) :-
+   log_writelist(List, 1, Log_port).   
+log_writelist([A|B], Count, Log_port) :-
+   '_$log_eol'(EOL),
+   message(['     ', Count, ':', A, EOL], Log_port),
+
+   Count1 is Count + 1,
+   log_writelist(B, Count1, Log_port).
+log_writelist([], _Count, _Log_port).
+
+%---------------------------------------------------------------------%
+   
+      

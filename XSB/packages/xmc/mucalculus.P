@@ -1,0 +1,163 @@
+/* File:      mucalculus.P --- Encoding of SOS semantics of modal mu-calculus
+** Author(s): C.R. Ramakrishnan
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: mucalculus.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+%% rec_models(S, F):  Does state S model formula with name F?
+:- table rec_models/2.
+
+rec_models(State_s, X) :-
+	fDef(X, Y), models(State_s, Y).
+
+
+%% models(S, X): Does state S model formula expression X?
+:- index models/2-2.
+
+%% Case split on formula expression:
+
+% True
+models(_State_s, tt).
+
+% Conjunction
+models(State_s, fAnd(X_1, X_2))	:-
+	models(State_s, X_1), models(State_s, X_2).
+
+% Disjunction
+models(State_s, fOr(X_1, X_2))	:-
+	models(State_s, X_1) ; 	models(State_s, X_2).
+
+% Diamond: <A>
+models(State_s, fDiam(Act_a, X)) :-
+	transition(State_s, Act_a, State_t),
+	models(State_t, X).
+
+% Diamond Minus: <-A>
+models(State_s, fDiamMinus(Act_a, X)) :-
+	trans_not_a(State_s, Act_a, State_t),
+	models(State_t, X).
+
+% Diamond Set: <{S}>
+models(State_s, fDiamSet(Set_a, X)) :-
+	trans_member(State_s, Set_a, State_t),
+        models(State_t, X).
+
+% Diamond Set Minus: <-{S}>
+models(State_s, fDiamSetMinus(Set_a, X)) :-
+	trans_not_member(State_s, Set_a, State_t),
+	models(State_t, X).
+
+% Box: [A]
+models(State_s, fBox(Act_a, X))	:-
+	forall(State_t,
+	       transition(State_s, Act_a, State_t),
+	       models(State_t, X)).
+
+% Box Minus: [-A]
+models(State_s, fBoxMinus(Act_a, X)) :-
+	forall(State_t, 
+	       trans_not_a(State_s, Act_a, State_t),
+	       models(State_t, X)).
+
+% Box Set: [{S}]
+models(State_s, fBoxSet(Set_a, X)) :-
+        forall(State_t, 
+	       trans_member(State_s, Set_a, State_t),
+	       models(State_t, X)).
+
+% Box Set Minus: [-{S}]
+models(State_s, fBoxSetMinus(Set_a, X)) :-
+	forall(State_t,
+	       trans_not_member(State_s, Set_a, State_t),
+	       models(State_t, X)).
+
+
+% Negation
+models(State_s, neg_form(X)) :-
+	sk_not(rec_models(State_s, X)).
+
+% Recursion
+models(State_s, form(X)) :-
+	rec_models(State_s, X).
+
+
+/**
+    Auxilliary trans relations:
+        transition(S, A, T): there is a transition A from S to T
+           this relation is defined in calculus.P
+   
+        trans_not_a(S, A, T): there is a non A transition from S to T.
+   
+        trans_member(S, L, T): there is a transition A from S to T such that
+   					A is in the set L.
+   
+        trans_not_member(S, L, T): there is a transition A from S to T 
+   					such that A is not in the set L.
+***/
+
+trans_not_a(State_s, Act_a, State_t) :-
+	transition(State_s, Act_b, State_t),
+	\+ (Act_b == Act_a).
+
+trans_member(State_s, Set_a, State_t) :-
+        transition(State_s, Act_b, State_t),
+        member(Act_b, Set_a).
+
+trans_not_member(State_s, Set_a, State_t) :-
+	transition(State_s, Act_b, State_t),
+	\+ member(Act_b, Set_a).
+
+%% ----------------------------------------------------------------------
+
+	% forall substitutions of Variables,
+	% whenever Antecedent is true, so is Consequent
+
+forall(_Variables, Antecedent, Consequent) :-
+	findall(Consequent, Antecedent, AllConsequents),
+	all_true(AllConsequents).
+
+all_true([]).
+all_true([C|Cs]) :- call(C), all_true(Cs).
+
+member(X, [H|T]) :- X = H ; member(X, T).
+
+:- import trie_intern/3, trie_interned/3 from intern.
+
+intern(Term, ID) :-
+        (var(Term)
+                ->  trie_interned(Term, ID, _)
+                ;   (var(ID)
+                        -> trie_intern(Term, ID, _)
+                        ; trie_interned(Term, NewId, _), NewId = ID
+                )
+        ).
+
+start(P, L) :-
+        startstate(P, S1),
+        intern(S1,L).
+
+transition(L1,A,L2) :-
+        intern(S1,L1),
+	trans(S1,A,S2),
+	intern(S2,L2).
+
+

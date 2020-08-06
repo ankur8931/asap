@@ -1,0 +1,184 @@
+
+:- ensure_loaded(chr).
+:- ensure_loaded(timeConstraints).
+:- ensure_loaded(globalvar).
+:- ensure_loaded(mutablevar).
+:- ensure_loaded(allentable).
+:- ensure_loaded(time).
+:- ensure_loaded(constraintLib).
+
+:- import arc/4 from timeConstraints.
+:- import show_store/1 from chr_interp.
+
+/*
+test_arcs(List):- 
+	(test_arcs1(List) -> 
+	    nv_writeln('consistent '(List))
+	 ;  nv_writeln('inconsistent '(List))),
+	 fail.
+test_arcs(_).
+*/
+
+%----------------------------------
+% test of before-chain of variable intervals -- X before Y before Z...
+%make_chain(80) takes about 89 seconds.
+%make_chain(60) takes about 26 seconds
+%make_chain(50) takes about 12.5 secon
+
+make_chain(0,_Var1):- !.
+make_chain(N,Var1):- 
+	arc(Var1,Var2,[before],i-i),
+	N1 is N - 1,
+	make_chain(N1,Var2).
+
+%------- 
+
+% for some reason this takes much LONGER than make_chain?
+make_chain_pp(0,_Var1):- !.
+make_chain_pp(N,Var1):- 
+	arc(Var1,Var2,[lt],p-p),
+	N1 is N - 1,
+	make_chain_pp(N1,Var2).
+
+%------- 
+% similar, uses contains for before.
+%make_bag1(80) takes about 94 seconds.
+
+make_bag1(0,_Var1):- !.
+make_bag1(N,Var1):- 
+	arc(Var1,Var2,[contains],i-i),
+	N1 is N - 1,
+	make_bag1(N1,Var2).
+
+%----------------
+% puts several points in an interval
+% make_bag(80) 6.3 seconds
+
+make_bag(0,_Var1):- !.
+make_bag(N,Var1):- 
+	arc(Var1,Var2,[contains],i-p),
+	N1 is N - 1,
+	make_bag(N1,Var1).
+
+% make_bag2(80) 5.3 seconds
+make_bag2(0,_Var1):- !.
+make_bag2(N,Var1):- 
+	arc(Var1,Var2,[contains],i-i),
+	N1 is N - 1,
+	make_bag2(N1,Var1).
+
+
+
+:- dynamic test_result/1.
+
+test_arcs(List,_):- 
+	retractall(test_result(_)),
+	test_arcs1(List),
+	assert(test_result(consistent)),
+	fail.
+test_arcs(List,consistent):-
+        (test_result(consistent) -> 
+	    nv_writeln('good '(List))
+	 ;  nv_writeln('bad '(List))),
+	 fail.
+test_arcs(List,inconsistent):-
+        (\+ test_result(_) -> 
+	    nv_writeln('good '(List))
+	 ;  nv_writeln('bad '(List))),
+	 fail.
+test_arcs(_,_).
+
+
+:- import numbervars/1 from num_vars.
+
+nv_writeln(Term):- numbervars(Term),writeln(Term).
+%nv_writeln(Term):- writeln(Term).
+
+test_arcs1([]).
+test_arcs1([H|T]):- 
+	call(H),
+	test_arcs1(T).
+
+:- import private_builtin/11 from machine.
+
+test:- 
+	test_ii,
+	test_pp,
+	test_ip,
+	test_pi.
+
+test_ii:- 
+	test_arcs([arc([3,3],[3,3],[during],i-i)],inconsistent),  % i
+	test_arcs([arc([3,3],[2,5],[during],i-i)],consistent),  % c
+        test_arcs([arc([3,3],X,[during],i-i),X = [2,5]],consistent),  % c
+	test_arcs([arc([3,3],X,[during],i-i),X = [2,3]],inconsistent),  % i 
+	test_arcs([arc(X,Y,[during],i-i),arc(X,Y,[before],i-i)],inconsistent), %i
+	test_arcs([arc(X,Y,[during],i-i),arc(Y,Z,[before],i-i),arc(Y,W,[after],i-i)],
+	          consistent), %c
+        test_arcs([arc([3,4],X,[before],i-i),X = [5,6]],consistent), 
+	test_arcs([arc(X,Y,[contains],i-i),arc(X,Z,[contains],i-i)],consistent),
+	test_arcs([arc(X,Y,[before],i-i),arc(Y,Z,[before],i-i),arc(Z,X,[before],i-i)],inconsistent),
+	test_arcs([arc(X,Y,[before],i-i),arc(Y,Z,[before],i-i),arc(Z,X,[equals],i-i)],inconsistent).
+
+test_pp:- 
+% qualitative
+	test_arcs([arc(2,3,[lt],p-p)],consistent),   
+	test_arcs([arc(3,2,[lt],p-p)],inconsistent),  
+	test_arcs([arc(3,X,[lt],p-p),X = 4],consistent), 
+	test_arcs([arc(4,X,[lt],p-p),X = 3],inconsistent),  
+	test_arcs([arc(X,Y,[lt],p-p),arc(Y,Z,[lt],p-p)],consistent),
+	test_arcs([arc(X,Y,[lt],p-p),arc(Y,Z,[lt],p-p),arc(Z,X,[lt],p-p)],inconsistent),
+	test_arcs([arc(X,Y,[lt],p-p),arc(Y,Z,[lt],p-p),arc(Z,X,[eq],p-p)],inconsistent),
+% quantitative
+	test_arcs([arc(3,X,[4],p-p)],consistent), % c
+	test_arcs([arc(3,X,[4],p-p), X = 7],consistent),  %c
+	test_arcs([arc([3,4],X,[before],i-p),arc([3,4],Y,[after],i-p),
+	           arc(X,Y,[eq],p-p)],inconsistent), %i
+        test_arcs([arc(X,Y,[9-11],p-p),X = 3,Y = 13],consistent). %c 
+
+test_ip:- 
+	test_arcs([arc([3,4],5,[before],i-p)],consistent),  %c
+	test_arcs([arc([3,4],X,[before],i-p),X = 5],consistent), %c
+	test_arcs([arc([3,X],5,[before],i-p),X = 4],consistent), %c
+	test_arcs([arc([1,7],5,[contains],i-p)],consistent), %c
+	test_arcs([arc([1,7],X,[contains],i-p),X = 5],consistent), %c
+	test_arcs([arc([1,X],5,[contains],i-p),X = 5],inconsistent), %i
+	test_arcs([arc([1,X],5,[contains],i-p),arc([1,X],7,[before],i-p),X = 6],
+	          consistent), %c
+	test_arcs([arc([1,X],5,[contains],i-p),arc([1,X],7,[before],i-p),X = 7],
+	          inconsistent), %i
+        test_arcs([arc(X,Y,[contains],i-p),arc(X,Z,[contains],i-p)],consistent),
+	test_arcs([arc(A,B,[contains],i-p),arc(C,D,[contains],i-p),arc(A,C,[before],i-i)],
+	           consistent).
+
+test_pi:- 
+	test_arcs([arc(2,[3,4],[before],p-i)],consistent), %c
+	test_arcs([arc(X,[3,4],[before],p-i),X = 2],consistent), %c
+	test_arcs([arc(4,[3,4],[during],p-i)],inconsistent), %i
+	test_arcs([arc(X,[3,5],[during],p-i),X = 4],consistent). %c
+        test_arcs([arc(X,Y,[during],p-i),arc(Z,Y,[during],p-i)],consistent). %c
+
+end_of_file.
+
+
+---------------------------------------------------------------
+Problems
+
+Had to get rid of findom stuff -- didnt work unless you have interval
+constraints.
+
+-- arc(X,Y,[9-11],p-p),X = 3,Y = 13.
+
+--------------------------------------------------------
+
+
+arc(3,X,[le],p-p),arc(X,2,[le],p-p),show_store(timeConstraints).
+succeeds.
+
+arc([3,3],X,[before],i-i),arc(X,[7,7],[before],i-i),show_store(timeConstraints).
+succeeds
+
+Won't take more than 1 interval.
+arc(X,Y,[9-11,15-17],p-p),X = 3,Y = 13.
+
+arc(X,Y,[contains],i-p),arc(X,Z,[contains],i-p).

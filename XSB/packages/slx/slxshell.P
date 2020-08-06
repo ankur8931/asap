@@ -1,0 +1,371 @@
+/* File:      slxshell.P
+** Author(s): Jose J. Alferes, Luis Moniz Pereira
+** Contact:   lmp@di.fct.unl.pt, xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) Copyright: Jose J. Alferes, Luis Moniz Pereira,
+**    	      	      	    Centro de Inteligencia Artificial,
+**    	      	            Universidade Nova de Lisboa, Portugal
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: slxshell.P,v 1.3 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%	SLX preprocessor of extended logic programs,   %
+%	under WFSX semantics, into equivalent normal   %
+%	programs for XSB                               %
+%                                                      %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Run with command: XSB -m 5000                        %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                Operators definition                  %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- op(950,fy , '-' ).           % Explicit negation
+:- op(950,fy , not ).           % Negation as failure Bodies
+:- op(950,fy , naf ).           % Negation as failure query
+:- op(950,fy , und ).           % undefined query
+
+:- dynamic toCompile/0, hasTop/1, hasRules/1, inBody/1.
+
+
+/* Loads or compiles a file 
+
+	It uses $loaded_clause(HeadTemplate,TheClause,Type)
+	
+	Type can be:
+		fact
+		rule
+*/
+
+slx_compile(File) :-
+	assert(toCompile),
+	retractall(hasTop(_)), retractall(hasRules(_)),
+	retractall(inBody(_)),
+	loadFile(File),
+	retract(toCompile),
+	compileFileName(File,Name),
+	compile(Name),
+	[Name].
+	
+compileFileName(File, Name) :-
+	name(File,FN),
+	name(Name,[116,109,112|FN]).  % tmp....
+	
+
+loadFile(File) :-
+    retractall('$loaded_clause'(_,_,_)),
+    retractall(hasRules(_)),
+    see(File),
+    load_clause,
+    seen,
+    predicates_are_loaded(File),
+    load_preds,
+    end_of_loading.
+    
+load_clause :-
+    read(C),
+    ( C = end_of_file -> true;
+      ( process_clause(C), load_clause ) ).
+      
+
+load_preds :- 
+    one_template(HH), 
+    findall( clause(TheClause,Type), 
+             '$loaded_clause'(HH,TheClause,Type), Clauses),
+    load_predicate(HH,Clauses),
+    apagaTudo('$loaded_clause'(HH,_,_) ),
+    fail.
+
+load_preds :- \+ '$loaded_clause'(_,_,_), !. % no more to load
+
+load_preds :- load_preds.		% load more...
+
+one_template(HH):- '$loaded_clause'(HH,_,_), !.
+
+
+
+
+/* Before asserting */
+
+predicates_are_loaded(File) :-
+	openToCompile(File),
+	write(':- import get_residual/2, table_state/2 from tables.'), nl,
+	nl, write(':- auto_table.'), nl.
+
+openToCompile(File) :- toCompile, !,
+	compileFileName(File,Name),
+	tell(Name).
+openToCompile(_) :- auto_table.
+
+writeTabled([]) :- write('.'), nl.
+writeTabled([N/A|L]) :-
+	name(N,Str),
+	name(T,[116,95|Str]), write(T/A), write(','),
+	name(TU,[116,117,95|Str]), write(TU/A), write(','),
+	name(NT,[116,95,110,101,103,95|Str]), write(NT/A), write(','),
+	name(NTU,[116,117,95,110,101,103,95|Str]), write(NTU/A),
+	lastComma(L), writeTabled(L).
+
+lastComma([]):- !.
+lastComma(_) :- write(',').
+
+dynamicRules([]) :- !.
+dynamicRules([N/A|L]) :-
+	name(N,Str), 
+	((name(T,[116,95|Str]);
+	name(T,[116,117,95|Str]);
+	name(T,[116,95,110,101,103,95|Str]);
+	name(T,[116,117,95,110,101,103,95|Str])),
+	functor(HT,T,A), insertCL((HT :- fail)), fail;
+	dynamicRules(L)).
+/* After asserting */
+
+end_of_loading :- toCompile, !, 
+	findall(X,inBody(X),D), dynamicRules(D),
+	addExecutor, told.
+end_of_loading.
+
+addExecutor :-
+	insertCL((und(not G) :- !, und(G))),
+	insertCL((und(G) :- tnot(tcall(G)), tnot(tcall(naf(G))) )),
+	insertCL((tcall(G) :- call(G))),
+	insertCL(( confirm(H) :- table_state(H,undef), ! )),
+	insertCL(( confirm(H) :- get_residual(H,[]) )),
+	insertCL(( nconfirm(H) :- table_state(H,undef), ! )),
+	insertCL(( nconfirm(H) :- \+ get_residual(H,_) )).
+
+
+/* Preliminary preprocessing. */
+ 
+process_clause( Clause ) :- !, 
+    preClause( Clause, H, NewClause, Type ),
+    functor(H,F,N), functor(HH,F,N),
+    insertIfNot(hasRules(F/N)),
+    insert('$loaded_clause'(HH,NewClause,Type)).
+    
+preClause( (H :- true), NewH, NewH, fact ) :- !,
+ 	processNegLit(H,NewH), declareDyn(H).
+preClause( (H :- B), NewH, (NewH :- NewB), rule ) :- !,
+ 	processNegLit(H,NewH), declareDyn(H),
+	preBody(B,NewB).
+preClause( H, NewH, NewH, fact ) :-
+ 	processNegLit(H,NewH), declareDyn(H).
+
+preBody((G,Cont),(NewG,NewCont)) :- !,
+	preOne(G,NewG),
+	preBody(Cont,NewCont).
+preBody(G,NewG) :-
+	preOne(G,NewG).
+
+preOne(not G, not NewG) :- !,
+ 	processNegLit(G,NewG), declareDyn(G).
+
+preOne(G, NewG) :- !,
+ 	processNegLit(G,NewG), declareDyn(G).
+
+
+
+processNegLit( - H,NewH) :- !,
+	H =.. [Name|Args],
+	name(Name,NameH),
+	name(NameNeg,[110,101,103,95|NameH]), % neg_...
+	NewH =.. [NameNeg|Args].
+processNegLit( H, H ).
+
+isNegative( G ) :-
+	G =.. [Name|_],
+	name(Name,[110,101,103,95|_]), !. % neg_...
+
+
+/* declare dynamic predicates */
+
+declareDyn(prolog(_)) :- !.
+declareDyn(- G) :-
+	!, declareDyn(G).
+
+declareDyn(G) :- 
+	functor(G,N,A), insertIfNot(inBody(N/A)).
+
+/*
+declareDyn(prolog(_)) :- !.
+declareDyn(- G) :-
+	!, declareDyn(G).
+declareDyn(G) :-
+	getFormsLits(G, PG, T_G, TU_G, Neg_G, T_NG, TU_NG),
+	assertDynList(PG, T_G, TU_G, Neg_G, T_NG, TU_NG).
+
+getFormsLits(G, Nm/A, T/AA, TU/AA, NegN/A, NT/AA, NTU/AA) :-
+	functor(G,Nm,A), AA is A + 1,
+	name(Nm,Str),
+	name(T,[116,95|Str]),			% t_ ...
+	name(TU,[116,117,95|Str]),		% tu_ ...
+	name(NegN,[110,101,103,95|Str]),	% neg_...
+	name(NT,[116,95,110,101,103,95|Str]),	% t_neg_ ...
+	name(NTU,[116,117,95,110,101,103,95|Str]).	% tu_neg_ ...
+
+*/
+
+/* Loads one predicate */
+
+load_predicate(HH,Clauses) :-
+	retractExisting(HH),
+	assertTop(HH),
+	assertClauses(Clauses).
+
+retractExisting(HH) :-
+	buildT(HH,NewT),
+	buildTU(HH,NewTU),
+	retractall(NewT),
+	retractall(NewTU), !.
+	
+assertTop(HH) :- 
+	isNegative(HH), !,
+	compl_neg(HH,PosH),
+	assertTop(PosH).
+	
+assertTop(HH) :-
+	\+ hasTop(HH), !,
+	assertz( hasTop(HH) ),
+	compl_neg(HH,NH),
+	buildT(HH,TH), buildT(NH,NTH),
+	buildTU(HH,TUH), buildTU(NH,NTUH),
+	insertCL( (HH :- TH, confirm(TH)) ),
+	insertCL( (- HH :- NTH, confirm(NTH) ) ),
+	insertCL( (naf(HH) :- NTH, confirm(NTH)) ),
+	insertCL( (naf(HH) :- tnot(TUH), nconfirm(TUH)) ),
+	insertCL( (naf(- HH) :- TH, confirm(TH) ) ),
+	insertCL( (naf(- HH) :- tnot(NTUH), nconfirm(NTUH))),
+	!.
+	
+assertTop(_).
+	
+assertClauses([]).
+assertClauses([clause(TheClause,Type)|Others]) :-
+	assertOne(Type,TheClause),
+	assertClauses(Others), !.
+	
+/* Loads one clause */
+
+assertOne(fact,F) :-
+	buildT(F,NewT),
+	buildTU(F,NewTU),
+	compl_neg(F,NH), buildT(NH,TNH),
+	insertCL(NewT),
+	insertCL((NewTU :- tnot(TNH))).
+	
+assertOne(rule, (H :- Body) ) :-
+	buildT(H,NewHT),
+	buildTU(H,NewHTU), compl_neg(H,NH), buildT(NH,TNH),
+	getBodies(Body,NewBodyT, NewBodyTU),
+	insertCL( (NewHT  :- NewBodyT ) ),
+	insertCL( (NewHTU :- NewBodyTU, tnot(TNH)) ).
+	
+/* Processes elements in the body */
+
+
+getBodies( (A,B), (NewAT,NewBT), (NewATU,NewBTU) ) :- !,
+	getBodiesOne(A, NewAT,NewATU),
+	getBodies(B, NewBT, NewBTU).
+getBodies( A, NewAT, NewATU ) :-
+	getBodiesOne(A, NewAT,NewATU).
+
+
+/* Processes one elements of the body */
+
+getBodiesOne(prolog(G),G,G) :- !.
+getBodiesOne(not A, NewDisjT, NewDisjTU) :- !,
+	compl_neg(A,NegA),
+	buildT(NegA,NegAT),
+	buildTU(A,AT),
+	buildT(A,ATU),
+	getNewNAF(AT,ATU,NafT, NafTU),
+	getNewDisj(NegAT, NafT, NafTU, NewDisjT, NewDisjTU).
+
+getBodiesOne(A, NewAT, NewPosU ) :-
+	buildT(A,NewAT),
+	buildTU(A,NewPosU).
+
+
+getNewNAF(AT,ATU,(tnot(AT)),(tnot(ATU))).
+
+	
+getNewDisj( NegAT, NafT, NafTU, ( ( NegAT ; NafT ) ), NafTU ). 
+	
+
+/* Auxiliar predicates  */
+
+compl_neg(A,NegA) :-
+	A =.. [Name|Args],
+	name(Name,[110,101,103,95|Pos]), !, % neg_...
+	name(NamePos,Pos),
+	NegA =.. [NamePos|Args].
+	
+compl_neg(A,NegA) :-
+	A =.. [Name|Args],
+	name(Name,NameH),
+	name(NameNeg,[110,101,103,95|NameH]), % neg_...
+	NegA =.. [NameNeg|Args].
+
+buildT(G,NewG) :-
+	G =.. [Name|Args],
+	name(Name,Str),
+	name(NN,[116,95|Str]),	% t_ ...
+	NewG =.. [NN|Args].
+
+buildTU(G,NewG) :-
+	G =.. [Name|Args],
+	name(Name,Str),
+	name(NN,[116,117,95|Str]),	% tu_ ...
+	NewG =.. [NN|Args].
+
+append([],L,L).
+append([H|T],L,[H|New]) :-
+	append(T,L,New).
+	
+insertIfNot(A) :- A, !.
+insertIfNot(A) :- insert(A).
+
+insert( Clause ) :-
+	assertz(Clause).
+
+insertCL( Clause ) :-
+	toCompile, !,
+	nl,
+	write(Clause), write('.').
+insertCL( Clause ) :- insert(Clause).
+	
+apagaTudo(G) :-
+	clause(G,_),
+	retract(G), fail.
+apagaTudo(_).
+
+
+assertDynList(PG/A, T_G/AA, TU_G/AA, Neg_G/A, T_NG/AA, TU_NG/AA) :-
+	declarePredicate(PG,A),
+	declarePredicate(T_G,AA),
+	declarePredicate(TU_G,AA),
+	declarePredicate(Neg_G,A),
+	declarePredicate(T_NG,AA),
+	declarePredicate(TU_NG,AA).
+
+declarePredicate(N,A) :-
+	functor(F,N,A), assert(F), retract(F).
+
+
+member(X,[X|_]).
+member(X,[_|T]) :- member(X,T).

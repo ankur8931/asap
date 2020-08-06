@@ -1,0 +1,36 @@
+
+/* will have only test */
+
+test:- 
+	con_test(cid(one,t1),false),
+	con_test(cid(one,t2),true),
+	con_test(cid(one,t3),false),
+	con_test(cid(one,t4),true),
+	con_test(cid(one,t5),true),
+	con_test(cid(one,t6),true),
+	con_test(cid(one,t7),false),
+	con_test(cid(one,t8),false),
+	con_test(cid(one,t9),false),
+	con_test(cid(one,t10),true),
+	con_test(cid(one,t11),false),
+	con_test(cid(one,t12),false),
+	con_test(cid(one,t13),true),
+	con_test(cid(one,t14),false),
+	con_test(cid(one,t15),true),
+	con_test(cid(one,t16),false),
+	con_test(cid(one,t17),true),
+	con_test(cid(one,t18),true),
+	con_test(cid(one,t19),true),
+	con_test(oid(a,t20),false),
+	con_test(oid(one,o1),false),
+	con_test(oid(one,o2),false),
+	con_test(oid(one,o3),false),
+	con_test(oid(one,o4),true),
+	con_test(oid(one,o5),true),
+	con_test(oid(one,o6),true),
+	con_test(oid(one,o6_a),true),
+	con_test(oid(one,o7),false),
+	con_test(oid(one,o8),false),
+	con_test(oid(one,o9),false),
+	con_test(oid(one,o10),true).
+

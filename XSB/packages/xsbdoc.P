@@ -1,0 +1,38 @@
+/* File:      xsbdoc.P
+** Author(s): swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: xsbdoc.P,v 1.5 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+%% bootstrap(package-dirname-as-string, package-name-as-symbol).
+%% This also asserts 
+%% package_configuration(dir(PackageName), FullPackageDirname)
+%% some packages use it.
+
+:- import bootstrap_package/2 from packaging.
+
+init_xsb_doc:- 
+	bootstrap_package('xsbdoc',xsbdoc),
+	[full_ciao_ops].
+
+:- init_xsb_doc.
+
+?- import xsbdoc/2, make_distclean/0 from xsbdoc1.

@@ -1,0 +1,1348 @@
+/* File:      curr_sym.P
+** Author(s): Sagonas/Swift/Warren/Moura
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: curr_sym.P,v 1.53 2010/01/25 15:58:13 pmoura Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+
+/* TLS: because of a 64-bit number used below, compilation may give the error:
+   Overflow in radix notation, returning float
+*/
+
+#include "standard.h"
+#include "flag_defs_xsb.h"
+#include "heap_defs_xsb.h"
+#include "psc_defs.h"
+#include "extensions_xsb.h"
+#include "cinterf_defs.h"
+#include "incr_xsb_defs.h"
+#include "token_defs_xsb.h"
+
+/* ===== current_atom/1 ====================================== */
+
+%current_atom(Atom) :- true.
+current_atom(Module:Atom) :-
+	get_first_psc_pair(PSC_Pair),
+	module_scan(PSC_Pair, ModuleName, ModulePSC),
+	ModuleName = Module,
+	psc_prop(ModulePSC, First_PSC_Pair),	% get the first psc_pair 
+						% of this module
+	( First_PSC_Pair =:= 1 ->	% We are dealing with a global module!
+	    warning(('Predicate current_atom/1 for module "',
+		     ModuleName,
+		     '" does not include usermod strings !')),
+	    psc_scan_in_hash_table(0,PSC),
+	    psc_arity(PSC, Arity), 
+	    Arity =:= 0,
+	    psc_name(PSC, Name),
+	    Atom = Name
+        ; psc_scan_in_module(First_PSC_Pair, PSC), 
+	  psc_arity(PSC, Arity), 
+	  0 = Arity,
+	  psc_name(PSC, Name),
+	  Atom = Name
+	).
+
+% Original Jiyang version of current_atom/1
+%	psc_scan(PSC), psc_arity(PSC, N), N = 0, term_new(PSC, A0), A0 = A.
+
+
+/* ===== current_functor/1 ===================================== */
+
+%   current_functor(?Predicate_Indicator)
+%   Succeeds iff Predicate_Indicator is a predicate indicator for one
+%   of the procedures appearing in the database (both system and user 
+%   defined but not necessarily loaded in the system). 
+%   Predicate_Indicator can have the following forms:
+%	 (i) Module:Functor/Arity.
+%	(ii) Functor/Arity (for global modules)
+%   A variable in place of Predicate_Indicator succeeds only for global
+%   modules.
+
+current_functor(Module:Functor/N) :-
+	get_first_psc_pair(PSC_Pair),
+	module_scan(PSC_Pair, ModuleName, ModulePSC),
+	ModuleName = Module,
+	psc_prop(ModulePSC, First_PSC_Pair),	% get the first psc_pair 
+						% of this module
+	( First_PSC_Pair =:= 1 ->	% We are dealing with a global module!
+		current_functor(Functor/N)
+        ; psc_scan_in_module(First_PSC_Pair, PSC),
+	  psc_arity(PSC, Arity), 
+	  psc_name(PSC, Name),
+	  Functor = Name,
+	  Arity = N
+	).
+current_functor(Functor/N) :-		% This takes care of global modules.
+	!,				% i.e. "usermod" and "global".
+	psc_scan_in_hash_table(0, PSC),
+	psc_arity(PSC, Arity), 
+	psc_name(PSC, Name),
+	Functor = Name,
+	Arity = N.
+
+psc_scan_in_hash_table(Bucket_Index, PSC) :- 
+	dereference_the_bucket(Bucket_Index, First_Pair_of_Bucket),
+	psc_scan_in_bucket(First_Pair_of_Bucket, PSC).
+psc_scan_in_hash_table(Bucket_Index, PSC) :- 
+	next_bucket(Bucket_Index, Next_Bucket_Index),
+	( Next_Bucket_Index =\= 0 ->		% At end of hash_table.
+		psc_scan_in_hash_table(Next_Bucket_Index, PSC) ).
+
+psc_scan_in_bucket(PSC_Pair, _) :-
+	PSC_Pair =:= 0,		% PSC_Pair == NULL
+	!,
+	fail.
+psc_scan_in_bucket(PSC_Pair, PSC) :-
+	pair_psc(PSC_Pair, PSC).
+psc_scan_in_bucket(PSC_Pair, Next_PSC) :- 
+	pair_next(PSC_Pair, Next_PSC_Pair),
+	psc_scan_in_bucket(Next_PSC_Pair, Next_PSC).
+
+% Original Jiyang version of current_functor/2
+%	psc_scan(PSC), psc_arity(PSC, N0), psc_name(PSC, Name),
+%	psc_insert(Name, 0, PSC0), term_new(PSC0, F0), F0 = F, N0 = N.
+
+/* ===== current_functor/2 ===================================== */
+
+%   current_functor(?Name, ?Term_Indicator)
+%   Succeeds iff Term_Indicator is the most general term corresponding to
+%   one of the procedures appearing in the database (both system and user
+%   defined but not necessarily loaded in the system) having functor Name.
+%   Term_Indicator can have the following forms:
+%	 (i) Module:Term.
+%	(ii) Term (for global modules)
+%   A variable in place of Term_Indicator succeeds only for global
+%   modules. Note that the order of term generation is undetermined.
+
+current_functor(Name, Term) :-		% This takes care of global modules.
+					% i.e. "usermod" and "global".
+	psc_scan_in_hash_table(0, PSC),
+	psc_name(PSC, F),
+	Name = F,
+	psc_arity(PSC, Arity), 
+	functor(Term, Name, Arity).
+current_functor(Name, Term_Indicator) :-
+	nonvar(Term_Indicator),
+	Term_Indicator = :(Module, Term),
+	get_first_psc_pair(PSC_Pair),
+	module_scan(PSC_Pair, ModuleName, ModulePSC),
+	ModuleName = Module,
+	psc_prop(ModulePSC, First_PSC_Pair),	% get the first psc_pair 
+						% of this module
+	( First_PSC_Pair =:= 1 ->	% We are dealing with a global module!
+		current_functor(Name, Term)
+        ; psc_scan_in_module(First_PSC_Pair, PSC),
+	  psc_name(PSC, F),
+	  Name = F,
+	  psc_arity(PSC, Arity),
+	  functor(Term, Name, Arity)
+	).
+
+/* ===== current_index/2 =================================== */ 
+
+/* Here is how I understand the index encoding to work.  Alternative
+indices are put into a list of indices each of which may be simple or
+composite.  Any of the 255 arguments of a term can be used as a single
+index and is in the least significant byte.  Otherwise, the most
+significant bit of a byte (the 128 bit) indicates * indexing.  A
+single * index has a l.s. byte of 0 followed by a byte w. the 128-bit
+set indicating the * index argument.
+
+In a composite index each byte indicates the argument, and whether or
+not the 128 bit is set indicates whether the index is a * index in
+each byte.  Unlike simple * indices, the l.s. byte is not set to 0.
+
+*/
+
+current_index(Term,Index):-
+	check_nonvar(Term,current_index/2,1),
+	current_index_1(Term,Index).
+	
+
+current_index_1(F/N,Index):-
+	nonvar(F),nonvar(N),
+	functor(Term,F,N),!,
+	current_index_1(Term,Index).
+current_index_1(Term,Index):- 
+	'_$index'(Term,Ind,_Size),!,
+	decode_index(Ind,Index).
+current_index_1(Term,trie):- 
+	'_$trie_asserted'(Term),!.
+current_index_1(_Term,1).
+
+decode_index([],[]):-!.
+decode_index([Ind|Rest],[Index|R]):- !,
+	decode_index_in_list(Ind,Index),
+	decode_index(Rest,R).
+decode_index(Ind,Out):- 
+	decode_index([Ind],Out).
+
+decode_index_in_list(Ind,Ind):- 
+	0 < Ind,Ind <  256,!.
+decode_index_in_list(Ind,IndOut):- 
+	decode_star_index(Ind,_,IndOut).
+
+decode_star_index(0,IndIn,IndIn):- !.
+decode_star_index(Ind,IndIn,IndOut):- 
+	Ind < 256,!,
+	I is Ind - 128,
+	(I == 0 -> 
+	    IndOut = IndIn
+	 ;  (var(IndIn) -> 
+	        (I < 0 -> IndOut = Ind ; IndOut = *(I))
+	      ; (I < 0 -> IndOut = IndIn + Ind ; IndOut = IndIn + *(I) ) ) ).
+decode_star_index(Ind,IndIn,IndOut):- 
+	PreInd1 is /\(Ind,255),
+	decode_star_index(PreInd1,IndIn,IndMid),
+	IndRest is Ind >> 8,
+	decode_star_index(IndRest,IndMid,IndOut).
+
+/* ===== current_input/1 ======================================= */
+% TLS: changed on 8/04 for new streams.
+
+current_input(Stream) :- 
+	(	var(Stream) ->
+		true
+	;	integer(Stream),
+		is_valid_stream(Stream,_) -> 
+	    true
+	;	domain_error(stream,Stream,current_input/1,1)
+	),
+	stat_flag(CURRENT_INPUT, S),
+	S = Stream.
+
+% Obsolescent...
+current_input_port(FileDes) :- stat_flag(CURRENT_INPUT, FileDes).
+
+
+/* ===== current_op/3 ========================================= */
+%   current_op(?Operator_Precedence, ?Operator_Specifier, ?Operator_Name)
+%   Succeeds iff Operator_Name is an operator with type defined by
+%   Operator_Specifier and precedence Operator_Precedence.
+%   TLS: added errors acc. to Prolog standard. 8/04
+
+current_op(Prec, Type, Name) :- 
+	check_precedence(Prec),
+	check_operator_type(Type),
+	check_operator_name(Name),
+	'_$op'(Prec, Type, Name).
+
+check_precedence(Prec):-
+	((var(Prec) ; (integer(Prec),Prec >= 1,Prec =< 1200)) -> 
+	    true 
+	  ; domain_error(operator_priority,Prec,current_op/3,1) ).
+
+check_operator_type(Type):-
+	(	var(Type) ->
+		true
+	;	is_operator_type(Type) -> 
+	    true
+	;	atom(Type) ->
+		domain_error(operator_specifier,Type,current_op/3,2)
+	;	type_error(atom,Type,current_op/3,2)
+	).
+
+is_operator_type(fx).
+is_operator_type(fy).
+is_operator_type(hx).
+is_operator_type(hy).
+is_operator_type(xf).
+is_operator_type(yf).
+is_operator_type(xfx).
+is_operator_type(xfy).
+is_operator_type(yfx).
+
+check_operator_name(Name):-
+	(	var(Name) ->
+		true
+	;	atom(Name) -> 
+	    true 
+	;	type_error(atom,Name,current_op/3,3)
+	).
+
+
+/* ===== current_output/1 ===================================== */
+% TLS: changed on 8/04 for new streams.
+
+current_output(Stream) :- 
+	(	var(Stream) ->
+		true
+	;	integer(Stream),
+		is_valid_stream(Stream,_) ->
+		true
+	;	domain_error(stream,Stream,current_output/1,1)	
+	),
+	stat_flag(CURRENT_OUTPUT, S),
+	S = Stream.
+
+% Obsolescent...
+current_output_port(FileDes) :- stat_flag(CURRENT_OUTPUT, FileDes).
+
+
+/* ===== current_predicate/1 ==================================== */
+
+%   current_predicate(?Predicate_Indicator)
+%   Succeeds iff Predicate_Indicator is a predicate indicator for one
+%   of the loaded procedures in the database (both system and user defined).
+%   Predicate_Indicator can have the following forms:
+%	 (i) Module:Functor/Arity.
+%	(ii) Functor/Arity (for global modules)
+%   A variable in place of Predicate_Indicator succeeds only for global
+%   modules.
+%  TLS: added ISO-style error handling 8/04.
+% TLS: redid so that we have a unified semantics for different forms
+% of predicate indicators.  09/04
+
+current_predicate(Specifier) :-		% This takes care of global modules.
+	check_current_predicate_argument(Specifier),
+	(	Specifier = Module:Functor/N ->
+		current_predicate_module(Module,Functor,N)
+	;	Specifier = Functor/N,
+		current_predicate_global(Functor,N)
+	).
+
+% PM: ISO oddly specifies only a type error for current_predicate/1,
+% which is not consistent with other standard predicates
+check_current_predicate_argument(Term) :-
+	(	var(Term) ->
+		true
+	;	Term = Module:Functor/Arity ->
+		(	nonvar(Module), \+ atom(Module) ->
+			type_error(predicate_indicator,Term,current_predicate/1,1)
+		;	nonvar(Functor), \+ atom(Functor) ->
+			type_error(predicate_indicator,Term,current_predicate/1,1)
+		;	nonvar(Arity), (\+ integer(Arity); Arity < 0) ->
+			type_error(predicate_indicator,Term,current_predicate/1,1)
+		;	true
+		)
+	;	Term = Functor/Arity ->
+		(	nonvar(Functor), \+ atom(Functor) ->
+			type_error(predicate_indicator,Term,current_predicate/1,1)
+		;	nonvar(Arity), (\+ integer(Arity); Arity < 0) ->
+			type_error(predicate_indicator,Term,current_predicate/1,1)
+		;	true
+		)
+	;	type_error(predicate_indicator,Term,current_predicate/1,1)
+	).
+
+/*
+current_predicate(Specifier) :-		% This takes care of global modules.
+	(Specifier = Functor/N -> 
+	    current_predicate_global(Functor,N)
+	  ; (Specifier = Module:Functor/N -> 
+	        current_predicate_module(Module,Functor,N)
+	      ; type_error(predicate_indicator,Specifier,current_predicate/1,1) ) ).
+*/
+current_predicate_global(Functor,N):- 
+	!,				% i.e. "usermod" and "global".
+	psc_scan_in_hash_table(0, PSC),
+	psc_type(PSC, Type), 
+	( Type =:= T_PRED -> true		% Regular loaded predicate.
+	; Type =:= T_DYNA -> true		% Dynamic predicate.
+	; Type =:= T_FORN			% Foreign predicate.
+	),
+	psc_arity(PSC, Arity), 
+	psc_name(PSC, Name),
+	Functor = Name,
+	Arity = N.
+
+
+current_predicate_module(Module,Functor,N) :-
+	get_first_psc_pair(PSC_Pair),
+	module_scan(PSC_Pair, ModuleName, ModulePSC),
+	ModuleName = Module,
+	psc_prop(ModulePSC, First_PSC_Pair),	% get the first psc_pair 
+						% of this module
+	( First_PSC_Pair =:= 1 ->	% We are dealing with a global module!
+		current_predicate(Functor/N)
+        ; psc_scan_in_module(First_PSC_Pair, PSC), 
+          psc_type(PSC, Type), 
+	  ( Type =:= T_PRED -> true		% Regular loaded predicate.
+	  ; Type =:= T_DYNA -> true		% Dynamic predicate.
+	  ; Type =:= T_FORN			% Foreign predicate.
+	  ),
+	  psc_arity(PSC, Arity), 
+	  psc_name(PSC, Name),
+	  Functor = Name, 
+	  Arity = N
+	).
+
+module_scan(PSC_Pair, _, _) :-
+	PSC_Pair =:= 0,		% PSC_Pair == NULL
+	!,
+	fail.
+module_scan(PSC_Pair, ModuleName, ModulePSC) :- 
+	pair_psc(PSC_Pair, ModulePSC),
+	psc_name(ModulePSC, ModuleName).
+module_scan(PSC_Pair, NextModuleName, ModulePSC) :- 
+	pair_next(PSC_Pair, Next_PSC_Pair),
+	module_scan(Next_PSC_Pair, NextModuleName, ModulePSC).
+
+psc_scan_in_module(PSC_Pair, _) :-
+	PSC_Pair =:= 0,		% PSC_Pair == NULL
+	!,
+	fail.
+psc_scan_in_module(PSC_Pair, PSC) :-
+	pair_psc(PSC_Pair, PSC).
+psc_scan_in_module(PSC_Pair, Next_PSC) :- 
+	pair_next(PSC_Pair, Next_PSC_Pair),
+	psc_scan_in_module(Next_PSC_Pair, Next_PSC).
+
+
+/* ===== current_predicate/2 =================================== */
+
+%   current_predicate(?Name, ?Term_Indicator)
+%   Succeeds iff Term_Indicator is the most general term corresponding to
+%   one of the loaded procedures in the database (both system and user
+%   defined) having functor Name.
+%   Term_Indicator can have the following forms:
+%	 (i) Module:Term.
+%	(ii) Term (for global modules)
+%   A variable in place of Term_Indicator succeeds only for global
+%   modules. Note that the order of term generation is undetermined.
+
+current_predicate(Name, Term) :-	% This takes care of global modules.
+					% i.e. "usermod" and "global".
+	psc_scan_in_hash_table(0, PSC),
+	psc_type(PSC, Type),
+	( Type =:= T_PRED -> true		% Regular loaded predicate.
+	; Type =:= T_DYNA -> true		% Dynamic predicate.
+	; Type =:= T_FORN			% Foreign predicate.
+	),
+	psc_arity(PSC, Arity), 
+	psc_name(PSC, F),
+	Name = F,
+	functor(Term, Name, Arity).
+current_predicate(Name, Term_Indicator) :-
+	nonvar(Term_Indicator),
+	Term_Indicator = :(Module, Term),
+	get_first_psc_pair(PSC_Pair),
+	module_scan(PSC_Pair, ModuleName, ModulePSC),
+	ModuleName = Module,
+	psc_prop(ModulePSC, First_PSC_Pair),	% get the first psc_pair 
+						% of this module
+	( First_PSC_Pair =:= 1 ->	% We are dealing with a global module!
+		current_predicate(Name, Term)
+	; psc_scan_in_module(First_PSC_Pair, PSC), 
+	  psc_type(PSC, Type), 
+	  ( Type =:= T_PRED -> true		% Regular loaded predicate.
+	  ; Type =:= T_DYNA -> true		% Dynamic predicate.
+	  ; Type =:= T_FORN			% Foreign predicate.
+	  ),
+	  psc_arity(PSC, Arity), 
+	  psc_name(PSC, F),
+	  Name = F, 
+	  functor(Term, Name, Arity)
+	).
+
+
+/* ===== current_module/1 ============================================= */
+
+%   current_module(?Module)
+%   Succeeds iff Module is one of the modules in the database. This 
+%   includes both user modules and system modules. A module becomes 
+%   "current" as soon as it is loaded in the system or when another 
+%   module that is loaded in the system imports some predicates from 
+%   that module. A module can never lose the property of being "current".
+
+current_module(Module) :- 
+	get_first_psc_pair(PSC_Pair),
+	scan_modules(PSC_Pair, ModuleName),
+	Module = ModuleName.
+
+scan_modules(PSC_Pair, _) :-
+	PSC_Pair =:= 0,		% PSC_Pair == NULL
+	!,
+	fail.
+scan_modules(PSC_Pair, ModuleName) :- 
+	pair_psc(PSC_Pair, ModulePSC),
+	psc_name(ModulePSC, ModuleName).
+scan_modules(PSC_Pair, NextModuleName) :- 
+	pair_next(PSC_Pair, Next_PSC_Pair),
+	scan_modules(Next_PSC_Pair, NextModuleName).
+
+
+/* ===== current_module/2 ============================================= */
+
+%   current_module(?Module, ?ObjectFile)
+%   Gives the relationship between the modules and their associated 
+%   module object file names. It is possible for a current module to
+%   have no associated object file name or for the system to be unable 
+%   to find out the object file name of a current module.
+
+current_module(Module, ObjectFile) :- 
+	current_module(Module),
+	module_file(Module, ObjectFile).
+
+module_file('xsbrc', File) :-
+	!,
+	current_predicate('xsbrc':_),	% module .xsbrc is indeed loaded
+	!,
+	xsb_configuration(user_home, HomeDir),
+	slash(Slash),
+	fmt_write_string(FileName, '%s%s.xsb%sxsbrc.%s',
+			 arg(HomeDir, Slash, Slash,XSB_OBJ_EXTENSION_ATOM)),
+	FileName = File.
+module_file(ModuleName, File) :-
+	str_cat(ModuleName, XSB_OBJ_EXTENSION_ATOM, OFile),
+	libpath(Lib),
+	str_cat(Lib, OFile, FileName),
+	machine_file_exists(FileName),
+	!,	% This cut is needed so that we get only one filename
+		% as an answer (exactly the one that corresponds to the
+		% file that would be consulted when using the loader).
+	FileName = File.
+
+
+/* ===== predicate_property/2 ========================================= */
+
+%   predicate_property(?Predicate_Indicator, ?Property)
+%   Succeeds iff predicate Predicate has the property Property.
+%   Hacked by Kostis (10/27/92) to make it fast when searching 
+%   in a global module with Predicate_Indicator ground.
+
+predicate_property(Term_Indicator, Property) :-
+	nonvar(Term_Indicator),
+	Term_Indicator = :(Module, Term),
+	nonvar(Term),		% send ':'(_,_) predicate to next clause
+	!,
+	get_first_psc_pair(PSC_Pair),
+	module_scan(PSC_Pair, ModuleName, ModulePSC),
+	ModuleName = Module,
+	psc_prop(ModulePSC, First_PSC_Pair),	% get the first psc_pair 
+						% of this module
+	( First_PSC_Pair =:= 1 ->	% We are dealing with a global module!
+		predicate_property(Term, Property)
+        ; psc_scan_in_module(First_PSC_Pair, PSC),
+	  psc_name(PSC, Name),
+	  psc_arity(PSC, Arity),
+	  functor(Term, Name, Arity),
+	  psc_properties(PSC, Property)
+	).
+predicate_property(Term, Property) :-	% This takes care of global 
+					% modules,"usermod" and "global".
+	term_type(Term, Type),
+	( Type =:= 1 ->	% Hacked to make it fast when Term is given.
+			% If Term is given and it is represented as a structure 
+			% (has a PSC record) then using term_psc/2 we get to 
+			% this PSC record directly without having to scan the 
+			% whole PSC-Pair list.
+		term_psc(Term, PSC),
+		psc_properties(PSC, Property)
+	; Type =:= 5 ->
+		conpsc(Term, PSC),
+		psc_properties(PSC, Property)
+	; psc_scan_in_hash_table(0, PSC),
+	  psc_name(PSC, Name),
+	  psc_arity(PSC, Arity), 
+	  functor(Term, Name, Arity),
+	  psc_properties(PSC, Property)
+	).
+
+psc_properties(PSC, Property) :- 
+	psc_type(PSC, Type),
+	( Type =:= T_ORDI -> Property = unclassified
+	; Type =:= T_DYNA -> Property = (dynamic)
+	; Type =:= T_PRED -> Property = loaded
+	; Type =:= T_UDEF -> Property = unloaded
+	; Type =:= T_FORN -> Property = foreign
+	; Type =:= 14 -> Property = function ).
+psc_properties(PSC, static) :-
+	\+ (psc_type(PSC, Type), Type =:= T_DYNA).
+psc_properties(PSC, Property) :-
+	psc_env(PSC, Env),
+	( Env =:= T_EXPORTED -> Property = exported
+	; Env =:= T_LOCAL -> Property = (local)
+	; Env =:= T_IMPORTED -> psc_mod(PSC, ModulePSC), 
+		       psc_name(ModulePSC, ModuleName), 
+		       Property = imported_from(ModuleName)
+	; Property = global ).
+psc_properties(PSC, Property) :- 
+	psc_spy(PSC, Spy),
+	( Spy =\= 0 -> Property = spied ).
+psc_properties(PSC, Property) :- 
+	psc_tabled(PSC, Tabled),
+	(psc_type(PSC, Type),Type =:= T_DYNA -> 
+	    psc_get_incr(PSC,Incr),Incr == NONINCREMENTAL
+	  ; true),  
+	( (Tabled /\ 12 > 0),Property = tabled 
+        ; 
+	 ( Tabled == T_VARIANT -> Property = variant
+         ; Tabled == T_SUBSUMPTIVE -> Property = subsumptive ) ).
+%         ; Tabled == T_TABLED_UNDETERMINED -> Property = tabled(default)).
+psc_properties(PSC, Property) :- 
+	psc_get_incr(PSC, Incr),
+	( Incr == INCREMENTAL -> 
+	    Property = incremental 
+	  ; Incr == OPAQUE -> Property = opaque).
+psc_properties(PSC, Property) :- 
+	psc_shared(PSC, Shared),
+	( Shared =\= 0 -> Property = shared ).
+psc_properties(PSC, Property) :-
+	psc_name(PSC, Functor),		% Finding the Functor and the Arity
+	psc_arity(PSC, Arity),		% twice is silly, isn''t it?
+	(	standard_metapredicate_template(Functor,Arity,Template),
+%		setof(Meta, standard_metapredicate(Functor, Arity, Meta), Metas),
+%		psc_meta_predicate_property_args(Metas, 1, Arity, Args),
+%		Template =.. [Functor| Args],
+		Property = meta_predicate(Template)
+	;	standard_symbol(Functor, Arity, _) ->
+		( %	Property = xsb_standard_predicate ; 
+			Property = built_in
+		)
+	).
+	% Unfortunately this doesn''t take the Module into account.
+
+%:- import writeln/1 from standard.
+
+/* PM: this code was used in the old implementation of the
+       meta_predicate/1 predicate property:
+
+psc_meta_predicate_property_args([], N, Arity, Args) :-
+	(	N =< Arity ->
+		N2 is N + 1,
+		Args = [(*)| TArgs],
+		psc_meta_predicate_property_args([], N2, Arity, TArgs)
+	;	Args = []
+	).
+
+psc_meta_predicate_property_args([Meta| Metas], N, Arity, [Arg| Args]) :-
+	N2 is N + 1,
+	(	Meta =:= N ->
+		Arg = (:),
+		psc_meta_predicate_property_args(Metas, N2, Arity, Args)
+	;	Arg = (*),
+		psc_meta_predicate_property_args([Meta| Metas], N2, Arity, Args)
+	).
+*/
+
+/* ===== module_property/2 ============================================ */
+
+%   module_property(?Module, ?Property)
+%   Succeeds iff module Module has the property Property.
+
+module_property(Module, Property) :-
+	get_first_psc_pair(PSC_Pair),
+	module_scan(PSC_Pair, ModuleName, ModulePSC),
+	Module = ModuleName, 
+	module_properties(ModulePSC, Property).
+
+module_properties(PSC, Property) :- 
+	psc_type(PSC, Type),
+	( Type =:=  T_ORDI -> Property = unloaded
+	; Type =:=  T_MODU -> Property = loaded ).
+
+
+/* ===== current_prolog_flag/2 ================================== */
+:- import tripwire/1 from usermod.
+
+current_prolog_flag(Flag, Value) :- 
+	(	var(Flag) ->
+		true
+	;	\+ atom(Flag),\+ (Flag = tripwire(_)) ->
+		type_error(atom,Flag,current_prolog_flag/2,1)
+	;	\+ iso_flag(Flag),\+ (Flag = tripwire(_)),\+ xsb_flag(Flag),\+ prolog_commons_flag(Flag) ->
+		domain_error(prolog_flag,Flag,current_prolog_flag/2,1)
+	;	true
+	),
+	(	iso_flag(Flag,Value) 
+	;	Flag = tripwire(F),
+	        tripwire_1(F),
+    	        (  Value = action(A),
+   	           tripwire_action(F,FA),
+  	           xsb_flag(FA,A)
+  	         ; Value = limit(P),
+  	           xsb_flag(F,P) )
+         ;      atom(Flag),\+ compound(Value),xsb_flag(Flag,Value)
+  	 ;	prolog_commons_flag(Flag,Value)
+	).
+
+settable_flag(unknown).
+settable_flag(double_quotes).
+
+settable_flag_value(unknown,error).
+settable_flag_value(unknown,fail).
+settable_flag_value(unknown,warning).
+settable_flag_value(unknown,undefined).
+settable_flag_value(unknown,user_hook).
+% PM: avoid error when setting the double_quotes flag to codes
+settable_flag_value(double_quotes,codes).
+
+:- dynamic settable_prolog_flag/2.
+:- asserta(settable_prolog_flag(unknown,error)).
+:- asserta(settable_prolog_flag(double_quotes,codes)).
+
+set_prolog_flag(Flag,Value) :-
+	(	var(Flag) ->
+		instantiation_error(set_prolog_flag/2,1,bound)
+	;	var(Value) ->
+		instantiation_error(set_prolog_flag/2,2,bound)
+	; true),
+% Don't check here -- want tripwires
+%	;	atom(Flag) ->
+%		true
+%	;	type_error(atom,Flag,set_prolog_flag/2,1)
+%	),
+	(	settable_flag(Flag) ->
+		(	settable_flag_value(Flag,Value) ->
+			retractall(settable_prolog_flag(Flag,_)),
+			asserta(settable_prolog_flag(Flag,Value))
+		;	domain_error(flag_value,Value,set_prolog_flag/2,2)
+		)
+	;	set_xsb_flag(Flag,Value)
+	).
+
+%make_set_tail([Val],[Val,'}']) :- !.
+%make_set_tail([Val|Vals],[Val,','|SetTail]) :- make_set_tail(Vals,SetTail).
+
+% PM: list of ISO specified flags for error checking
+iso_flag(bounded).
+iso_flag(max_integer). 
+iso_flag(min_integer).
+iso_flag(max_arity).
+iso_flag(integer_rounding_function).
+iso_flag(debug).
+iso_flag(unknown).
+iso_flag(double_quotes).
+iso_flag(char_conversion).
+
+
+%% fix for 64-bit compilation?
+iso_flag(bounded,true).
+
+% TLS: dont understand why we dont just say 7fffffff.
+%iso_flag(old_max_integer,Maxint) :- Maxint is 14 * 16'08000000 + 16'0fffffff.
+% Also, in 64-bits, we dont seem to get full wordsize.  We have 7 followed by 13 fs rather than by 15?
+iso_flag(max_integer,Maxint):- 
+	xsb_configuration(word_size,Size),
+	(Size == '64' -> 
+	    Maxint is (2**62 - 1) + 2**62
+	;   Maxint is (2**30 - 1) + 2**30).
+%'
+%%iso_flag(min_integer,Minint) :- iso_flag(max_integer,Maxint), Minint is -Maxint - 1.
+iso_flag(min_integer,Minint) :- iso_flag(max_integer,Maxint), Minint is -Maxint.
+iso_flag(max_arity,255).
+iso_flag(integer_rounding_function,toward_zero).
+iso_flag(debug, Debug) :- xsb_flag(debugging, Debug).
+iso_flag(unknown, State) :- settable_prolog_flag(unknown, State).
+iso_flag(double_quotes, Meaning) :- settable_prolog_flag(double_quotes, Meaning).
+iso_flag(char_conversion, off).
+
+% TLS: need to understand ISO char conversion
+%iso_flag(char_conversion,{on,off})
+% TLS: we only do codes...
+%iso_flag(double_quotes,{chars,codes,atom}).
+% TLS: shd. add
+%iso_flag(unknown,{error,warning,fail})
+
+/* ===== prolog_commons_flag/2 ========================================== */
+
+% PM: list of Prolog Commons specified flags for error checking
+prolog_commons_flag(dialect).
+prolog_commons_flag(version_data).
+
+prolog_commons_flag(dialect,xsb).
+prolog_commons_flag(version_data, xsb(Major, Minor, Patch, _)):-
+          xsb_configuration(major_version, MajorAtom),
+          atom_codes(MajorAtom, MajorCodes),
+          number_codes(Major, MajorCodes),
+          xsb_configuration(minor_version, MinorAtom),
+          atom_codes(MinorAtom, MinorCodes),
+          number_codes(Minor, MinorCodes),
+          xsb_configuration(patch_version, PatchAtom),
+          atom_codes(PatchAtom, PatchCodes),
+	  (PatchCodes = [] -> Patch = '' ; number_codes(Patch, PatchCodes)).
+
+xsb_flag(Flag):- xsb_flag(Flag,_),!.
+
+/* ===== xsb_flag/2 ========================================== */
+
+%%   xsb_flag(?FlagName, ?Value)
+%%   Succeeds if the XSB flag FlagName has the value Value.
+%%
+%%   IMPORTANT Convention: use xsb_flag for dynamic aspects of XSB setting,
+%%   i.e., those that can change between sessions or within a session.
+%%   In contrast, xsb_configuration is to be used for settings that are the
+%%   same for different sessions and are fixed at XSB build time.
+tripwire_1(max_table_subgoal_size).
+tripwire_1(max_table_answer_size).
+tripwire_1(max_incomplete_subgoals).
+tripwire_1(max_scc_subgoals).
+tripwire_1(max_memory).
+tripwire_1(max_answers_for_subgoal). 
+
+tripwire_action(max_table_subgoal_size,max_table_subgoal_size_action).
+tripwire_action(max_table_answer_size,max_table_answer_size_action).
+tripwire_action(max_incomplete_subgoals,max_incomplete_subgoals_action).
+tripwire_action(max_scc_subgoals,max_scc_subgoals_action).
+tripwire_action(max_memory,max_memory_action).
+tripwire_action(max_answers_for_subgoal,max_answers_for_subgoal_action). 
+
+xsb_flag(write_attributes,Value):- 
+	stat_flag(WRITE_ATTRIBUTES, V), 
+	( V =:= WA_IGNORE -> Value = ignore
+	  ;  (V =:= WA_DOTS -> Value = dots
+	      ;  (V =:= WA_PORTRAY -> Value = portray
+  	           ;  V =:= WA_WRITE -> Value = write) ) ).
+xsb_flag(write_depth,Depth):- 
+	stat_flag(WRITE_DEPTH, Depth).
+xsb_flag(backtrace_on_error, BT) :-
+	stat_flag(BACKTRACE, Value), 
+	( Value =:= 0 -> BT = off ; BT = on ).
+xsb_flag(debugging, Debug) :-
+	stat_flag(DEBUG_ON, Value), 
+	( Value =:= 0 -> Debug = off ; Debug = on ).
+xsb_flag(tracing, Trace) :-
+	stat_flag(TRACE, Value), 
+	( Value =:= 0 -> Trace = off ; Trace = on ).
+xsb_flag(verboseness,Level) :-
+	var(Level),
+	stat_flag(VERBOSENESS_LEVEL,Level).
+%xsb_flag(verboseness,Level) :-
+%	number(Level),
+%	stat_set_flag(VERBOSENESS_LEVEL,Level).
+%% Goal passed on cmd line
+xsb_flag(goal, Goal) :-
+	stat_flag(CMD_LINE_GOAL, GoalUninterned),
+	intern_string(GoalUninterned, Goal).
+xsb_flag(dcg_style, DcgMode) :-
+	stat_flag(DCG_MODE, Dcg_flag),
+	( Dcg_flag =:= 0 -> DcgMode = xsb ; DcgMode = standard ).
+xsb_flag(garbage_collection, GCmode) :-
+	xsb_flag(heap_garbage_collection, GCmode).
+xsb_flag(heap_garbage_collection, GCmode) :-
+	stat_flag(GARBAGE_COLLECT, GCflag),
+	( GCflag =:= NO_GC -> GCmode = none
+	; GCflag =:= SLIDING_GC -> GCmode = sliding
+	; GCflag =:= COPYING_GC -> GCmode = copying
+	; GCflag =:= INDIRECTION_SLIDE_GC -> GCmode = indirection
+	).
+xsb_flag(clause_garbage_collection, OnOff) :-
+	stat_flag(CLAUSE_GARBAGE_COLLECT, GCflag),
+	( GCflag =:= 0 -> OnOff = off ; OnOff = on ).
+xsb_flag(atom_garbage_collection, OnOff) :-
+	stat_flag(STRING_GARBAGE_COLLECT, GCflag),
+	( GCflag =:= 0 -> OnOff = off ; OnOff = on ).
+xsb_flag(heap_margin, Margin) :-
+	stat_flag(HEAP_GC_MARGIN, Margin).
+xsb_flag(gc_verbose_level,Level) :-
+	(   var(Level)
+	->  stat_flag(VERBOSE_GC,VerboseGC),
+	    stat_flag(COUNT_CHAINS,CountYN),
+	    stat_flag(EXAMINE_DATA,Examine),
+	    Level is VerboseGC + CountYN + Examine
+	;   Level = 0
+	->  stat_set_flag(VERBOSE_GC,0),
+	    stat_set_flag(COUNT_CHAINS,0),
+	    stat_set_flag(EXAMINE_DATA,0)
+	;   Level = 1
+	->  stat_set_flag(VERBOSE_GC,1),
+	    stat_set_flag(COUNT_CHAINS,0),
+	    stat_set_flag(EXAMINE_DATA,0)
+	;   Level = 2
+	->  stat_set_flag(VERBOSE_GC,1),
+	    stat_set_flag(COUNT_CHAINS,0),
+	    stat_set_flag(EXAMINE_DATA,1)
+	;   Level = 3
+	->  stat_set_flag(VERBOSE_GC,1),
+	    stat_set_flag(COUNT_CHAINS,1),
+	    stat_set_flag(EXAMINE_DATA,1)
+	;   warning('xsb_flag(gc_verbose_level,X) -> X out of bounds.')
+	).
+xsb_flag(verbose_gc, VerboseGC) :-
+	(   var(VerboseGC)
+	->  stat_flag(VERBOSE_GC,VerboseGC)
+	;   VerboseGC = yes
+	->  stat_set_flag(VERBOSE_GC, 1)
+	;   VerboseGC = no
+	->  stat_set_flag(VERBOSE_GC, 0)
+	;   warning('xsb_flag(verbose_gc,X) -> X should be no, yes or unbound.')
+	).
+xsb_flag(count_chains, CountYN) :-
+	(   var(CountYN)
+	->  stat_flag(COUNT_CHAINS,CountYN)
+	;   CountYN = yes
+	->  stat_set_flag(COUNT_CHAINS, 1)
+	;   CountYN = no
+	->  stat_set_flag(COUNT_CHAINS, 0)
+	;   warning('xsb_flag(count_chains,X) -> X should be no, yes or unbound.')
+	).
+xsb_flag(examine_data, ExamineYN) :-
+	(var(ExamineYN)
+	->  stat_flag(EXAMINE_DATA, ExamineYN)
+	;   ExamineYN = yes
+	->  stat_set_flag(EXAMINE_DATA, 1)
+	;   ExamineYN = no
+	->  stat_set_flag(EXAMINE_DATA,0)
+	;   warning('xsb_flag(examine_data,X) -> X should be no, yes or unbound.')
+	).
+xsb_flag(table_gc_action, Action) :-
+	stat_flag(TABLE_GC_ACTION, ActionFlag),
+	(ActionFlag == ABOLISH_TABLES_TRANSITIVELY -> 
+	    Action = abolish_tables_transitively
+	  ; Action = abolish_tables_singly).
+xsb_flag(thread_pdlsize, Size) :-
+	stat_flag(THREAD_PDLSIZE, Size).
+xsb_flag(thread_glsize, Size) :-
+	stat_flag(THREAD_GLSIZE, Size).
+xsb_flag(thread_tcpsize, Size) :-
+	stat_flag(THREAD_TCPSIZE, Size).
+xsb_flag(thread_complsize, Size) :-
+	stat_flag(THREAD_COMPLSIZE, Size).
+xsb_flag(thread_detached, Bool) :-
+	stat_flag(THREAD_DETACHED, B),
+	(B == 0 -> Bool = false ; Bool = true).
+/* Not changeable */
+xsb_flag(max_threads, Max) :-
+	stat_flag(MAX_THREAD_FLAG, Max).
+xsb_flag(max_queue_terms, Max) :-
+	stat_flag(MAX_QUEUE_TERMS, Max).
+xsb_flag(shared_predicates,Bool):- 
+	stat_flag(PRIVSHAR_DEFAULT,B),
+	(B == 0 -> Bool = false ; Bool = true).
+xsb_flag(warning_action,Action):- 
+	stat_flag(WARNING_ACTION,A),
+	(A == PRINT_WARNING -> 
+	    Action = print_warning
+	  ; (A == SILENT_WARNING -> 
+	      Action = silent_warning
+	     ; A == ERROR_WARNING,Action = error_warning) ).
+xsb_flag(max_table_subgoal_var_num,Size):- 
+	stat_flag(MAX_TABLE_SUBGOAL_VAR_NUM,Size).
+xsb_flag(max_table_answer_var_num,Size):- 
+	stat_flag(MAX_TABLE_ANSWER_VAR_NUM,Size).
+xsb_flag(cyclic_check_size,Size):- 
+	stat_flag(CYCLIC_CHECK_SIZE,Size).
+xsb_flag(max_table_subgoal_size,Max):- 
+	stat_flag(MAX_TABLE_SUBGOAL_SIZE,M),
+	iso_flag(max_integer,Maxint),
+	(M =:= Maxint -> Max = 0; M = Max).
+xsb_flag(max_table_subgoal_size_action, Action) :-
+	stat_flag(MAX_TABLE_SUBGOAL_ACTION, A),
+	(A == XSB_ERROR -> Action = error 
+         ; A == XSB_ABSTRACT -> Action = abstract 
+         ; A == XSB_SUSPEND -> Action = suspend).
+%         ; A == XSB_FAILURE, Action = failure ).
+xsb_flag(max_table_answer_size,Max):- 
+	stat_flag(MAX_TABLE_ANSWER_METRIC,M),
+	iso_flag(max_integer,Maxint),
+	(M =:= Maxint -> Max = 0; M = Max).
+xsb_flag(max_table_answer_size_action, Action) :-
+	stat_flag(MAX_TABLE_ANSWER_ACTION, A),
+	(A == XSB_ERROR -> Action = error 
+         ; (A == XSB_BRAT -> Action = abstract 
+         ; (A == XSB_SUSPEND -> Action = suspend) ) ).
+%	   ; (A == XSB_FAILURE -> Action = failure 
+%              ; A == XSB_WARNING, Action = warning) ).
+%xsb_flag(max_table_answer_list_depth,Depth):- 
+%	stat_flag(MAX_TABLE_ANSWER_LIST_DEPTH,Depth).
+%xsb_flag(max_table_answer_list_action, Action) :-
+%	stat_flag(MAX_TABLE_ANSWER_LIST_ACTION, A),
+%	(A == XSB_ERROR -> Action = error 
+%	; (A == XSB_FAILURE -> Action = failure 
+%            ; A == XSB_WARNING, Action = warning)).
+xsb_flag(max_incomplete_subgoals, Max) :-
+	stat_flag(MAX_INCOMPLETE_SUBGOALS,M),
+	iso_flag(max_integer,Maxint),
+	(M =:= Maxint -> Max = 0; M = Max).
+xsb_flag(max_incomplete_subgoals_action, Action) :-
+	stat_flag(MAX_INCOMPLETE_SUBGOALS_ACTION,A),
+	(A == XSB_ERROR -> Action = error 
+	; (A == XSB_SUSPEND -> Action = suspend 
+            ; A == XSB_WARNING, Action = warning)).
+xsb_flag(max_scc_subgoals, Max) :-
+	stat_flag(MAX_SCC_SUBGOALS,M),
+	iso_flag(max_integer,Maxint),
+	(M =:= Maxint -> Max = 0; M = Max).
+xsb_flag(max_scc_subgoals_action, Action) :-
+	stat_flag(MAX_SCC_SUBGOALS_ACTION,A),
+	(A == XSB_ERROR -> Action = error 
+	; (A == XSB_SUSPEND -> Action = suspend 
+            ; A == XSB_WARNING, Action = warning)).
+xsb_flag(max_answers_for_subgoal, Max) :-
+	stat_flag(MAX_ANSWERS_FOR_SUBGOAL,M),
+	iso_flag(max_integer,Maxint),
+	(M =:= Maxint -> Max = 0; M = Max).
+xsb_flag(max_answers_for_subgoal_action, Action) :-
+	stat_flag(MAX_ANSWERS_FOR_SUBGOAL_ACTION,A),
+	(A == XSB_ERROR -> Action = error 
+	; (A == XSB_SUSPEND -> Action = suspend) ).
+xsb_flag(unify_with_occurs_check, Mode) :-
+	stat_flag(UNIFY_WITH_OCCURS_CHECK_FLAG, Flag),
+	( Flag =:= 0 -> Mode = off ; Mode = on ).
+xsb_flag(max_tab_usage, Mode) :-
+	stat_flag(MAX_USAGE, Flag),
+	( Flag =:= 0 -> Mode = off ; Mode = on ).
+xsb_flag(max_memory, Max) :-
+	stat_flag(MAX_MEMORY, Max).
+xsb_flag(max_memory_action, Action) :-
+	stat_flag(MAX_MEMORY_ACTION,A),
+	(A == XSB_ERROR -> Action = error
+	; (A == XSB_SUSPEND -> Action = suspend) ).
+xsb_flag(exception_pre_action, Mode) :-
+	stat_flag(EXCEPTION_PRE_ACTION, Flag),
+	( Flag =:= PRINT_INCOMPLETE_ON_ABORT -> 
+	  Mode = print_incomplete_tables 
+	; Mode = none ).
+xsb_flag(exception_action, Mode) :-
+	stat_flag(EXCEPTION_ACTION, Flag),
+	( Flag =:= UNDEFINED_TRUTH_VALUE -> 
+	  Mode = undefined_truth_value
+	; Mode = iso ).
+xsb_flag(ctrace,Mode):- 
+	stat_flag(CTRACE_CALLS, Flag),
+	( Flag =:= 0 -> Mode = off
+          ; (Flag =:= 1 -> Mode = partial
+             ; Mode = full) ).
+xsb_flag(character_set,Mode):- 
+	stat_flag(CHARACTER_SET, Flag),
+	(Flag =:= LATIN_1
+	 ->	Mode = latin_1
+	 ; Flag =:= CP1252
+	 ->	Mode = cp1252
+	 ;	Mode = utf_8
+	).
+xsb_flag(errors_with_position,Mode):- 
+	stat_flag(ERRORS_WITH_POSITION, Flag),
+	( Flag =:= 0 -> Mode = off ; Mode = on ).
+
+%:- import writeln/1 from standard.
+set_xsb_flag(Type,Val):- 
+%	writeln(set_xsb_flag(Type,Val)),
+	check_ground(Type,set_xsb_flag/2,1),
+	check_ground(Val,set_xsb_flag/2,2),
+	set_xsb_flag_1(Type,Val).
+
+set_xsb_flag_1(tripwire(F),V):- 
+	tripwire_1(F),
+	(  V = action(A),
+	   tripwire_action(F,FA),
+  	   set_xsb_flag_1(FA,A)
+	 ; V = limit(P),
+	   set_xsb_flag_1(F,P) ),!.
+%set_xsb_flag(tripwire(F),V):- 
+%	tripwire_1(F),
+%	set_xsb_flag_1(F,V).
+set_xsb_flag_1(write_depth, Depth) :- !, 
+	(integer(Depth) -> 
+	    stat_set_flag(WRITE_DEPTH, Depth)
+	;   type_error(integer,Depth,set_xsb_flag/2,2) ).
+set_xsb_flag_1(backtrace_on_error, BT) :-  !, 
+	(BT == off -> Value = 0 ; Value = 1),
+	stat_set_flag(BACKTRACE, Value). 
+set_xsb_flag_1(debugging, Debug) :-  !, 
+	(Debug == off -> Value = 0 ; Value = 1),
+	stat_set_flag(DEBUG_ON, Value). 
+set_xsb_flag_1(tracing, Trace) :-  !, 
+	(Trace == off -> Value = 0 ; Value = 1),
+	stat_set_flag(TRACE, Value).
+set_xsb_flag_1(verboseness,Level) :-  !, 
+	stat_set_flag(VERBOSENESS_LEVEL,Level).
+% TLS: dont think setting makes sense here.
+%% Goal passed on cmd line
+%set_xsb_flag_1(goal, Goal) :-
+%	stat_flag(CMD_LINE_GOAL, GoalUninterned),
+%	intern_string(GoalUninterned, Goal).
+set_xsb_flag_1(dcg_style, DcgMode) :-  !, 
+	( DcgMode == xsb -> Value = 0 ; Value = 1 ),
+	stat_set_flag(DCG_MODE, Value).
+set_xsb_flag_1(garbage_collection, GCmode) :-  !, 
+	set_xsb_flag_1(heap_garbage_collection, GCmode).
+set_xsb_flag_1(heap_garbage_collection, GCmode) :-  !, 
+	( GCmode = none -> GCflag = NO_GC 
+	; GCmode = sliding -> GCflag = SLIDING_GC 
+	; GCmode = copying -> GCflag = COPYING_GC
+	; GCmode = indirection -> GCflag = INDIRECTION_SLIDE_GC
+	; domain_error([none,sliding,copying,indirection],
+                       GCmode,set_xsb_flag/2,2,'garbage_collection clause')
+	),
+	stat_set_flag(GARBAGE_COLLECT, GCflag).
+set_xsb_flag_1(heap_margin, Margin) :-  !, 
+	stat_set_flag(HEAP_GC_MARGIN, Margin).
+set_xsb_flag_1(write_attributes,Code) :-  !, 
+	( Code = ignore -> Flag = WA_IGNORE
+	; Code = dots -> Flag = WA_DOTS
+	; Code = portray -> Flag = WA_PORTRAY
+	; Code = write -> Flag = WA_WRITE
+	; domain_error([ignore,dots,portray,write],
+                       Code,set_xsb_flag/2,2,'write_attributes clause')
+	),
+	stat_set_flag(WRITE_ATTRIBUTES, Flag).
+set_xsb_flag_1(clause_garbage_collection, OnOff) :-  !, 
+	( OnOff == off -> Value = 0 ; Value = 1 ),
+	stat_set_flag(CLAUSE_GARBAGE_COLLECT, Value).
+set_xsb_flag_1(atom_garbage_collection, OnOff) :-  !, 
+	( OnOff == off -> Value = 0 ; Value = 1 ),
+	stat_set_flag(STRING_GARBAGE_COLLECT, Value).
+set_xsb_flag_1(gc_verbose_level,Level) :-  !, 
+	(   Level = 0
+	-> stat_set_flag(VERBOSE_GC,0),
+	    stat_set_flag(COUNT_CHAINS,0),
+	    stat_set_flag(EXAMINE_DATA,0)
+	;   Level = 1
+	->  stat_set_flag(VERBOSE_GC,1),
+	    stat_set_flag(COUNT_CHAINS,0),
+	    stat_set_flag(EXAMINE_DATA,0)
+	;   Level = 2
+	->  stat_set_flag(VERBOSE_GC,1),
+	    stat_set_flag(COUNT_CHAINS,0),
+	    stat_set_flag(EXAMINE_DATA,1)
+	;   Level = 3
+	->  stat_set_flag(VERBOSE_GC,1),
+	    stat_set_flag(COUNT_CHAINS,1),
+	    stat_set_flag(EXAMINE_DATA,1)
+	;   domain_error([0,1,2,3],Level,set_xsb_flag/2,2,'gc_verbose_level clause')
+	).
+set_xsb_flag_1(verbose_gc, VerboseGC) :-  !, 
+	(   VerboseGC = yes
+	->  stat_set_flag(VERBOSE_GC, 1)
+	;   VerboseGC = no
+	->  stat_set_flag(VERBOSE_GC, 0)
+	;     domain_error([0,1],VerboseGC,set_xsb_flag/2,2,'verbose_gc clause')
+	).
+set_xsb_flag_1(count_chains, CountYN) :-  !, 
+	(   CountYN = yes
+	->  stat_set_flag(COUNT_CHAINS, 1)
+	;   CountYN = no
+	->  stat_set_flag(COUNT_CHAINS, 0)
+	;     domain_error([0,1],CountYN,set_xsb_flag/2,2,'count_chains clause')
+	).
+set_xsb_flag_1(examine_data, ExamineYN) :-  !, 
+	(   ExamineYN = yes
+	->  stat_set_flag(EXAMINE_DATA, 1)
+	;   ExamineYN = no
+	->  stat_set_flag(EXAMINE_DATA,0)
+	;     domain_error([0,1],ExamineYN,set_xsb_flag/2,2,
+	                  'examine_data clause')
+	).
+set_xsb_flag_1(table_gc_action, Action) :- !,
+	(Action = abolish_tables_transitively -> 
+	    stat_set_flag(TABLE_GC_ACTION, ABOLISH_TABLES_TRANSITIVELY)
+	 ;  (Action = abolish_tables_singly -> 
+	       stat_set_flag(TABLE_GC_ACTION, ABOLISH_TABLES_SINGLY)
+	     ; domain_error([abolish_tables_transitively,', ',
+	                     abolish_tables_singly],Action,set_xsb_flag/2,2,
+			     'table_gc_action clause') ) ).
+set_xsb_flag_1(thread_pdlsize, Size) :-!,
+	stat_set_flag(THREAD_PDLSIZE, Size).
+set_xsb_flag_1(thread_glsize, Size) :-!,
+	stat_set_flag(THREAD_GLSIZE, Size).
+set_xsb_flag_1(thread_tcpsize, Size) :-!,
+	stat_set_flag(THREAD_TCPSIZE, Size).
+set_xsb_flag_1(thread_complsize, Size) :-!,
+	stat_set_flag(THREAD_COMPLSIZE, Size).
+set_xsb_flag_1(thread_detached, Bool) :- !,
+	(Bool == true -> B = 1 ; B = 0),
+	stat_set_flag(THREAD_DETACHED, B).
+set_xsb_flag_1(max_queue_terms, Num) :- !,
+	(integer(Num) -> 
+	    stat_set_flag(MAX_QUEUE_TERMS, Num)
+	;   type_error(integer,Num,set_xsb_flag/2,2) ).
+set_xsb_flag_1(warning_action,Action):- !,
+	(Action == print_warning ->  A = PRINT_WARNING
+	  ; (Action == silent_warning ->  A = SILENT_WARNING
+	     ; (Action == error_warning ->  A = ERROR_WARNING
+	        ; domain_error([print_warning,', ',silent_warning,', ',error_warning],
+	                        Action,set_xsb_flag/2,2,'warning_action clause') ) ) ),
+	 stat_set_flag(WARNING_ACTION,A).
+
+% These next 3 are basically internal and should rarely need to be reset.
+set_xsb_flag_1(cyclic_check_size, Size) :-!,
+	stat_set_flag(CYCLIC_CHECK_SIZE,Size).
+set_xsb_flag_1(max_table_subgoal_var_num, Size) :-!,
+	( (integer(Size),Size > 0, Size =< 16000) -> 
+	  stat_set_flag(MAX_TABLE_SUBGOAL_VAR_NUM, Size)
+	 ; misc_error('Value must be an integer between 1 and 16000 for the flag max_table_subgoal_var_num') ).
+set_xsb_flag_1(max_table_answer_var_num, Size) :-!,
+	( (integer(Size),Size > 0, Size =< 40000) -> 
+	  stat_set_flag(MAX_TABLE_ANSWER_VAR_NUM, Size)
+	 ; misc_error('Value must be an integer between 1 and 40000 for the flag max_table_answer_var_num') ).
+
+% The next set is for tripwires.
+set_xsb_flag_1(max_table_subgoal_size, Size) :-!,
+	(Size =:= 0 -> 
+	  iso_flag(max_integer,MaxInt),
+	  stat_set_flag(MAX_TABLE_SUBGOAL_SIZE, MaxInt)
+	; stat_set_flag(MAX_TABLE_SUBGOAL_SIZE, Size)).
+set_xsb_flag_1(max_table_subgoal_size_action, Action) :-!,
+	(Action == error -> 
+	    stat_set_flag(MAX_TABLE_SUBGOAL_ACTION, XSB_ERROR)
+          ; (Action == suspend ->  
+	    stat_set_flag(MAX_TABLE_SUBGOAL_ACTION, XSB_SUSPEND)
+          ; (Action == abstract ->  
+	    stat_set_flag(MAX_TABLE_SUBGOAL_ACTION, XSB_ABSTRACT)
+            ; domain_error([error,', ',suspend,', ',abstract],
+                        Action,set_xsb_flag/2,2,'max_table_subgoal_action clause') ) ) ).
+set_xsb_flag_1(max_table_answer_size, Size) :-!,
+	(Size =:= 0 -> 
+	  iso_flag(max_integer,MaxInt),
+	  stat_set_flag(MAX_TABLE_ANSWER_METRIC, MaxInt)
+	; stat_set_flag(MAX_TABLE_ANSWER_METRIC, Size) ).
+set_xsb_flag_1(max_table_answer_size_action, Action) :-!,
+	(Action == error -> 
+	    stat_set_flag(MAX_TABLE_ANSWER_ACTION, XSB_ERROR)
+%          ; (Action == warning ->  
+%	    stat_set_flag(MAX_TABLE_ANSWER_ACTION, XSB_WARNING)
+          ; ((Action == bounded_rationality ; Action == abstract) ->  
+	    stat_set_flag(MAX_TABLE_ANSWER_ACTION, XSB_BRAT),
+	    reinitialize_undefineds
+          ; (Action == suspend ->  
+	    stat_set_flag(MAX_TABLE_ANSWER_ACTION, XSB_SUSPEND)
+%            ; domain_error([error,', ',warning,', ',suspend,', ',abstract],
+            ; domain_error([error,', ',suspend,', ',abstract],
+                        Action,set_xsb_flag/2,2,'max_table_answer_action clause') ) ) ).
+set_xsb_flag_1(max_incomplete_subgoals, Max) :-!,
+	(Max =:= 0 -> 
+	  iso_flag(max_integer,MaxInt),
+	  stat_set_flag(MAX_INCOMPLETE_SUBGOALS, MaxInt)
+	; stat_set_flag(MAX_INCOMPLETE_SUBGOALS, Max) ).
+set_xsb_flag_1(max_incomplete_subgoals_action, Action) :-!,
+	(Action == error -> 
+	    stat_set_flag(MAX_INCOMPLETE_SUBGOALS_ACTION, XSB_ERROR)
+          ; (Action == warning ->  
+	    stat_set_flag(MAX_INCOMPLETE_SUBGOALS_ACTION, XSB_WARNING)
+          ; (Action == suspend ->  
+	    stat_set_flag(MAX_INCOMPLETE_SUBGOALS_ACTION, XSB_SUSPEND)
+            ; domain_error([error,', ',warning,', ',suspend],
+                        Action,set_prolog_flag/2,2,'max_incomplete_subgoals_action clause') ) ) ).
+set_xsb_flag_1(max_scc_subgoals, Max) :-!,
+	(Max =:= 0 -> 
+	  iso_flag(max_integer,MaxInt),
+	  stat_set_flag(MAX_SCC_SUBGOALS, MaxInt)
+	; stat_set_flag(MAX_SCC_SUBGOALS, Max) ).
+set_xsb_flag_1(max_scc_subgoals_action, Action) :-!,
+	(Action == error -> 
+	    stat_set_flag(MAX_SCC_SUBGOALS_ACTION, XSB_ERROR)
+          ; (Action == warning ->  
+	    stat_set_flag(MAX_SCC_SUBGOALS_ACTION, XSB_WARNING)
+          ; (Action == suspend ->  
+	    stat_set_flag(MAX_SCC_SUBGOALS_ACTION, XSB_SUSPEND)
+            ; domain_error([error,', ',warning,', ',suspend],
+                        Action,set_prolog_flag/2,2,'max_scc_subgoals_action clause') ) ) ).
+set_xsb_flag_1(max_answers_for_subgoal, Max) :-!,
+	(Max =:= 0 -> 
+	  iso_flag(max_integer,MaxInt),
+	  stat_set_flag(MAX_ANSWERS_FOR_SUBGOAL, MaxInt)
+	; stat_set_flag(MAX_ANSWERS_FOR_SUBGOAL, Max) ).
+set_xsb_flag_1(max_answers_for_subgoal_action, Action) :-!,
+	(Action == error -> 
+	    stat_set_flag(MAX_ANSWERS_FOR_SUBGOAL_ACTION, XSB_ERROR)
+          ; (Action == suspend ->  
+	    stat_set_flag(MAX_ANSWERS_FOR_SUBGOAL_ACTION, XSB_SUSPEND)
+            ; domain_error([error,', ',suspend],
+                        Action,set_prolog_flag/2,2,'max_answers_for_subgoal_action clause') ) ).
+set_xsb_flag_1(max_memory,Max):-!,
+	(integer(Max),Max >= 0 -> 
+	     stat_set_flag(MAX_MEMORY,Max)
+	 ; real(Max),Max >= 0 -> 
+	     sys_main_memory(Mem),
+	     Ram1 is Max * Mem,
+	     Ram is floor(Ram1/1024),
+	     stat_set_flag(MAX_MEMORY,Ram)
+	 ;  domain_error(positive_number,Max,set_prolog_flag/2,2,max_memory_clause) ).
+% TES: Placeholder for now.
+set_xsb_flag_1(max_memory_action, Action) :-!,
+	(Action == error -> 
+	    stat_set_flag(MAX_MEMORY_ACTION, XSB_ERROR) ; 
+	 (Action == suspend -> 
+	    stat_set_flag(MAX_MEMORY_ACTION, XSB_SUSPEND)
+          ; domain_error([error,suspend],Action,set_prolog_flag/2,2,'max_memory_action clause') ) ).
+
+
+set_xsb_flag_1(ctrace, OnOff) :-!,
+	((OnOff == on ; OnOff == full) -> stat_set_flag(CTRACE_CALLS, 2)
+     ; 	OnOff == partial -> stat_set_flag(CTRACE_CALLS, 1)
+     ;  stat_set_flag(CTRACE_CALLS, 0)).
+set_xsb_flag_1(unify_with_occurs_check, OnOff) :-!,
+	(OnOff == on -> 
+	    stat_set_flag(UNIFY_WITH_OCCURS_CHECK_FLAG, 1)
+	 ;  stat_set_flag(UNIFY_WITH_OCCURS_CHECK_FLAG, 0)).
+set_xsb_flag_1(exception_pre_action, Mode) :- !,
+         (Mode = print_incomplete_tables-> 
+	  stat_set_flag(EXCEPTION_PRE_ACTION, PRINT_INCOMPLETE_ON_ABORT)
+	; (Mode = none ->
+    	      stat_set_flag(EXCEPTION_PRE_ACTION, 0)
+	    ; domain_error([print_incomplete_tables,none],
+                        Mode,set_prolog_flag/2,2,'exception_pre_action clause') ) ).
+set_xsb_flag_1(exception_action, Mode) :- !,
+         (Mode = undefined_truth_value-> 
+	  stat_set_flag(EXCEPTION_ACTION, UNDEFINED_TRUTH_VALUE),
+	  reinitialize_undefineds
+%	  ensure_loaded(tables)
+	; (Mode = iso ->
+    	      stat_set_flag(EXCEPTION_ACTION, 0)
+	    ; domain_error([iso,undefined_truth_value],
+                        Mode,set_prolog_flag/2,2,'exception_action clause') ) ).
+set_xsb_flag_1(max_tab_usage, OnOff) :-!,
+	(OnOff == on -> 
+	    stat_set_flag(MAX_USAGE, 1)
+	 ;  stat_set_flag(MAX_USAGE, 0)).
+set_xsb_flag_1(character_set,Mode):- !,
+	(Mode = latin_1
+	 ->	stat_set_flag(CHARACTER_SET, LATIN_1)
+	 ; Mode = cp1252
+	 ->	stat_set_flag(CHARACTER_SET, CP1252)
+	 ; Mode == utf_8
+	 ->	stat_set_flag(CHARACTER_SET, UTF_8)
+	 ;	domain_error([iso,undefined_character_set],
+			     Mode,set_prolog_flag/2,2,'exception_action clause')
+	).
+set_xsb_flag_1(errors_with_position,Mode):- !,
+	( Mode = on -> 
+	    stat_set_flag(ERRORS_WITH_POSITION, 1)
+	 ;  (Mode = off, stat_set_flag(ERRORS_WITH_POSITION, 0))).
+set_xsb_flag_1(Type, _) :-
+	(	iso_flag(Type)
+	;	prolog_commons_flag(Type)
+	),
+	permission_error(modify,flag,Type,set_prolog_flag/2).
+set_xsb_flag_1(Type, _) :-  
+	domain_error(prolog_flag,Type,set_prolog_flag/2,1).
+
+/* ==================================================================== */
+
+garbage_collection(GC) :- var(GC), !,
+	abort('Uninstantiated argument 1 of garbage_collection/1').
+garbage_collection(none) :- !, stat_set_flag(GARBAGE_COLLECT, NO_GC).
+garbage_collection(sliding) :- !, stat_set_flag(GARBAGE_COLLECT, SLIDING_GC).
+garbage_collection(copying) :- !, stat_set_flag(GARBAGE_COLLECT, COPYING_GC).
+garbage_collection(indirection) :- !, stat_set_flag(GARBAGE_COLLECT, INDIRECTION_SLIDE_GC).
+garbage_collection(_) :-
+	abort('Wrong type in argument 1 of garbage_collection/1').
+
+
+/* ===== hilog_symbol/1 =============================================== */
+
+%   hilog_symbol(?Symbol)
+%   Succeeds iff Symbol is one of the symbols that are declared as HiLog.
+
+hilog_symbol(HS) :- 
+	'_$hilog_symbol'(HS).
+
+/* ===== Auxilliary Predicates ======================================== */
+
+get_first_psc_pair(PSC_Pair) :-
+	stat_flag(MOD_LIST, PSC_Pair).
+
+/* ----------------- end of file current_symbols.P -------------------- */

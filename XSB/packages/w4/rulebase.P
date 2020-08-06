@@ -1,0 +1,83 @@
+%%% Rule Base ( Version 1.0/July 2003)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/projectos/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This modules implements several support routines for mantaining rule bases
+%%%
+
+:- dynamic '$rule'/6.
+:- dynamic '$ruleBaseLastStep'/2.
+
+:- export rule/5.
+:- export rule/6.
+:- export ruleBaseLastStep/2.
+
+:- export assertRulebase/1.
+:- export updateRulebase/1.
+:- export abolishRulebases/0.
+:- export abolishRulebase/1.
+
+rule( Head, Body, RuleBase, Label, Vars ) :-
+	'$ruleBaseLastStep'( RuleBase, LastStep ),			% PENDING: Returns rules in last Step or in all steps ?
+	'$rule'( Head, Body, RuleBase, LastStep, Label, Vars ).
+
+rule( Head, Body, RuleBase, Step, Label, Vars ) :-
+	'$rule'( Head, Body, RuleBase, Step, Label, Vars ).
+
+
+% Predicates for mantaining steps of rule bases
+ruleBaseLastStep( RuleBase, LastStep ) :-
+	'$ruleBaseLastStep'( RuleBase, LastStep ), !.
+ruleBaseLastStep( RuleBase, 0 ) :- !,
+	assert( '$ruleBaseLastStep'( RuleBase, 0 ) ).
+
+incRuleBaseStep( RuleBase, LastStep ) :-
+	retract( '$ruleBaseLastStep'( RuleBase, PrecStep ) ), !,
+	LastStep is PrecStep + 1,
+	assert( '$ruleBaseLastStep'( RuleBase, LastStep ) ).
+incRuleBaseStep( RuleBase, 0 ) :-
+	assert( '$ruleBaseLastStep'( RuleBase, 0 ) ).
+
+% Predicates for asserting, updating and retracting rulebases
+assertRulebase( rulebase( Label, _, Rules, _ ) ) :-
+	ruleBaseLastStep( Label, LastStep ),
+	assert_rules( Rules, Label, LastStep ).
+
+updateRulebase( rulebase( Label, _, Rules, _ ) ) :-
+	incRuleBaseStep( Label, LastStep ),
+	assert_rules( Rules, Label, LastStep ).
+
+assert_rules( [], _, _ ) :- !.
+assert_rules( [Rule|RestRules], Label, Step ) :-
+	assert_rule( Rule, Label, Step ), !,
+	assert_rules( RestRules, Label, Step ).
+
+assert_rule( rule( Head, Body, Label, Vars), RuleBase, Step ) :-
+	assert( '$rule'( Head, Body, RuleBase, Step, Label, Vars ) ).
+
+% abolishes  all rulebases
+abolishRulebases :- 
+	retractall( '$ruleBaseLastStep'(_,_) ),
+	retractall( '$rule'( _, _, _, _, _, _ ) ).
+
+abolishRulebase( rulebase( Label, _, Rules, _ ) ) :- !,
+	retract_rules( Rules, Label ).
+abolishRulebase( Label ) :- !, 
+	retractall( '$ruleBaseLastStep'(Label,_) ),
+	retractall( '$rule'( _, _, Label, _, _, _ ) ).
+
+% PENDING: SHOULD BE MADE STEP DEPENDENT ?
+retract_rules( [], _ ) :- !.
+retract_rules( [Rule|RestRules], Label ) :-
+	retract_rule( Rule, Label, _ ), !,
+	retract_rules( RestRules, Label ).
+
+retract_rule( rule( Head, Body, Label, Vars), RuleBase, Step ) :-
+	retractall( '$rule'( Head, Body, RuleBase, Step, Label, Vars ) ).

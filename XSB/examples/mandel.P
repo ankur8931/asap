@@ -1,0 +1,98 @@
+/*--------------------------------------------------------------------*/
+/*                                                                    */
+/*                        Mandelbrot Set Benchmark                    */
+/*                        ========================                    */
+/*                                                                    */
+/*      written by: M. J. Ratcliffe      (c) ECRC GmbH, Muenchen 1987 */
+/*                                                                    */
+/*  This program uses only integer computations but note that it      */
+/*  uses a fixed point representation, with three decimal places, for */
+/*  the main computations.                                            */
+/*--------------------------------------------------------------------*/
+
+
+/* Entry Predicate.  All the values in this range occur inside the set. */
+
+go :-   cputime(T0), (go(-1100,10,20,-300,25,15,5), fail; true),
+	cputime(T1), T is T1 - T0, write('cputime: '), write(T),
+	write(' sec'), nl.
+
+
+go( X, XI, XR, Y, YI, YR, Iterations ) :-
+        generate( xrange(X,XI,XR), yrange(Y,YI,YR), Iterations, _Res).
+
+demo :- 
+	go_demo(-1100,10,20,-300,25,15,5), fail.
+demo.
+
+go_demo( X, XI, XR, Y, YI, YR, Iterations ) :-
+        generate( xrange(X,XI,XR), yrange(Y,YI,YR), Iterations, Res),
+	write(Res), nl.
+
+generate( xrange(XS,XI,XR), yrange(YS,YI,YR), Iterations,
+          s(XPixelAdd,YPixelAdd,PChar) ) :-
+   Y=Y, XSQ=XSQ,YSQ=YSQ,ModSq=ModSq,		% temp solution
+        generate_val( XS, XI, XR, X, XPixelAdd ),
+        generate_val( YS, YI, YR, Y, YPixelAdd ),
+        fp_mult( X, X, XSQ ),
+        fp_mult( Y, Y, YSQ),
+        ModSq is XSQ + YSQ,
+        test_membership( c(X,Y), z0(X,Y), ModSq, Iterations, PChar ).
+
+
+generate_val( Start, _, Count, Start, Count ) :-
+        Count > 0.
+generate_val( Start, Inc, Count, Val, Address ) :-
+        Count > 0,
+        NStart is Start + Inc,
+        NCount is Count - 1,
+        generate_val( NStart, Inc, NCount, Val, Address ).
+
+/* This predicate tests whether a point is inside the mandelbrot */
+/* set or not.  The remainder returned is always a character     */
+/* code to be used for display.                                  */
+
+test_membership( c(R,I), z0(R0,I0), ModSq, Count, Char ) :-
+        ModSq =< 4000, 
+        Count > 0, 
+        newr( NewR, R, I, R0 ),
+        newi( NewI, R, I, I0 ),
+        newmodsq( NewModSq, NewI, NewR ),
+        NCount is Count - 1,
+        test_membership( c(NewR,NewI), z0(R0,I0), NewModSq, NCount, Char ).
+test_membership( _, _, ModSq, 0, 0 ) :-
+        ModSq =< 4000.
+test_membership( _, _, ModSq, Count, 1 ) :-
+        Count > 0,
+        ModSq > 4000.
+
+newr( NewR, R, I, R0 ) :-
+        fp_mult( R, R, RSQ ),
+        fp_mult( I, I, ISQ ),
+        NewR is RSQ - ISQ + R0.
+
+newi( NewI, R, I, I0 ) :-
+        fp_mult( R, I, RI ),
+        NewI is (2*RI) + I0.
+
+newmodsq( NewModSq, NewI, NewR ) :-
+        fp_mult( NewR, NewR, NewRSQ ),
+        fp_mult( NewI, NewI, NewISQ ),
+        NewModSq is NewRSQ + NewISQ.
+
+
+/* This routine implements fixed point multiplication with */
+/* 3 decimal places.                                       */
+
+fp_mult( A, B, C ) :-
+        WholeNo is B/1000,
+        Remainder is B - WholeNo*1000,
+        Tenths is Remainder/100,
+        fp_mult_part2( A, Remainder, Tenths, PartResult),
+        C is (A*WholeNo) + ((A*Tenths)/10) + PartResult.
+
+fp_mult_part2( A, Remainder, Tenths, PartResult ) :-
+        Remainder2 is Remainder - (Tenths*100),
+        Hundredths is Remainder2/10,
+        Thousandths is Remainder2 - (Hundredths*10),
+        PartResult is ((A*Hundredths)/100) + ((A*Thousandths)/1000).

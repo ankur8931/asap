@@ -1,0 +1,737 @@
+:- compiler_options([spec_off]).
+
+:- op(1150, xfx, (<=)).
+:- [altCDF].
+:- [cdftp_meta].
+:- [cdftp_cdfsc].
+:- [cdftp_preproc].
+/*
+:- document_export descend_all/0, ceDepth/2, aME/2,
+	localClassExpression/2,  % hide
+	checkIdConsistency/1, consistentWith/2,
+	allModelsEntails/2,
+	localClassExpression/3,	check_lce/2,
+            isCE/1, ceMember/2.
+
+:- document_import isa_ext/2,necessCond_ext/2 from usermod.
+:- document_import compdlrule/3 from usermod.
+
+:- document_import classIdentifier/1,topIdentifier/1,
+	                 bottomIdentifier/1 from cdftp_cdfsc.
+
+:- document_import checkContexts/6,
+            sat/3
+%	subsumes/2
+    from cdftp_meta.
+*/
+:- import length/2 from basics.
+
+:- import tp_writeln/2 from tp_utils.
+:- import   isa/2, allAttr/3, hasAttr/3, necessCond/2,
+	   maxAttr/4, minAttr/4,cdf_id_fields/4,
+	   assert_cdf_term/1, retractall_cdf_term/1,abolish_cdf_tables/0 from cdf_init_cdf.
+:- import 
+%         cdf_id_fields/4, system_component/1,
+	abolish_cdf_tables/0
+	    from cdf_init_cdf.
+
+:- import tp_prettyPrintCE/2 from tp_utils.
+
+:- import conset/2, conget/2, coninc/1 from gensym.
+:- import message/1 from standard.
+:- import domain_error/4, misc_error/1,check_ground/3 from error_handler.
+:- import memberchk/2,member/2 from basics.
+
+%---------------------------------------------------- :-
+:- comment(module,"The module @tt{cdftp_chkCon} contains the top-level
+routines used to invoke the CDF theorem prover.  ").
+
+%----------------------------------------------------
+
+:- dynamic failed/1, succeeded/1, queried/1.
+
+%--------------------------------------------------
+
+:- comment(consistentWith/2,"In @tt{consistentWith(Id,CE)}, @tt{Id}
+can either be a class or an object identifier.  @tt{consistentWith/2}
+checks whether a given class expression is logically consistent with
+all that is known about @tt{Id} in the current CDF instance.  In other
+words, if @tt{Id} is a class identifier, @tt{consistentWith/2}
+determines whether there is a model of the CDF instance in which all
+elements in @tt{Id} are also in @tt{CE}. If @tt{Id} is an object
+identifier, @tt{consistentWith/2} determines whether there is a model
+in which @tt{Id} @tt{Id} is in @tt{CE}.").
+
+consistentWith(cid(Id,Cmpt),CE):- 
+	assertNecessCond(cid(Id,Cmpt),CE),
+	(checkIdConsistency(cid(Id,Cmpt)) ->
+	    retractNecessCond(cid(Id,Cmpt),CE)
+	  ; retractNecessCond(cid(Id,Cmpt),CE),
+	    fail).
+
+assertNecessCond(cid(Id,Comp),CE):- 
+	abolish_cdf_tables,
+	assert_cdf_term(necessCond_ext(cid(Id,Comp),vid(CE))).
+assertNecessCond(oid(Id,Comp),CE):- 
+	abolish_cdf_tables,
+	assert_cdf_term(necessCond_ext(oid(Id,Comp),vid(CE))).
+
+retractNecessCond(Id,CE):- 
+	retractall_cdf_term(necessCond_ext(Id,vid(CE))).
+
+%--------------------------------------------------
+
+:- comment(allModelsEntails/2,"In @tt{allModelsEntails(Id,CE)},
+@tt{Id} can either be a class or an object identifier.
+@tt{allModelsEntails/2} checks whether a given class expression is
+entailed by what is known about @tt{Id} in the current CDF instance.
+In other words, if @tt{Id} is a class identifier,
+@tt{allModelsEntails/2} determines whether in any model of the CDF
+instance, if an element is in @tt{Id} then it is also in @tt{CE}. If
+@tt{Id} is an object identifier, @tt{allModelsEntails/2} determines
+whether @tt{Id} must be in @tt{CE}.
+
+This predicate assumes that all class and object identifiers in a
+given CDF instance are correct.").
+
+rec_allModelsEntails(cid(Id,Cmpt),CE):- 
+	rec_checkIdConsistency(cid(Id,Cmpt),CE).
+rec_allModelsEntails(oid(Id,Cmpt),CE):- 
+	object_iter(oid(Id,Cmpt),Iter),
+	debug(rec_allModelsEntails(oid(Id,Cmpt),CE,Iter)),
+	rec_checkIdConsistency(oid(Id,Cmpt),CE).
+
+%-----------------------------------------------------------------------------
+
+:- comment(checkIdConsistency/1,"In @tt{checkIdConsistency(IdList)}
+@tt{IdList} is a list of object or class identifiers which is taken as
+a conjunction.  The predicate checks whether @tt{IdList} is consistent
+in the current CDF instance.").
+
+/* Top level call that skips the loop check and goes immediately to 
+    tableConsChk.
+    In the code that follows, an Id is always a CDF class or object id; 
+    A Context is a list (representing a set) of these contexts, and an
+    AncList is a list of Contexts  */
+
+% checkIdConsistency(Id):- 
+%	checkIdConsistency(single,Id).
+
+%checkIdConsistency(Mode,Id):- 
+%	retractmytabling,
+%	tableConsChk(Mode,[Id],[[Id]]).
+
+rec_checkIdConsistency(Id,Context):- 
+	rec_tableConsChk(single,[context(Id,Context)],[[Id,Context]],Context).
+
+%-------------------------
+
+/* The algorithm is described in detail in the CDF system paper.  What
+we do here is to prove consistency of an identifier by an iterative
+process.  Given an identifier @tt{Id}, a local class expression is
+constructed for Id, and a consistency check made for that class
+expression.  In other words, we prove the consitency of Id by trying
+to construct a model in which Id is a non-empty set if it is a cid, or
+a non-empty unique set if Id is an oid.
+
+Local class expressions dont contain all information for an
+identifier.  Accordingly, in the model constructed for Id we need to
+check the *contexts* for each individual in the model, i.e. if an
+individual i belongs to classes C1 and C2 in our model we must ensure
+that a model can be constructed for both C1 and C2.  The checker thus
+traverses through all the contexts in the model and checks them
+recursively.
+
+% TLS recheck??? negative loop???
+An important issue occurs if a check for an identifier recursively
+leads to a context in which the identifier itself is present.  If this
+is the case, we succeed, as it can be shown that the identifier is
+consistent.  If an identifier Id depends on itself negatively, we
+fail, as we cannot be sure of constructing a model in this case.  A
+more elaborate algorithm would take into account even and odd loops,
+but that seems a little arcane for our purposes.
+
+This code doesn't use XSBs tabling for two reasons.  First, we want to
+succeed on positive loops, and second, we only want a single solution
+for each consistency check.  In this homespun tabling, information is
+entered about whether a context we are traversing has been queried,
+and whether it has succeeded or failed if it is complete.  Once a
+consistency check succeeds, all of its choice points are cut away.
+Success on positive loops is addressed by passing around an ancestor
+list and performing an ancestor check at each call to the sat routine.
+If the context is in the ancestor list we succeed, otherwise we call
+the sat routine (which succeed or fail on table check).  Note that we
+do not need to table the ancestor list -- its just used to succeed on
+loops.  Also, since all code requires only a single solution for any
+consistency check do not have to worry about incomplete tables that
+are not in the ancestor list.
+
+Various cases.  
+1) Not called before 
+2) Called but incomplete 
+3) Complete, succeed or fail 
+
+checkIdConsistency_1 handles case 2).  
+Cases 1) and 3) are handled by checkIdConsistency_2
+*/
+
+%checkIdConsistency_1(Mode,Context,AncList):- 
+%	(memberchk(Context,AncList) -> 
+%	     tp_writeln(1,inLoopSuccess(Context))
+%	   ; checkIdConsistency_2(Mode,Context,[Context|AncList])).
+
+ checkIdConsistency_2(_Mode,[],_).
+ checkIdConsistency_2(Mode,Context,AncList):- 
+ 	(queried(Context) -> 
+ 	    (succeeded(Context) -> tp_writeln(1,succeedingOnTable(Context))
+ 	      ; (failed(Context) -> tp_writeln(1,failingOnTable(Context)),fail
+ 	          ; tp_writeln(0,tableNotRight(Context,AncList))))
+               ;   tp_writeln(1,recursivelyChecking(Context)),
+ 	      tableConsChk(Mode,Context,AncList)).
+
+rec_checkIdConsistency_1(Mode,Context,AncList):- 
+	(memberchk(Context,AncList) -> 
+	     tp_writeln(1,inLoopSuccess(Context))
+	   ; rec_checkIdConsistency_2(Mode,Context,[Context|AncList])).
+
+rec_checkIdConsistency_2(_Mode,[],_).
+rec_checkIdConsistency_2(Mode,Context,AncList):- 
+ 	(queried(Context) -> 
+ 	    (succeeded(Context) -> tp_writeln(1,succeedingOnTable(Context))
+ 	      ; (failed(Context) -> tp_writeln(1,failingOnTable(Context)),fail
+ 	          ; tp_writeln(0,tableNotRight(Context,AncList))))
+               ;   tp_writeln(1,recursivelyChecking(Context)),
+	           topIdentifier(Top),
+ 	           rec_tableConsChk(Mode,Context,AncList,Top)).
+
+% no call has been made before to context.
+tableConsChk(Mode,Context,AncList):- 
+	call_assert(queried(Context)),
+	(tableConsChk_1(Mode,Context,AncList) -> 
+	    call_assert(succeeded(Context)),
+	    tp_writeln(1,succeededConsistCheck(Context))
+	  ; call_assert(failed(Context)),
+           	    tp_writeln(1,failedConsistCheck(Context)),
+                fail).
+
+% no call has been made before to context.
+% ... and what does mode mean???
+rec_tableConsChk(Mode,Context,AncList,Resolvant):- 
+	call_assert(queried(Context)),
+	(rec_tableConsChk_1(Mode,Context,AncList,Resolvant) -> 
+	    call_assert(succeeded(Context)),
+	    tp_writeln(1,succeededConsistCheck(Context))
+	  ; call_assert(failed(Context)),
+       	    tp_writeln(1,failedConsistCheck(Context)),
+                fail).
+
+tableConsChk_1(Mode,Context,AncList):- 
+	localClassExpression(Context,Expr),
+	tp_prettyPrintCE(2,Expr),
+	sat(Expr,abd(Struct,Worlds),Constraints),
+	checkContexts(Constraints,AncList,Struct,Worlds,Contexts,L),
+	check_worlds(Mode,0,L,Contexts,AncList).
+
+rec_tableConsChk_1(Mode,Context,AncList,Resolv):- 
+	localClassExpression(Context,Expr1),
+	maybeAddRes(Context,Resolv,Expr1,Expr),
+	tp_prettyPrintCE(2,(Resolv,Expr)),
+	sat((Resolv,Expr),abd(Struct,Worlds),Constraints),
+	debug(derived_sat(Expr,abd(Struct,Worlds),Constraints)),
+	checkContexts(Constraints,AncList,Struct,Worlds,_Contexts,_L).
+%	check_worlds(Mode,0,L,Contexts,AncList).
+
+maybeAddRes(context(oid(I,N),_),not(cid(Id,N1)),ExprIn,ExprOut):- !,
+        (mknf_isa(oid(I,N),cid(Id,N1)) -> 
+	  ExprOut = (cid(Id,N1),ExprIn) ; ExprOut = ExprIn).
+maybeAddRes(oid(I,N),not(cid(Id,N1)),ExprIn,ExprOut):- !,
+        (mknf_isa(oid(I,N),cid(Id,N1)) -> 
+	  ExprOut = (cid(Id,N1),ExprIn) ; ExprOut = ExprIn).
+maybeAddRes(unique(oid(I,N)),not(cid(Id,N1)),ExprIn,ExprOut):- !,
+        (mknf_isa(oid(I,N),cid(Id,N1)) -> 
+	  ExprOut = (cid(Id,N1),ExprIn) ; ExprOut = ExprIn).
+maybeAddRes(_Id,_Res,Expr,Expr):- 
+	debug(maybeAddRes(_Id,_Res,Expr,Expr)).
+
+/* Assumes a context structure of arity L.
+   This routine checks all contexts within a given model.
+   Mode is single or multiple. */
+check_worlds(_Mode,L,L,_Contexts,_):- !.
+check_worlds(Mode,L,Arity,Contexts,AncList):- 
+	L1 is L + 1,
+	arg(L1,Contexts,Context),
+	length(Context,Clen),
+	(Mode == multiple -> 
+	    (Clen > 1 -> 
+	       sort(Context,Csort),
+	       rec_checkIdConsistency_1(Mode,Csort,AncList)
+	    ;  
+	       true)
+	 ;  sort(Context,Csort),
+	    rec_checkIdConsistency_1(Mode,Csort,AncList) ),	   
+            check_worlds(Mode,L1,Arity,Contexts,AncList).
+
+call_assert(Term):- (call(Term) -> true ; asserta(Term)).
+
+%--------------------------------------------------
+
+:- comment(check_lce/2,"In the goal
+@tt{check_lce+IdList,+N)} @tt{IdList} is a list of class identifiers,
+and @tt{N} is a positive integer.  In its semantics, @tt{IdList} is
+interpreted as a conjunction of identifiers, and
+@tt{check_lce+IdList,+N)} pretty-prints a class expression, unfolded
+to depth @tt{N}, that describes @tt{IdList} according to the current
+CDF instance.
+
+This predicate assumes that all class and object identifiers in a
+given CDF instance are correct.").
+
+check_lce(Id,N):- 
+	localClassExpression(Id,N,Expr),
+	tp_prettyPrintCE(0,Expr),
+	debug(Expr).
+
+:- comment(localClassExpression/3,"In the goal
+@tt{localClassExpression(+IdList,+N,-Expr)} @tt{IdList} is a list of
+class identifiers, and @tt{N} is a positive integer.  In its
+semantics, @tt{IdList} is interpreted as a conjunction of identifiers,
+and upon success, @tt{Expr} is a class expression, unfolded to depth
+@tt{N}, that describes @tt{IdList} according to the current CDF
+instance.").
+
+localClassExpression([context(H,Res)],N,(H,Res,Expr)):- !,
+ 	localClassExpr_1(H,N,Expr),
+	maybeAddRes(H,Res,Expr).
+localClassExpression([context(H,Res)|T],N,((H,Res,Expr1),Expr2)):- 
+ 	localClassExpr_1(H,N,Expr1),
+ 	localClassExpression(T,N,Expr2).
+
+%:- comment(hide,localClassExpression/2).
+ localClassExpression([context(H,Res)],(H,Res,Expr)):- !,
+ 	localClassExpr_1(H,1,Expr).
+ localClassExpression([context(H,Res)|T],((H,Res,Expr1),Expr2)):- 
+ 	localClassExpr_1(H,1,Expr1),
+ 	localClassExpression(T,1,Expr2).
+
+% This actually returns oids, rather than all unique cids
+localClassExpr_1(Id,N,Expr):- 
+	getRelevantFacts(Id,CDFList),
+	N1 is N - 1,
+	localClassExpr_2(CDFList,N1,Expr).
+		
+%-------------------------
+getRelevantFacts(Id,Facts):-
+	extractCDFidentifier(Id,Id1),
+	findall(F,getRelevantFacts_1(Id1,F),Facts_1),
+	sort(Facts_1,Facts).
+	
+extractCDFidentifier(cid(Id,Cpnt),cid(Id,Cpnt)):- !.
+extractCDFidentifier(oid(Id,Cpnt),oid(Id,Cpnt)):- !.
+extractCDFidentifier(unique(cid(Id,Cpnt)),oid(Id,Cpnt)):-!.
+extractCDFidentifier(X,_):-
+     domain_error(['cid(_),oid(_), or unique(cid(_))'],X,extractCDFidentifier/2,1).
+
+%:- table getRelevantFacts_1/2.
+getRelevantFacts_1(Id,isa(Id,Id2)):- 
+        Id = unique(cid(Id,NS)) -> 
+	        mknf_isa(oid(Id,NS),Id2)
+	   ;    mknf_isa(Id,Id2).				     
+getRelevantFacts_1(Id,hasAttr(Id,R,C)):- 
+	hasAttr(Id,R,C),
+	\+ (minAttr(Id,R,C,N),N > 1).
+getRelevantFacts_1(Id,minAttr(Id,R,C,N)):- 
+	minAttr(Id,R,C,N),N > 1.
+getRelevantFacts_1(Id,allAttr(Id,R,C)):- 
+	allAttr(Id,R,C).
+getRelevantFacts_1(Id,maxAttr(Id,R,C,N)):- 
+	maxAttr(Id,R,C,N).
+getRelevantFacts_1(Id,necessCond(Id,Cond)):- 
+	mknf_necessCond(Id,Cond).
+%getRelevantFacts_1(Id,(H <= B)):- 
+%	compdlrule(_,H,B),
+%	relevantInRule(Id,H,B).
+
+% TLS: disallowing default relevant rules, for now.
+relevantInRule(Id,H,B):- 
+	relevantInRule_1(','(H,B),Id,Flag),
+	nonvar(Flag),!.
+ 
+relevantInRule_1(','(One,Two),Id,Flag):- !,
+	relevantInRule_1(One,Id,Flag),
+	relevantInRule_1(Two,Id,Flag).
+relevantInRule_1(';'(One,Two),Id,Flag):- !,
+	relevantInRule_1(One,Id,Flag),
+	relevantInRule_1(Two,Id,Flag).
+relevantInRule_1(Cid,Id,relevant):- 
+	classIdentifier(Cid),
+	cdftp_isa(Id,Cid),!.
+relevantInRule_1(_Cid,_Id,_).
+
+%-------------------------
+
+localClassExpr_2([],_,Top):- !,
+	topIdentifier(Top).
+localClassExpr_2([Term],N,Expr):- !,
+	localClassExpr_3(Term,N,Expr).
+localClassExpr_2([Term|Rest],N,','(E1,E2)):- !,
+	localClassExpr_3(Term,N,E1),
+	localClassExpr_2(Rest,N,E2).
+
+localClassExpr_3(isa(_,Cid),_N,Cid):- !.
+localClassExpr_3(allAttr(_,Rid,Cid),N,all(Rid,Expr)):- !,
+	retraverseLevel(N,Cid,Expr).
+localClassExpr_3(hasAttr(_,Rid,Cid),N,exists(Rid,Expr)):- !,
+	retraverseLevel(N,Cid,Expr).
+localClassExpr_3(minAttr(_,Rid,Cid,N),Lev,atLeast(N,Rid,Expr)):- !,
+	retraverseLevel(Lev,Cid,Expr).
+localClassExpr_3(maxAttr(_,Rid,Cid,N),Lev,atMost(N,Rid,Expr)):- !,
+	retraverseLevel(Lev,Cid,Expr).
+localClassExpr_3(<=(H,B),_,(H ; not(B))):- !.
+localClassExpr_3(necessCond(_,vid(Expr)),_,Expr).
+
+% TLS Im not sure if Expr can ever equal Cid.
+retraverseLevel(N,Cid,OutExpr):- 
+	(N == 0 -> 
+	    OutExpr = Cid
+	  ; localClassExpr_1(Cid,N,Expr),
+	    (Expr \== Cid -> 
+		(Expr = cid('CDF Classes',cdf) -> 
+		    OutExpr = Cid 
+		;   OutExpr = (Cid,Expr) )
+                 ; OutExpr = Cid)).
+
+retractmytabling:- 
+	retractall(failed(_)),
+	retractall(succeeded(_)),
+	retractall(queried(_)).
+
+%--------------------------------------------------
+% descend_all is used to check consistency of an entire CDF instance,
+% starting from CDF root.
+
+:- comment(hide,descend_all/0).
+
+descend_all:- 
+	cputime(Start),
+	conset(descend,0),
+	descend_all_1,
+	cputime(End),
+	Tot is End - Start,
+	conget(descend,N),
+	message(['Cputime ',Tot,' for ',N,' Classes.']).
+
+descend_all_1:- 
+	isa_ext(X,cid('CDF Classes',cdf)),
+	descend(X).
+descend_all_1.
+
+:- table descend/1.
+descend(Class):-
+	abolish_cdf_tables,
+	coninc(descend),
+	checkIdConsistency(Class),
+	isa_ext(cid(NewClass,S),Class),
+	descend(cid(NewClass,S)),
+	fail.
+%--------------------------------
+
+checkComponent(Comp,Orig):- 
+	(atom(Comp) -> 
+	    true
+	  ; misc_error(['Component must be an atom in ',Orig]) ).
+
+ce_check_integer(N,Orig):- 
+	(integer(N) -> 
+	    true
+	  ; misc_error(['Expecting integer for ',N,' in the class expression',Orig]) ).
+
+/*
+ce_check_nonvar(Var,Orig):- 
+	(var(Var) -> 
+	    misc_error(['Class expression ',Orig,' is not fully ground.'])
+	  ; true).
+*/
+
+% Assumes groundness check has already been done.
+checkIdentifier(Id,Type,Orig):- 
+	(cdf_id_fields(Id,T,_,Component),
+	 member(T,Type) -> 
+	    checkComponent(Component,Id)
+	  ; make_type_readible(Type,Type1),
+	    misc_error(['Identifier ',Id,' is not of type ',Type1,' in ',Orig]) ).
+
+make_type_readible([A],[A]):- !.
+make_type_readible([A|B],[A,/|B1]):- 
+	make_type_readible(B,B1).
+
+isCE(CE):- 
+	check_ground(CE,isCE,1),
+	checkIdentifier(CE,[vid],CE),
+	CE = vid(CE1,_),
+	isCE_1(CE1,CE).
+
+isCE_1(','(Class,B),Orig):- !,
+	isCE_1(Class,Orig),
+	isCE_1(B,Orig).
+isCE_1(';'(Class,B),Orig):- !,
+	isCE_1(Class,Orig),
+	isCE_1(B,Orig).
+isCE_1(exists(inv(R),B),Orig):- !,
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(exists(R,B),Orig):- !,
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(all(inv(R),B),Orig):- !,
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(all(R,B),Orig):- !,
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(atLeast(N,inv(R),B),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(atLeast(N,R,B),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(atLeast(N,inv(R)),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig).
+isCE_1(atLeast(N,R),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig).
+isCE_1(atMost(N,inv(R),B),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(atMost(N,R,B),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig),
+	isCE_1(B,Orig).
+isCE_1(atMost(N,inv(R)),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig).
+isCE_1(atMost(N,R),Orig):- !,
+	ce_check_integer(N,Orig),
+	checkIdentifier(R,[rid],Orig).
+isCE_1(not(Class),Orig):- !,
+	isCE_1(Class,Orig).
+isCE_1(X,Orig):- !,
+	(bottomIdentifier(X) ; topIdentifier(X) ; checkIdentifier(X,[cid,oid],Orig)).
+isCE_1(Position,CE):- 
+	misc_error(['Class expression syntax error in ',CE,' at ',Position]).
+% should probably do component/1 and sameAs/4.
+
+% Assumes that CE is a CE.
+ceMember(vid(CE1,_),Ret):- 
+	ceMember_1(CE1,Ret).
+
+ceMember_1(','(Class,B),Ret):- 
+	(ceMember_1(Class,Ret) ; ceMember_1(B,Ret)).
+ceMember_1(';'(Class,B),Ret):- 
+	(ceMember_1(Class,Ret) ; ceMember_1(B,Ret)).
+ceMember_1(exists(inv(R),B),Ret):- 
+	Ret = R ; ceMember_1(B,Ret).
+ceMember_1(exists(R,B),Ret):- 
+	(Ret = R ; ceMember_1(B,Ret)).
+ceMember_1(all(inv(R),B),Ret):- 
+	Ret = R ; ceMember_1(B,Ret).
+ceMember_1(all(R,B),Ret):- 
+	Ret = R ; ceMember_1(B,Ret).
+ceMember_1(atLeast(_N,inv(R),B),Ret):- 
+	Ret = R ; ceMember_1(B,Ret).
+ceMember_1(atLeast(_N,R,B),Ret):- 
+	Ret = R ; ceMember_1(B,Ret).
+ceMember_1(atLeast(_N,inv(R)),R).
+ceMember_1(atLeast(_N,R),R).
+ceMember_1(atMost(_N,inv(R),B),Ret):- 
+	Ret = R ; ceMember_1(B,Ret).
+ceMember_1(atMost(_N,R,B),Ret):- 
+	Ret = R ; ceMember_1(B,Ret).
+ceMember_1(atMost(_N,inv(R)),R).
+ceMember_1(atMost(_N,R),R).
+ceMember_1(not(Class),Ret):- 
+	ceMember_1(Class,Ret).
+ceMember_1(X,X):- cdf_id_fields(X,_,_,_).
+
+%--------------------------------------------------
+:- comment(hide,ceDepth/2).
+:- comment(ceDepth/2,hide).
+
+ceDepth(CE,Out):- 
+	ceDepth(CE,1,Out).
+
+ceDepth(','(One,Two),In,Out):- !,
+	ceDepth(One,In,O),
+	ceDepth(Two,In,T),
+	(T > O -> Out = T ; Out = O).
+ceDepth(';'(One,Two),In,Out):- !,
+	ceDepth(One,In,O),
+	ceDepth(Two,In,T),
+	(T > O -> Out = T ; Out = O).
+ceDepth(exists(_Rel,Class),In,Out):- !,
+	In1 is In + 1,
+	ceDepth(Class,In1,Out).
+ceDepth(all(_Rel,Class),In,Out):- !,
+	In1 is In + 1,
+	ceDepth(Class,In1,Out).
+ceDepth(atLeast(_N,_Rel,Class),In,Out):- !,
+	In1 is In + 1,
+	ceDepth(Class,In1,Out).
+ceDepth(atMost(_N,_Rel,Class),In,Out):- !,
+	In1 is In + 1,
+	ceDepth(Class,In1,Out).
+ceDepth(_,In,In).
+	
+end_of_file.
+
+% atomic	
+check_consist(Class):-
+	cdf_id_fields(Class,cid,_C,Comp),
+	\+ system_component(Comp),
+	findall(Conj,cdf_to_ce(Class,Conj),CEList),
+	preprocess([Class|CEList],CEForm,_N),
+	tp_writeln(2,ce(CEForm)),
+	sat_test(CEForm,N).
+
+cdf_to_ce(Class,Form):- 
+	(hasAttr(Class,R,C) ; immed_classHasAttr(Class,R,C)),
+	(C = oid(_,_) -> 
+	    cdf_warning(tp,['omitting ',hasAttr(Class,R,C),
+	                            ' in consist check'])
+	  ;  \+ (minAttr(Class,R,C,N),N > 1),
+	     Form = exists(R,C)).
+cdf_to_ce(Class,Form):- 
+	minAttr(Class,R,C,N),
+	(C = oid(_,_) -> 
+	    cdf_warning(tp,['omitting ',hasAttr(N,Class,R,C),
+	                            ' in consist check'])
+	  ;  \+ (N == 1,hasAttr(Class,R,C)),
+                  Form = atLeast(N,R,C)).
+cdf_to_ce(Class,Form):- 
+	allAttr(Class,R,C),
+	(C = oid(_,_) -> 
+	    cdf_warning(tp,['omitting ',allAttr(Class,R,C),' in consist check'])
+	  ; Form = all(R,C)).
+cdf_to_ce(Class,Form):- 
+	maxAttr(Class,R,C,N),
+	(C = oid(_,_) -> 
+	    cdf_warning(tp,['omitting ',maxAttr(N,Class,R,C),
+	                            ' in consist check'])
+	  ; Form = atMost(N,R,C)).
+cdf_to_ce(Class,Form):- 
+	necessCond(Class,vid(Form)).
+
+%--------------------------------------------------
+end_of_file.
+
+% expand_all:- 
+% 	cputime(Start),
+% 	conset(expand,0),
+% 	expand_all_1,
+% 	cputime(End),
+% 	Tot is End - Start,
+% 	conget(expand,N),
+% 	message(['Cputime ',Tot,' for ',N,' Classes.']).
+%  
+% expand_all_1:- 
+% 	isa_ext(X,cid('CDF Classes',cdf)),
+% 	expand(X),
+% 	fail.
+% expand_all_1.
+% 
+% :- table expand/1.
+% expand(Class):-
+% 	abolish_cdf_tables,
+% 	coninc(expand),
+% 	expand1(Class),
+% 	isa_ext(cid(NewClass,S),Class),
+% 	expand(cid(NewClass,S)),
+% 	fail.
+% 
+% expand1(Class):-
+% 	cdf_id_fields(Class,cid,_C,Comp),
+% 	\+ system_component(Comp),
+% 	findall(Conj,cdf_to_ce(Class,Conj),CEList),
+% 	preprocess(CEList,CEForm,N),
+% 	writeln(ce(Class,CEForm),N).
+% 
+% :- table classify/2.
+% classify(Expr,Class):- 
+% 	abolish_cdf_tables,
+% 	coninc(classify),
+% 	cdf_id_fields(Class,cid,_C,Comp),
+% 	\+ system_component(Comp),
+% 	findall(Conj,cdf_to_ce(Class,Conj),CEList),
+% 	preprocess([Class|CEList],CEForm,_N),
+% 	tp_writeln(CEForm),
+% 	subsumes(CEForm,Expr),
+% 	(\+ isa_ext(cid(_,_),Class) -> 
+% 	      writeln(classifying(Expr,Class))
+% 	    ; findall(NewClass,(isa_ext(cid(NewClass,S),Class),
+% 	                                 classify(Expr,cid(NewClass,S))),Subclasses),
+% 	       (Subclasses = []  -> 
+% 		   writeln(classifying(Expr,Class))
+% 		; true) ).
+% 
+% %--------------------------------
+% % classify/1 is used to find all minimal parents of a class expression.
+% 
+% classify(Expr):- 
+% 	cputime(Start),
+% 	conset(classify,0),
+% 	classify_1(Expr),
+% 	cputime(End),
+% 	Tot is End - Start,
+% 	conget(classify,N),
+% 	message(['Cputime ',Tot,' for ',N,' Classes.']).
+% 
+% classify_1(Expr):- 
+% 	isa_ext(X,cid('CDF Classes',cdf)),
+% 	classify(Expr,X).
+% classify_1(_Expr).
+% 
+% :- document_import cdf_warning/2 from cdf_exceptions.
+% 
+% % allModelsEntails(cid(Id,Cmpt),CE):- 	
+% %         retractmytabling,
+% % 	ceDepth(CE,N),
+% % 	N1 is N + 1,
+% % 	localClassExpression([cid(Id,Cmpt)],N1,LCE),
+% % 	tp_prettyPrintCE(2,LCE),
+% % 	\+ allModelsEntails_1((LCE,not(CE)),[unique(cid(Id,Cmpt))]).
+% % allModelsEntails(oid(Id,Cmpt),CE):- 
+% % 	retractmytabling,
+% % % 	ceDepth(CE,N),
+% % 	N1 is N + 1,
+% % 	localClassExpression([unique(oid(Id,Cmpt))],N1,LCE),
+% % 	tp_prettyPrintCE(2,LCE),
+% % 	\+ allModelsEntails_1((LCE,not(CE)),[]).
+% 
+% % allModelsEntails_1(Expr,AncList):- 
+% %            sat(Expr,abd(Struct,Worlds),_Constr),
+% %	tp_writeln(2,abd(Struct,Worlds)),
+% %	checkContexts(_Constr,_Anclist,Struct,Worlds,Contexts,L),
+% %	check_worlds(multiple,0,L,Contexts,AncList).
+
+
+%consistentWith(cid(Id,Cmpt),CE):- 
+%	retractmytabling,
+%	ceDepth(CE,N),
+%	N1 is N + 1,
+%	localClassExpression([cid(Id,Cmpt)],N1,LCE),
+%	tp_prettyPrintCE(2,LCE),
+%            sat((LCE,CE),abd(Struct,Worlds),Constraints),
+%	checkContexts(Constraints,[],Struct,Worlds,Contexts,L),
+%	check_worlds(multiple,0,L,Contexts,[]).
+%consistentWith(oid(Id,Cmpt),CE):- 
+%	retractmytabling,
+%	ceDepth(CE,N),
+%	N1 is N + 1,
+%	localClassExpression([unique(oid(Id,Cmpt))],N1,LCE),
+%	tp_prettyPrintCE(2,LCE),
+%            sat((LCE,CE),abd(Struct,Worlds),Constraints),
+%	checkContexts(Constraints,[],Struct,Worlds,Contexts,L),
+%	check_worlds(multiple,0,L,Contexts,[]).

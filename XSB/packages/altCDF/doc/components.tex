@@ -1,0 +1,257 @@
+\section{CDF Components and I/O} \label{sec:components}
+
+\subsection{CDF Components}
+
+Typically, a CDF instance can be partitioned into several separate
+cells representing information that arises from different sources.
+For instance, in the example from the previous chapter, the taxonomy
+shown in Example~\ref{ex:suture1} is largly drawn from the UNSPSC
+taxonomy, while the relations and domains of Example~\ref{ex:suture2}
+and later are adapted from DLA's FIIG meta-data.  Practical systems
+often need to update data from different sources separately, and may
+need to incorporate information from one source independantly from
+that of another.  The CDF components system attempts to address this
+need by allowing ontologies to be built from discrete {\em components}
+that can be maintained separately.
+
+First of all, the CDF component system provides an implicit partition
+of all facts and rules in a CDF instance.  Recall from
+Defintion~\ref{def:cdfids} all identifiers have an outer 2-ary functor
+whose component tag or {\em source} is in the second argument.
+%-----------------------------
+\mycomment{
+Thus, {\tt cid(absorbableSuture)} would actually be maintained as {\tt
+cid(absorbableSuture,unspsc)}, {\tt rid(needleDesign)} as {\tt
+rid(needleDesign,dlafiig)} etc.  }
+%
+Extensional facts in a CDF instance can be assigned a component by
+choosing a {\em component argument} for each predicate symbol, and
+assigning as the component of each fact the component tag of the
+identifier in the component argument.  If the identifier is a product
+identifier, the source is the source of the outer function symbol).
+Intensional rules can be assigned a component in a similar way, by
+assigning a component argument to each intensional rule predicate
+symbol and requiring that the component tag of the component argument
+in each intensional rule be ground.
+
+By default, CDF uses a {\em relation-based component system}, which
+chooses as argument identifiers
+
+\begin{itemize}
+\item the first argument of all \pred{isa\_ext/2} and
+\pred{necessCond\_ext/2} facts, along with \pred{isa\_int/2} and
+\pred{necessCond\_int/2} rules.  
+
+\item the second argument of all \pred{hasAttr\_ext/3},
+\pred{allAttr\_ext/3}, \pred{minAttr\_ext/4}, \pred{maxAttr\_ext/4}
+and \pred{classHasAttr\_ext/3} facts and their associated {\tt \_int}
+rules.
+\end{itemize}
+
+\index{component dependency}
+Given such a partition, a dependency relation between components
+arises in a natural way.  Let $Id: components.tex,v 1.3 2010-08-19 15:03:38 spyrosh Exp $ range over CDF identifier functors.
+A component $C_1$ {\em directly depends} on component $C_2$ if {\em
+Id($Nid_2$,$C_2$)} is an argument in a fact or rule head in component
+$C_1$.  In addition, $C_1$ durectly depends on $C_2$ if {\em
+Id($Nid_p$,$C_1$)} is a product identifier in a component argument,
+and {\em Id($Nid_2$,$C_2$)} occurs as an argument in $Nid_p$.  It is
+easy to see that component dependency need not be hierarchical so that
+two components may directly depend on each other; furthermore each
+component must directly depend on itself.  Component dependency is
+defined as the transitive closure of direct dependency.
+
+Dependency information is used to determine how to load a component
+and when to update it and is usually computed by the CDF system.
+Computing dependency information is easy for extensional facts, but
+computing dependency information for intensional rules is harder, as
+the component system would need to compute all answer substitutions to
+determine all dependencies, and this in impractical for some sets of
+intensional rules.  Rather, dependencies are computed by checking the
+top-level arguments of intensional rules, which leads to an
+under-approximation of the dependencies.
+
+\subsubsection{Component Names, Locations, and Versions}
+
+\index{component!name}
+\index{component!version}
+\index{component!location}
+A component is identified by a structured {\em component name}, which
+consists of a {\em location} and a {\em source}.  For example,
+information in the directory {\tt /home/tswift/unspsc} would have a
+location of {\tt /home/tswift} and source {\tt unspsc}.  For
+efficiency, only the source is used as a source argument for
+identifiers within a CDF instance; the location is maintained
+separately.  The structuring of component names has implications for
+the behavior of the component system.  If two components with the same
+sources and different locations are loaded, facts and rules from the
+two different components cannot be distinguished, as only the source
+is maintained in identifiers.  The attempt to load two such components
+with the same source and different locations can be treated as an
+error; or the load can be allowed to succeed unioning the information
+from both components, implicitly asserting an axiom of equality for
+the two (structured) component names.
+
+The same component name can have multiple {\em versions}.  An CDF
+state can contain only one version for each component name, and an
+attempt to load two different versions for the same name always gives
+rise to an error.  On the other hand, if two component names $C_1$ and
+$C_2$ have the same source and different locations, they do not have
+the same name.  If they are loaded so that their information is
+unioned together an error is not raised if $C_1$ and $C_2$ have
+different versions.
+
+\subsection{I/O for CDF}
+
+The component system allows users to create or update components from
+a CDF state, as well as load a component along with its dependencies.
+In the present version of CDF, it provides a basis for concurrent
+editing of ontologies by different users sharing the same file system
+(see Section~\ref{sec:concurrency}).  Users can either load the latest
+version of a component, or work with previous versions, or move their
+work to a separate directory where they can work until they feel it is
+time to merge with another branch.  While the current version of CDF
+only supports loading and saving components to a file system, work is
+underway to load and save components as RDF resources, using
+translators between XSB and RuleML \cite{RuleML} \footnote{These
+translators were written by Carlos Dam\'asio.}.
+
+At a somewhat lower level, the CDF I/O system allows a user to load or
+dump a file of extensional facts or intensional rules  The I/O system
+also forms the building blocks of the component system.
+
+
+%-----------------------------------------------------------------
+\subsection{Component and I/O API}
+
+\subsubsection{Component API}
+
+\begin{description}
+\ourpredmoditem{load\_component/1}{cdf\_comps\_share}
+{\tt load\_component(Name,Loc,Parameter\_list)} loads the component
+{\tt Name}, from location {\tt Loc} and recursively, all other
+components upon which the component depends.  If a version conflict is
+detected between a component tag to be loaded and one already in the
+CDF state or about to be loaded, {\tt load\_component/3} aborts
+without changing CDF extensional facts or intensional rules.  In
+\version{} of CDF, {\tt Loc} must be a file system path, and the rules
+for filename expansion of relative and other paths is the same as in
+XSB.
+
+The order of loading is as follows.  First, all extensional facts are
+loaded for the component {\tt Name} at location {\tt Loc}, and then
+recursively for all components on which {\tt Name} at {\tt Loc}
+depends.  Next, the dependency graph is re-traversed so that
+intensional rules are loaded and initialization files are consulted in
+a bottom-up manner (i.e. in a post-order traversal of the dependency
+graph).
+
+{\tt Parameter\_list} may contain the following elements:
+\begin{itemize}
+
+\item {\tt action(Action)} where {\tt Action} is {\tt check} or
+{\tt union}.  If the action is {\tt check}, two components with the
+same component but different locations or versions cannot be loaded:
+an attempt to do so will cause an error.  If the action is {\tt
+union}, two components with the same name and different locations may
+be loaded, and the effect will look as if the two components had been
+unioned together.  However an error will occur if two components with
+the same name and location but different versions are loaded.
+
+\item {\tt force(Bool)} where {\tt Bool} is {\tt yes} or {\tt no} (default
+{\tt no}).  If {\tt Force} is {\tt yes}, any components that have
+previously been loaded into the CDF are reloaded, and their
+initialization files reconsulted.  If {\tt Force} is {\tt no}, no
+actions will be taken to load or initialize components already loaded
+into the CDF.
+
+\item {\tt version(V)} where {\tt V} is a version number.  If the
+parameter list contains such a term, the loader attempts to load
+version {\tt V} of component.  The default action is to load the latest
+version of a component.
+\end{itemize}
+
+\ourpredmoditem{update\_all\_components/2}{cdf\_comps\_noshare}
+{\tt update\_all\_components(Loc,Option\_list)} analyzes components of
+a CDF state and their dependencies, determining whether they need to
+be updated or not, and creating components when necessary.  When a
+component is created with location {\tt Loc}, the files {\tt
+cdf\_extensional.P} and {\tt cdf\_intensional.P} are created.
+Initialization files must be added manually for new components.
+Currently, {\tt Dir} must specify a file system directory. {\tt
+Option\_list} contains a list of parameters which currently specifies
+the effect on previously existing components:
+
+\begin{itemize} 
+\item {\tt action(Action)}.  
+\begin{itemize} 
+
+\item If {\tt Action} is {\tt create}, then a new set of components is
+created in {\tt Loc}.  Information not previously componentized is
+added to new components whose location is {\tt Loc} and whose version
+number is 0.  Facts that are parts of previously created components
+are also written to {\tt Loc}; if their previous location was {\tt
+Loc}, their versions are updated if needed (i.e. if any facts or rules
+in the component have changed).  Otherwise, if the location of a
+previously created component {\tt C} was not {\tt Loc}, {\tt C} is
+written to {\tt Loc} its location information updated, and its version
+is set to 0.  
+%In addition, the initialization file for {\tt C} is
+%copied to {\tt Dir}.
+
+\item If {\tt Action} is {\tt in\_place}, then components are created in
+{\tt Loc} only for information that was not previously componentized.
+Newly created components are written to {\tt Loc} which serves as
+their locations, and their version number is 0.  Previously created
+components whose locations were not {\tt Loc} are updated using their
+present location, if needed.
+
+\end{itemize}
+In either case all dependency information reflects new component and
+location and version information.
+\end{itemize}
+
+\end{description}
+
+\subsubsection{I/O API}
+
+\begin{description}	
+\ourpredmoditem{load\_extensional\_facts/1}{cdf\_io}
+{\tt load\_extensional\_facts(DirectoryList)}: loads the file
+{\tt cdf\_extensional.P} from directories in {\tt DirectoryList}.  The
+files loaded must contain extensional data.
+\pred{load\_extensional\_facts/1} does not abolish any extsnsional
+information already in memory; rather, it merges the information from
+the various files with that already loaded.  Intensional rules will
+not be affected by this predicate.  
+
+\ourpredmoditem{load\_intensional\_rules/1}{cdf\_io}
+{\tt load\_intensional\_rules(Dir)} ynamically loads intensional rules
+from {\tt cdf\_intensional.P} in {\tt Directory}.  This predicate is
+designed for the component system, but can be used outside of it.  The
+leaf directory name in {\tt Dir} is assumed to be the component name
+of the rules.  As the intensional rules are loaded, their functors are
+rewritten from {\tt XXX\_int} to {\tt XXX\_int\_Name}, to avoid any
+conflicts with intensional rules loaded from other components or
+directories.
+
+\ourpredmoditem{merge\_intensional\_rules/0}{cdf\_io}
+{\tt merge\_intensional\_rules/0}: This utility predicate takes the
+current intensional rules for all sources and transforms them to
+extensional form by backtracking through them, and asserting them to
+the Prolog store.  All intensional information is then retracted.
+
+\ourpredmoditem{dump\_extensional\_facts/1}{cdf\_io}
+{\tt dump\_extensional\_facts(Dir)} writes extensional facts to the
+file {\tt cdf\_extensional.P} in {\tt Directory}.  No intensional
+rules are dumped by this predicate.
+\pred{dump\_extensional\_facts/0} writes the {\tt cdf\_extensional.P} file
+to the current directory. 
+
+\ourpredmoditem{dump\_intensional\_rules/1}{cdf\_io}
+
+\ourpredmoditem{cdf\_exists/1}{cdf\_io}
+{\tt cdf\_exists(Dir)} checks whether {\tt cdf\_extensional.P} file is
+present in directory {\tt Dir}.
+
+\end{description}

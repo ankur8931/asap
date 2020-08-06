@@ -1,0 +1,238 @@
+[element(html,[xmlns = http://www.w3.org/1999/xhtml,xml:lang = en-US,lang = en-US],[element(head,[profile = http://www.w3.org/2000/08/w3c-synd/#],[element(meta,[http-equiv = Content-Type,content = text/html; charset=utf-8],[]),element(meta,[name = generator,content = HTML Tidy for Mac OS X (vers 1st March 2004), see www.w3.org],[]),element(meta,[name = keywords,content = W3C, World Wide Web, Web, WWW, Consortium, computer, access, accessibility, semantic, worldwide, W3, HTML, XML, standard, language, technology, link, CSS, RDF, XSL, Berners-Lee, Berners, Lee, style sheet, cascading, schema, XHTML, mobile, SVG, PNG, PICS, DOM, SMIL, MathML, markup, Amaya, Jigsaw, free, open source, software],[]),element(meta,[name = description,content = W3C's nearly 400 member organizations lead the World Wide Web to its full potential. Founded by Tim Berners-Lee, the Web's inventor. The W3C Web site hosts specifications, guidelines, software and tools. Public participation is welcome. W3C supports universal access, the semantic Web, trust, interoperability, evolvability, decentralization, and cooler multimedia.],[]),element(title,[],[World Wide Web Consortium]),element(link,[id = meta,rel = rel:meta,href = http://www.w3.org/2000/08/w3c-synd/#meta],[]),element(link,[rel = meta,href = /Overview-about.rdf],[]),element(link,[rel = stylesheet,type = text/css,href = /StyleSheets/home.css],[]),element(link,[rel = stylesheet,type = text/css,href = /StyleSheets/W3C10-home.css],[]),element(link,[rel = bookmark,href = #technologies,title = Technologies |],[]),element(link,[rel = bookmark,href = #news,title = News |],[]),element(link,[rel = bookmark,href = #search,title = Search |],[]),element(link,[rel = contents,href = #contents,title = Contents |],[]),element(link,[rel = bookmark,href = #systems,title = Systems |],[]),element(link,[rel = bookmark,href = #donors,title = Donors |],[]),element(link,[rel = bookmark,href = #footnotes,title = Footnotes |],[]),element(link,[rel = alternate,type = application/rss+xml,title = RSS,href = http://www.w3.org/2000/08/w3c-synd/home.rss],[])]),element(body,[],[element(h1,[id = logo],[element(img,[alt = The World Wide Web Consortium (W3C),height = 48,width = 315,src = /Icons/w3c_main],[])]),element(h2,[id = slogan],[Leading the Web to Its Full Potential...]),element(div,[],[
+,element(map,[name = introLinks,id = introLinks,title = Introductory Links],[element(div,[class = banner],[
+,element(span,[class = invisible],[element(a,[class = bannerLink,title = Skip introductory links and the mission statement,href = #technologies,shape = rect],[Skip to Technologies]), |]), ,element(a,[class = bannerLink,title = W3C Activities,accesskey = A,href = /Consortium/activities,shape = rect],[Activities]), | ,element(a,[class = bannerLink,title = Technical Reports and Recommendations,accesskey = T,href = /TR/,shape = rect],[Technical Reports]), | ,element(a,[class = bannerLink,title = Alphabetical Site Index,accesskey = S,href = /Consortium/siteindex,shape = rect],[Site Index]), | ,element(a,[class = bannerLink,title = Help for new visitors,accesskey = N,href = /Consortium/new-to-w3c,shape = rect],[New
+Visitors]), | ,element(a,[class = bannerLink,title = About W3C,accesskey = B,href = /Consortium/,shape = rect],[About W3C]), | ,element(a,[class = bannerLink,title = Join W3C,accesskey = J,href = /Consortium/join,shape = rect],[Join W3C]), |
+,element(a,[class = bannerLink,title = Contact W3C,accesskey = C,href = /Consortium/contact,shape = rect],[Contact W3C]),
+])]),
+]),element(p,[class = small],[The World Wide Web Consortium (,element(acronym,[],[W3C]),)
+develops interoperable technologies (specifications, guidelines,
+software, and tools) to lead the Web to its full potential. W3C is a
+forum for information, commerce, communication, and collective
+understanding. On this page, you'll find ,element(a,[href = #news,shape = rect],[W3C news]),,
+links to ,element(a,[href = #technologies,shape = rect],[W3C technologies]), and ways to
+,element(a,[href = #contents,shape = rect],[get involved]),. New visitors can find help in
+,element(cite,[],[element(a,[href = /Consortium/new-to-w3c,shape = rect],[Finding Your Way at
+W3C])]),. We encourage organizations to learn more ,element(a,[href = /Consortium/,shape = rect],[about W3C]), and ,element(a,[href = /Consortium/membership,shape = rect],[about
+W3C Membership]),.]),element(div,[class = navBlock],[
+,element(h2,[class = navhead],[element(a,[name = technologies,id = technologies,shape = rect],[W3C A to
+Z])]),
+
+,element(ul,[],[element(li,[class = invisible],[element(a,[class = navlink,title = Skip W3C A-Z,href = #news,shape = rect],[Skip to News])]),element(li,[],[element(a,[href = /WAI/,class = navlink,shape = rect],[Accessibility])]),element(li,[],[element(a,[href = /Amaya/,class = navlink,shape = rect],[Amaya])]),element(li,[],[element(a,[href = /2001/Annotea/,class = navlink,shape = rect],[Annotea])]),element(li,[],[element(a,[href = /XML/Binary/,class = navlink,shape = rect],[element(abbr,[title = XML Binary Characterization],[Binary XML])])]),element(li,[],[element(a,[href = /Mobile/CCPP/,class = navlink,shape = rect],[element(abbr,[title = Composite Capability/Preference Profiles],[CC/PP])])]),element(li,[],[element(a,[href = /2004/CDF/,class = navlink,shape = rect],[Compound Document
+Formats])]),element(li,[],[element(a,[href = /Style/CSS/,class = navlink,shape = rect],[element(abbr,[title = Cascading Style Sheets],[CSS])])]),element(li,[],[element(a,[href = http://jigsaw.w3.org/css-validator/,class = navlink,shape = rect],[element(abbr,[title = Cascading Style Sheets],[CSS]),
+Validator])]),element(li,[],[element(a,[href = /2001/di/,class = navlink,shape = rect],[Device Independence])]),element(li,[],[element(a,[href = /DOM/,class = navlink,shape = rect],[element(acronym,[title = Document Object Model],[DOM])])]),element(li,[],[element(a,[href = /MarkUp/,class = navlink,shape = rect],[element(abbr,[title = HyperText Markup Language],[HTML])])]),element(li,[],[element(a,[href = /People/Raggett/tidy/,class = navlink,shape = rect],[element(abbr,[title = HyperText Markup Language],[HTML]), Tidy])]),element(li,[],[element(a,[href = http://validator.w3.org/,class = navlink,shape = rect],[element(abbr,[title = HyperText Markup Language],[HTML]), Validator])]),element(li,[],[element(a,[href = /Protocols/,class = navlink,shape = rect],[element(abbr,[title = Hypertext Transfer Protocol],[HTTP])])]),element(li,[],[element(a,[href = /2002/mmi/ink,class = navlink,shape = rect],[InkML])]),element(li,[],[element(a,[href = /International/,class = navlink,shape = rect],[Internationalization])]),element(li,[],[element(a,[href = /Jigsaw/,class = navlink,shape = rect],[Jigsaw])]),element(li,[],[element(a,[href = /Library/,class = navlink,shape = rect],[Libwww])]),element(li,[],[element(a,[href = /Math/,class = navlink,shape = rect],[MathML])]),element(li,[],[element(a,[href = /2002/mmi/,class = navlink,shape = rect],[Multimodal
+Interaction])]),element(li,[],[element(a,[href = /2004/OWL/,class = navlink,shape = rect],[element(acronym,[title = OWL Web Ontology Language],[OWL])])]),element(li,[],[element(a,[href = /2004/pp/,class = navlink,shape = rect],[Patent Policy])]),element(li,[],[element(a,[href = /PICS/,class = navlink,shape = rect],[element(acronym,[title = Platform for Internet Content Selection],[PICS])])]),element(li,[],[element(a,[href = /Graphics/PNG/,class = navlink,shape = rect],[element(acronym,[title = Portable Network Graphics],[PNG])])]),element(li,[],[element(a,[href = /P3P/,class = navlink,shape = rect],[Privacy and ,element(abbr,[title = Platform for Privacy Preferences],[P3P])])]),element(li,[],[element(a,[href = /QA/,class = navlink,shape = rect],[Quality Assurance (,element(abbr,[title = Quality Assurance],[QA]),)])]),element(li,[],[element(a,[href = /RDF/,class = navlink,shape = rect],[element(abbr,[title = Resource Description Framework],[RDF])])]),element(li,[],[element(a,[href = /2001/sw/,class = navlink,shape = rect],[Semantic Web])]),element(li,[],[element(a,[href = /AudioVideo/,class = navlink,shape = rect],[element(acronym,[title = Synchronized Multimedia Integration Language],[SMIL])])]),element(li,[],[element(a,[href = /2000/xp/Group/,class = navlink,shape = rect],[element(acronym,[title = Soap],[SOAP]),/,element(abbr,[title = XML Protocol],[XMLP])])]),element(li,[],[element(a,[href = /TR/rdf-sparql-query/,class = navlink,shape = rect],[element(acronym,[title = Simple Protocol and RDF Query Language],[SPARQL])])]),element(li,[],[element(a,[href = /Style/,class = navlink,shape = rect],[Style])]),element(li,[],[element(a,[href = /Graphics/SVG/,class = navlink,shape = rect],[element(abbr,[title = Scalable Vector Graphics],[SVG])])]),element(li,[],[element(a,[href = /2001/tag/,class = navlink,shape = rect],[element(acronym,[title = Technical Architecture Group],[TAG])])]),element(li,[],[element(a,[href = /AudioVideo/TT/,class = navlink,shape = rect],[Timed Text])]),element(li,[],[element(a,[href = /Addressing/,class = navlink,shape = rect],[element(abbr,[title = Uniform Resource Identifiers],[URI/URL])])]),element(li,[],[element(a,[href = /QA/Tools/#validators,class = navlink,shape = rect],[Validators])]),element(li,[],[element(a,[href = /Voice/,class = navlink,shape = rect],[Voice])]),element(li,[],[element(a,[href = /WAI/,class = navlink,shape = rect],[element(acronym,[title = Web Accessibility Initiative],[WAI])])]),element(li,[],[element(a,[href = /Graphics/WebCGM/,class = navlink,shape = rect],[element(abbr,[title = Web Computer Graphics Metafile],[WebCGM])])]),element(li,[],[element(a,[href = /2002/ws/,class = navlink,shape = rect],[Web Services])]),element(li,[],[element(a,[href = /MarkUp/Forms/,class = navlink,shape = rect],[element(acronym,[title = Next Generation Web Forms],[XForms])])]),element(li,[],[element(a,[href = /MarkUp/,class = navlink,shape = rect],[element(abbr,[title = Extensible HyperText Markup Language],[XHTML])])]),element(li,[],[element(a,[href = /XML/Linking,class = navlink,shape = rect],[element(acronym,[title = XML Link],[XLink])])]),element(li,[],[element(a,[href = /XML/,class = navlink,shape = rect],[element(abbr,[title = Extensible Markup Language],[XML])])]),element(li,[],[element(a,[href = /TR/xmlbase/,class = navlink,shape = rect],[element(abbr,[title = Extensible Markup Language],[XML]), Base])]),element(li,[],[element(a,[href = /Encryption/2001/,class = navlink,shape = rect],[element(abbr,[title = Extensible Markup Language],[XML]), Encryption])]),element(li,[],[element(a,[href = /2001/XKMS/,class = navlink,shape = rect],[element(abbr,[title = Extensible Markup Language],[XML]), Key Management])]),element(li,[],[element(a,[href = /XML/Query,class = navlink,shape = rect],[element(abbr,[title = Extensible Markup Language],[XML]), Query])]),element(li,[],[element(a,[href = /XML/Schema,class = navlink,shape = rect],[element(abbr,[title = Extensible Markup Language],[XML]), Schema])]),element(li,[],[element(a,[href = /Signature/,class = navlink,shape = rect],[element(abbr,[title = Extensible Markup Language],[XML]), Signature])]),element(li,[],[element(a,[href = /TR/xpath,class = navlink,shape = rect],[XPath])]),element(li,[],[element(a,[href = /XML/Linking,class = navlink,shape = rect],[XPointer])]),element(li,[],[element(a,[href = /Style/XSL/,class = navlink,shape = rect],[element(acronym,[title = Extensible Stylesheet Language],[XSL]), and ,element(acronym,[title = XSL Transformations],[XSLT])])])]),
+
+,element(p,[],[element(a,[href = /Help/siteindex,class = navlink,shape = rect],[More topics...])]),
+
+,element(h2,[class = W3C10],[W3C Tenth Anniversary]),
+
+,element(div,[class = w3catten],[
+,element(div,[class = W3C10-logo],[
+,element(a,[href = /2004/09/W3C10.html,shape = rect],[element(img,[style =  float: left; border-left: 3px solid #fff; border-right: 6px solid #fff;,alt = W3C10,src = /2004/09/logos/W3C10_logo_short_fc.png],[])]),
+]),
+
+,element(p,[class = w3catten-testimonial],[During 2004, W3C celebrated the tenth
+anniversary of the founding of the World Wide Web Consortium. Read
+about the ,element(a,[class = w3catten-more,href = /2004/09/W3C10.html,shape = rect],[W3C Tenth
+Anniversary Celebration]), and ,element(a,[href = /2004/09/W3C10-Mementos.html,shape = rect],[mementos of the day]),. W3C wishes to
+thank all ,element(a,[href = /2004/09/W3C10-Sponsors.html,shape = rect],[sponsors]), for their
+generous support of W3C10.]),
+]),
+]),element(div,[class = newsBlock],[
+,element(h2,[class = newsHeading],[element(a,[name = news,id = news,shape = rect],[News])]),
+
+,element(p,[class = invisible],[element(a,[title = Skip News,href = #search,shape = rect],[Skip to
+Search])]),
+
+,element(div,[class = item,id = x20050228a],[
+,element(h3,[class = headline],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),W3C Hosts Fifth Annual Technical Plenary Week]),
+
+,element(p,[],[element(img,[style = float: left; border-right: 3px solid #fff;,alt = photo of the W3C Technical Plenary in Boston,src = /2005/03/plenary-scaled.jpg],[]),element(span,[class = date],[2005-02-28:]),
+W3C holds its ,element(a,[href = /2004/12/allgroupoverview.html,shape = rect],[Technical
+Plenary Week]), from 28 February - 4 March in Boston, Massachusetts,
+USA where 30 W3C Working Groups and Interest Groups hold face-to-face
+meetings. Participants and invited guests attend plenary day for talks
+and demos on extensibility and versioning, XML, test suites, Web
+applications, Web site usability and design, multimodal interaction and
+voice. Learn how to ,element(a,[href = /Consortium/Prospectus/Joining,shape = rect],[join
+W3C]), and read ,element(a,[href = /Consortium/,shape = rect],[about W3C]),. ,element(span,[class = archive],[(Photo: Max Froumentin. ,element(a,[rel = details,title = W3C Hosts 5th Annual Technical Plenary Week,href = /News/2005#item32,shape = rect],[News archive]),)])]),
+]),
+
+,element(div,[style = clear: both;,class = item,id = x20050225a],[
+,element(h3,[],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),Internationalization Articles Published]),
+
+,element(p,[],[element(span,[class = date],[2005-02-25:]), The Internationalization GEO
+(Guidelines, Education & Outreach) Working Group publishes
+information to help authors and Webmasters understand and use W3C
+technologies. Recent articles are ,element(a,[href = /International/articles/idn-and-iri/,shape = rect],[An Introduction to Multilingual
+Web Addresses]), and ,element(a,[href = /International/articles/language-tags/,shape = rect],[Language Tags in HTML and
+XML]),. Read about W3C internationalization ,element(a,[href = /International/log/description,shape = rect],[RSS feeds and news filters]), and
+visit the ,element(a,[href = /International/,shape = rect],[Internationalization home page]),.
+,element(span,[class = archive],[(,element(a,[rel = details,title = Internationalization Articles Published,href = /News/2005#item31,shape = rect],[News
+archive]),)])]),
+]),
+
+,element(div,[class = item,id = x20050224c],[
+,element(h3,[],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),Working
+Drafts: XML Schema 1.1]),
+
+,element(p,[],[element(span,[class = date],[2005-02-24:]), The XML Schema Working Group
+has released updated Working Drafts of XML Schema 1.1: ,element(a,[href = /TR/2005/WD-xmlschema11-1-20050224/,shape = rect],[Part 1: Structures]), and
+,element(a,[href = /TR/2005/WD-xmlschema11-2-20050224/,shape = rect],[Part 2: Datatypes]),.
+Please see the status section of each document for changes since the
+First Public Working Drafts and from the XML Schema 1.0 language. XML
+schemas define shared markup vocabularies, the structure of XML
+documents which use those vocabularies, and provide hooks to associate
+semantics with them. Visit the ,element(a,[href = /XML/,shape = rect],[XML home page]),.
+,element(span,[class = archive],[(,element(a,[rel = details,title = Working Drafts: XML Schema 1.1,href = /News/2005#item30,shape = rect],[News
+archive]),)])]),
+]),
+
+,element(div,[class = item,id = x20050224b],[
+,element(h3,[],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),Working
+Drafts: XML Binary Characterization]),
+
+,element(p,[],[element(span,[class = date],[2005-02-24:]), The XML Binary
+Characterization Working Group has released the First Public Working
+Draft of ,element(a,[href = /TR/2005/WD-xbc-measurement-20050224/,shape = rect],[XML Binary
+Characterization Measurement Methodologies]), and updates to ,element(a,[href = /TR/2005/WD-xbc-use-cases-20050224/,shape = rect],[XML Binary Characterization Use
+Cases]), and ,element(a,[href = /TR/2005/WD-xbc-properties-20050224/,shape = rect],[XML Binary
+Characterization Properties]),. The drafts will help to decide if
+standardized and optimized serialization can be used to improve the
+generation, parsing, transmission and storage of XML-based data. Visit
+the ,element(a,[href = /XML/,shape = rect],[XML home page]),. ,element(span,[class = archive],[(,element(a,[rel = details,title = Working Drafts: XML Binary Characterization,href = /News/2005#item29,shape = rect],[News archive]),)])]),
+]),
+
+,element(div,[class = item,id = x20050224a],[
+,element(h3,[],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),Working
+Draft: Specifying the Language of XHTML and HTML Content]),
+
+,element(p,[],[element(span,[class = date],[2005-02-24:]), The Internationalization GEO
+(Guidelines, Education & Outreach) Working Group has published an
+updated Working Draft of ,element(a,[href = /TR/2005/WD-i18n-html-tech-lang-20050224/,shape = rect],[Specifying the Language of
+Content]),. Part of a series designed for authors, the document is an
+aid to specifying the language of content for an international
+audience. Comments are welcome. Visit the ,element(a,[href = /International/,shape = rect],[Internationalization home page]),. ,element(span,[class = archive],[(,element(a,[rel = details,title = Working Draft: Specifying the Language of XHTML and HTML Content,href = /News/2005#item28,shape = rect],[News archive]),)])]),
+]),
+
+,element(div,[class = item,id = x20050217a],[
+,element(h3,[],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),Working
+Draft: SPARQL Query Language for RDF]),
+
+,element(p,[],[element(span,[class = date],[2005-02-17:]), The RDF Data Access Working
+Group has released the second Working Draft of the ,element(a,[href = /TR/2005/WD-rdf-sparql-query-20050217/,shape = rect],[SPARQL Query Language for
+RDF]),. SPARQL (pronounced "sparkle") offers developers and end users
+a way to write and to consume search results across a wide range of
+information such as personal data, social networks and metadata about
+digital artifacts like music and images. SPARQL also provides a means
+of integration over disparate sources. Visit the ,element(a,[href = /2001/sw/,shape = rect],[Semantic Web home page]),. ,element(span,[class = archive],[(,element(a,[rel = details,title = Working Draft: SPARQL Query Language for RDF,href = /News/2005#item27,shape = rect],[News archive]),)])]),
+]),
+
+,element(div,[class = item,id = x20050216a],[
+,element(h3,[],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),Working
+Draft: CSS3 Backgrounds and Borders]),
+
+,element(p,[],[element(span,[class = date],[2005-02-16:]), The CSS Working Group has
+released a Working Draft of ,element(a,[href = /TR/2005/WD-css3-background-20050216/,shape = rect],[CSS3 Backgrounds and Borders
+Module]),. The Cascading Style Sheets (CSS) language is used to render
+structured documents like HTML and XML on screen, on paper and in
+speech. Replacing two separate CSS3 modules, the draft proposes CSS
+Level 3 functionality including borders consisting of images and
+backgrounds with multiple images. Visit the ,element(a,[href = /Style/CSS/,shape = rect],[CSS
+home page]),. ,element(span,[class = archive],[(,element(a,[rel = details,title = Working Draft: CSS3 Backgrounds and Borders,href = /News/2005#item25,shape = rect],[News archive]),)])]),
+]),
+
+,element(div,[class = item,id = x20050216b],[
+,element(h3,[],[element(img,[alt = ,width = 17,height = 11,src = /Icons/right],[]),W3C
+Launches URI Interest Group]),
+
+,element(p,[],[element(span,[class = date],[2005-02-16:]), W3C is pleased to announce the
+relaunch of the ,element(a,[href = /Addressing/,shape = rect],[URI Activity]),. The new URI
+Interest Group, chaired by Dan Connolly (W3C) and Norman Walsh (Sun
+Microsystems), is ,element(a,[href = /2004/07/uri-ig-charter.html,shape = rect],[chartered]),
+through 28 February 2007. The group reviews ongoing work related to
+,element(a,[href = http://www.ietf.org/rfc/rfc3986.txt,shape = rect],[Uniform Resource
+Identifiers]), (URIs) and ,element(a,[href = http://www.ietf.org/rfc/rfc3987.txt,shape = rect],[Internationalized Resource
+Identifiers]), (IRIs) and helps to deploy quality implementations by
+maintaining testing materials. Participation is open to ,element(a,[href = /Consortium/Member/List,shape = rect],[W3C Members]), and the public. ,element(span,[class = archive],[(,element(a,[rel = details,title = W3C Launches URI Interest Group,href = /News/2005#item26,shape = rect],[News archive]),)])]),
+]),
+
+,element(h3,[class = pastNews],[element(a,[href = /News/2005,shape = rect],[Past News])]),
+]),element(div,[class = navBlock],[
+,element(h2,[class = navhead],[element(a,[name = search,id = search,shape = rect],[Search])]),
+
+,element(p,[class = invisible],[element(a,[class = navlink,title = Skip search,href = #contents,shape = rect],[Skip to Contents])]),
+
+,element(form,[method = get,action = http://www.google.com/custom,enctype = application/x-www-form-urlencoded],[element(div,[],[
+,element(a,[class = navlink,href = http://www.google.com,shape = rect],[element(img,[src = /Icons/Logo_25wht.gif,width = 75,height = 32,alt = Google],[])]),element(br,[],[]),
+,element(label,[for = inputField],[Search W3C,element(br,[],[]),
+,element(input,[type = text,size = 15,id = inputField,name = q,accesskey = E,maxlength = 255],[])]), ,element(input,[type = submit,value = Go,id = goButton,name = sa,accesskey = G],[]),element(br,[],[]),
+,element(input,[type = hidden,name = cof,value = T:black;LW:72;ALC:#ff3300;L:http://www.w3.org/Icons/w3c_home;LC:#000099;LH:48;BGC:white;AH:left;VLC:#660066;GL:0;AWFID:0b9847e42caf283e;],[]),
+ ,element(input,[type = hidden,id = searchW3C,name = sitesearch,checked = checked,value = www.w3.org],[]),element(input,[type = hidden,name = domains,value = www.w3.org],[]),
+])]),
+
+,element(p,[],[element(a,[class = navlink,href = /Search/Mail/Public/,shape = rect],[Search W3C Mailing
+Lists])]),
+
+,element(h2,[class = navhead],[element(a,[name = contents,id = contents,shape = rect],[Members])]),
+
+,element(div,[class = hpmt],[element(div,[class = hpmt-name],[Web3D Consortium]),element(div,[class = hpmt-logo],[element(a,[href = http://www.web3d.org,shape = rect],[element(img,[alt = Web3D Consortium,src = http://www.w3.org/Consortium/Member/Testimonial/Logo/393],[])])]),element(p,[class = hpmt-testimonial],[The Web3D Consortium, like W3C, supports open standardization.
+Web3D's open standards for real-time 3D communication include
+X3D, a powerful and extensible XML-based ISO standard for 
+3D visual effects, behavioral modeling, interaction and 
+interoperability. Web3D membership includes companies, 
+institutions, working groups and individuals. ,element(a,[class = hpmt-more,href = http://www.w3.org/Consortium/Member/Testimonial/List,shape = rect],[(Member testimonials)])])]),
+
+,element(ul,[],[element(li,[],[element(a,[href = /Member/,class = navlink,shape = rect],[Member Home Page])]),element(li,[],[element(a,[href = /Submission/,class = navlink,shape = rect],[Member Submissions])]),element(li,[],[element(a,[href = /Consortium/Member/List,class = navlink,shape = rect],[Current
+Members])]),element(li,[],[element(a,[href = /Consortium/Recruitment/Fellows,class = navlink,shape = rect],[W3C
+Fellows])])]),
+
+,element(h2,[class = navhead],[Get Involved]),
+
+,element(ul,[],[element(li,[],[element(a,[href = /Consortium/membership-benefits,class = navlink,shape = rect],[W3C
+Membership Benefits])]),element(li,[],[element(a,[href = /Consortium/membership#bizcase,class = navlink,shape = rect],[Reasons to
+Join W3C])]),element(li,[],[element(a,[href = /Mail/,class = navlink,shape = rect],[Mailing Lists])]),element(li,[],[element(a,[href = /Consortium/Translation/,class = navlink,shape = rect],[Translations])]),element(li,[],[element(a,[href = /Consortium/Offices/,class = navlink,shape = rect],[World
+Offices])]),element(li,[],[element(a,[href = /2003/08/Workshops/,class = navlink,shape = rect],[Workshops])]),element(li,[],[element(a,[href = /2003/05/donors,class = navlink,shape = rect],[W3C Donors])]),element(li,[],[element(a,[href = /Status,class = navlink,shape = rect],[Open Source Software])]),element(li,[],[element(a,[href = /Consortium/Recruitment/,class = navlink,shape = rect],[Employment])]),element(li,[],[More ways to ,element(a,[href = /Consortium/org#public,class = navlink,shape = rect],[participate])])]),
+
+,element(h2,[class = navhead],[Introduction]),
+
+,element(ul,[],[element(li,[],[element(a,[href = /Consortium/,class = navlink,shape = rect],[About W3C])]),element(li,[],[element(a,[href = /Consortium/faq,class = navlink,shape = rect],[Frequently Asked
+Questions (FAQ)])]),element(li,[],[element(a,[href = /2002/03/tutorials,class = navlink,shape = rect],[Tutorials])]),element(li,[],[element(a,[href = /Consortium/Process/,class = navlink,shape = rect],[Process
+Document])]),element(li,[],[element(a,[href = /2002/03/new-to-w3c,class = navlink,shape = rect],[More...])])]),
+
+,element(h2,[class = navhead],[W3C Team]),
+
+,element(ul,[],[element(li,[],[element(a,[href = /People/,class = navlink,shape = rect],[People])]),element(li,[],[element(a,[href = /TeamSubmission/,class = navlink,shape = rect],[Team
+Submissions])])]),
+
+,element(h2,[class = navhead],[Presentations]),
+
+,element(ul,[],[element(li,[],[element(a,[href = /Talks/,class = navlink,shape = rect],[Public Presentations])])]),
+
+,element(h2,[class = navhead],[News Room]),
+
+,element(ul,[],[element(li,[],[element(a,[href = http://lists.w3.org/Archives/Public/w3c-announce/,class = navlink,shape = rect],[Subscribe to W3C Weekly News])]),element(li,[],[element(a,[href = /News/,class = navlink,shape = rect],[W3C News Archive])]),element(li,[],[element(a,[href = /Press/,class = navlink,shape = rect],[Press Releases])]),element(li,[],[element(a,[href = /Press/Articles,class = navlink,shape = rect],[W3C in the Press])])]),
+
+,element(h2,[class = navhead],[element(a,[name = systems,id = systems,shape = rect],[Systems])]),
+
+,element(ul,[],[element(li,[],[element(a,[href = http://cgi.w3.org/MemberAccess/AccessRequest,class = navlink,shape = rect],[Get Member Password])]),element(li,[],[element(a,[href = /2003/08/system-status,class = navlink,shape = rect],[System
+Status])])]),
+]),element(hr,[class = hide],[]),element(p,[class = small],[W3C would like to thank the ,element(a,[name = donors,id = donors,href = /2003/05/donors,shape = rect],[organizations]), who have contributed
+hardware, software, and services to W3C.]),element(p,[class = small],[element(a,[name = footnotes,id = footnotes,shape = rect],[Read]), the
+,element(a,[href = /2002/11/homepage,shape = rect],[FAQ]), and ,element(a,[href = http://lists.w3.org/Archives/Public/site-comments/,shape = rect],[send comments]),
+about this page. ,element(a,[href = /2000/08/w3c-synd/home.rss,shape = rect],[Syndicate]),
+this page with ,element(a,[href = http://purl.org/rss/1.0/,shape = rect],[RSS 1.0]),, an
+,element(a,[href = /RDF/,shape = rect],[RDF]), vocabulary used for ,element(a,[href = /2000/08/w3c-synd/#,shape = rect],[site summaries]),.]),element(address,[class = small],[
+,element(a,[href = /Help/Webmaster,shape = rect],[Webmaster]), · Last modified: 
+$Date: 2010-08-19 15:03:38 $ ,element(span,[class = whiteout],[|]),element(br,[],[]),
+,element(a,[href = http://validator.w3.org/,shape = rect],[element(img,[src = /Icons/valid-xhtml10,alt = Valid XHTML 1.0!,height = 31,width = 88],[])]), ,element(span,[class = whiteout],[|]), ,element(a,[href = http://jigsaw.w3.org/css-validator/,shape = rect],[element(img,[src = /Icons/valid-css,alt = Valid CSS!,height = 31,width = 88],[])]), ,element(span,[class = whiteout],[|]), ,element(a,[href = /WAI/WCAG1AA-Conformance,title = Explanation of Level Double-A Conformance,shape = rect],[element(img,[class = conform,height = 32,width = 88,src = /WAI/wcag1AA,alt = Level Double-A conformance icon, W3C-WAI Web Content Accessibility Guidelines 1.0],[]),
+]), ,element(span,[class = whiteout],[|]),
+]),element(p,[class = copyright],[element(a,[rel = Copyright,href = /Consortium/Legal/ipr-notice#Copyright,shape = rect],[Copyright]), © 1994-2005
+,element(a,[href = /,shape = rect],[element(acronym,[title = World Wide Web Consortium],[W3C])]),element(sup,[],[®]), (,element(a,[href = http://www.csail.mit.edu/,shape = rect],[element(acronym,[title = Massachusetts Institute of Technology],[MIT])]),, ,element(a,[href = http://www.ercim.org/,shape = rect],[element(acronym,[title = European Research Consortium for Informatics and Mathematics],[ERCIM])]),,
+,element(a,[href = http://www.keio.ac.jp/,shape = rect],[Keio]),), All Rights Reserved. W3C
+,element(a,[href = /Consortium/Legal/ipr-notice#Legal_Disclaimer,shape = rect],[liability]),,
+,element(a,[href = /Consortium/Legal/ipr-notice#W3C_Trademarks,shape = rect],[trademark]),,
+,element(a,[rel = Copyright,href = /Consortium/Legal/copyright-documents,shape = rect],[document use]), and ,element(a,[rel = Copyright,href = /Consortium/Legal/copyright-software,shape = rect],[software
+licensing]), rules apply. Your interactions with this site are in
+accordance with our ,element(a,[href = /Consortium/Legal/privacy-statement#Public,shape = rect],[public]), and ,element(a,[href = /Consortium/Legal/privacy-statement#Members,shape = rect],[Member]), privacy
+statements.])])])]

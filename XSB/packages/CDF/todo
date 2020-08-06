@@ -1,0 +1,206 @@
+
+Nai Ching
+
+
+---------------------------------------------------
+Discussion: 
+
+Moving dynamic and index decs to config.
+
+Can we have both?  class(id(W,E),Name,W,E).
+
+Protection for Components?
+
+Relative file paths.
+
+question on * indexing and atom(_)  Also object.
+
+---------------------------------------------------
+Doc:
+
+doc -- is ontology model defined?
+
+Doc: oms => CDF.
+
+Index External View Documentation.
+
+Log in doc. etc.
+
+Ontology vs. OMS instance vs. OMS state.
+
+Make sure ive mentioned product identiofiers, and direct constituents.
+
+Probably haven't mentioned initialization file.
+
+---------------------------------------------------
+OMS changes to update for paper.
+
+tt irel, schrel, etc.
+Updating OMS for paper.
+
+make sure omsext can read relation and subrel.
+
+Need to allow different sources for product classes.
+
+---------------------------------------------------
+Component stuff
+
+-------------
+init_files not quite right.
+Need to change around add_component_initializer.
+
+
+bug if you give update a non-exist direct.
+
+-------------
+
+Problems w. oms_dirty: 
+	1) did the 1 work (remember oms init).
+	2) made dirty upon loading.
+	
+
+new_oms: put oms_db_updatable into new_oms.  Also oms_dirty.  Also
+oms_caching.
+
+Error reporting in path_sysop.
+
+Make second argument of descriptions inheritable, so we can define OMS
+descriptions, and then inherit.
+
+-- Renaming -- do we still need a renaming function 
+
+Not checking consistency of lists in load or update.
+
+Replace catch in load...
+
+update_components/2, fail if subdependencies are not
+themselves components.
+
+update find_directories.
+
+--------------------------------------------------------------
+Other: 
+
+In fast_merge, decode whether we need to do an OMS_update or just an
+assert.
+
+Updating intensional rules.
+
+Synthesize retractallXXX with obliterateXXX.
+
+Maybe get rid of schema + data files?
+
+Need consistency checking in newRelName newStrelName.
+
+might need newCrel.
+
+get rid of [] (no.. clause).
+
+-----------------------------
+
+Incorporate antirelationships in create_component, etc.
+
+Do I have an obj_nidbound?
+cp_product_object_extoms 
+
+-----------------------------
+
+load_omsext may not have the right behavior -- perhaps it shouldn't
+get rid of those things in the cache.
+
+Bug in dump_oms.P (save state).
+
+Take indices out of oms_io.P
+
+locks
+
+Do something better with friendly atom codes.
+
+Is external conversion appropriate with objects in dump_omext?
+
+Should we disallow v x v bindings in immediate_subclass,
+immediate_membrof?
+
+intensional -- get_object_int(Oid,Name,NatId,Source)
+
+OMS Root for unk in immed. memberof
+---------------------------------------
+
+Primitive Classes (No parameterized types).
+1) Add necessary conditions.
+	Each class can have more than one necessary condition.
+	Revise subsumption algorithm, 
+	Propagation to Objects.
+	Checking consistency,
+	Querying algorithm
+
+2) Add Rules for Primitive Classes.
+	Write to see what a class subsumes.
+
+3) Defined Classes.
+	Start to incorporate these into rest of CDF.
+
+Would like to prove equivalence of irels with exists and schrels with
+alls.  We can prove that for a primitive class
+
+P \subseteq exists(R,C) == irel(P,necess_cond,C)
+
+and also that 
+
+P \subseteq exists(R,P') == irel(P,R,P')
+
+P \subseteq all(R,P') == schrel(P,R,P')
+
+Subsuming: 
+  Do I need to check subsumption against other defined classes?
+How to represent defined classes?
+A class can have at most 1 definition -- need to enforce.
+A defined class can have no immediate memberofs.
+
+Probably need to check for 2-way subsumption in definitions.
+
+Problems with queries.
+
+Check up on NewAttribute
+
+Exceptions with Harpreet
+
+Find out abt. OMS RDF
+
+1) Add relations for Class Expressions
+	Rectify class expressions
+
+2) Figure out about class rules.
+
+exists(uncle,male) \subseteq exists(parent,exists(brother,male))
+
+exists(uncle,male) \subseteq exists(parent,
+                                    exists(broter,(exists(spouse,male))))
+
+X subset Y and X subset Z => X subset (Y or Z).
+
+Applying rules: 
+	
+	Find everything that the right hand side subsumes.
+
+----------------------------------------------------------------------
+Queries: 
+
+Make it transparent when we can deal with a source or a class.
+
+Dont know if this is quite right:
+@item @tt{attr(id(Source,Ssrc),id(Relation,Rsrc),id(Target,Tsrc))}
+assumes that @tt{Source} is an object.
+
+Don't know if we can have an attribute as well as an attribute object.
+
+In query interface, change args.
+
+add is_object to query interface.
+
+----------------------------------------------------------------------
+
+oms_filters  pair to key probably doesnt work.
+
+----------------------------------------------------------------------
+

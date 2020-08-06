@@ -1,0 +1,17 @@
+:- import member/2 from lists.
+
+path(X,Y):-path(X,Y,[X],Z).
+
+path(X,X,A,A).
+
+path(X,Y,A,R):-X\==Y, edge(X,Z), \+ member(Z,A), path(Z,Y,[Z|A],R).
+
+edge(a,b):0.2.
+
+edge(b,a):0.2.
+
+edge(b,c):0.2.
+
+edge(a,c):0.2.
+
+

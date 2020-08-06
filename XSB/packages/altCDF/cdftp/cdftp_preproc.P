@@ -1,0 +1,142 @@
+
+:- document_export cdftp_preprocess/3.
+:- document_import topIdentifier/1 from cdftp_cdfsc.
+
+:- import domain_error/4 from error_handler.
+
+cdftp_preprocess(In,Out,N):- 
+	safe_list_to_comma(In,Mid),
+	preprocess1(Mid,Out,0,N).
+
+safe_list_to_comma(In,Mid):- 
+	(is_list(In) -> list_to_comma(In,Mid) ; Mid = In).
+
+list_to_comma([],true).
+list_to_comma([H],H):- !.
+list_to_comma([H|T],','(H,T1)):- 
+	list_to_comma(T,T1).
+
+/* This predicate 
+    1) flattens inv: takes terms of the form
+    inv(inv(...(R)) and turns the term into either R or inv(R). 
+    2) pushes negations (as in paper)
+    3) Turns predicates of the form atLeast/2 into atLeast/3, and
+        atMost/2 into atMost/3. 
+
+    It also tries to estimate the number of classes, but this needs to be fixed.
+    Should it check bounds of atMost?
+*/
+
+preprocess1(','(A,B),','(A1,B1),NumIn,NumOut):- !, 
+	preprocess1(A,A1,NumIn,NumMid),
+	preprocess1(B,B1,NumMid,NumOut).
+preprocess1(';'(A,B),';'(A1,B1),NumIn,NumOut):- !, 
+	preprocess1(A,A1,NumIn,NumMid),
+	preprocess1(B,B1,NumMid,NumOut).
+preprocess1(exists(R,C),exists(R1,C1),N,NOut):- !,
+	preprocRel(R,R1),
+	N1 is N + 1,
+	preprocess1(C,C1,N1,NOut).
+preprocess1(all(R,C),all(R1,C1),N,NOut):- !,
+	preprocRel(R,R1),
+	preprocess1(C,C1,N,NOut).
+preprocess1(atLeast(N,R),atLeast(N,R1,Top),NIn,NOut):- !,
+	NOut is NIn + N,
+	preprocRel(R,R1),
+	topIdentifier(Top).
+preprocess1(atLeast(N,R,C),atLeast(N,R1,C1),NIn,NOut):- !,
+	preprocRel(R,R1),
+	NMid is NIn + N,
+	preprocess1(C,C1,NMid,NOut).
+preprocess1(atMost(N,R),atMost(N,R1,Top),Nin,Nin):- !,
+	preprocRel(R,R1),
+            topIdentifier(Top).
+preprocess1(atMost(N,R,C),atMost(N,R1,C1),NIn,NOut):- !,
+	preprocRel(R,R1),
+	preprocess1(C,C1,NIn,NOut).
+preprocess1(sameAs(R1,C1,R2,C2),sameAs(R11,C11,R21,C21),NIn,NOut):- !,
+	preprocRel(R1,R11),
+	preprocess1(C1,C11,NIn,NMid),
+	preprocRel(R2,R21),
+	preprocess1(C2,C21,NMid,NOut).
+preprocess1(not(Class),C1,NIn,NOut):- !,
+	preprocessNot(Class,C1,NIn,NOut).
+preprocess1(component(Cmpt),component(Cmpt),N,N):- !.
+preprocess1(oid(Id,Cmpt),unique(cid(Id,Cmpt)),N,N):- !.
+preprocess1(unique(cid(Id,Cmpt)),unique(cid(Id,Cmpt)),N,N):- !.
+preprocess1(cid(Id,Cmpt),cid(Id,Cmpt),N,N):- !.
+preprocess1(Other,_,_Nin,_Nin):-
+	domain_error(['class expression constructor'],Other,
+	                     'preprocess1/4',1).
+
+preprocessNot(','(A,B),';'(A1,B1),NIn,NOut):- !, 
+	preprocessNot(A,A1,NIn,NMid),
+	preprocessNot(B,B1,NMid,NOut).
+preprocessNot(';'(A,B),','(A1,B1),NIn,NOut):- !, 
+	preprocessNot(A,A1,NIn,NMid),
+	preprocessNot(B,B1,NMid,NOut).
+preprocessNot(exists(R,C),all(R1,C1),NIn,NOut):- !,
+	preprocRel(R,R1),
+	preprocessNot(C,C1,NIn,NOut).
+preprocessNot(all(R,C),exists(R1,C1),NIn,NOut):- !,
+	preprocRel(R,R1),
+	N1 is NIn + 1,
+	preprocessNot(C,C1,N1,NOut).
+preprocessNot(atLeast(N,R),atMost(N1,R1,Top),Nin,Nin):- !,
+	topIdentifier(Top),
+	N1 is N - 1,
+	preprocRel(R,R1).
+preprocessNot(atLeast(N,R,C),atMost(N1,R1,C1),NIn,NOut):- !,
+	N1 is N - 1,
+	preprocRel(R,R1),
+	preprocess1(C,C1,NIn,NOut).
+preprocessNot(atMost(N,R),atLeast(N1,R1,Top),NIn,NOut):- !,
+	topIdentifier(Top),
+	N1 is N + 1,
+	NOut is NIn + N1,
+	preprocRel(R,R1).
+preprocessNot(atMost(N,R,C),atLeast(N1,R1,C1),NIn,NOut):- !,
+	N1 is N + 1,
+	preprocRel(R,R1),
+	NMid is NIn + N1,
+	preprocess1(C,C1,NMid,NOut).
+preprocessNot(sameAs(R1,C1,R2,C2),
+	          differentFrom(R11,C11,R21,C21),NIn,NOut):- !,
+	preprocRel(R1,R11),
+	preprocessNot(C1,C11,NIn,NMid),
+	preprocRel(R2,R21),
+	preprocessNot(C2,C21,NMid,NOut).
+preprocessNot(not(Class),C1,NIn,NOut):- !,
+	% Should fail here if class is cdfroot.
+	preprocess1(Class,C1,NIn,NOut).
+preprocessNot(oid(Id,Cmpt),not(unique(cid(Id,Cmpt))),Nin,Nin):- !.
+preprocessNot(unique(cid(Id,Cmpt)),not(unique(cid(Id,Cmpt))),Nin,Nin):- !.
+preprocessNot(cid(Class,Cmpt),not(cid(Class,Cmpt)),Nin,Nin):- !.
+preprocessNot(Other,_,_Nin,_Nin):-
+	domain_error(['class expression constructor'],Other,
+	                     'preprocessNot/4',1).
+
+preprocRel(inv(inv(R)),R1):- !,
+	preprocRel(R,R1).
+preprocRel(R,R).
+	
+end_of_file.
+
+preprocess1(Class,C1,N,NOut):- 
+	(getNecConds(Class,Conds) -> 
+	    preprocess1(Conds,Conds1,N,NOut),
+	    C1 = ','(Class,Conds1) 
+	  ; C1 = Class,N = NOut).
+
+getNecConds(Class,Conds):- 
+	findall(Cond,necessCond(Class,vid(Cond)),Conds1),
+	(Conds1 == [] ->
+	    fail
+	;  safe_list_to_comma(Conds1,Conds)).
+
+preprocessNot(Class,C1,NIn,NOut):- 
+	(getNecConds(Class,Conds) -> 
+	    preprocessNot(Conds,Conds1,NIn,NOut),
+	    C1 = ','(Class,Conds1) 
+	 ; C1 = not(Class),NIn = NOut).
+

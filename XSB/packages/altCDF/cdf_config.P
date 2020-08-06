@@ -1,0 +1,209 @@
+% TLS: keep all this in usermod.
+
+:- document_export initial_cdf_flag/2,cdf_index/3,cdf_flag/1,
+	                 component_table_ext/3, component_table_int/3,
+			 assert_mti/1, retractall_mti/1,
+			 default_user_error_handler/1.
+
+:- comment(module,"This module contains all facts, tables etc. that
+may need to be configured for a particular user or application.  In
+addition to the predicates described below, @module{cdf_config.P}
+contains a fact for the dynamic predicate
+@tt{default_user_error_handler/1} which is used to handle errors.  See
+the XSB manual for documentation of this predicate.  ").
+
+:- import default_sys_error_handler/1 from error_handler.
+
+:- import cdf_flags/2 from usermod.
+
+/* For DL Rules */
+:- op(1150, xfx, (<=)).
+
+:- dynamic user_cdf_flag/2.
+:- dynamic cdf_configuration/2.
+
+:- dynamic initial_cdf_flag/2.
+
+:- dynamic cdf_index/4.
+
+:- dynamic cdf_flags/2.
+:- index(cdf_flags/2,trie).
+
+% keep a table with all possible flags here.
+cdf_flag(dirty).
+cdf_flag(query).
+cdf_flag(componentUpdate).
+cdf_flag(componentLoad).
+cdf_flag(newExtTermSingle).
+cdf_flag(newExtTermBatch).
+cdf_flag(retractallExtTermSingle).
+cdf_flag(newIntRuleBatch).
+cdf_flag(newIntRuleSingle).
+cdf_flag(newDLRuleSingle).
+cdf_flag(dlrule).
+cdf_flag(implicit_isa).
+
+% initial_cdf_flag/2 facts can be overridden by declaring 
+% corresponding user_cdf_flag/2 facts in $(HOME)/.xsb/xsbrc.P
+
+:- comment(initial_cdf_flag/2,"The main action of
+@tt{initial_cdf_flag(Flag,ActionList)} is used to declare which
+actions (usually consistency checks) are to be executed at specific
+points during ontology management.  Any @tt{initial_cdf_flag/2} fact
+is meant for site-wide configuration.  Itcan be overridden by
+declaring a corresponding @tt{user_cdf_flag/2} fact in
+@tt{$(HOME)/.xsb/xsbrc.P}.  Furthermore, since @tt{initial_cdf_flag/2}
+is dynamic, its behavior can be changed at runtime.
+
+These points at which the actions in @tt{initial_cdf_flag/2} are called are: 
+@begin{itemize}
+
+@item Actions for @tt{newExtTermSingle} are called when an attempt is
+made to add a new extensional term to the CDF store by newExtTerm/2,
+as occurs for instance during addition by the CDF editor.  By default
+a check is made that the term is ground.by @tt{cdf_check_ground/2}; a
+check is made that CDF identifiers for classes, objects, and relations
+occur properly within the term; and that the information in the term
+is not already in the store (either by another extensional or
+intensional rule).
+
+@item Actions for @tt{newExtTermSingle} are called when an attempt is
+made to add a given extensional term to the CDF store during component
+load the predicate @pred{load_extensional_facts/1}.  By default the
+checks are as in @tt{newExtTermBatch}.
+
+@item Actions for @tt{componentUpdate} are called when the predicate
+@pred{update_component/3} is called to save or move a component.  By
+default the predicate @pred{classify_if_necessary/2} is called to
+classify any unclassified classes.
+
+@item Actions for @tt{loadComponent} are called when the predicate
+@pred{load_component/3} is called to load a new component.
+
+@end{itemize}
+").
+
+initial_cdf_flag(newDLRuleSingle,check(Ctxt,Term,[check_dl_rule(Ctxt,Term)])).
+
+component_table_ext(isa_ext(A,B),A,[B]).
+component_table_ext(allAttr_ext(A,B,C),B,[A,C]).
+component_table_ext(hasAttr_ext(A,B,C),B,[A,C]).
+component_table_ext(classHasAttr_ext(A,B,C),B,[A,C]).
+component_table_ext(minAttr_ext(A,B,C,D),B,[A,C,D]).
+component_table_ext(maxAttr_ext(A,B,C,D),B,[A,C,D]).
+component_table_ext(necessCond_ext(A,_),A,[]).
+component_table_ext(coversAttr_ext(A,B,C),B,[A,C]).
+
+%component_table_ext(isa(A,B),A,[B]).
+%component_table_ext(allAttr(A,B,C),B,[A,C]).
+%component_table_ext(hasAttr(A,B,C),B,[A,C]).
+%component_table_ext(classHasAttr(A,B,C),B,[A,C]).
+%component_table_ext(minAttr(A,B,C,D),B,[A,C,D]).
+%component_table_ext(maxAttr(A,B,C,D),B,[A,C,D]).
+%component_table_ext(necessCond(A,_),A,[]).
+%component_table_ext(coversAttr(A,B,C),B,[A,C]).
+
+component_table_int(isa_int(_,_),1,[arg(2,warn)]).
+component_table_int(hasAttr_int(_,_,_),2,[arg(1,no_warn),arg(3,no_warn)]).
+component_table_int(allAttr_int(_,_,_),2,[arg(1,warn),arg(3,no_warn)]).
+component_table_int(classHasAttr_int(_,_,_),2,[arg(1,warn),arg(3,no_warn)]).
+component_table_int(minAttr_int(_,_,_,_),2,[arg(1,warn),arg(3,no_warn),
+                                                                                      arg(4,no_warn)]).
+component_table_int(maxAttr_int(_,_,_,_),2,[arg(1,warn),arg(3,no_warn),
+	                                                                           arg(4,no_warn)]).
+component_table_int(coversAttr_int(_,_,_),2,[arg(1,warn),arg(3,no_warn)]).
+component_table_int(necessCond_int(_,_),1,[arg(2,no_warn)]).
+
+component_table_int(assert_cdf_int(_),null,[]).
+component_table_int(retractall_cdf_int(_),null,[]).
+
+:- assert((default_user_error_handler(error(Type,List)):-
+	(using_xj -> 
+	    concat_atom(List,String),
+	    xjReportError(Type,String),
+                abort
+	  ; default_sys_error_handler(error(Type,List)) ))).
+
+:- comment(cdf_index/3,"@tt{cdf_index(Functor,Arity,Index)}  is used to
+set initial indices for the various types of extensional facts. IThese
+indices can be changed, if necessary to give better performance.  ").
+
+%cdf_index(_,_,_,_):- !,fail.
+%cdf_index(_,_,_):- !,fail.
+
+%cdf_index(isa_ext,2,[*(1),*(2)]).  % mti (delete if mti)
+
+%cdf_index(isa_ext,2,[*(1),*(2)],65537).
+%%cdf_index(allAttr_ext,3,[*(1) + *(2),*(1),*(2) + *(3)]).
+cdf_index(allAttr_ext,3,[*(1) + *(2),*(1),*(3),*(2)]).
+%%cdf_index(hasAttr_ext,3,[*(1) + *(2),*(1),*(2) + *(3)]).
+%%cdf_index(hasAttr_ext,3,[*(1) + *(2) + *(3),*(1) + *(2),*(2) + *(3)]).
+
+cdf_index(hasAttr_ext,3,[*(1) + *(2), *(2) + *(3), *(1), *(2)]/*,65537*/).  % mti (delete if mti
+
+cdf_index(classHasAttr_ext,3,[*(1) + *(2),*(1), *(3), *(2)]).
+cdf_index(minAttr_ext,4,[*(1) + *(2),*(1),*(2) + *(3)]).
+cdf_index(maxAttr_ext,4,[*(1) + *(2),*(1),*(2) + *(3)]).
+cdf_index(necessCond_ext,2,[*(1)]).
+cdf_index(coversAttr,3,[*(1) + *(2),*(1),*(2) + *(3)]).
+
+cdf_index(dlTable,2,trie).
+cdf_index(dlTable,3,trie).
+cdf_index(dlTable,4,trie).
+cdf_index(dlTable,5,trie).
+cdf_index(dlTable,6,trie).
+cdf_index(dlTable,7,trie).
+cdf_index(dlTable,8,trie).
+cdf_index(dlTable,9,trie).
+cdf_index(dlTable,10,trie).
+cdf_index(dlTable,11,trie).
+
+
+% mti (include for mti)
+:- dynamic hasAttr_ext_123/3, hasAttr_ext_231/3.
+:- index(hasAttr_ext_123/3,trie).
+:- index(hasAttr_ext_231/3,trie).
+:- dynamic isa_ext_12/2, isa_ext_21/2.
+:- index(isa_ext_12/2,trie).
+:- index(isa_ext_21/2,trie).
+
+assert_mti(hasAttr_ext(A,B,C)) :- !,
+	assert(hasAttr_ext_123(A,B,C)),
+	assert(hasAttr_ext_231(B,C,A)).
+assert_mti(isa_ext(A,B)) :- !,
+	assert(isa_ext_12(A,B)),
+	assert(isa_ext_21(B,A)).
+assert_mti(G) :- asserta(G).
+
+retract_mti(hasAttr_ext(A,B,C)) :- !, retract(hasAttr_ext_123(A,B,C)), retract(hasAttr_ext_231(B,C,A)).
+retract_mti(isa_ext(A,B)) :- !, retract(isa_ext_12(A,B)), retract(isa_ext_21(B,A)).
+retract_mti(G) :- retract(G).
+
+retractall_mti(G) :-
+	(is_most_general_term(G)
+	 ->	retractall_mti_mg(G)
+	 ;	(retract_mti(G),
+		 fail
+		 ;	
+		 true
+		)
+	).
+
+retractall_mti_mg(isa_ext(_,_)) :- !, retractall(isa_ext_12(_,_)),retractall(isa_ext_21(_,_)). 
+retractall_mti_mg(G) :- retractall(G).
+
+hasAttr_ext(A,B,C) :- (ground(A) -> hasAttr_ext_123(A,B,C) ; hasAttr_ext_231(B,C,A)).
+
+isa_ext(A,B) :- (ground(B) -> isa_ext_21(B,A) ; isa_ext_12(A,B)).
+
+/******** end _mti indexing code **************/
+
+/******** start regular indexing code *****
+
+assert_mti(G) :- asserta(G).
+
+retract_mti(G) :- retract(G).
+
+retractall_mti(G) :- retractall(G).
+
+********* end regular indexing code ***********/

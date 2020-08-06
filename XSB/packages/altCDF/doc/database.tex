@@ -1,0 +1,336 @@
+\section{Database Access for CDF} \label{sec:database} 
+
+\subsection{Storing a CDF in an ODBC database}
+
+The 4 CDF relations, while usually stored in prolog .P files, may also
+be stored in 4 relations in a relational database.  Each relation is
+stored in its external form.  Each field (except an object ID) is
+stored as a Prolog Term.  Object ID's are stored as strings.
+
+These routines allow the loading of a CDF into memory from an ODBC
+database and the dumping of an CDF from memory to an ODBC database.
+
+In the future they will allow all updates to such a CDF in memory to
+be immediately reflected back out to the stored DB.
+
+\subsection{Lazy Access to an CDF Stored in a RDB}
+
+A facility is also provided to lazily access an CDF stored externally
+as 4 relations in external form in a relational database.
+
+
+\begin{description}
+
+\ourpredmoditem{clear\_db\_cdf/1} {\tt clear\_db\_cdf(+Connection)} deletes all
+tuples in the CDF tables in the database accessible through the
+database connection named {\tt Connection}, which must have been opened
+with odbc\_open/1.
+
+
+
+\ourpredmoditem{clear\_db\_cdf\_component/2}
+{\tt clear\_db\_cdf(+Connection,+Component)} deletes all tuples for
+component {\tt Component} in the CDF tables in the database accessible
+through the database connection named {\tt Connection}, which must have
+been opened with odbc\_open/1.  
+
+
+
+\ourpredmoditem{drop\_db\_cdf/1} {\tt drop\_db\_cdf(+Connection)} removes the
+tables used to dump a CDF to a database. Connection must be an opened
+ODBC connection (using odbc\_open/4).
+
+
+\ourpredmoditem{drop\_db\_cdf\_component/2}
+{\tt drop\_db\_cdf(+Connection,+Component)} removes the tables used to
+dump a CDF {\tt Component} to a database. Connection must be an opened
+ODBC connection (using odbc\_open/4).
+
+\ourpredmoditem{create\_db\_cdf/1} {\tt create\_db\_cdf(+Connection)} creates
+the 4 tables necessary to dump a CDF to a database.  Connection must
+be an opened ODBC connection (using odbc\_open/4).
+
+
+\ourpredmoditem{create\_db\_cdf\_indices/1} 
+{\tt create\_db\_cdf\_indices(+Connection)} creates the appropriate
+indices for the tables necessary to dump a CDF to a database. {\tt
+Connection} must be an opened ODBC connection (using odbc\_open/4).
+
+\ourpredmoditem{create\_db\_cdf\_component/2}
+{\tt create\_db\_cdf\_component(+Connection,+Component)} creates the tables
+necessary for dumping a given CDF {\em Component} into a
+database. Connection must be an opened ODBC connection (using
+odbc\_open/4).
+
+
+\ourpredmoditem{create\_db\_cdf\_component\_indices/2}
+{\tt create\_db\_cdf\_component\_indices(+Connection,+Component)} creates
+the appropriate indices for the tables necessary to dump a CDF
+{\tt Component} to a database. {\tt Connection} must be an opened ODBC
+connection (using odbc\_open/4).
+
+
+\ourpredmoditem{load\_db\_cdf/1} {\tt load\_db\_cdf(+Connection)} loads an CDF
+from tables stored in a database in external form.  Connection must be
+an opened ODBC connection created by odbc\_open/4.
+
+\ourpredmoditem{dump\_db\_cdf/1}
+{\tt dump\_db\_cdf(+Connection)} dumps a CDF into a database. It
+assumes the necessary tables have been created by {\tt
+create\_db\_cdf/1}. {\tt Connection} must be an opened ODBC connection
+(using odbc\_open/4).
+
+\ourpredmoditem{dump\_db\_component/3}
+{\tt dump\_db\_component(+Connection,+Component,+Path)} dumps a CDF
+{\tt Component} into appropriate tables in a database. It assumes the
+tables have been created by a call to
+{\tt create\_db\_cdf\_component/2}. {\tt Connection} must be an opened ODBC
+connection (using odbc\_open/4). Component information is created in
+the {\tt Path}. This includes necessary initialization files as well as
+static dependencies obtained from the current dependencies for the
+Component in CDF. The created files should be patched to contain
+appropriate path information for dependencies.
+
+\ourpredmoditem{cache\_abstract/3}{\tt cache\_abstract(Connection,
+CallTemplate, AbstractCallTemplate)} is a dynamic predicate
+which can be used to control call abstraction, thus implementing
+a form of cache prefetching.
+
+\end{description}
+%-----------------------------------------------------------------------
+
+
+\subsection{Updatable External Object Data Sources}
+
+{\em Updatable External Object Data Sources} provide a way for CDF object
+data (objects and their attributes) to be stored and retrieved from
+external tables within a relational database that is accessible
+through the ODBC interface.  Objects can be created and deleted and
+their attributes can be added, deleted and updated.  The table(s) in
+the (external) relational database are updated to reflect such
+changes.
+
+An Updatable External Object Data Source is stored as a ""component""
+\secref{sec:components}, which is identified by a particular,
+unique, {\em Source}.
+
+The external database table(s) of an Updatable External Object Data
+Source must be of specific form(s), and represent objects and their
+attributes in particular ways.  However, the ways supported are
+general enough to allow reasonably natural external data
+representations.
+
+The main table in an Updatable External CDF Object Data Source is
+called the {\em Object Table}.  An object table is a database table
+whose rows represent objects to be seen within a CDF.  Such a set of
+objects will share the same ""source"" in the CDF, indicating their
+""component"".
+
+An Object Table contains a column which is the CDF object Native ID,
+and that column must be a key for the object table.  The table may
+have other columns that can be reflected as CDF attributes for the
+objects.  Each such attribute must (clearly) be functional.  There may
+also be other tables, called Attribute Tables, which have a foreign
+key to the object table, and a column that can be reflected as a CDF
+attribute for the object.  These attributes need not be functional.
+
+An Object Table must be declared with the following fact.
+
+\begin{verbatim}
+ext_object_table(Source,TableName,NOidAttr,NameAttr,
+		 MemberofNCid,MemberofSou).
+\end{verbatim}
+
+where:
+
+\begin{itemize}
+\item
+{\tt Source} is the component identifier for this object table.
+\item
+{\tt TableName} is the name of the object table in the database.
+\item
+{\tt NOidAttr} is the column name of the key column of the object table.
+\item
+{\tt NameAttr} is the column name of field that contains the name field
+  for the object.  (If there is no special one, it should be the same
+  as {\tt NOidAttr}.)
+\item
+{\tt MemberofNCid} determines the Native ID of the classes of which the
+objects are members.  If it is an atom, then it is the name of a
+column in the table whose values contain the Native ID for the class
+containing the corresponding object.  If it is of the form
+{\tt con(Atom)}, then {\tt Atom}, itself, is the Native ID of the single
+class that contains {\em all} objects in the table.
+\item
+{\tt MemberofSou} determines the Sources of the classes containing the
+objects in the table.  If it is an atom, then it is the name of a
+column in the object table whose values are the sources of the classes
+containing the corresponding objects.  If it is of the form
+{\tt con(Atom)}, then {\tt Atom}, itself, is the Source for all classes
+containing objects in the table.  (Note if {\tt memberofNCid} is of the
+form con(\_), then {\tt MemberofSou} should also be of that form.)
+\end{itemize}
+
+The caller must have previously opened an ODBC connection, named
+Source, by using \pred{cdf\_db\_open/3}, before these routines will work.
+
+For each functional attribute represented in an Object Table, there
+must be a fact of the following form:
+
+\begin{verbatim}
+ext_functional_attribute_table(Source,RelNatCid,RelSou,
+                                      TarAttr,Trans).
+\end{verbatim}
+
+where:
+
+\begin{itemize}
+\item
+{\tt Source} is the component identifier for this object table.
+\item
+{\tt RelNatCid} is the Native ID of the CDF relationship for this
+attribute.
+\item
+{\tt RelSou} is the Source of the CDF relationship for this attribute.
+\item
+{\tt TarAttr} is the name of the column(s) in the table containing the
+value of this attribute.  If the internal target type is a product
+type, then this is a list of the column names of the columns that
+contain the product values.  The predicate \pred{coerce\_db\_type/5}
+converts from internal Native Ids to (and from) (lists of) data field
+values.  Rules for \pred{coerce\_db\_type/5} are provided to do standard
+(Trans = std) conversion between primitive CDF and database types.
+Product types are unfolded to be a list of primitive CDF and database
+types and are converted as such.  If desired, {\tt coerce\_db\_type/5}
+could be extended to include special-purpose conversion methods
+(probably only of interest for special product types.)
+\item
+{\tt Trans} is an atom that indicates the type of translation from
+internal to external format.  Normally it is '{\tt std}', unless
+\pred{coerce\_db\_type/5} has been extended to include special
+translation capabilities.  \end{itemize}
+
+There must be a {\tt schrel} in the CDF for each of these CDF
+relationships indicating the CDF type of the attribute value.
+
+For each attribute table, there must be a fact of the following form:
+
+\begin{verbatim}
+ext_attribute_table(Source,TableName,NOidAttr,
+                    RelationNatCid,RelationSou,TarAttr,Trans)
+\end{verbatim}
+
+where:
+\begin{itemize}
+\item
+{\tt Source} is the component identifier for this object table.
+\item
+{\tt TableName} is the name of the attribute table in the database.
+\item
+{\tt NOidAttr} is the column name of the column of the attribute table which
+  is a foreign key to the object table.
+\item
+{\tt RelationsNatCid} is the Native ID of the CDF relationship for this
+  attribute.
+\item
+{\tt RelationSou} is the Source of the CDF relationship for this attribute.
+\item
+{\tt TarAttr} is the name(s) of the column(s) in the table containing the
+value(s) of this attribute.  It is an atomic name if the value is of a
+primitive CDF type; it is a list of names if the value of this
+attribute is of a product type.
+\item
+{\tt Trans} is an atom that indicates the type of translation from
+internal to external format.  Normally it is {\tt std}.
+\end{itemize}
+
+For each functional {\tt attribute\_object}, there must be a fact of the
+following form:
+
+\begin{verbatim}
+ext_functional_attribute_object_table(Source,RelationNatCid,RelationSou,
+                                            TarAttr,TarSource)
+\end{verbatim}
+
+where, as above
+
+\begin{itemize}
+\item
+{\tt Source} is the component identifier for this object table.
+\item
+{\tt RelationsNatCid} is the Native ID of the CDF relationship for this
+  attribute.
+\item
+{\tt RelationSou} is the Source of the CDF relationship for this attribute.
+\item
+{\tt TarAttr} is the name of the column in the table containing the value of
+  a native object ID.
+\item
+{\tt TarSource} is the Source of the native Oids in the TarAttr field.
+\end{itemize}
+
+For each attribute\_object table, there must be a fact of the following form:
+
+\begin{verbatim}
+ext_attribute_object_table(Source,TableName,NOidAttr,
+                    RelationNatCid,RelationSou,TarAttr,TarSource)
+\end{verbatim}
+where, once again:
+\begin{itemize}
+\item
+{\tt Source} is the component identifier for this object table.
+\item
+{\tt TableName} is the name of the attribute table in the database.
+\item
+{\tt NOidAttr} is the column name of the column of the attribute table which
+  is a foreign key to the object table.
+\item
+{\tt RelationsNatCid} is the Native ID of the CDF relationship for this
+  attribute.
+\item
+{\tt RelationSou} is the Source of the CDF relationship for this attribute.
+\item
+{\tt TarAttr} is the name of the column in the table containing the value of
+  a native object ID.
+\item
+{\tt TarSource} is the Source of the native Oids in the TarAttr field.
+\end{itemize}
+
+
+\begin{description}
+\ourpredmoditem{cdf\_db\_open/3}
+{\tt cdf\_db\_open(Component,CallToGetPar,Parameter)} opens an odbc
+connection to a database for use by cdf\_db\_updatable, or
+cdf\_db\_storage, predicates.  {\tt Component} is an atom representing the
+component; {\tt CallToGetPar} is a callable term, which will be called
+to instantiate variables in {\tt Parameters}.  If {\tt Parameters} is
+given as a ground term, then {\tt CallToGetPar} should be {\tt true}.
+It can be used, for example, to ask the user for a database and/a
+password.  {\tt Parameter} specifies the necessary information for
+odbc\_open to open a connection.  It is one of the following forms:
+{\tt odbc(Server,Name,Passwd)} or {\tt odbc(ConnectionString)}.  See the
+{\tt odbc\_open/1/3} documentation \footnote{See Volume 2 of the XSB
+manual.}  for details on what these parameters must be.  
+
+\ourpredmoditem{isa\_int\_udb/2} {\tt isa\_int\_udb(?Arg1,?Arg2)} is used to
+provide access to database-resident {\tt isa\_ext} facts. It is
+typically used in the definition of {\tt isa\_int/2} in
+{\tt cdf\_intensional.P} files for db\_updatable components.
+
+\ourpredmoditem{assert\_cdf\_int\_udb/1} 
+{\tt assert\_cdf\_int\_udb(+Term)} is used to assert a {\tt Term} in a
+db\_updatable component. It is typically used in the definition of
+{\tt assert\_cdf\_int} for db\_updatable components.
+
+\ourpredmoditem{retractall\_cdf\_int\_udb/1}
+{\tt retractall\_cdf\_int\_udb(+Term)} is used to retract a {\tt Term}
+from a db\_updatable component. It is typically used in the definition
+of {\tt retractall\_cdf\_int} for db\_updatable components.
+
+\ourpredmoditem{hasAttr\_int\_udb/3}
+{\tt hasAttr\_int\_udb(?Source,?Relation,?Target)} is used to provide
+access to database-resident relations in CDF components. It is
+typically used in the definition of {\tt hasAttr\_int/3} for
+db\_updatable components.
+
+\end{description}

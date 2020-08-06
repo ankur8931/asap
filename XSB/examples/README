@@ -1,0 +1,62 @@
+This directory contains several example programs.
+
+In addition to several standard Prolog demos, the following ones demonstrate
+how tabling can be used.
+
+first.P		A program that computes FIRST's for a context-free grammar.
+		This program requires tabling and shows how a simple
+		recursive definition can be directly transcribed into XSB
+		and executed with tabling.
+
+ptq.P		PTQ grammar. (Consulting this one automatically loads 
+				the others.)
+parser.P	Parser used by the PTQ grammar.
+ptq_examples.P	Examples to show how the PTQ grammar works.
+ptq_utils.P	Utilities for PTQ grammar.
+ptqlex.P	lexicon for PTQ.
+		A grammar for Montague's PTQ (The Proper Treatment of 
+		Quantification in Ordinary English.) This includes
+		quantification and pronominalization. It is configured
+		to handle just the syntax, but contains code that can
+		be used to handle the semantics as well. This example
+		shows the power of tabling in that the PTQ grammar is
+		very simple when tabling handles the recursion.
+
+shortest_path.P	A simple program that computes shortest paths in a graph.
+		It uses tabling and the tabling built-ins. It handles
+		cyclic graphs and converges towards the shortest paths.
+
+wfs.P		Well-founded semantics meta-interpreter.
+wf_examples	Examples for testing wfs.P
+		This is a meta-interpreter to compute well-founded semantics.
+		It is based on the XOLDTNF algorithm, which can be 
+		exponential (Chen-Warren IJCSLP'92).
+
+FOREIGN LANGUAGE EXAMPLES (in XSB_calling_c):
+--------------------------
+hello		Outputs "hello XSB world".
+
+simple_foreign	It defines two predicates:
+		  1) minus_one/2 that returns in its second argument the
+			first argument - 1.
+		  2) change_char/4 which given an atom a position in the
+			atom and a character, changes the character found
+			in that position and returns the new atom in its
+			fourth argument.  
+		Though this is a simple example it demonstrates the idea of
+		how the foreign language interface can be used.
+
+file_expand	Expands the initial ~ of a Unix filename and returns the
+		absolute file name.  Otherwise (if the file name does not
+		begin with a ~) it returns the file name unchanged.
+		ex.
+			| ?- expand_file('~kostis/research', F).
+
+			F = /u15/sr/kostis/research;
+
+			no
+
+FOREIGN LANGUAGE EXAMPLES (in c_calling_XSB):
+---------------------------------------------
+
+Shows how one can submit queries to XSB from a C program.

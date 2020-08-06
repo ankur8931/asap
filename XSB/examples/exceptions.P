@@ -1,0 +1,18 @@
+:- import error_writeln/1 from standard.
+:- import type_error/4 from error_handler.
+
+userdiv(X,Ans):- 
+        catch(userdiv1(X,Ans),mydiv1(Y),handleUserdiv(Y,X)).
+
+userdiv1(X,Ans):- 
+        (number(X) -> true; type_error(number,X,userdiv1/2,1)),
+        write('Enter a number: '),read(Y),
+        (number(Y) -> true ; throw(mydiv1(error1(Y)))),
+        (Y < 0 -> throw(mydiv1(error2(Y))); true),
+        (Y =:= 0 -> throw(error(zerodivision,userdiv/1)); true),
+        Ans is X/Y.
+
+handleUserdiv(error1(Y),_X):- 
+        error_writeln(['a non-numeric denominator was entered in userdiv/1: ',Y]),fail.
+handleUserdiv(error2(Y),_X):- 
+        error_writeln(['a negative denominator was entered in userdiv/1: ',Y]),fail.

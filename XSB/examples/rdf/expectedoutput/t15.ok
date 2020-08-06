@@ -1,0 +1,13 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : s = http://description.org/schema/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://www.w3.org,http://description.org/schema/ : Publisher = World Wide Web Consortium,http://description.org/schema/ : Title = W3C Home Page,http://description.org/schema/ : Date = 1998-10-03T02:27],[])])
+
+----------RDF----------
+
+[description(description,about(http://www.w3.org),[http://description.org/schema/ : Publisher = literal(World Wide Web Consortium),http://description.org/schema/ : Title = literal(W3C Home Page),http://description.org/schema/ : Date = literal(1998-10-03T02:27)])]
+
+--------Triples--------
+
+{http://www.w3.org, http://description.org/schema/Publisher, literal(World Wide Web Consortium)}
+{http://www.w3.org, http://description.org/schema/Title, literal(W3C Home Page)}
+{http://www.w3.org, http://description.org/schema/Date, literal(1998-10-03T02:27)}

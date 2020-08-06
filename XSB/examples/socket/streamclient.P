@@ -1,0 +1,100 @@
+%% Client (streamclient) and server (streamserver) talk to each other
+%% using regular file I/O. They convert socket descriptors into file
+%% streams. This works under Unix only, because one can't convert sockets
+%% into files under Windows.
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "timer_defs_xsb.h"
+#include "char_defs.h"
+
+:- ['auxdefs'].
+:- import tryN/5 from auxdefs.
+
+:- import 
+     socket/2, socket_connect/4, socket_set_option/3,
+     socket_close/2  from socket.
+:- import file_close/1, fd2ioport/2, file_flush/2 from file_io.
+
+:- import 
+        file_write/2,
+        file_write_canonical/2 
+        from xsb_writ.
+
+:- import
+        file_read_canonical/3 from machine.
+
+%% machine where server is running
+machine(localhost).
+%% Try something else:
+%%machine(compserv1).
+
+%% Port on which the server is listening
+%% Server must bind to this port
+xsb_port(6020).
+
+client :-
+	writeln('started client...'),
+	machine(IPAddrOrHostname),
+	xsb_port(XSB_port),
+	set_timer(5),
+	tryN(4,
+	     try_connect(Sockfd0 ,XSB_port, IPAddrOrHostname, Ecode2),
+	     (writeln(connect1(Sockfd0,XSB_port,IPAddrOrHostname)),
+		 fd2ioport(Sockfd0,Sockptr0),
+		 writeln('connected to server...')),
+	     writeln('Cannot connect to server'),
+	     Ecode2
+	    ),
+	%% Socket for reading replies
+	tryN(4,
+	     try_connect(Sockfd1, XSB_port, IPAddrOrHostname, Ecode3),
+	     (writeln(sock_connect2(Sockfd1,XSB_port,IPAddrOrHostname,Ecode3)),
+		 fd2ioport(Sockfd1,Sockptr1)),
+	     writeln('Cannot connect to server'),
+	     Ecode3
+	    ),
+	client_loop(Sockptr0, Sockptr1, Sockfd0, Sockfd1).
+client :- writeln('Client error: exiting...').
+
+
+
+client_loop(Sockptr0, Sockptr1, Sockfd0, Sockfd1) :-  
+  nl, write('Please enter goal: g(X). or h(X).  Type e. to finish. Goal: '), 
+  read_canonical(Goal),
+  ((Goal == 'e' ; Goal == end_of_file) ->
+      !,
+      socket_close(Sockfd0, _ErrClose), socket_close(Sockfd1, _ErrClose1),
+      file_close(Sockptr1), file_close(Sockptr0),
+      writeln('Exiting.'), true
+  ;   
+      nl,writeln(send(Goal)),
+      file_write_canonical(Sockptr0, Goal), 
+      file_write(Sockptr0, '. '),
+      file_flush(Sockptr0,_),
+      writeln('Answers: '),
+      repeat,
+      file_read_canonical(Sockptr1, Answer, Psc),
+      (Answer==end_of_file -> !, true
+      ;
+	  Psc = Psc,
+	  (   Answer == 'end' 
+	  ->  client_loop(Sockptr0, Sockptr1, Sockfd0, Sockfd1)
+	  ;   
+	      write('    '),
+	      write(Answer), nl, 
+	      fail
+	  )
+      )
+   ).
+ 
+
+%% Open socket and connect
+try_connect(Sockfd0,XSB_port,IPAddrOrHostname,Ecode) :-
+	 socket(Sockfd0, ErrCode1),
+	 (ErrCode1 =\= SOCK_OK
+	 -> writeln('Cannot connect to the server.'), fail
+	 ; true),
+	 socket_set_option(Sockfd0,linger,SOCK_NOLINGER),
+	 socket_connect(Sockfd0, XSB_port, IPAddrOrHostname, Ecode).
+

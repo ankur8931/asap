@@ -1,0 +1,176 @@
+/* File:      listutil.P
+** Author(s): Saumya Debray, Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: listutil.P,v 1.6 2011-09-06 17:33:46 dwarren Exp $
+** 
+*/
+
+
+
+/* --- some Prolog list utilities used in cmplib ---------------------- */
+
+attach(X, Y) :- (var(Y), Y = [X|_]) ;
+		(nonvar(Y), Y = [_|T], attach(X, T)).
+
+
+merge([], L1, L1).
+merge([H|T], L1, L3) :- (member(H, L1), merge(T, L1, L3)), ! ;
+			(L3 = [H | L4], merge(T, L1, L4)).
+
+
+%   absmember(+Element, +List)
+%   Predicate absmember/2 is similar to the good old member/2, except 
+%   that it checks for identity rather than unifiability.
+
+absmember(X, [H|T]) :- '=='(X,H) ; absmember(X, T).
+
+
+%   absmerge(+List1, +List2, ?Merged_List)
+%   Predicate absmerge/3 is similar to merge/3, except that it uses 
+%   absmember/2 rather than member/2.
+
+absmerge([], L1, L1).
+absmerge([H|T], L1, L3) :- (absmember(H, L1), absmerge(T, L1, L3)) ;
+			   (L3 = [H | L4], absmerge(T, L1, L4)).
+
+
+%   member2(?Element, +List)
+%   Predicate member2/2 is used just to check for membership in a list 
+%   whose tail is a variable. It fails if the element is not found or
+%   if the list is an improper list (including variable).
+
+member2(X,L) :- nonvar(L), L = [Y|Z], (X = Y ; member2(X,Z)).
+
+
+%   closetail(?List)
+%   Predicate closetail/1 closes the tail of an open-ended list.
+
+closetail([]) :- !.
+closetail([_|L]) :- closetail(L).
+
+
+%   length(+List, ?Length)
+%   Predicate length/2 returns the length of list List. This predicate
+%   should be used with the first argument instantiated. For a predicate
+%   that works both ways use the length/2 in basics.
+
+length(L, N) :- length1(L, 0, N).
+
+length1([], N, N).
+length1([_|R], Nin, Nout) :- Nmid is Nin+1, length1(R, Nmid, Nout).
+
+
+insert(Elem, [Elem|_]) :- !.
+insert(Elem, [_|Rest]) :- insert(Elem, Rest).
+
+/**membercheck(Elem, Table) :- nonvar(Table), Table = [Head|Rest],
+			    (Elem = Head ; membercheck(Elem, Rest)).*/
+			    
+membercheck(Elem, Table) :-
+	nonvar(Table), Table = [Head|Rest],
+	(Elem = Head
+	 ->	true
+	 ; membercheck(Elem, Rest)
+	).
+
+nthmember(X, [X|_], 1).
+nthmember(X, [_|Rest], N) :- nthmember(X,Rest,N1), nonvar(N1), N is N1 + 1.
+
+
+%   delete(?Element, ?List, ?NewList).
+
+delete(Element, [Element|Rest_Elements], Rest_Elements).
+delete(Element, [Element1|Rest_L1], [Element1|Rest_L2]) :-
+	delete(Element, Rest_L1, Rest_L2).
+
+
+%   delete_ith(+I, +List, -Ith, -NewList).
+%   Deletes the Ith element of List and returns the rest of the list
+%   in NewList.
+
+delete_ith(N, [H|T], Ith, Rest) :-
+	( N =:= 1 -> Ith = H, Rest = T
+	; Rest = [H|Rest1], N1 is N-1, delete_ith(N1, T, Ith, Rest1)
+	).
+
+%   reverse(+List, -ReversedList).
+
+:- mode reverse(+,-).
+
+reverse(List, Reversed) :- reverse(List, [], Reversed).
+
+:- mode reverse(+,+,-).
+
+reverse([], X, X).
+reverse([X|Xs], Y, Z) :- reverse(Xs, [X|Y], Z).
+
+
+:- export build_bt/2,find_in_bt/2.
+
+build_bt([],[]) :- !.
+build_bt(List,Tree) :-
+	sort(List,SList),
+	length(SList,Len),
+	K is ceiling(log(Len)/log(2)),
+	bbt(SList,K,Tree,_).
+
+/***print_bt(node(Sym,N1,N2),Ind) :-
+	tabb(Ind),
+	standard:writeln(userout,Sym),
+	Ind1 is Ind+2,
+	(print_bt(N1,Ind1);true),
+	(print_bt(N2,Ind1);true),
+	fail.
+
+tabb(N) :-
+	(N > 0
+	 ->	standard:write(userout,' '),
+		N1 is N-1,
+		tabb(N1)
+	 ;	true
+	).
+***/
+
+bbt(List,K,Tree,ListLeft) :-
+	(K =:= 0
+	 ->	(List = [Node|ListLeft]
+		 ->	Tree = node(Node,[],[])
+		 ;	Tree = [], ListLeft = []
+		)
+	 ;	K1 is K-1,
+		bbt(List,K1,SubTree1,List1),
+		(List1 = [Mid|List2]
+		 ->	bbt(List2,K1,SubTree2,ListLeft),
+			Tree = node(Mid,SubTree1,SubTree2)
+		 ;	Tree = SubTree1, ListLeft = []
+		)
+	).
+
+find_in_bt(Val,node(Val0,LT,RT)) :-
+	(Val == Val0
+	 ->	true
+	 ; Val @< Val0
+	 ->	find_in_bt(Val,LT)
+	 ;	find_in_bt(Val,RT)
+	).
+
+
+force_listutil_loaded.

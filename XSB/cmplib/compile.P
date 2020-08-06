@@ -1,0 +1,405 @@
+/* File:      compile.P
+** Author(s): Saumya Debray, Kostis Sagonas, Terrance Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: compile.P,v 1.42 2013-05-01 17:04:45 tswift Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,optimize,spec_repr,xpp_on]).
+#include "flag_defs_xsb.h"
+#include "extensions_xsb.h"
+
+
+
+mc(Modname, Options) :- compile(Modname, Modname, Options, _).
+
+/*======================================================================*/
+/* compile(+ModName, +BaseName, +CompilerOptions, -ExportedPredicates)	*/
+/*	Compiles a module with the compiler options specified and	*/
+/*	returns the list of exported predicates.			*/
+/*======================================================================*/
+
+%% For better warnings, we need to know the currently compiled module
+:- dynamic(current_compiled_module(_)).
+
+compile(Modname,Basename,Extensions,Options,ExportList):- 
+	stat_flag(CURRENT_INPUT, IStr),
+	stat_flag(CURRENT_OUTPUT, OStr),
+	catch(compile_internal(Modname,Basename,Extensions,Options,ExportList),E,
+	      (handle_compile_error(Basename,IStr,OStr),throw(E))).
+
+% Close current stream (i.e. the file we were compiling) if it is not
+% equal to whatever the current stream was before we started compiling.
+handle_compile_error(Basename,IStr,OStr):- 	      
+	conset(conditional_compile,0),					   
+	stat_flag(CURRENT_INPUT, CurStr),
+	(IStr \== CurStr -> close(CurStr) ; true),
+	str_cat(Basename,XSB_OBJ_EXTENSION_ATOM,OFile),
+	sys_unlink(OFile,_), 
+	see(IStr),tell(OStr).
+
+:- import console_writeln/1 from standard.
+compile_internal(Modname, Basename, Extension,Options, ExportList) :-
+	file_names(Basename, Extension,PFile, HFile, OFile, AFile, DFile,
+		   SpecFile, TIFile, TableFile, _OptFile),
+	setoptions(Options), initialize,
+	%% If --quietload, don't print Compiling/compiled messages
+	stat_flag(BANNER_CTL,BannerCtl),
+	(   KeepQuiet is BannerCtl mod QUIETLOAD, KeepQuiet =:= 0
+	->  true
+	;
+	    message(('[Compiling ', Basename, ']'))
+	),
+	cputime(TimeStart),
+	retractall(current_compiled_module(_)),
+	assert(current_compiled_module(Basename)),
+%	db_preprocess(PFile, HFile, OptFile, SourceFile),
+	parse(Modname, PFile, HFile, Module_0),
+	( option(profile) -> 
+	    time_message(TimeStart, 'Parse finita'), cputime(TimeParse)
+	; TimeParse = TimeParse ), % To avoid a silly lamp variable message!
+	abort_if_syntax_errors(Modname), !,
+	useinfer(Module_0, IsModule, ExportList), !,
+	( option(profile) -> 
+	    time_message(TimeParse, 'Useinfer finita') ,cputime(TimeUse) 
+	; TimeUse = TimeUse ),
+	modeinfer(Modname, Module_0, DFile),
+	specialise(Module_0, Module0, SpecFile),
+	table_process(Module0, Module, TableFile),
+	hack_self_compile,
+	get_symtab(Module, SymTab),
+	( option(profile) -> 
+	    time_message(TimeUse, 'Other finita')
+	; true ),
+	compile1(Modname, Module, SymTab, AFile, OFile, TIFile, IsModule),
+	check_possible_hilog_conflict(SymTab),
+	dispose_symtab( SymTab ),
+	( option(compile_off) -> print_result(Module) ; true ),
+%	(conget('error occurred', 1) ->
+%	    sys_unlink(OFile,_), 
+%	    message(('The file ', OFile, ' is removed')),
+%	    abort_quietly
+%	; true
+%	), 
+	!,
+	%% If --quietload, don't print Compiling/compiled messages
+	stat_flag(BANNER_CTL,BannerCtl1),
+	(   KeepQuiet1 is BannerCtl1 mod QUIETLOAD, KeepQuiet1 =:= 0
+	->  true
+	;   ( IsModule =:= 0 -> IsModuleMsg = '' ; IsModuleMsg = 'Module ' ),
+	    time_message(TimeStart, (IsModuleMsg, Modname, ' compiled'))
+	),
+	!,
+	retractall(current_compiled_module(_)).
+
+compile(Modname, Basename, Options, ExportList) :-
+	compile(Modname, Basename, XSB_SRC_EXTENSION_ATOM, Options, ExportList).
+
+file_names(Basename, Ext,PFile, HFile, OFile, AFile, DFile,
+	   SpecFile, TIFile, TableFile, OptFile) :-
+	str_cat(Basename,Ext,PFile),
+	str_cat(Basename,XSB_HDR_EXTENSION_ATOM,HFile),
+	str_cat(Basename,XSB_OBJ_EXTENSION_ATOM,OFile),
+	str_cat(Basename,XSB_ASM_EXTENSION_ATOM,AFile),
+	str_cat(Basename,XSB_DCL_EXTENSION_ATOM,DFile),
+	str_cat(Basename, '.spec', SpecFile),
+	str_cat(Basename, '.ti', TIFile),
+	str_cat(Basename, '.table', TableFile),
+	str_cat(PFile, '.opt', OptFile).
+
+initialize :-
+	conset('_$compiler_gensym_ctr',0),
+	conset('table #', 0),
+	conset('syntax errors', 0),
+%	conset('error occurred', 0),
+	conset(ti_all, 0), conset(ti_all_off, 0),conset(immutable,0),
+	conset('EDB Dep #', 2).
+
+abort_if_syntax_errors(Modname) :-
+	conget('syntax errors', N),
+	( N =\= 0, Modname \== user -> 
+	    %% Forget about syntax errors when compiling module user
+	    syntax_error(('Aborting compilation of module ', 
+		   Modname, ' due to ', N, ' syntax error(s).'))
+	;   true
+	).
+
+/*
+| abort_if_syntax_errors(Modname) :-
+| 	conget('syntax errors', N),
+| 	( N =\= 0, Modname \== user -> 
+| 	    %% Forget about syntax errors when compiling module user
+| 	    error(('Aborting compilation of module ', 
+| 		   Modname, ' due to ', N, ' syntax error(s).')), 
+| 	    abort_quietly
+| 	;   true
+| 	).
+
+| abort_quietly :-
+| 	throw(error(misc_error,'Aborting...',[[]])).
+
+*/
+
+/*============================================================*/
+/* table_process(+ModuleIn, -ModuleOut, +SFile)				*/
+/*	Performs necessary module-level analyses for tabling.		*/
+/*============================================================*/
+
+table_process(ModuleIn, ModuleOut, _SFile) :-
+	( option(auto_table) -> perform_auto_table(ModuleIn) ; true ),
+	( option(suppl_table) ->
+		supplementary_tabling(ModuleIn, ModuleMid)
+	; ModuleMid = ModuleIn
+	),
+	perform_tabling_transforms(ModuleMid,ModuleMid1),
+	conget('table #', Tables),
+%	( option(table_dump) -> dump_module(SFile, ModuleMid1) ; true ),
+	( Tables =:= 0 -> ModuleOut = ModuleMid1
+	; cp_opt(ModuleMid1, ModuleOut)
+          %%,( option(no_check) -> true ; build_graph(ModuleOut) )
+	).
+%	( option(table_dump) -> dump_module(SFile, ModuleOut) ; true ).
+
+/*======================================================================*/
+/* specialise(+ModuleIn, -ModuleOut, +SpecFile)				*/
+/*	Performs the specialisation of partially instantiated calls.	*/
+/*======================================================================*/
+
+specialise(ModuleIn, ModuleOut, SpecFile) :-
+	( option(spec_off) -> ModuleIn = ModuleOut
+	; spec(ModuleIn, ModuleOut),
+	  ( option(spec_dump) -> dump_module(SpecFile, ModuleOut) ; true )
+	).
+
+/*======================================================================*/
+/* modeinfer(+ModuleIn)							*/
+/*	Infer modes using the mode analyzer.				*/
+/*======================================================================*/
+
+modeinfer(ModName, Module, SymTab) :-
+	( option(modeinfer) -> modeanalyze(ModName, Module, SymTab)
+	; true).
+
+/*======================================================================*/
+/*======================================================================*/
+
+compile1(Modname, Module, SymTab, AFile, OFile, TIFile, IsModule) :-
+      ( option(compile_off) ->		%  generate *.A file
+	  open(AFile,write,AStr),write_asmheader(AStr, Modname, SymTab, IsModule), close(AStr)
+%      ; conget('error occurred', 1) ->
+%	  error(('Aborting compilation of module ',Modname,' due to errors')),
+%	  abort_quietly
+      ; option(asm_dump) -> 
+	  open(AFile,write,AStr),
+	  write_asmheader(AStr,Modname,SymTab, IsModule), % generate .A header
+	  open(OFile,write,OStr),
+	  asm_genheader(OStr, Modname, SymTab, IsModule), % generate OBJ header
+	  compile0(Module, 1, AStr, OStr, TIFile, IsModule),
+	  close(AStr),
+	  close(OStr)
+      ; stat_flag(101,OldCS), % old charset
+	stat_set_flag(101,2), % set utf-8
+        open(OFile,write,OStr),
+	stat_set_flag(101,OldCS), % reset old charset
+%	  console_writeln(asm_genheader(Modname,IsModule,SymTab)),
+	asm_genheader(OStr, Modname, SymTab, IsModule), % generate OBJ header
+	compile0(Module, 0, dummy, OStr, TIFile, IsModule),
+	close(OStr)
+      ).
+
+/*======================================================================*/
+/* compile0(+Module, +GenAsm, +AStr, +OStr, +IsModule)		*/
+/*	Compiles a module in the internal form.				*/
+/*======================================================================*/
+
+compile0(module(SymTab,_,ClList,[MainPred]),GenAsm,AStr,OStr,TIFile,M) :-
+	member(PredBlk, [MainPred|ClList]),
+	compile_predicate(PredBlk, GenAsm, AStr, OStr, TIFile, M, SymTab),
+	fail.	/* just reclaim space */
+compile0(_, _, _, _, _, _).
+
+
+/*======================================================================*/
+/* compile_predicate(+pred(Sym,Clauses,_), +GenAsm,	 		*/
+/*		     +AStr, +OStr, +IsModule, +SymTab)			*/
+/*	Compile the clauses of a single predicate into an assembly	*/
+/*	(*.A) file and/or an object file.				*/
+/*======================================================================*/
+
+compile_predicate(PredDef, GenAsm, AStr, OStr, _TIFile, IsModule, SymTab) :-
+	PredDef = pred(Sym,_,_),
+	(compile_check_ok(Sym)
+	 ->	preprocess(PredDef, PredBlks, SymTab),
+		!,		% needed to cut unnecessary choice points... (bmd & kostis)
+%		ti_transform(PredBlks, TIPredBlks, _TIFile, SymTab),
+%		!,		% needed to cut unnecessary choice points... (bmd & kostis)
+%		compile_pred_block(TIPredBlks, PilCode-[], 0, NC),
+		compile_pred_block(PredBlks, PilCode-[], 0, NC),
+		!,		% needed to cut unnecessary choice points... (bmd & kostis)
+		compile_peephole_opt(PilCode, PilCode1),
+		( GenAsm =:= 0 -> true; write_asm_instructions(AStr,PilCode1) ),
+		asm_PIL(OStr, Sym, PilCode1, NC, IsModule),
+		!
+	 ;	true
+	).
+
+compile_check_ok(Sym) :-
+	sym_name(Sym, P, N),
+	( option(verbo) -> message(('        ....compiling ', P/N)) ; true ),
+	( option(sysmod)
+	 ->	true
+	 ;	(standard_symbol(P, N, _)
+		 ->	(option(allow_redefinition)
+			 ->	permission_warning(redefine,'standard predicate',P/N,'',compile/1)
+		         ;      permission_error(redefine,'standard predicate',P/N,compile/1)
+			)
+		 ;	true
+		)
+	),
+	( sym_prop(im(Mod), Sym) ->
+	    permission_error(redefine,'imported predicate',Mod:P/N,compile/1)
+	 ;	true
+	).
+
+/*** not used anymore, some bug?
+ti_transform(PredBlks, TIPredBlks, TIFile, SymTab) :-
+	ti_pred_block(PredBlks, TIPredBlks, SymTab),
+	( option(ti_dump) ->
+		open(TIFile,write,TIStr),
+		write_preds(TIStr,TIPredBlks),
+		close(TIStr)
+	; true
+	). ***/
+
+compile_pred_block([], PilCode-PilCode, NCin, NCin).
+compile_pred_block([PredDef|PRest], PilCode-PilCodeR, NCin, NCout) :-
+	compile_predicate2(PredDef, PilCode-PilCodeM, NClauses),
+	NCmid is NCin + NClauses,
+	!,
+	compile_pred_block(PRest, PilCodeM-PilCodeR, NCmid, NCout).
+
+/*======================================================================*/
+/* compile_predicate2(+pred(Sym,Clauses,Prag), -PilCode-PilCodeR, -NC)	*/
+/*	Compiles the clauses of a single predicate after preprocessing.	*/
+/*	A single predicate in the source level can be transformed by	*/
+/*	preprocess/3 into several predicates.  compile_predicate2/2	*/
+/*	does the compilation for one of them.  The result is a list of	*/
+/*	PIL code in assembler format.  The predicate also returns the	*/
+/*	number of clauses NC (length of the Clauses list).		*/
+/*======================================================================*/
+
+compile_predicate2(pred(Sym,Clauses,Prag), PilCode-PilCodeR, NC) :-
+	gennum(L),
+	PilCode = [label(pred,(Sym,L))|PilCode0],
+	(sym_prop(internal,Sym)
+	 ->	PilCode0 = PilCode1
+	 ;	PilCode0 = [test_heap(Arity,Margin)|PilCode1]
+	),
+%%	PilCode = [label(pred,(Sym,L)),test_heap(Arity,Margin)|PilCode1],
+	sym_name(Sym,_,Arity), Margin = 2000, % Margin is temporary
+	find_if_tabled(Sym, Tabled),
+	makeindex(Sym, Clauses, PilCode1, PilCodeM, Prag, Tabled),
+	compile_clauses(Clauses, Sym, PilCodeM, PilCodeR, 0, NC).
+
+find_if_tabled(Sym, tabled(Tabind,Ar)):-
+	sym_type(Sym, tabled(Tabind,Ar)),
+	!. 
+find_if_tabled(_, 0). 
+
+/*======================================================================*/
+compile_clauses([], _, PilCode, PilCode, Nin, Nin).
+compile_clauses([Clause|Clauses], Sym, PilCode, PilCodeR, Nin, Nout) :-
+	Nmid is Nin + 1,  
+	compile_clause(Sym, Clause, PilCode, PilCodeM, Nmid),
+	compile_clauses(Clauses, Sym, PilCodeM, PilCodeR, Nmid, Nout).
+
+check_possible_hilog_conflict(SymTab) :-
+	('_$hilog_symbol'(HS), HS \== '^~'
+	 ->	(sym_gen(Sym,SymTab),
+		 sym_name(Sym,Name,Arity), Arity =\= 0,
+		 '_$hilog_symbol'(Name),
+		 warning((Name,
+			  ' is both a HiLog symbol and a Prolog functor of arity ',Arity)),
+		 fail
+		 ;
+		 true
+		)
+	 ;	!
+	).
+		
+
+/*======================================================================*/
+/* hack_self_compile/0							*/
+/*	Forces all the modules that are used by the XSB compiler to	*/
+/*	be loaded into the system before overwriting the OBJ file when	*/
+/*	self-compiling the module (or the whole system).		*/
+/*======================================================================*/
+
+hack_self_compile :-
+	force_tprog_loaded,
+	force_inprog_loaded,
+	force_tp_var_loaded,
+	force_flatten_loaded,
+	force_varproc_loaded,
+	force_tp_eval_loaded,
+	force_tp_comp_loaded,
+	force_tp_cond_loaded,
+	force_tp_goal_loaded,
+	force_asm_loaded,
+	force_asm_opt_loaded,
+	force_tp_index_loaded,
+	force_listutil_loaded,
+	force_peephole_loaded,
+	force_asm_inst_loaded,
+	force_asm_pass2_loaded,
+	force_preprocess_loaded,
+	force_tp_geninline_loaded.
+%%	force_ti_mod_loaded.
+
+end_of_file.
+
+preprocess_if_necessary(PIn,HIn,POut,HOut):- 
+        preprocessing_needed(PIn,HIn,Preprocessing),
+	( Preprocessing = [] -> 
+	     PIn = POut, HIn = HOut
+	  ;  perform_preprocessing(Preprocessing,PIn,HIn,POut,HOut)).
+
+preprocessing_needed(PIn,HIn,Preprocessing):- 
+        file_open(PIn,read,PStr),
+	read(PStr,PTerm),
+	file_close(PStr),
+	(PTerm = (':-'(compiler_options(PList))) -> L1 = PList ; L1 = []),
+        file_open(HIn,read,HStr),
+	read(HStr,HTerm),
+	file_close(HStr),
+	(HTerm = (':-'(compiler_options(HList))) -> L1 = HList ; L1 = []),
+	append(PList,HList,WholeList),
+	get_preprocessing(WholeList,Preprocessing).
+
+get_preprocessing([],[]).
+get_preprocessing([H|T],PrepOut):- 
+        (H = preprocessing(Type) -> PrepOut = [Type|Prep] ; PrepOut = Prep),
+	get_preprocessing(T,Prep).
+
+perform_preprocessing(Preprocessing,PIn,HIn,PIn,HIn):- 
+        console_writeln(found_preprocessing(Preprocessing)).
+

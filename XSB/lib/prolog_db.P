@@ -1,0 +1,625 @@
+/* These routines support Prolog "Databases", allowing a Prolog
+programmer to construct a set of Prolog clauses into a Prolog
+variable, and then call goals to be proved in such a constructed
+database.  The interface predicates are:
+
+empty_db(-DB) returns an empty database.
+
+assert_in_db(+Clause,+DB0,-DB) adds the clause Clause to the database
+DB0 returning DB.  A Database is a *set* of clauses, so asserting a
+clause that is already in the database returns the same database.  No
+ordering of clauses is preserved, so cuts don't make sense and cannot
+be used in clauses.  if-then-else should be used instead.
+
+retractall_in_db(+ClauseHead,+DB0,-DB) removes all clauses whose heads
+unify with ClauseHead from DB0 returning DB.
+
+clause_in_db(?ClauseHead,?ClauseBody,+DB) returns all clauses in DB
+whose heads and bodies unify with ClauseHead and ClauseBody.  (Note
+that, unlike clause/2 in Prolog, clause_in_db can be called with
+ClauseHead as a variable.)  Note also that the order of clauses is not
+preserved and is indeterminate.
+
+call_in_db(?Goal,+DB) calls Goal in DB and returns all instances of
+Goal provable in DB.  Clauses must not contain cuts (!).  They can
+contain most Prolog constructs, including and, or, if-then-else, \+,
+calls to standard predicates, and calls explicitly modified by a
+module name.
+
+load_in_db(+FileName,+DB0,-DB) reads the clauses from the file named
+FileName and asserts them into database DB0 returning DB.
+
+load_in_db(+FileName,-DB) reads the clauses from the file named
+FileName and asserts them into an empty database returning DB.
+
+union_db(+DB1,+DB2,-DB3) where DB3 contains the union of the sets of
+clauses in DB1 and DB2.
+
+intersect_fact_db(+DB1,+DB2,-DB3) where DB3 contains the intersection
+of the sets of facts in DB1 and DB2.  DB1 and DB2 must contain only
+ground facts.
+
+Notes:
+
+1. A DB is kept as a trie, which is a ground term.  Each level in the
+trie is implemented by a hash table, and hash tables are expanded and
+contracted as necessary.  A set of clauses is canonically represented,
+i.e., no matter what sequence of assert's and retractall's one uses to
+construct a particular set of clauses, the resulting tries
+(i.e. terms) are identical.
+
+2. A DB represents an unordered set of clauses.  The order in which
+clauses are returned from clause_in_db (and thus for call_in_db) is
+indeterminate, and may change from one call to the next (due to
+possible expansion or contraction of a hash table.)
+
+3. A DB that is obtained from another DB by adding or deleting a
+single clause differs from it in only log subterms (unless a hash
+table has been resized).  This means that it is efficient to intern
+these DB's, and to table them (as intern).
+
+*/
+%:- import append/3 from basics.
+%:- import member/2 from basics.
+%:- import log_ith/3 from basics.
+%:- import term_hash/3 from machine.
+%:- import standard_symbol/3 from std_xsb.
+%:- import call_c/1 from standard.
+
+assert_in_db([],DB,DB) :- !.
+assert_in_db([Clause|Clauses],DB0,DB) :- !,
+	assert_in_db(Clause,DB0,DB1),
+	assert_in_db(Clauses,DB1,DB).
+assert_in_db(Clause,DB0,DB) :-
+	valid_db(DB0,'assert_in_db/3'),
+	(Clause = (Head :- Body)
+	 ->	true
+	 ;	Head = Clause,
+		Body = true
+	),
+	add_to_trie(Head,Body,DB0,DB).
+
+retractall_in_db([],DB,DB) :- !.
+retractall_in_db([Head|Heads],DB0,DB) :- !,
+	retractall_in_db(Head,DB0,DB1),
+	retractall_in_db(Heads,DB1,DB).
+retractall_in_db(Head,DB0,DB) :-
+	valid_db(DB0,'retractall_in_db/3'),
+	findall((Head:-Body), clause_in_db(Head,Body,DB0), Clauses),
+	retract_list_in_db(Clauses,DB0,DB).
+
+retract_list_in_db([],DB,DB).
+retract_list_in_db([(Head:-Body)|Clauses],DB0,DB) :-
+	remove_from_trie(Head,Body,DB0,DB1),
+	retract_list_in_db(Clauses,DB1,DB).
+
+clause_in_db(Head,Body,DB) :-
+	valid_db(DB,'clause_in_db/3'),
+	clause_in_db0(Head,Body,DB).
+
+clause_in_db0(Head,Body,DB) :-
+	find_in_trie(Head,Body,DB).
+
+call_in_db(Goal,DB) :-
+	valid_db(DB,'call_in_db/2'),
+	call_in_db0(Goal,DB).
+
+call_in_db0(true,_DB) :- !.
+call_in_db0((A,B),DB) :- !, call_in_db0(A,DB), call_in_db0(B,DB).
+call_in_db0(\+(G),DB) :- !, \+ call_in_db0(G,DB).
+call_in_db0((C->A;B),DB) :- !,
+	(call_in_db0(C,DB) -> call_in_db0(A,DB) ; call_in_db0(B,DB)).
+call_in_db0((A;B),DB) :- !, (call_in_db0(A,DB) ; call_in_db0(B,DB)).
+call_in_db0(G,_DB) :- functor(G,F,A), std_xsb:standard_symbol(F,A,_), !,
+	standard:call_c(G).
+call_in_db0(G,DB) :-
+	clause_in_db0(G,B,DB),
+	call_in_db0(B,DB).
+
+% union of DBs
+union_db(DB1,DB2,DB) :-
+	valid_db(DB1,'union_db/3'),
+	valid_db(DB2,'union_db/3'),
+	findall((Head:-Body),clause_in_db(Head,Body,DB1),Clauses),
+	assert_in_db(Clauses,DB2,DB).
+
+/**
+intersect_fact_db(DB1,DB2,DB3) :-
+	valid_db(DB1,'intersect_fact_db/3'),
+	valid_db(DB2,'intersect_fact_db/3'),
+	true.
+**/
+
+dump_db(DB,Filename) :-
+	valid_db(DB,'dump_db/2'),
+	open(Filename,write,OStr),
+	(clause_in_db0(Head,Body,DB),
+	 (Body == true
+	  ->	 write_canonical(OStr,Head)
+	  ;	 write_canonical(OStr,(Head:-Body))
+	 ),
+	 writeln(OStr,'.'),
+	 fail
+	 ;
+	 true
+	),
+	close(OStr).
+
+valid_db(DB,Call) :-
+	(var(DB)
+	 ->	throw(error(Call,'DB cannot be a variable'))
+	 ; DB = ht(_,_,_)
+	 ->	true
+	 ;	throw(error(Call,'Invalid DB structure'))
+	).
+
+% version for use in meta calls: no cuts.
+pure_call_in_db(G,DB) :-
+	(ctrl_str(G)
+	 ->	pure_ctrl_call_in_db0(G,DB)
+	 ; G \== true,functor(G,F,A),std_xsb:standard_symbol(F,A,_)
+	 ->	standard:call_c(G)
+	 ;	clause_in_db(G,B,DB),
+		pure_call_in_db(B,DB)
+	).
+
+ctrl_str(true).
+ctrl_str((_,_)).
+ctrl_str(\+(_)).
+ctrl_str((_;_)).
+
+pure_ctrl_call_in_db0(true,_).
+pure_ctrl_call_in_db0((A,B),DB) :- pure_call_in_db(A,DB), pure_call_in_db(B,DB).
+pure_ctrl_call_in_db0(\+(G),DB) :- \+ pure_call_in_db(G,DB).
+pure_ctrl_call_in_db0((A;B),DB) :-
+	(A = (C->A1)
+	 ->	(pure_call_in_db(C,DB) -> pure_call_in_db(A1,DB) ; pure_call_in_db(B,DB))
+	 ;	(pure_call_in_db(A,DB) ; pure_call_in_db(B,DB))
+	).
+pure_ctrl_call_in_db0(M:G,_DB) :- call(M:G).
+
+empty_db(ht(2,0,[])).
+
+:- comment(find_in_trie/3,"find_in_trie(?Term,?Value,+Trie) succeeds
+for terms Term in trie Trie with value Value.").
+find_in_trie(Term,Value,Trie) :-
+	find_in_trie_list([Term],Value0,Trie,Vars),
+%	trace,
+	my_unnumbervars(Value0,Vars,Value).
+
+:- comment(find_in_trie_list/4,
+"find_in_trie(?TermList,?Value,+Trie,?Vars) succeeds for the list of
+terms TermList (which must be a proper list) in trie Trie with value
+Value, where Vars is a loglist of variables.").
+find_in_trie_list([],Value,Values,_Vars) :-
+	basics:member(Value,Values).
+find_in_trie_list([Term|TermList],Value,Trie,Vars) :-
+	find_in_hash(Term,SubTrie,Trie),
+	\+ (Term = '$VAR'(VN),integer(VN)),	%next clause handles this case
+	(atomic(Term)
+	 ->	find_in_trie_list(TermList,Value,SubTrie,Vars)
+	 ;	Term =.. [_|SubTerms],
+		basics:append(SubTerms,TermList,NewTermList),
+		find_in_trie_list(NewTermList,Value,SubTrie,Vars)
+	).
+find_in_trie_list([Term|TermList],Value,Trie,Vars) :-
+	find_in_hash('$VAR'(X),SubTrie,Trie),
+	basics:log_ith(X,Vars,Term),
+	find_in_trie_list(TermList,Value,SubTrie,Vars).
+
+:- comment(add_to_trie/4, "add_to_trie(+Term,+Value,+Trie0,-Trie) add
+the term Term with value Value to trie Trie0, returning Trie.").
+add_to_trie(Term,Value,Trie0,Trie) :-
+	(ground(Term)
+	 ->	add_to_trie_ground_list([Term],Value,Trie0,Trie)
+	 ;	copy_term([Term|Value],[Term1|Value1]),
+		numbervars([Term1|Value1],0,_),
+		add_to_trie_ground_list([Term1],Value1,Trie0,Trie)
+	).
+
+:- comment(add_to_trie_ground_list/4,
+"add_to_trie_ground_list(+TermList,+Value,+Trie0,-Trie) adds the list
+of terms, TermList, with value, Value, to trie, Trie0, returning trie,
+Trie.").
+add_to_trie_ground_list([],Value,List,MList) :-
+	add_to_ordered_list(List,Value,MList).
+add_to_trie_ground_list([Term|TermList],Value,Trie0,Trie) :-
+	(atomic(Term)
+	 ->	NTermList = TermList
+	 ; Term = '$VAR'(VN),integer(VN)
+	 ->	NTermList = TermList
+	 ;	Term =.. [_|SubTerms],
+		basics:append(SubTerms,TermList,NTermList)
+	),
+	add_to_hash(Term,NewSubTrie,OldSubTrie,Trie0,Trie1),
+	add_to_trie_ground_list(NTermList,Value,OldSubTrie,NewSubTrie),
+	Trie1 = ht(HashBits,NumInTab,HashTab),
+	(NumInTab < floor(2**HashBits)
+	 ->	Trie = Trie1
+	 ;	NHashBits is HashBits*2,
+		Trie = ht(NHashBits,NumInTab,NHashTab),
+		rebuild_hash(HashTab,HashBits,NHashBits,NHashTab)
+	).
+
+:- comment(find_in_hash/3, "find_in_hash(?Term,-Val,+HashTable)
+returns in Val the value associated with key, Term, in hashtable
+HashTable.").
+find_in_hash(Term,Val,ht(HashBits,_NumInTab,HashTable)) :-
+	(var(Term)
+	 ->	bind_from_hash(Term,Val,HashBits,HashTable)
+	 ;	Size is floor(2**HashBits),
+		machine:term_hash(Term,Size,HashCode),
+		(atomic(Term)
+		 ->	Key = Term
+		 ; Term = '$VAR'(_)
+		 ->	Key = Term
+		 ;	functor(Term,Fun,Ari),
+			Key = Fun/Ari
+		),
+		find_in_hash(Key,Val,HashCode,HashBits,HashTable)
+	).
+
+:- comment(find_in_hash/5,
+"find_in_hash(?Key,-Rec,+HashCode,+HashBits,+HashTable) returns in Rec
+the value associates with key, Key, which has hashcode, HashCode, in
+hashtable, HashTable, whose keys have HashBits bits.").
+find_in_hash(Key,Rec,HashCode,HashBits,HashTable) :-
+	(HashBits =< 0
+	 ->	my_member(p(Key,Rec),HashTable)
+	 ;	HashTable = n(HashTable0,HashTable1,HashTable2,HashTable3),
+		NHashBits is HashBits - 2,
+		HashBit is HashCode /\ 3,
+		NHashCode is HashCode >> 2,
+		(HashBit < 2
+		 ->	(HashBit < 1
+			 ->	find_in_hash(Key,Rec,NHashCode,NHashBits,HashTable0)
+			 ;	find_in_hash(Key,Rec,NHashCode,NHashBits,HashTable1)
+			)
+		 ; HashBit < 3
+		 ->	find_in_hash(Key,Rec,NHashCode,NHashBits,HashTable2)
+		 ;	find_in_hash(Key,Rec,NHashCode,NHashBits,HashTable3)
+		)
+	).
+
+:- comment(bind_from_hash/4,
+"bind_from_hash(-Term,-Rec,+HashBits,+HashTable) binds Term and Rec to
+the key-value pairs in hashtable, HashTable, whose keys have HashBits
+bits.").
+bind_from_hash(Term,Val,HashBits,HashTable) :-
+	(HashBits =< 0
+	 ->	my_member(p(Key,Val),HashTable),
+		(Key = Fun/Arity
+		 ->	functor(Term,Fun,Arity)
+		 ;	Term = Key
+		)
+	 ;	HashTable = n(HashTable0,HashTable1,HashTable2,HashTable3),
+		NHashBits is HashBits - 2,
+		(bind_from_hash(Term,Val,NHashBits,HashTable0)
+		 ;
+		 bind_from_hash(Term,Val,NHashBits,HashTable1)
+		 ;
+		 bind_from_hash(Term,Val,NHashBits,HashTable2)
+		 ;
+		 bind_from_hash(Term,Val,NHashBits,HashTable3)
+		)
+	).
+
+%% deterministic for common case of length 1 list (list must be +)
+:- index my_member/2-0.
+my_member(X,[Y|L]) :-
+	(L == []
+	 ->	X = Y
+	 ;	(X = Y
+		 ;
+		 my_member(X,L)
+		)
+	).
+
+:- comment(add_to_hash/5,
+"add_to_hash(+Term,?NewVal,-OldVal,+HashTable0,-HashTable) adds a new
+key-value pair (or finds an existing pair), Term and NewVal, to the
+hash table HashTable0 producing the new hash table HashTable.  OldVal
+is bound to previous value for this key in the hash table; and [] if
+none.").
+
+add_to_hash(Term,NewVal,OldVal,HT0,ht(HashBits,NNumInTab,NHashTable)) :-
+	(HT0 == []
+	 ->	HashBits = 2,	% hashtable size starts at 2**2-1
+		NumInTab = 0,
+		HashTable = []
+	 ;	HT0 = ht(HashBits,NumInTab,HashTable)
+	),
+	Size is floor(2**HashBits),
+	machine:term_hash(Term,Size,HashCode),
+	(atomic(Term)
+	 ->	Key = Term
+	 ; Term = '$VAR'(VN),integer(VN)
+	 ->	Key = Term
+	 ;	functor(Term,Fun,Ari),
+		Key = Fun/Ari
+	),
+	add_to_hash(Key,NewVal,OldVal,HashCode,HashBits,Added,HashTable,NHashTable),
+	NNumInTab is NumInTab+Added.
+
+:- comment(add_to_hash/8,
+"add_to_hash(+Key,+NewVal,-OldVal,+HashCode,+HashBits,-Added,+HashTable,-NHashTable)
+adds a key-value pair, in Key and NewVal, to the hash table,
+HashTable, generating a new hash table, NHashTable.  OldVal is
+returned and is the value for this key in HashTable ([] if none.) 
+HashCode is the hash code for Key; HashBits is the number of bits in
+the HashCode (and in keys in HashTable), and Added is returned as 1 if
+a new key is added, and 0 if the key already existed.").
+add_to_hash(Key,NewVal,OldVal,HashCode,HashBits,Added,HashTable,NHashTable) :-
+	(HashBits =< 0
+	 ->	add_to_ordered_list(HashTable,Key,NewVal,OldVal,Added,NHashTable)
+	 ;	(HashTable == []
+		 ->	HashTable0 = [], HashTable1 = [], HashTable2 = [], HashTable3 = []
+		 ;	HashTable = n(HashTable0,HashTable1,HashTable2,HashTable3)
+		),
+		NHashBits is HashBits - 2,
+		HashBit is HashCode /\ 3,
+		NHashCode is HashCode >> 2,
+		(HashBit < 2
+		 ->	(HashBit < 1
+			 ->	NHashTable = n(NHashTable0,HashTable1,HashTable2,HashTable3),
+				add_to_hash(Key,NewVal,OldVal,NHashCode,NHashBits,Added,HashTable0,NHashTable0)
+			 ;	NHashTable = n(HashTable0,NHashTable1,HashTable2,HashTable3),
+				add_to_hash(Key,NewVal,OldVal,NHashCode,NHashBits,Added,HashTable1,NHashTable1)
+			)
+		 ; HashBit < 3
+		 ->	NHashTable = n(HashTable0,HashTable1,NHashTable2,HashTable3),
+			add_to_hash(Key,NewVal,OldVal,NHashCode,NHashBits,Added,HashTable2,NHashTable2)
+		 ;	NHashTable = n(HashTable0,HashTable1,HashTable2,NHashTable3),
+			add_to_hash(Key,NewVal,OldVal,NHashCode,NHashBits,Added,HashTable3,NHashTable3)
+		)
+	).
+
+:- comment(add_to_ordered_list/6,
+"add_to_ordered_list(+OValues,+Key,+NewVal,-OldVal,-Added,-NValues)
+adds (or replaces) a key-value pair in an ordered list of key-value
+pairs.  OValues is the old list of key-value pairs (represented as
+p(Key,Value).) The new key-value pair is p(Key,NewVal). NValues is the
+resulting list of key-value pairs.  OldVal is the old value for key
+Key in OValues (or [] if none), and is returned.  Added is 1 if the
+key Key is new, and 0 if it already exists in a pair in OValues.").
+add_to_ordered_list(OValues,Key,NewVal,OldVal,Added,NValues) :-
+	(OValues == []
+	 ->	OldVal = [], Added = 1, NValues = [p(Key,NewVal)]
+	 ;	OValues = [OValue|Values],
+		OValue = p(TKey,TVal),
+		(TKey @< Key
+		 ->	NValues = [OValue|NValues1],
+			add_to_ordered_list(Values,Key,NewVal,OldVal,Added,NValues1)
+		 ; TKey == Key
+		 ->	NValues = [p(Key,NewVal)|Values],
+			Added = 0,
+			OldVal = TVal
+		 ;	NValues = [p(Key,NewVal)|OValues],
+			Added = 1,
+			OldVal = []
+		)
+	).
+
+:- comment(add_to_ordered_list/3,
+"add_to_ordered_list(+List,+Val,-NewList) adds Val to the ordered list
+List, returning a new ordered list containing Val in NewList.  If Val
+is already in List, List is returned.").
+add_to_ordered_list([],Val,[Val]).
+add_to_ordered_list([Val0|List],Val,MList) :-
+	(Val @< Val0
+	 ->	MList = [Val,Val0|List]
+	 ; Val == Val0
+	 ->	MList = [Val0|List]
+	 ;	MList = [Val0|MList1],
+		add_to_ordered_list(List,Val,MList1)
+	).
+
+:- comment(remove_from_trie/4,
+"remove_from_trie(+Term,+Value,+Trie0,-Trie) removes the term, Term,
+with value, Value, from the trie Trie0 yielding Trie.").
+remove_from_trie(Term,Value,Trie0,Trie) :-
+	remove_from_trie_list([Term],Value,Trie0,Trie).
+
+:- comment(remove_trom_trie_list/4,
+"remove_from_trie_list(+TermList,?Value,+Trie0,-Trie) removes the term
+list, TermList, with value, Value, from the trie, Trie0, yielding
+trie, Trie. ").
+remove_from_trie_list([],Value,OValues,NValues) :-
+	remove_from_ordered_list(OValues,Value,NValues).
+remove_from_trie_list([Term|TermList],Value,Trie0,Trie) :-
+	(atomic(Term)
+	 ->	NTermList = TermList
+	 ;	Term =.. [_|SubTerms],
+		basics:append(SubTerms,TermList,NTermList)
+	),
+	add_to_hash(Term,NewSubTrie,OldSubTrie,Trie0,Trie1),
+	remove_from_trie_list(NTermList,Value,OldSubTrie,NewSubTrie),
+	((NewSubTrie == [] ; NewSubTrie = ht(_,_,[]))
+	 ->	remove_from_hash(Term,_OldVal,Trie0,Trie)
+	 ;	Trie = Trie1
+	).
+
+:- comment(remove_trom_hash/4,
+"remove_from_hash(+Term,?OldVal,+HashTable0,-HashTable) removes the
+entry for the pair Term and OldVal from the hash table, HashTable0,
+yielding the hash table, HashTable.").
+remove_from_hash(Term,OldVal,ht(HashBits,NumInTab,HashTable),ht(NHashBits,NNumInTab,NHashTable)) :-
+	Size is floor(2**HashBits),
+	machine:term_hash(Term,Size,HashCode),
+	(atomic(Term)
+	 ->	Key = Term
+	 ;	functor(Term,Fun,Ari),
+		Key = Fun/Ari
+	),
+	NNumInTab is NumInTab - 1,
+	remove_from_hash(Key,OldVal,HashCode,HashBits,HashTable,NHashTable0),
+	MinSize is floor(2** (HashBits//2)),
+	((NNumInTab >= MinSize ; Size =< 4)
+	 ->	NHashTable = NHashTable0,
+		NHashBits = HashBits
+	 ;	NHashBits is HashBits // 2,
+		rebuild_hash(NHashTable0,HashBits,NHashBits,NHashTable)
+	).
+
+:- comment(remove_trom_hash/6,
+"remove_from_hash(+Key,?OldVal,+HashCode,+HashBits,+HashTable,-NHashTable)
+removes the entry for the pair Term and OldVal from the hash table,
+HashTable, yielding the hash table, NHashTable. HashCode is the hash
+code for Key and HashBits is the number of bits in the hash code (and
+in all hash codes for entries in HashTable)").
+remove_from_hash(Key,OldVal,HashCode,HashBits,HashTable,NHashTable) :-
+	(HashBits =< 0
+	 ->	remove_from_ordered_list(HashTable,Key,OldVal,NHashTable)
+	 ;	(HashTable == []
+		 ->	HashTable0 = [], HashTable1 = [], HashTable2 = [], HashTable3 = []
+		 ;	HashTable = n(HashTable0,HashTable1,HashTable2,HashTable3)
+		),
+		NHashBits is HashBits - 2,
+		HashBit is HashCode /\ 3,
+		NHashCode is HashCode >> 2,
+		(HashBit < 2
+		 ->	(HashBit < 1
+			 ->	NNHashTable = n(NHashTable0,HashTable1,HashTable2,HashTable3),
+				remove_from_hash(Key,OldVal,NHashCode,NHashBits,HashTable0,NHashTable0)
+			 ;	NNHashTable = n(HashTable0,NHashTable1,HashTable2,HashTable3),
+				remove_from_hash(Key,OldVal,NHashCode,NHashBits,HashTable1,NHashTable1)
+			)
+		 ; HashBit < 3
+		 ->	NNHashTable = n(HashTable0,HashTable1,NHashTable2,HashTable3),
+			remove_from_hash(Key,OldVal,NHashCode,NHashBits,HashTable2,NHashTable2)
+		 ;	NNHashTable = n(HashTable0,HashTable1,HashTable2,NHashTable3),
+			remove_from_hash(Key,OldVal,NHashCode,NHashBits,HashTable3,NHashTable3)
+		),
+		(NNHashTable == n([],[],[],[])  % collapse to keep rep canonical
+		 ->	NHashTable = []
+		 ;	NHashTable = NNHashTable
+		)
+	).
+
+:- comment(remove_from_ordered_list/4,
+"remove_from_ordered_list(+OValues,+Key,?OldVal,-NValues) removes the
+pair, p(Key,OldVal), from the ordered list of p/2 pairs in OValues,
+returning the resulting ordered list in NValues.").
+remove_from_ordered_list([OValue|OValues],Key,OldVal,NValues) :-
+	(OValue = p(Key,OldVal)
+	 ->	NValues = OValues
+	 ;	NValues = [OValue|NValues1],
+		remove_from_ordered_list(OValues,Key,OldVal,NValues1)
+	).
+
+:- comment(remove_from_ordered_list/3,
+"remove_from_ordered_list(+OValues,+Value,-NValues) removes Value from
+the list of values in OValues returning the list NValues, failing if
+it is not there.").
+remove_from_ordered_list([OVal|Values],Value,NValues) :-
+	(OVal == Value
+	 ->	NValues = Values
+	 ;	NValues = [OVal|NValues1],
+		remove_from_ordered_list(Values,Value,NValues1)
+	).
+
+
+/*	(OVal == Value
+	 ->	NValues = Values
+	 ; OVal @< Value
+	 ->	NValues = [OVal|NValues1],
+		remove_from_ordered_list(Values,Value,NValues1)
+	). **/
+
+rebuild_hash(HashTab0,HashBits,NewBitSize,HashTab) :-
+	findall(p(Term,Val),bind_from_hash(Term,Val,HashBits,HashTab0),TermVals),
+	add_all_terms(TermVals,NewBitSize,[],HashTab).
+
+add_all_terms([],_,HT,HT).
+add_all_terms([p(Term,Val)|Terms],HashBits,HT0,HT) :-
+	Size is floor(2**HashBits),
+	machine:term_hash(Term,Size,HashCode),
+	(atomic(Term)
+	 ->	Key = Term
+	 ;	functor(Term,Fun,Arity),
+		Key = Fun/Arity
+	),	 
+	add_to_hash(Key,Val,[],HashCode,HashBits,_,HT0,HT1),
+	add_all_terms(Terms,HashBits,HT1,HT).
+
+
+load_in_db(FileName,Trie) :-
+	empty_db(Trie0),
+	load_in_db(FileName,Trie0,Trie).
+
+load_in_db(FileName,Trie0,Trie) :-
+	open(FileName,read,IStr),
+	read_terms_to_trie(IStr,Trie0,Trie),
+	close(IStr).
+
+read_terms_to_trie(IStr,Trie0,Trie) :-
+	read(IStr,Term),
+	(Term == end_of_file
+	 ->	Trie = Trie0
+	 ;	assert_in_db(Term,Trie0,Trie1),
+		read_terms_to_trie(IStr,Trie1,Trie)
+	).
+
+
+my_unnumbervars(Term,Vars,NTerm) :-
+	(var(Term)
+	 ->	NTerm = Term
+	 ; atomic(Term)
+	 ->	NTerm = Term
+	 ; Term = '$VAR'(I),integer(I)
+	 ->	basics:log_ith(I,Vars,NTerm)
+	 ;	Term =.. [F|Args],
+		my_unnumbervars_list(Args,Vars,NArgs),
+		NTerm =.. [F|NArgs]
+	).
+
+my_unnumbervars_list([],_,[]).
+my_unnumbervars_list([Term|Terms],Vars,[NTerm|NTerms]) :-
+	my_unnumbervars(Term,Vars,NTerm),
+	my_unnumbervars_list(Terms,Vars,NTerms).
+
+
+% test:
+/*
+   empty_db(_DB0),
+   assert_in_db(app([],_L,_L),_DB0,_DB1),
+   assert_in_db((app([_X|_L1],_L2,[_X|_L3]):-app(_L1,_L2,_L3)),_DB1,_DB2),
+   call_in_db(app(XX,YY,[a,b,c]),_DB2).
+**/
+
+% load_in_db('prolog_db.P',_DB),call_in_db((empty_db(_DB0),assert_in_db(app([],_L,_L),_DB0,_DB1),assert_in_db((app([_X|_L1],_L2,[_X|_L3]):-app(_L1,_L2,_L3)),_DB1,_DB2),pure_call_in_db(app(RES1,RES2,[a,b,c,d,e]),_DB2)),_DB).
+
+/* 
+   [prolog_db],
+   empty_db(_DB0),
+   assert_in_db(app([],_L,_L),_DB0,_DB1),
+   assert_in_db((app([_X|_L1],_L2,[_X|_L3]):-app(_L1,_L2,_L3)),_DB1,_DB2),
+   assert_in_db(nrev([],[]),_DB2,_DB3),
+   assert_in_db((nrev([_X|_LL],_RR) :- nrev(_LL,_RR1),app(_RR1,[_X],_RR)),_DB3,_DB4),
+   pure_call_in_db((cputime(_T0),
+                    (nrev([a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z],REV),writeln(userout,REV),fail ; true),
+		     cputime(_T1),Time is _T1-_T0
+		   ),
+		   _DB4).
+*/
+	      
+
+/*
+   load_in_db('prolog_db.P',_DB),
+   call_in_db((empty_db(_DB0),
+               assert_in_db(app([],_L,_L),_DB0,_DB1),
+	       assert_in_db((app([_X|_L1],_L2,[_X|_L3]):-app(_L1,_L2,_L3)),_DB1,_DB2),
+	       assert_in_db(nrev([],[]),_DB2,_DB3),
+	       assert_in_db((nrev([_X|_LL],_RR) :- nrev(_LL,_RR1),app(_RR1,[_X],_RR)),_DB3,_DB4),
+	       pure_call_in_db((cputime(_T0),
+	                        (nrev([a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z],REV),writeln(userout,REV),fail ; true),
+				cputime(_T1),Time is _T1-_T0
+			      ),_DB4)
+	       ),_DB).
+*/
+
+
+% load_in_db('prolog_db.P',_DB),call_in_db((cputime(T0),empty_db(DB0),assert_in_db(app([],L,L),DB0,DB1),assert_in_db((app([X|L1],L2,[X|L3]):-app(L1,L2,L3)),DB1,DB2),(pure_call_in_db(app(RES1,RES2,[a,b,c,d,e]),DB2),fail;true),cputime(T1),Time is T1-T0),_DB).
+
+% empty_db(D0),assert_in_db(t(a),D0,D1),assert_in_db(t(b),D1,D2),assert_in_db(t(c),D2,D3),assert_in_db(t(d),D3,D4),assert_in_db(t(e),D4,D5),assert_in_db(t(f),D5,D6),assert_in_db(t(g),D6,D7),assert_in_db(t(h),D7,D8),assert_in_db(t(i),D8,D9),assert_in_db(t(j),D9,D10),assert_in_db(t(k),D10,D11),assert_in_db(t(l),D11,D12),assert_in_db(t(m),D12,D13),assert_in_db(t(n),D13,D14),assert_in_db(t(o),D14,D15),assert_in_db(t(p),D15,D16),assert_in_db(t(q),D16,D17),retractall_in_db(t(q),D17,D18), D18 = D16, retractall_in_db(t(p),D18,D19),D19==D15,retractall_in_db(t(o),D19,D20),D20==D14, retractall_in_db(t(_),D20,D0).
+

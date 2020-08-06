@@ -1,0 +1,208 @@
+/* File:      tp_goal.P
+** Author(s): Saumya Debray, Kostis Sagonas, Terrance Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: tp_goal.P,v 1.9 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+
+/*======================================================================*/
+/* tpar/7 generate PIL code (gets, puts, blds, unis) for a parameter	*/
+/* of a goal. tgoalargs/6 loops through args and calls tpar/7.		*/
+/*									*/
+/* tgoalargs(+Args, +N, -Pil, -Pilr, +Tin, -Tout)			*/
+/* tWpar(+Arg, +N, -Pil, -Pilr, +Tin, -Tout)				*/
+/*	+Args and +Arg: Args in intermediate format			*/
+/*	+N: the Nth parameter of the goal				*/
+/*	W: is get or put						*/
+/*======================================================================*/
+
+tgoalargs([],_,Pil,Pil,T,T,_Tabled).
+tgoalargs([Arg|Args],N,Pil,Pilr,Tin,Tout,Tabled) :-
+	((\+ reg_unchanged(Arg,N), rval_needed(Arg,Args,N)) % (reg is not released)
+	 ->	getreg(Tin,Nreg), T1 = [Nreg|Tin],
+		Pil = [movreg(N,Nreg)|Pil1],
+		load_from_nreg_struct(Arg,Narg,N,Nreg),
+		load_from_nreg(Args,Nargs,N,Nreg)
+	 ;	Narg = Arg, Nargs = Args, T1 = Tin, Pil1 = Pil
+	),
+	tputpar(Narg,N,Pil1,Pil2,T1,T2,Tabled),
+	N1 is N + 1,
+	tgoalargs(Nargs,N1,Pil2,Pilr,T2,Tout,Tabled).
+
+% check to see if we are indeed going to overwrite this register
+% i.e., value already there and so no instruction will be generated...
+% but if anonymous variable, puttvar r,r, so check occurrences (DSW 10/2013)
+reg_unchanged(varocc(_Vid,Prag),N) :-
+	vprag_type1(Prag,t), vprag_loc(Prag,N),
+	vprag_occ(Prag,Occ), \+ (Occ = v ; Occ = f).
+
+% check to see if contents of register we are about to overwrite are needed.
+rval_needed(structure(_,Sargs),_Args,N) :- rval_needed(Sargs,N).
+rval_needed(_,Args,N) :- rval_needed(Args,N).
+
+rval_needed([varocc(_Vid,Prag)|_Args],N) :-
+	vprag_type1(Prag, t),
+	vprag_loc(Prag,M), nonvar(M), M=:=N,
+	vprag_occ(Prag, Occ),
+	(Occ=l; Occ=s),
+	!.
+rval_needed([structure(_,Sargs)|_Args],N) :-
+	rval_needed(Sargs,N),!.
+rval_needed([_|Args],N) :- rval_needed(Args,N).
+
+load_from_nreg_struct(structure(S,Sargs),structure(S,Nsargs),N,Nreg) :- !,
+	load_from_nreg(Sargs,Nsargs,N,Nreg).
+load_from_nreg_struct(Args,Args,_N,_Nreg).
+
+% Have moved contents of N to Nreg, now update descriptions
+load_from_nreg([],[],_,_).
+load_from_nreg([varocc(Vid,Prag)|Args],[varocc(Vid,Nprag)|Nargs],N,Nreg) :-
+	vprag_type1(Prag, t), vprag_loc(Prag,M), nonvar(M), N=:=M,
+	vprag_occ(Prag, Occ), (Occ=l; Occ=s), !,
+	vprag_context(Prag,C), vprag_level(Prag,L), vprag_argno(Prag,A),
+	vprag_lastchunk(Prag,Lc), vprag_type(Prag,Ty),
+	vprag_use(Prag,Us), vprag_nouse(Prag,Nou),
+	% now set new
+	vprag_type(Nprag, t), vprag_loc(Nprag,Nreg), vprag_occ(Nprag, Occ),
+	vprag_context(Nprag,C), vprag_level(Nprag,L), vprag_argno(Nprag,A),
+	vprag_lastchunk(Nprag,Lc), vprag_type(Nprag,Ty),
+	vprag_use(Nprag,Us), vprag_nouse(Nprag,Nou),
+	load_from_nreg(Args,Nargs,N,Nreg).
+load_from_nreg([structure(Sym,Sargs)|Args],[structure(Sym,Nsargs)|Nargs],
+								N,Nreg) :-
+	!, 
+	load_from_nreg(Sargs,Nsargs,N,Nreg),
+	load_from_nreg(Args,Nargs,N,Nreg).
+load_from_nreg([Arg|Args],[Arg|Nargs],N,Reg) :-
+	load_from_nreg(Args,Nargs,N,Reg).
+
+tputpar(integer(V),N,[putnumcon(N,V)|Pil],Pil,Tin,Tin,_Tab).
+tputpar(real(V),N,[putdfloat(N,V)|Pil],Pil,Tin,Tin,_Tab).
+tputpar(constant(Sym),N,[putcon(N,Sym)|Pil],Pil,Tin,Tin,_Tab).
+tputpar(string(String),N,Pil0,Pil,Tin,Tin,_Tab) :-
+	tputstring(String,N,Pil0,Pil).
+tputpar(varocc(_Vid,Prag),N,Pil0,Pil,Tin,Tout,Tab) :-
+	vprag_type(Prag, Type),
+	( Type == t -> alloc_reg1(Prag,N,Tin,Tout) ; Tin = Tout ),
+	putvarinst(Prag,N,Pil0,Pil,Tab).
+tputpar(structure(Sym,Args),N,[putstr(N,Sym)|Pil],Pilr,Tin,Tout,_Tab) :-
+    tbldpars(Args,Pil,Pilr,Tin,Tout).
+%   telling(X),tell(userout),
+%   write('putstr: '),write(N),
+%   write('  Tin= '),write(Tin),write('  Tout= '),write(Tout),nl,
+%   write('  Pil= '),write(Pil),nl,told,tell(X).
+
+tputstring([I|String],N,[putlist(N),bldnumcon(I)|Pil0],Pil) :-
+	tputstring0(String,Pil0,Pil).
+
+tputstring0([],[bldnil|Pil],Pil).
+tputstring0([I|String],[bldtvar_list_numcon(0,I1,I2)|Pil0],Pil) :-
+	I1 is I >> 8,
+	I2 is I /\ 16'ff',
+	tputstring0(String,Pil0,Pil).
+
+%:- import tell/1, telling/1, told/0, write/1, nl/0 from standard.
+
+tbldpars([],Pil,Pil,T,T).
+tbldpars([Subpar|Subpars],Pil,Pilr,T1,T2) :-
+    tbldpar(Subpar,Pil,Pil1,T1,T3),
+    tbldpars(Subpars,Pil1,Pilr,T3,T2).
+
+tbldpar(varocc(Vid,Prag),Pil,Pilr,Tin,Tout) :-
+	bldvarinst(Prag,Pil,Pilr,Tin,Tmid),
+	(temp_and_releasable(Prag,Loc)
+	 ->	release_if_done(Vid,Loc,Prag,[],Tmid,Tout)
+	 ;	Tmid = Tout
+	).
+tbldpar(integer(V),[bldnumcon(V)|Pilr],Pilr,T,T).
+tbldpar(real(V),[bldfloat(V)|Pilr],Pilr,T,T).
+tbldpar(constant(Sym),[bldcon(Sym)|Pilr],Pilr,T,T).
+
+temp_and_releasable(Prag,Loc) :-
+	vprag_type(Prag,t),	% temp
+	vprag_loc(Prag,Loc),
+	vprag_use(Prag,Use),
+	\+ (append(_,[Loc|Rest],Use),member(Loc,Rest)). % not used elsewhere
+
+/*======================================================================*/
+/* tgetpar(+HeadArg, +Reg, -Pil, -Pilr, +TRin, -TRout)			*/
+/*	Generates head-get* instructions for the case where no or hash	*/
+/*	based indexing is used.						*/
+/*======================================================================*/
+
+tgetpar(integer(V), N, [getnumcon(N,V)|Pil], Pil, Tin, Tin).
+%%tgetpar(real(V), N, [getfloat(N,V)|Pil], Pil, Tin, Tin).
+tgetpar(real(V), N, [getdfloat(N,V)|Pil], Pil, Tin, Tin).
+tgetpar(constant(Sym), N, [getcon(N,Sym)|Pil], Pil, Tin, Tin).
+tgetpar(string(String), N, Pil0, Pil, Tin, Tin) :-
+	getreg(Tin,TReg),
+	tgetstring(String,N,TReg,Pil0,Pil).
+tgetpar(varocc(_Vid,Prag), N, Pil0, Pil, Tin, Tout) :-
+    vprag_type(Prag, Type),
+    ( Type == vh -> Pil0 = Pil, Tin = Tout
+    ;   ( Type == t -> alloc_reg1(Prag, N, Tin, Tout) ; Tin = Tout ),
+	getvarinst(Prag, N, Pil0, Pil, Tout)
+    ).
+tgetpar(structure(Sym,Args), N, [getstr(N,Sym)|Pil], Pilr, Tin, Tout) :-
+    tunipars(Args, Pil, Pilr, Tin, Tout).
+
+tgetstring([I|String],N,TReg,[getlist(N),uninumcon(I)|Pil0],Pil) :-
+	tgetstring0(String,TReg,Pil0,Pil).
+
+tgetstring0([],_R,[uninil|Pil],Pil).
+tgetstring0([I|String],R,[unitvar_getlist_uninumcon(R,I1,I2)|Pil0],Pil) :-
+	I1 is I >> 8,
+	I2 is I /\ 16'ff',
+	tgetstring0(String,R,Pil0,Pil).	
+
+/*----------------------------------------------------------------------*/
+/* tunipars(+SubArgs, -Pil, -Pilr, +TRin, -TRout)			*/
+/*	Loops through the sub fields of a par.				*/
+/*----------------------------------------------------------------------*/
+
+tunipars([], Pil, Pil, T, T).
+tunipars([Subpar|Subpars], Pil, Pilr, T1, T2) :-
+	tunipar(Subpar, Pil, Pil1, T1, T3),
+	tunipars(Subpars, Pil1, Pilr, T3, T2).
+
+/*----------------------------------------------------------------------*/
+/* tunipar(+HeadArg, -Pil, -Pilr, +TRin, -TRout)			*/
+/*	Generates code for one subfield of a par. Note that due to the	*/
+/*	previous flattening of the clause there is no case for HeadArg	*/
+/*	being a structure.						*/
+/*----------------------------------------------------------------------*/
+
+tunipar(varocc(Vid,Prag), Pil, Pilr, Tin, Tout) :-
+	univarinst(Prag, Pil, Pilr, Tin, Tmid), 
+	(temp_and_releasable(Prag, Loc)
+	 ->	release_if_done(Vid, Loc, Prag, [], Tmid, Tout)
+	 ;	Tmid = Tout
+	).
+tunipar(integer(V), [uninumcon(V)|Pilr], Pilr, T, T).
+tunipar(real(V), [unifloat(V)|Pilr], Pilr, T, T).
+tunipar(constant(Sym), [unicon(Sym)|Pilr], Pilr, T, T).
+
+/*======================================================================*/
+/*======================================================================*/
+
+force_tp_goal_loaded.

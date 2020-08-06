@@ -1,0 +1,100 @@
+
+% xsbdoc_main/1 indicates the main file used for the manual.
+xsbdoc_main('main.P').
+
+% xsbdoc_component/1 indicates the files used for each chapter.
+xsbdoc_component('../oms_init_oms.P').
+xsbdoc_component('../oms_io.P').
+xsbdoc_component('../oms_queries.P').
+xsbdoc_component('../oms_components.P').
+xsbdoc_component('../oms_db_updatable.P').
+xsbdoc_component('../oms_db_storage.P').
+%xsbdoc_component('../oms_constraints.P').
+xsbdoc_component('../oms_exceptions.P').
+xsbdoc_component('../oms_oblivion.P').
+xsbdoc_component('../oms_diffs.P').
+%xsbdoc_component('../oms_filters.P').
+%xsbdoc_component('../oms_rules.P').
+
+%xsbdoc_component('../oms_q_annot.P').
+
+% xsbdoc_bibfile/1 indicates the bibtex files to use  if there are any
+% citations. 
+xsbdoc_bibfile('../../../docs/userman/manual').
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Miscellaneous Comments
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%xsbdoc_index(all).
+
+xsbdoc_index(pred).
+
+% xsbdoc_index(op).
+
+% xsbdoc_index(concept).
+
+xsbdoc_index(global).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Miscellaneous Comments
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Verbose output (good for debugging).   
+% xsbdoc_option('-v').
+
+% Do not include author names.          
+% xsbdoc_option('-noauthors').
+
+% For printing on one side (default is two).
+xsbdoc_option('-onesided').
+
+% Produce shorter table of contents (no entries for individual defs of 
+% preds).').
+xsbdoc_option('-shorttoc').
+
+% Do not include version information.       
+% xsbdoc_option('-noversion').
+
+% Do not include system modules in list of libraries used for modules.
+% xsbdoc_option('-nosysmods').
+
+% Do not include change log at the end of each chapter.  
+% xsbdoc_option('-nochangelog').
+
+% Do not include information on bugs.  
+% xsbdoc_option('-nobugs').      
+
+% Do not include comments for patches (i.e. only major & minor revisions)
+% xsbdoc_option('-nopatches').
+
+% Do not include a ''References'' appendix.   
+% xsbdoc_option('-norefs').
+
+% Do not put each property in a separate line.
+% xsbdoc_option('-nopropsepln').
+
+% Do not include property names in prop text (e.g. leave out right column
+% w. module name when describing properties.
+xsbdoc_option('-nopropnames').
+
+% Do not use text to document properties leaves out r. column and var names.
+% untested.
+% xsbdoc_option('-literalprops').
+
+% Include module name to which props belong. (untested)
+% xsbdoc_option('-propmods').
+
+% Do not signal undefined properties in text. (untested)
+% xsbdoc_option('-noundefined').
+
+xsbdoc_papertype(letterpaper).
+
+end_of_file.
+
+xsbdoc_option('-nobullet',    'Do not generate initial bullet index        
+                                (.htmlbullet) with .htmlindex file. Select if
+                                only one manual will be installed in DOCDIR.').
+%xsbdoc_option('-noisoline',   'Do not include *textual* description that a 
+%                                given usage conforms to the ISO standard.').

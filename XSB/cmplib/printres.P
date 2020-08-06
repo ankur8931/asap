@@ -1,0 +1,48 @@
+/* File:      printresult.P
+** Author(s): Saumya Debray
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: printres.P,v 1.5 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+print_result(Module) :-
+	ttywritenl('***** Exported symbols ***************'),
+	get_symtab(Module, SymTab),
+	print_result0(SymTab, ex),
+	fail.
+print_result(Module) :-
+	option(print_local),
+	ttywritenl('***** Local symbols ***************'),
+	get_symtab(Module, SymTab),
+	print_result0(SymTab, (local)),
+	fail.
+print_result(_Module).
+
+print_result0(SymTab, Domain) :-
+	extract_symlist(Domain, SymList, SymTab),
+	write_symlist(SymList).
+
+write_symlist([]) :- nl.
+write_symlist([Sym|Rest]) :- 
+	sym_name(Sym, N, A),
+	write(N/A), write(' '),
+	write_symlist(Rest).

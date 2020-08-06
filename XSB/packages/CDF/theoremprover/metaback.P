@@ -1,0 +1,590 @@
+/*
+:- export metaback/2.
+:- import am_visited_rel/2, am_visited_invrel/2,
+	  negated_rel/2, negated_invrel/2 from usermod.
+:- import backend/1,interface/1 from usermod.
+:- import inner_clause_emit/4,
+	  print_domains_and_background/0,
+	  write_header/0,
+	  write_top_level_and_constraints/3 from meta_io.
+:- import metafront_1/3, metafront_1_not/3 from metafront.
+*/
+
+:- compiler_options([spec_off]).
+
+:- import tp_gensym/2,tp_gennum/1 from tp_utils.
+:- import concat_atom/2 from string.
+:- import numbervars/3 from num_vars.
+:- import member/2,length/2,append/3 from basics.
+
+metaback(C,Cstmt):- 
+	write_header,
+	metaback_1(C,Body,[],Terms,[],no,[]),
+	!,
+	write_top_level_and_constraints(Body,Terms,Cstmt),
+	print_domains_and_background,
+	tp_writeln('%------------------------------------------------'),
+	!.
+
+/* Transforms query form to emittable form and constructs "abducibles"
+   via a difference list. 
+   Amf causes neg. lits to be emitted as abducibles. */
+metaback_1(','(Term,R),Bodin,Bodout,Abdin,Abdout,Amf,Path):- 
+	metaback_1(Term,Bodin,Bodmid,Abdin,Abdmid,Amf,Path),
+	metaback_1(R,Bodmid,Bodout,Abdmid,Abdout,Amf,Path).
+metaback_1(';'(D1,D2),[Head|Bout],Bout,Tin,Tin,Amf,Parent):- 
+	(Amf == no -> 
+		get_new_c_rule(Head),
+	        tp_gensym(g,G1),
+	        tp_gensym(g,G2),
+		metaback_1(D1,D1body,[],T1,[],Amf,[G1]),
+		metaback_1(D2,D2body,[],T2,[],Amf,[G2]),
+		inner_clause_emit((Head :- D1body),T1,G1,[not(G2)|Parent]),
+		inner_clause_emit((Head :- D2body),T2,G2,[not(G1)|Parent])
+	  ; 
+		% No abduction within at most
+		get_new_c_rule(Head),
+		metaback_1(D1,D1body,[],T1,[],Amf,[]),
+		metaback_1(D2,D2body,[],T2,[],Amf,[]),
+		append(D1body,T1,Body1),
+		append(D2body,T2,Body2),
+		tp_printterm((Head :- Body2)),
+		tp_printterm((Head :- Body1)),
+	        tp_nl).
+metaback_1(exists_inv(Rel,Var,Onew,Oset),OutTerm,Bout,
+					Tin,Tout,Amf,Parent):- 
+	((am_visited_invrel(Var,Rel),Oset \== true) -> 
+             metaback_1(';'(Onew,Oset),OutTerm,Bout,Tin,Tout,Amf,Parent)
+	  ; 
+             metaback_1(Onew,OutTerm,Bout,Tin,Tout,Amf,Parent) ).
+metaback_1(exists(Rel,Var,Onew,Oset),OutTerm,Bout,Tin,Tout,Amf,Parent):- 
+	((am_visited_rel(Var,Rel),Oset \== true) -> 
+             metaback_1(';'(Onew,Oset),OutTerm,Bout,Tin,Tout,Amf,Parent)
+	  ; 
+             metaback_1(Onew,OutTerm,Bout,Tin,Tout,Amf,Parent) ).
+metaback_1(allinvrel(V,Rel,C),OutTerm,Bout,Tin,Tout,Amf,Path):- 
+	get_all_possible_invrels(V,Rel,Rels),
+	allinvrel(Rels,C,OutTerm,Bout,Tin,Tout,Amf,Path).
+metaback_1(allrel(V,Rel,C),OutTerm,Bout,Tin,Tout,Amf,Path):- 
+	get_all_possible_rels(V,Rel,Rels),
+	allrel(Rels,C,OutTerm,Bout,Tin,Tout,Amf,Path).
+metaback_1(notallinvrel(V,Rel,C),OutTerm,Bout,Tin,Tout,Amf,Path):- 
+	get_all_possible_invrels(V,Rel,Rels),
+	negated_allinvrel(Rels,C,OutTerm,Bout,Tin,Tout,Amf,Path).
+metaback_1(notallrel(V,Rel,C),OutTerm,Bout,Tin,Tout,Amf,Path):- 
+	get_all_possible_rels(V,Rel,Rels),
+	negated_allrel(Rels,C,OutTerm,Bout,Tin,Tout,Amf,Path).
+metaback_1(at_least(L,invrel(Var,Rel,_),Old,New),[Head|Bout],Bout,
+						Tin,Tout,Amf,Path):- 
+	(am_visited_invrel(Var,Rel) -> 
+	    append(New,Old,Bodies),
+            q_get_c_lit_invrels_at_least(L,Bodies,invrel(Var,Rel,_),Head,
+							T1,Tmid,Amf,Path),
+            Tin = [weightConst(L,T1,undef)|Tout],Tmid = [] 
+          ; 
+            q_get_c_lit_invrels_at_least(L,New,invrel(Var,Rel,_),Head,
+							T1,Tmid,Amf,Path),
+            Tin = T1,Tmid = Tout). 
+metaback_1(at_least(L,rel(Var,Rel,_),Old,New),[Head|Bout],Bout,
+						Tin,Tout,Amf,Path):- 
+	(am_visited_rel(Var,Rel) -> 
+	    append(New,Old,Bodies),
+            q_get_c_lit_rels_at_least(L,Bodies,rel(Var,Rel,_),Head,
+							T1,Tmid,Amf,Path),
+            Tin = [weightConst(L,T1,undef)|Tout],Tmid = [] 
+          ; 
+            q_get_c_lit_rels_at_least(L,New,rel(Var,Rel,_),Head,
+							T1,Tmid,Amf,Path),
+            Tin = T1,Tmid = Tout). 
+    
+metaback_1(at_most(L,Rel,Body),[Head|Bout],Bout,Tin,Tin,_Amf,Path):- 
+	(Rel = rel(_,_,_) -> 
+	    q_get_c_lit_rels_at_most(L,Body,Rel,Head,_Tin,_Tout,Path)
+	  ;
+	    q_get_c_lit_invrels_at_most(L,Body,Rel,Head,_Tin,_Tout,Path) ).
+metaback_1(not(Term),[not(Term)|Bout],Bout,T,T,_Amf,_Path).
+%	(Amf == yes -> Tin = [-Term|T] ; Tin = T).
+metaback_1(true,Bout,Bout,Rest,Rest,_Amf,_Path).
+metaback_1(mo(V,C),Bout,Bout,[mo(V,C)|Rest],Rest,_Amf,_Path).
+metaback_1(rel(V,R,V1),Bout,Bout,[rel(V,R,V1)|Rest],Rest,_Amf,_Path).
+metaback_1(invrel(V,R,V1),Bout,Bout,[invrel(V,R,V1)|Rest],Rest,_Amf,_Path).
+/*
+metaback_1(Term,Bout,Bout,[Term|Rest],Rest,_Amf,_Path):- 
+	abort(uncaught(Term)).
+*/
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%% handle Alls and Invs.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+get_all_possible_rels(V,Rel,Rels):- 
+	(transitive_relation(Rel) -> 
+	    get_all_trans_rels(V,Rel,Rels)
+	  ;  
+	    get_all_non_trans_rels(V,Rel,Rels) ).
+
+get_all_non_trans_rels(V,Rel,Rels):- 
+    findall(rel(V,Rel,Vnew),
+		(relational_subclass(Rsub,Rel),
+	         (visited_rel(V,Rsub,Vnew)
+                       ; visited_invrel(Vnew,Rsub,V))),  Rels).
+
+/* this is an over-estimate that I may be able to fix */
+get_all_trans_rels(V,Rel,Rels):- 
+            findall(rel(V,Rel,Vnew),
+		(relational_subclass(Rsub,Rel),
+	         (visited_rel(_,Rsub,Vnew)
+                       ; visited_invrel(Vnew,Rsub,_))),  Rels).
+
+%------------------
+
+get_all_possible_invrels(V,Rel,Rels):- 
+	(transitive_relation(Rel) -> 
+	    get_all_trans_invrels(V,Rel,Rels)
+	  ;  
+	    get_all_non_trans_invrels(V,Rel,Rels) ).
+
+get_all_non_trans_invrels(V,Rel,Rels):- 
+	findall(invrel(V,Rel,Vnew),
+		(relational_subclass(Rsub,Rel),
+	              (visited_invrel(V,Rsub,Vnew)
+                       ; visited_rel(Vnew,Rsub,V))), Rels).
+
+/* this is an over-estimate that I may be able to fix */
+get_all_trans_invrels(V,Rel,Rels):- 
+	findall(invrel(V,Rel,Vnew),
+		(relational_subclass(Rsub,Rel),
+	              (visited_invrel(_,Rsub,Vnew)
+                       ; visited_rel(Vnew,Rsub,_))), Rels).
+
+%------------------
+
+negated_allinvrel([],_C,Bin,Bin,Tin,Tin,_Amf,_Path).
+negated_allinvrel([invrel(V,R,Vnew)|InvRest],C,Body,Bodyout,
+                                                Tin,Tout,Amf,Path):- 
+	metafront_1_not(C,Vnew,Cnew),
+	metaback_1(';'(not(invrel(V,R,Vnew)),
+                      (invrel(V,R,Vnew),Cnew)),Body,Brest,Tin,Tmid,Amf,Path),
+	negated_allinvrel(InvRest,C,Brest,Bodyout,Tmid,Tout,Amf,Path).
+
+negated_allrel([],_C,Bin,Bin,Tin,Tin,_Amf,_Path).
+negated_allrel([rel(V,R,Vnew)|InvRest],C,Body,Bodyout,Tin,Tout,Amf,Path):- 
+	metafront_1_not(C,Vnew,Cnew),
+	metaback_1(';'(not(rel(V,R,Vnew)),
+                      (rel(V,R,Vnew),Cnew)),Body,Brest,Tin,Tmid,Amf,Path),
+	negated_allrel(InvRest,C,Brest,Bodyout,Tmid,Tout,Amf,Path).
+
+allinvrel([],_C,Bin,Bin,Tin,Tin,_Amf,_Path).
+allinvrel([invrel(V,R,Vnew)|InvRest],C,Body,Bodyout,Tin,Tout,Amf,Path):- 
+	metafront_1(C,Vnew,Cnew),
+	metaback_1(';'(not(invrel(V,R,Vnew)),
+                      (invrel(V,R,Vnew),Cnew)),Body,Brest,Tin,Tmid,Amf,Path),
+	allinvrel(InvRest,C,Brest,Bodyout,Tmid,Tout,Amf,Path).
+
+allrel([],_C,Bin,Bin,Tin,Tin,_Amf,_Path).
+allrel([rel(V,R,Vnew)|InvRest],C,Body,Bodyout,Tin,Tout,Amf,Path):- 
+	metafront_1(C,Vnew,Cnew),
+	metaback_1(';'(not(rel(V,R,Vnew)),
+                      (rel(V,R,Vnew),Cnew)),Body,Brest,Tin,Tmid,Amf,Path),
+	allrel(InvRest,C,Brest,Bodyout,Tmid,Tout,Amf,Path).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%% handle Q and QI
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+q_get_c_lit_rels_at_least(L,Bodies,Rel,Head,Tin,Tout,Amf,Path):- 
+ 	get_new_c_rule(Head),
+	q_get_c_lit_rels_at_least_1(Bodies,Rel,Newheads,Tin,Tout,Amf,Path),
+	tp_printterm((Head :- [weightConst(L,Newheads,undef)])).
+
+q_get_c_lit_rels_at_least_1([],_Rel,[],T,T,_Amf,_Path).
+q_get_c_lit_rels_at_least_1([lambda(Var,Body)|RB],rel(V,Rel,_),[H|RH],
+					[G|Tin],Tout,Amf,Path):- 
+ 	get_new_c_rule(H),
+	get_new_guard(G),
+	metaback_1(Body,Bodyout,[],T1,[],Amf,Path),
+	inner_clause_emit((H :- [rel(V,Rel,Var)|Bodyout]),
+				[rel(V,Rel,Var)|T1],G,Path),
+	q_get_c_lit_rels_at_least_1(RB,rel(V,Rel,_),RH,Tin,Tout,Amf,Path).
+
+%----------------
+
+q_get_c_lit_invrels_at_least(L,Bodies,Rel,Head,Tin,Tout,Amf,Path):- 
+ 	get_new_c_rule(Head),
+	q_get_c_lit_invrels_at_least_1(Bodies,Rel,Newheads,Tin,Tout,Amf,Path),
+	tp_printterm((Head :- [weightConst(L,Newheads,undef)])).
+
+q_get_c_lit_invrels_at_least_1([],_Rel,[],T,T,_Amf,_Path).
+q_get_c_lit_invrels_at_least_1([lambda(Var,Body)|RB],invrel(V,Rel,_),[H|RH],
+					[G|Tin],Tout,Amf,Path):- 
+ 	get_new_c_rule(H),
+	get_new_guard(G),	
+	metaback_1(Body,Bodyout,[],T1,[],Amf,Path),
+	inner_clause_emit((H :- [invrel(V,Rel,Var)|Bodyout]),
+				[invrel(V,Rel,Var)|T1],G,Path),
+	q_get_c_lit_invrels_at_least_1(RB,invrel(V,Rel,_),RH,Tin,Tout,Amf,Path).
+
+%-------------------------------
+
+q_get_c_lit_rels_at_most(L,Body,rel(V,Rel,_),Head,Tin,Tout,Path):- 
+	findall(rel(V,Rel,Var),
+	         ( tp_subclass(Rsub,Rel),
+		  (visited_invrel(V,Rsub,Var) ; visited_rel(Var,Rsub,V)
+		    ; visited_rel(V,Rsub,Var) ; visited_invrel(Var,Rsub,V)
+	         )) ,Rels),    
+	sort(Rels,Relsort),
+	length(Relsort,L1),
+	(L1 < L -> 
+	     true , Tin = Tout,Head = true
+	   ; 
+	     q_get_c_lit_rels_at_most_1(Relsort,Body,Newheads,
+	                                Tmid,Tout,Path),
+ 	     get_new_c_rule(Head),
+	     tp_printterm((Head :- [weightConst(0,Newheads,L)])),
+	     Tin = [weightConst(0,Newheads,L)|Tmid] ).
+
+q_get_c_lit_rels_at_most_1([],_Body,[],T,T,_Path).
+q_get_c_lit_rels_at_most_1([rel(V,Rel,Var)|RR],Body,[H|RH],
+							Tin,Tout,Path):- 
+	metafront_1(Body,Var,NewBody),
+ 	get_new_c_rule(H),
+	metaback_1(NewBody,Bodyout,[],Abds,[],yes,Path),
+	append([rel(V,Rel,Var)|Bodyout],Abds,Body1),
+	tp_printterm((H :- Body1)),
+	q_get_c_lit_rels_at_most_1(RR,Body,RH,Tin,Tout,Path).
+
+%----------------
+
+q_get_c_lit_invrels_at_most(L,Body,invrel(V,Rel,_),Head,Tin,Tout,Path):- 
+	findall(invrel(V,Rel,Var),
+	         ( tp_subclass(Rsub,Rel),
+		  (visited_invrel(V,Rsub,Var) ; visited_rel(Var,Rsub,V)
+		   ; visited_rel(V,Rsub,Var) ; visited_invrel(Var,Rsub,V)
+	         )) ,Rels),    
+% TLS: last two because symmetry axioms will generate inverse.
+	sort(Rels,Relsort),
+        q_get_c_lit_invrels_at_most_1(Relsort,Body,Newheads,
+	                                Tmid,Tout,Path),
+ 	get_new_c_rule(Head),
+	tp_printterm((Head :- [weightConst(0,Newheads,L)])),
+	Tin = [weightConst(0,Newheads,L)|Tmid].
+
+q_get_c_lit_invrels_at_most_1([],_Body,[],T,T,_Path).
+q_get_c_lit_invrels_at_most_1([invrel(V,Rel,Var)|RR],Body,[H|RH],
+							Tin,Tout,Path):- 
+	metafront_1(Body,Var,NewBody),
+ 	get_new_c_rule(H),
+	metaback_1(NewBody,Bodyout,[],Abds,[],yes,Path),
+	append([invrel(V,Rel,Var)|Bodyout],Abds,Body1),
+	tp_printterm((H :- Body1)),
+	q_get_c_lit_invrels_at_most_1(RR,Body,RH,Tin,Tout,Path).
+
+%--------------------------
+
+print_any_transitive_classes:- 
+	visited_mo(Var,C1),visited_mo(Var,C2),C1 \== C2,
+	(tp_subclass(C1,C2) -> 
+		  tp_printterm((mo(Var,C2):- [mo(Var,C1)])) ; true),
+	fail.
+print_any_transitive_classes:- 
+	relational_subclass(R1,R2),R1 \== R2,
+	print_rel_subclass_rules(R1,R2),
+	fail.
+print_any_transitive_classes.
+
+print_rel_subclass_rules(R1,R2):- 
+	rel_subclass_pair(R1,R2,Head,Body),
+	tp_printterm((Head :- [Body])).
+
+:- table rel_subclass_pair/4.
+rel_subclass_pair(R1,R2,rel(Var,R2,Var1),rel(Var,R1,Var1)):- 
+        visited_rel(Var,R1,Var1).
+rel_subclass_pair(R1,R2,rel(Var,R2,Var1),rel(Var,R1,Var1)):- 
+        visited_invrel(Var1,R1,Var).
+rel_subclass_pair(R1,R2,invrel(Var,R2,Var1),invrel(Var,R1,Var1)):- 
+        visited_invrel(Var,R1,Var1).
+rel_subclass_pair(R1,R2,invrel(Var,R2,Var1),invrel(Var,R1,Var1)):- 
+        visited_rel(Var1,R1,Var).
+
+%--------------------------
+
+print_any_inverse_relations:- 
+	inverse_relation(R),
+	relational_subclass(Rsub,R),
+	print_any_inverse_relations_1(Rsub,R),
+	fail.
+
+print_any_inverse_relations_1(Rsub,R):- 
+	rel_inverse_pair(Rsub,R,Head,Body),
+	tp_printterm((Head :- [Body])).
+
+:- table rel_inverse_pair/4.
+rel_inverse_pair(Rsub,R2,rel(Var,R2,Var1),invrel(Var1,R2,Var)):- 
+        visited_invrel(Var1,Rsub,Var).
+rel_inverse_pair(Rsub,R2,invrel(Var,R2,Var1),rel(Var1,R2,Var)):- 
+        visited_rel(Var1,Rsub,Var).
+
+:- table inverse_relation/1.
+inverse_relation(R):- 
+	visited_invrel(_,R,_) ; negated_invrel(_,R); am_visited_invrel(_,R).
+
+%-------------------
+
+/* this uses indexing and is prob better than subs. tabling -- but check */
+:- table relational_subclass/2.
+relational_subclass(R1,R2):- 
+	(nonvar(R1) -> 
+	    (nonvar(R2) -> 
+                 relational_subclass_bb(R1,R2)
+	       ; 
+                 relational_subclass_bf(R1,R2) )
+	  ;
+	    relational_subclass_fx(R1,R2) ).
+relational_subclass(R,R).
+
+relational_subclass_bf(R1,R2):- 
+	visited_rel(Var,R1,Vto),
+	tp_subclass(R1,R2),
+	(visited_rel(Var,R2,_) ; am_visited_rel(Var,R2) ; negated_rel(Var,R2) 
+	 ; visited_invrel(Vto,R2,_) ; negated_invrel(Vto,R2) ).
+relational_subclass_bf(R1,R2):- 
+	visited_invrel(Var,R1,_),
+	tp_subclass(R1,R2),
+	(visited_invrel(Var,R2,_) ; negated_invrel(Var,R2)
+	 ; visited_rel(Vto,R2,_) ; negated_rel(Vto,R2) ).
+	
+relational_subclass_fx(R1,R2):- 
+	tp_subclass(R1,R2),
+	visited_rel(Var,R1,Vto),
+	(visited_rel(Var,R2,_) ; am_visited_rel(Var,R2) ; negated_rel(Var,R2) 
+	 ; visited_invrel(Vto,R2,_) ; negated_invrel(Vto,R2) ).
+relational_subclass_fx(R1,R2):- 
+	tp_subclass(R1,R2),
+	visited_invrel(Var,R1,_),
+	(visited_invrel(Var,R2,_) ; negated_invrel(Var,R2) 
+	 ; visited_rel(Vto,R2,_) ; negated_rel(Vto,R2) ).
+	
+%---------------------------------------------------------
+
+print_any_transitive_relations:- 
+	is_transitive_relation(Rel),
+	get_transitive_starting_point(Rel,First,Second),
+	get_transitive_ending_point(Rel,End),
+	End \== Second,
+	tp_printterm((rel(First,Rel,End):- 
+				[rel(First,Rel,Second),
+				 rel(Second,Rel,End)])).
+
+:- table is_transitive_relation/1.
+is_transitive_relation(Rel):- 
+	(am_visited_rel(_,Rel) 	 ; am_visited_invrel(_,Rel) 
+	 ; negated_rel(_,Rel) 	 ; negated_invrel(_,Rel) 
+	 ; visited_rel(_,Rel,_)	 ; visited_invrel(_,Rel,_) ),
+	transitive_relation(Rel).
+
+%:- table get_transitive_starting_point/3.
+get_transitive_starting_point(Rel,First,Second):- 
+	visited_rel(First,Rel,Second).
+
+:- table get_transitive_ending_point/2.
+get_transitive_ending_point(Rel,End):- 
+	visited_rel(_,Rel,End).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Printing
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+?-  retractall(user_replacement_hook(_)),
+    assert((user_replacement_hook(weightConst(0,R,U)):- 
+		write_int_bound_term(0,U,R))),
+    assert((user_replacement_hook(weightConst(L,R,undef)):- 
+		write_int_bound_term(L,inf,R))).
+
+write_int_bound_term(L,U,Rellist):- 
+	(backend(smodels) -> 
+	    write_smodels_int_bound_term(L,U,Rellist)
+	  ;
+	    write_dlv_int_bound_term(L,U,Rellist)).
+
+write_smodels_int_bound_term(L,U,Rellist):- 
+		(L > 0 -> write(L),write(' ') ; true),
+		write(' { '),
+		write_list(Rellist),
+		write(' } '),
+		(U == inf -> true ; write(U)).
+
+write_list([H]):- !,	
+	writeq(H).
+write_list([H|T]):- 
+	writeq(H),write(', '),
+	write_list(T).
+
+write_dlv_int_bound_term(0,1,[Rel]):- 
+	concat_atom([not_,Rel],Neg),
+	write(Rel),write(' v '),write(Neg).	
+	
+%---------------------------------------------------------
+
+write_abducible(Term):- 
+	(backend(smodels) -> 
+	     write_smodels_abducible(Term)
+	  ; 
+	     write_dlv_abducible(Term)).
+	
+write_smodels_abducible(weightConst(_,Rellist,undef)):- 
+	(member(Rel,Rellist),
+	 write('{ '),write(Rel),writeln(' } 1.'),fail ; true).
+write_smodels_abducible(weightConst(0,_,_)):- !.
+write_smodels_abducible(Term):- 
+	write('{ '),write(Term),writeln(' } 1.'),nl.
+
+write_dlv_abducible(Term):- 
+	concat_atom([not_,Term],Neg),
+	write(Term),write(' v '),write(Neg).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Utilities
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+get_new_c_rule(Head):- 
+	tp_gensym(c,Head).
+
+list_to_comma([],true):- !.
+list_to_comma([H],H):- !.
+list_to_comma([H|T],','(H,NT)):- 
+	list_to_comma(T,NT).
+
+%-------------------------------
+% For testing
+
+transitive_relation(rt).
+transitive_relation(inv(rt)).
+
+tp_subclass(X,X).
+tp_subclass(cc1,cc2).
+tp_subclass(cc2,cc3).
+tp_subclass(cc1,cc3).
+
+tp_subclass(rr1,rr2).
+tp_subclass(rr2,rr3).
+tp_subclass(rr1,rr3).
+
+end_of_file.
+
+emit_list(','(H,T)):- !,
+	emit_list(H),
+	emit_list(T).
+emit_list(T):- emit(T).
+
+write_int_bound_rule(L,U,R,D):- 
+	numbervars(t(L,U,R,D),0,_),
+	write_int_bound_term_1(L,U,R),
+	write(' :- '),
+	write_term(D,[quoted(true),numbervars(true)]),
+	writeln('.'),nl,
+	fail.
+write_int_bound_rule(_,_,_,_).
+
+metaback_1(at_most(U,rel(V,Rel,Var)),true,
+		[at_most(U,NewRel,domain(Dsym,Var))|T],T,_):- !,
+	concat_atom([V,'_',Rel],Dsym),
+	NewRel =..[Rel,V,Var].
+
+get_new_rel(R):- 
+	tp_gensym(rel,R).
+
+write_int_bound_constraint(L,U,Rel,Domain):- 
+	setof(Rel,Domain,Rellist),!,
+	(L > 0 -> write(L),write(' ') ; true),
+	write(' { '), write_list(Rellist), write(' } '),
+	(U == inf -> true ; write(U)),
+	writeln('.'),nl.
+write_int_bound_constraint(_L,_U,_Rel,_Domain).
+
+list_comma_concat([],G,G).
+list_comma_concat([H|T],G,','(H,NT)):-
+	list_comma_concat(T,G,NT).
+
+/* ------------------- save for benching.
+pretty_print_all(visited_rel(_,_,_)).
+pretty_print_all(visited_invrel(_,_,_)),
+
+print_rel_subclass_rules(R1,R2):- 
+	tp_printterm((rel(Var,R2,Var1):- [rel(Var,R1,Var1),
+                                          visited_rel(Var,R1,Var1)])),
+	tp_printterm((rel(Var,R2,Var1):- [rel(Var,R1,Var1),
+                                          visited_invrel(Var1,R1,Var)])),
+	tp_printterm((invrel(Var,R2,Var1):- [invrel(Var,R1,Var1),
+                                             visited_invrel(Var,R1,Var1)])),
+	tp_printterm((invrel(Var,R2,Var1):- [invrel(Var,R1,Var1),
+                                             visited_rel(Var1,R1,Var)])).
+--------------------- */
+
+comma_to_list(','(One,Two),In,Out):- !,
+	comma_to_list(One,In,Mid),
+	comma_to_list(Two,Mid,Out).
+comma_to_list(true,R,R):- !.
+comma_to_list(H,[H|R],R).
+
+/* shd be unnecess.
+print_domains_and_background:- 
+	negated_invrel(V,R),
+	relational_subclass(Rsub,R),
+	print_to_file((invrel(V,R) :- invrel(V,R,A),visited_invrel(V,Rsub,A))),
+	print_to_file((invrel(V,R) :- rel(A,R,V),visited_rel(A,Rsub,V))),
+	fail.
+print_domains_and_background:- 
+	negated_rel(V,R),
+	relational_subclass(Rsub,R),
+	print_to_file((rel(V,R) :- rel(V,R,A),visited_rel(V,Rsub,A))),
+	print_to_file((rel(V,R) :- invrel(A,R,V),visited_invrel(A,Rsub,V))),
+	fail.
+*/
+
+/* ---------------- save for benching...
+print_any_inverse_relations:- 
+	inverse_relation(R),
+	relational_subclass(Rsub,R),
+	print_to_file((rel(Var,R,Var1):- invrel(Var1,R,Var),
+                                        visited_invrel(Var1,Rsub,Var))),
+	print_to_file((invrel(Var,R,Var1):- rel(Var1,R,Var),
+                                         visited_rel(Var1,Rsub,Var))),
+	print_to_file_all(visited_invrel(_,_,_)).
+
+%-------------------------------
+print_to_file_all(Term):-
+	call(Term),
+	print_to_file(Term),
+	fail.
+print_to_file_all(_).
+ ----------------  */
+
+/*
+write_top_level_and_constraints(Body_in,Terms):- 
+	sort(Terms,Termsort),
+	get_new_c_rule(Head),
+	comma_to_list(Body_in,Body_list,[]),
+	partially_evaluate_body(Terms,Body_list,Body_list_out),
+	list_to_comma(Body_list_out,Body_out),
+	write_top_level(Head,Body_out,Newhead),
+	write_base_constraints(Termsort),
+	write_compute_stmt(Newhead).
+*/
+:- index(base_constraint/1,trie).
+
+partially_evaluate_body(C1,In,Out):- 
+	assert_base_constraints(C1),
+	partially_evaluate_body_1(In,Out).
+	
+assert_base_constraints([]).
+assert_base_constraints([H|T]):- 
+	assert(base_constraint(H)),
+	assert_base_constraints(T).
+
+partially_evaluate_body_1([],[]).
+partially_evaluate_body_1([H|T],Tnew):- 
+	base_constraint(H),!,
+	partially_evaluate_body_1(T,Tnew).
+partially_evaluate_body_1([H|T],[H|Tnew]):- 
+	partially_evaluate_body_1(T,Tnew).
+
+	

@@ -1,0 +1,224 @@
+/* File:      cutcheck.P
+** Author(s): Kate Dvortsova
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: cutcheck.P,v 1.6 2010-08-19 15:03:35 spyrosh Exp $
+** 
+*/
+
+
+build_call_graph([]).
+build_call_graph([Pred|Tail]) :-
+	pred_build(Tail,_,Pred,Ans),
+	!,
+	Pred=pred(Sym,_,_),
+	( Ans == r -> sym_propin(td(r),Sym) ; true),
+	build_call_graph(Tail). 
+
+/*  Is predicate table dependent or not?  */
+
+pred_build(Tail,Tail,pred(Sym,_,_),t) :-
+	sym_prop(tabled(_,_),Sym),
+	!.
+pred_build(Tail,Tail,pred(Sym,_,_),Ans) :-
+	sym_prop(td(Ans),Sym),
+	!.
+pred_build(Tail,Outtail,pred(Sym,Clist,_),Ans) :-
+	check_clist(Tail,Outtail,Clist,Ans),
+	( Ans == t -> sym_propin(td(t),Sym) ; true ).
+
+/* check the body of the predicate */
+
+check_clist(Tail,Tail,[],r) :- !.
+check_clist(Tail,Y,[clause(_,Goal,_)|L],Ans):-
+	check_goal(Tail,Outtail,Goal,Ans1),
+	( Ans1==t -> (Ans=t,Y=Outtail);
+	    (	!, check_clist(Outtail,Y,L,Ans))).
+
+check_goal(Tail,Tail,inlinegoal(_,_,_),r) :- !.
+check_goal(Tail,Outtail,Goal,Ans) :-
+	meta_pred(Goal,Args),!,
+	args(Tail,Outtail,Args,Ans1),
+	( Ans1=t(_,_) -> Ans=t ; Ans=r).
+check_goal(Tail,Tail,goal(sym(Name,Arity,_),_),r) :-
+	standard_symbol(Name,Arity,_),
+	!.
+check_goal(Tail,Tail,goal(Sym,_),t) :-
+	sym_prop(tabled(_,_),Sym),
+	!.
+check_goal(Tail,Tail,goal(Sym,_),Ans) :-
+	sym_prop(td(Ans),Sym),
+	!.
+check_goal(Tail,Outtail,goal(Sym,_),Ans):-
+	select(pred(Sym,Clist,_),Tail,Tail1),!,
+	pred_build(Tail1,Outtail,pred(Sym,Clist,_),Ans).
+check_goal(Tail,Tail,goal(_,_),r) :- !.
+check_goal(Tail,Outtail,and(Goal1,Goal2),Ans) :-
+	check_goal(Tail,Tail1,Goal1,Ans1),
+	( Ans1==t -> (Outtail=Tail1,Ans=t) ;         
+	    (	!,check_goal(Tail1,Outtail,Goal2,Ans))).
+check_goal(Tail,Outtail,or(Goal1,Goal2),Ans) :-
+	check_goal(Tail,Tail1,Goal1,Ans1),
+	( Ans1==t -> (Outtail=Tail1,Ans=t) ;
+	    (	!,check_goal(Tail1,Outtail,Goal2,Ans))).
+check_goal(Tail,Outtail,if(Goal1,Goal2),Ans) :-
+	check_goal(Tail,Tail1,Goal1,Ans1),
+	( Ans1==t -> (Outtail=Tail1,Ans=t) ;
+	    (	!,check_goal(Tail1,Outtail,Goal2,Ans))).
+check_goal(Tail,Outtail,not(Goal1),Ans) :-
+	check_goal(Tail,Outtail,Goal1,Ans).
+check_goal(_,_,_,r).
+
+            /* Meta-predicates */
+meta_pred(goal(sym(call,1,_,_),Args),Args) :-!.
+meta_pred(goal(sym(Name,3,_,_),Args),Args) :-
+	( Name=='findall' ; Name=='setof' ; Name=='bagof' ),
+	!.
+
+args(Tail,Tail,[],r).
+args(Tail,Outtail,[Arg|Args],Ans) :-
+	argument(Tail,Outtail1,Arg,Ans1),
+	( Ans1=t(P,A) -> (Ans=t(P,A),Outtail=Outtail1) ;
+	    args(Outtail1,Outtail,Args,Ans) ).
+
+argument(Tail,Outtail,constant(Sym),Ans) :-
+	check_goal(Tail,Outtail,goal(Sym,_),Ans1), !,
+	( Ans1==t -> (Sym=sym(P,A,_,_),Ans=t(P,A)) ; Ans=r).
+argument(Tail,Outtail,structure(Sym,Args),Ans) :-
+	check_goal(Tail,Outtail1,goal(Sym,_),Ans1),
+	Sym=sym(P,A,_,_),
+	( Ans1==t -> (Ans=t(P,A),Outtail=Outtail1) ;
+            args(Tail,Outtail,Args,Ans)).
+argument(Tail,Tail,_,r). 
+
+          /******************/   
+
+/*-------------- Build_graph/1 -----------------*/
+
+build_graph(module(_,_,ClList,QrList)) :-
+	build_call_graph(ClList),
+	cut_check(ClList),
+	cut_check(QrList).
+
+/*------------------- not & cut checking--------------------------------*/
+
+cut_check([]).
+cut_check([pred(Sym,Clist,_)|List]) :-
+	sym_name(Sym,C,Ar),
+	pred_check(Clist,c(C,Ar)),
+	cut_check(List).
+
+pred_check([],_) :- !.
+pred_check([clause(_,Goal,_)|L],Cl):-
+	goal_cut(Goal,_,Cl),!, 
+	pred_check(L,Cl).
+
+          /* not checking */
+
+goal_cut(not(inlinegoal(_,_,_)),_,_) :- !.
+goal_cut(not(Goal),T,Cl) :-
+        meta_pred(Goal,Args), !,
+        args([],_,Args,Ans1), !,
+        ( Ans1=t(P,A) -> (error1(P,A,Cl),
+			     ( var(T) -> T=t(P,A) ; true)) 
+	;   true), 
+	str_check(Args,Cl).
+goal_cut(not(goal(sym(Name,Arity,_,_))),_,_) :-
+	standard_symbol(Name,Arity,_),!.
+goal_cut(not(goal(Sym,_)),T,Cl) :- !,
+	( ( sym_prop(td(t),Sym) ; sym_prop(tabled(_,_),Sym)) ->  /*IF*/
+	(   Sym=sym(P,A,_,_),                                    /*THEN*/
+	    error1(P,A,Cl),
+	    ( var(T) -> T=t(P,A) ; true)  ) ;
+	    true ).                                              /*ELSE*/
+goal_cut(not(and(Goal1,Goal2)),T,Cl) :- !,
+	goal_cut(not(Goal1),T,Cl), !,
+	goal_cut(not(Goal2),T,Cl).
+goal_cut(not(or(Goal1,Goal2)),T,Cl) :- !,
+	goal_cut(not(Goal1),T,Cl), !,
+	goal_cut(not(Goal2),T,Cl).
+goal_cut(not(not(Goal)),T,Cl) :- !,
+	goal_cut(not(Goal),T,Cl).
+goal_cut(not(if(Goal1,Goal2)),T,Cl) :-
+	goal_cut(Goal1,T,Cl),
+	goal_cut(not(Goal2),T,Cl).
+
+       /*  cut checking */
+
+goal_cut(inlinegoal('!',0,_),T,Cl):-!,
+	( var(T) -> true ;
+	    (	T=t(P,A), error2(P,A,Cl)) ).
+goal_cut(inlinegoal(_,_,_),_,_):-!.
+goal_cut(Goal,T,Cl):-
+	meta_pred(Goal,Args),!,
+	args([],_,Args,Ans1),!,
+	( Ans1=t(_,_) -> 
+	    ( (var(T) -> T=Ans1 ; true),
+		str_check(Args,Cl)) ; true).
+goal_cut(goal(sym(Name,Arity,_,_),_),_,_) :-
+	standard_symbol(Name,Arity,_),!.
+goal_cut(goal(Sym,_),T,_) :-
+	( (sym_prop(td(t),Sym) ; sym_prop(tabled(_,_),Sym)) ->  /*  IF  */
+	( Sym=sym(P,A,_,_), (var(T) -> T=t(P,A) ; true)         /* THEN */
+	) ;             
+	   true ), !.                                           /* ELSE */
+goal_cut(and(Goal1,Goal2),T,Cl) :-
+	goal_cut(Goal1,T,Cl),
+	goal_cut(Goal2,T,Cl). 
+goal_cut(or(Goal1,Goal2),T,Cl) :-
+	Goal2=inlinegoal('!',0,_),!,
+	goal_cut(Goal2,T,Cl),
+	goal_cut(Goal1,T,Cl).
+goal_cut(or(Goal1,Goal2),T,Cl) :-
+	goal_cut(Goal1,T,Cl),
+	goal_cut(Goal2,T,Cl).
+goal_cut(if(Goal1,Goal2),T,Cl) :-
+	goal_cut(Goal1,T,Cl),
+	goal_cut(Goal2,T,Cl).
+
+      /* structure_checking */
+
+str_check([],_).
+str_check([Arg|Args],Cl) :-
+	el_check(Arg,Cl),!,
+	str_check(Args,Cl).
+
+el_check(structure(Sym,Args),Cl) :-
+	( Sym=sym('\+',1,_,_) ; Sym=sym('fail_if',1,_,_) ),
+	args([],_,Args,t(P,A)),
+	!,
+	error1(P,A,Cl).
+el_check(structure(_,Args),Cl) :- !,
+	str_check(Args,Cl).
+el_check(_,_).
+
+error1(P,A,c(C,Ac)) :-
+        K=P/A,
+        L=C/Ac,
+        error(('Prolog negation operator applied to table dependent symbol ',
+	       K, ' in a clause of ',L)).
+
+error2(P,A,c(C,Ac)) :-
+        K=P/A,
+        L=C/Ac,
+        error(('''!'' after table dependent symbol ',K, ' in a clause of ', L)).
+ 
+
+/* ------------------ end of file build_graph.P ----------------------- */
+

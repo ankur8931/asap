@@ -1,0 +1,781 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rulebase>
+		<_rbaselab>
+			<ind>animals</ind>
+		</_rbaselab>
+
+	<!-- Encoding of a Taxonomy with exceptions -->
+	<!-- Corresponds to the following extended logic program -->
+	<!--
+
+	Taxonomy
+	
+	% mammals are animals
+	animal(X) <- mammal(X).
+	
+	% birds are animals
+	animal(X) <- bird(X).
+	
+	% dead animals are animals
+	animal(X) <- dead_animal(X).
+	
+	% bats are animals
+	mammal(X) <- bat(X).
+	
+	% penguins are birds
+	bird(X) <- penguin(X).
+	
+	Facts
+	
+	mammal(pluto).
+	penguin(joe).
+	bat(dracula).
+	dead_animal(dracula).
+	bird(tweety).
+	 
+	Defaults
+
+	% Normally animals don't fly
+	¬flies(X) <- animal(X), ¬flying_animal(X), not flies(X)
+	¬flying_animal(X) <- not flying_animal(X)
+	
+	% Normally bats fly
+	flies(X) <- bat(X), flying_bat(X), not ¬flies(X)
+	flying_bat(X) <- not ¬flying_bat(X) 
+	
+	% Normally birds fly
+	flies(X) <- bird(X), flying_bird(X), not ¬flies(X)
+	flying_bird(X) <- not ¬flying_bird(X) 
+	
+	% Normally penguins don't fly
+	¬flies(X) <- penguin(X), ¬flying_penguin(X), not flies(X)
+	¬flying_penguin(X) <- not flying_penguin(X)
+	
+	% Normally dead animals don't fly
+	¬flies(X) <- dead_animal(X), ¬flying_dead(X), not flies(X)
+	¬flying_dead(X) <- not flying_dead(X)
+
+	Explicit Preferences
+	
+	% Dead bats don’t fly though bats do
+	¬flying_bat(X) <-  dead_animal(X), bat(X), ¬flying_dead_bat(X)	 	
+	¬flying_dead_bat(X) <- not flying_dead_bat(X)
+	
+	% Dead birds don’t fly though birds do
+	¬flying_bird(X) <- dead_animal(X), bird(X), ¬flying_dead_bird(X)	 
+	¬flying_dead_bird(X) <- not flying_dead_bird(X)
+
+	% Dracula is a flying dead bat
+	flying_dead_bat(dracula).
+
+
+	Implicit Preferences (prefer most specific information)
+	
+	% flying bats are flying animals
+	flying_animal(X) <- bat(X), flying_bat(X)			 
+	
+	% flying birds are flying animals
+	flying_animal(X) <- bird(X), flying_bird(X)
+	
+	% penguins are not flying birds
+	¬flying_bird(X) <- penguin(X), ¬flying_penguin(X)
+
+	% Flying dead bats are flying deads 
+	flying_dead(X) <- bat(X), flying_dead_bat(X).
+	-->
+	<!-- Representation of the taxonomy-->
+	<!--  Mammals are animals -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>animal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<atom>
+				<_opr>
+					<rel>mammal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_body>
+	</imp>
+	<!--  Birds are animals -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>animal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<atom>
+				<_opr>
+					<rel>bird</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_body>
+	</imp>
+	<!--  Dead animals are animals -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>animal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<atom>
+				<_opr>
+					<rel>dead animal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_body>
+	</imp>
+	<!--  Bats are mammals -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>mammal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<atom>
+				<_opr>
+					<rel>bat</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_body>
+	</imp>
+	<!--  Penguins are birds -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>bird</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<atom>
+				<_opr>
+					<rel>penguin</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_body>
+	</imp>
+	<!-- The facts -->
+	<!-- Tweety is a bird -->
+	<fact>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>bird</rel>
+				</_opr>
+				<ind>Tweety</ind>
+			</atom>
+		</_head>
+	</fact>
+	<!-- Pluto is a mammal -->
+	<fact>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>mammal</rel>
+				</_opr>
+				<ind>Pluto</ind>
+			</atom>
+		</_head>
+	</fact>
+	<!-- Joe is a penguin -->
+	<fact>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>penguin</rel>
+				</_opr>
+				<ind>Joe</ind>
+			</atom>
+		</_head>
+	</fact>
+	<!-- Dracula is a bat-->
+	<fact>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>bat</rel>
+				</_opr>
+				<ind>Dracula</ind>
+			</atom>
+		</_head>
+	</fact>
+	<!-- Dracula is a dead animal-->
+	<fact>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>dead animal</rel>
+				</_opr>
+				<ind>Dracula</ind>
+			</atom>
+		</_head>
+	</fact>
+	<!-- Normally animals don’t fly -->
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flies</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>animal</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying animal</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+				<not>
+					<atom>
+						<_opr>
+							<rel>flies</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</not>
+			</and>
+		</_body>
+	</imp>
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying animal</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<not>
+				<atom>
+					<_opr>
+						<rel>flying animal</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</not>
+		</_body>
+	</imp>
+	<!-- Normally bats fly -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flies</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<atom>
+					<_opr>
+						<rel>flying bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<not>
+					<neg>
+						<atom>
+							<_opr>
+								<rel>flies</rel>
+							</_opr>
+							<var>any</var>
+						</atom>
+					</neg>
+				</not>
+			</and>
+		</_body>
+	</imp>
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flying bat</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<not>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying bat</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+			</not>
+		</_body>
+	</imp>
+	<!-- Normally birds fly -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flies</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<atom>
+					<_opr>
+						<rel>flying bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<not>
+					<neg>
+						<atom>
+							<_opr>
+								<rel>flies</rel>
+							</_opr>
+							<var>any</var>
+						</atom>
+					</neg>
+				</not>
+			</and>
+		</_body>
+	</imp>
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flying bird</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<not>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying bird</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+			</not>
+		</_body>
+	</imp>
+	<!-- Normally penguins don’t fly -->
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flies</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>penguin</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying penguin</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+				<not>
+					<atom>
+						<_opr>
+							<rel>flies</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</not>
+			</and>
+		</_body>
+	</imp>
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying penguin</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<not>
+				<atom>
+					<_opr>
+						<rel>flying penguin</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</not>
+		</_body>
+	</imp>
+	<!-- Normally dead animals don’t fly -->
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flies</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>dead animal</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying dead</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+				<not>
+					<atom>
+						<_opr>
+							<rel>flies</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</not>
+			</and>
+		</_body>
+	</imp>
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying dead</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<not>
+				<atom>
+					<_opr>
+						<rel>flying dead</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</not>
+		</_body>
+	</imp>
+	<!-- Explicit Preferences -->
+	<!-- Dead bats don’t fly though bats do -->
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>dead animal</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<atom>
+					<_opr>
+						<rel>bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying dead bat</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+			</and>
+		</_body>
+	</imp>
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying dead bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<not>
+				<atom>
+					<_opr>
+						<rel>flying dead bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</not>
+		</_body>
+	</imp>
+	<!-- Dead birds don’t fly though birds do -->
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>dead animal</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<atom>
+					<_opr>
+						<rel>bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying dead bird</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+			</and>
+		</_body>
+	</imp>
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying dead bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<not>
+				<atom>
+					<_opr>
+						<rel>flying dead bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</not>
+		</_body>
+	</imp>
+	<!-- Dracula is a flying dead bat -->
+	<fact>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flying dead bat</rel>
+				</_opr>
+				<ind>Dracula</ind>
+			</atom>
+		</_head>
+	</fact>
+	<!-- Flying bats are flying animals -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flying animal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<atom>
+					<_opr>
+						<rel>flying bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</and>
+		</_body>
+	</imp>
+	<!-- Flying birds are flying animals -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flying animal</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<atom>
+					<_opr>
+						<rel>flying bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</and>
+		</_body>
+	</imp>
+	<!-- Flying dead bats are flying deads -->
+	<imp>
+		<_head>
+			<atom>
+				<_opr>
+					<rel>flying dead</rel>
+				</_opr>
+				<var>any</var>
+			</atom>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<atom>
+					<_opr>
+						<rel>flying dead bat</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</and>
+		</_body>
+	</imp>
+	<!-- Penguins are not flying birds -->
+	<imp>
+		<_head>
+			<neg>
+				<atom>
+					<_opr>
+						<rel>flying bird</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+			</neg>
+		</_head>
+		<_body>
+			<and>
+				<atom>
+					<_opr>
+						<rel>penguin</rel>
+					</_opr>
+					<var>any</var>
+				</atom>
+				<neg>
+					<atom>
+						<_opr>
+							<rel>flying penguin</rel>
+						</_opr>
+						<var>any</var>
+					</atom>
+				</neg>
+			</and>
+		</_body>
+	</imp>
+</rulebase>

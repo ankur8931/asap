@@ -1,0 +1,220 @@
+
+    This directory contains the C sources for the XSB emulator.
+
+Coding Conventions: 
+
+       Global Variables: Because global variables may need concurrency
+       control to ensure thread safety, its important to keep track of
+       their use in XSB.  (This can be done by the gdb "info
+       variables" command).  Currently, when XSB is compiled for
+       multi-threading there are over 100 of these.  These global
+       variables represent process-level information and may either be
+       changeable, or constant-like (not changeable after an
+       initialization).
+
+       Changeable global variables are usually protected by mutexes or
+       some other concurrency control.  Constant-like variables, on
+       the other hand are perfectly safe for multi-threading.
+       However, when updating XSB for new code, it is necessary to
+       ensure that all global variables are "accounted for" -- either
+       are constants, are controlled by mutexes, or are safe
+       (e.g. global counters).  In order to aid this process, please
+       use these conventions for global variables.
+
+       Constant-like variables:
+       
+       If the variable is 
+		-- a pointer to a psc Pair give it the form xxx_pscPair
+		-- a pointer to a Psc record give it the form xxx_psc
+		-- a pointer to a global string, give it the form xxx_string
+		-- an instruction byte-code, give it the form xxx_inst
+		-- a constant-like array, give it the form xxx_table.
+
+       Other constant-like variables: xxx_glc
+
+Other global variables that I have checked out but have not changed to
+follow these conventions:
+
+File biassert.c:
+     struct DispBlkHdr_t DispBlkHdr;
+
+File builtin.c:
+     ubi_btRootPtr RootPtr;
+     ubi_btROot TreeRoot;
+	Cell flags[75];
+	long int if_profiling;
+	struct strbuf *iostrs[5];
+	Psc p3psc;
+	ubi_btNodePtr prof_table;
+	      ubi_btNodePtr prof_table_free;
+	      static long int prof_table_count;
+       static long int prof_table_length;
+       static long int prof_total;
+       static long int prof_unk_count;
+       static int psc_profile_count_max;
+       static int psc_profile_count_num;
+       static psc_profile_count *psc_profile_count_table;
+       static long int total_prog_segments;
+
+File cinterf.c:
+     char tempstring[1024];
+     static char *c_dataptr_rest;
+     static long int lastWarningStart;
+     static int xsb_initted_gl;
+     static int xsb_inquery_gl;
+
+File emuloop.c:
+     long unsigned int dec[8]; -- controlled by MUTEX_GENTAG
+     long unsigned int enc[16]; -- controlled by MUTEX_GENTAG
+     int next_free_code; -- controlled by MUTEX_GENTAG
+     char *xsb_default_segfault_msg; _glc
+     char *xsb_segfault_message; UNSAFE (to be fixed)
+
+File error_xsb.c:
+     FILE *stddbg; -- _glc
+     FILE *stdfdbk; -- _glc
+     FILE *stdmsg; -- _glc
+     FILE *stdwarn; -- _glc
+
+File hash_xsb.c:
+     Hash_Table string_table;  -- controlled by mutex
+     Hash_Table symbol_table; -- controlled by mutex
+     static unsigned int primes[16]; -- glc
+
+File heap_xsb.c: ???
+     int gc_strings; 
+     static CPtr compl_bot;
+     static CPtr compl_top;
+     static CPtr cp_bot;
+     static char *cp_marks;
+     static CPtr cp_top;
+     static const int fragmentation_only;
+     static CPtr heap_bot;
+     static int heap_early_reset;
+     static char *heap_marks;
+     static long unsigned int heap_marks_size;
+     static CPtr heap_top;
+     static long int last_assert_space_size;
+     static long int last_string_space_size;
+     static CPtr ls_bot;
+     static int ls_early_reset;
+     static char *ls_marks;
+     static CPtr ls_top;
+     static float mark_threshold;
+     static CPtr next;
+     static int num_gc;
+     static int offset;
+     static int printnum;
+     static CPtr scan;
+     static xsbBool slide;
+     static CPtr *slide_buf;
+     static long unsigned int slide_buf_size;
+     static int slide_buffering;
+     static long unsigned int slide_top;
+     static long unsigned int total_collected;
+     static double total_time_gc;
+     static CPtr tr_bot;
+     static char *tr_marks;
+     static CPtr tr_top;
+
+     File init_xsb.c: 
+       long int pspacesize[18] (ctr for space, ok)
+       FILE *stream_err; ok - startup only
+       FILE *stream_out; ok - startup only
+       Exec_Mode xsb_mode; ok -- startup and shutdown only
+       int xsb_profiling_enabled; ???
+       static System_Stack init_complstack - ok, could be made dyna
+       static System_Stack init_glstack - ok, could be made dyna
+       static System_Stack init_pdl - ok, could be made dyna
+       static System_Stack init_tcpstack - ok, could be made dyna
+
+      File io_builtins_xsb.c
+            stream_record open_files[55]; -- controlled by MUTEX_IO
+
+      File loader_xsb.c
+      struct TDispBlkHdr_t tdispblkhdr;
+      struct tif_list tif_list;
+      static pseg current_seg;
+      static int env_check[4][5];
+      static CPtr hptr;
+      static pindex *index_block_chain;
+      static CPtr *index_reloc;
+      static struct hrec *indextab;
+      static pseg last_text;
+      static int num_index_reloc;
+      static pw *reloc_table;
+      static long unsigned int reloc_table_size;
+      static TIFptr tab_info_ptr;
+      static int warned_old_obj;
+
+      File socket_xsb.c
+      static u_long block_false -- _glc
+      static u_long block_true -- _glc
+      static struct connection_t connections[50] -- controlled by MUTEX_SOCKETS
+
+      File string_xsb.c  ???
+      static VarString input_buffer;  ???
+      static VarString output_buffer;  ???
+      static VarString subst_buf;  ???
+      static Cell term;  ???
+      static Cell term2;  ???
+      static Cell term3;  ???
+
+      File subp.c
+      void (*xsb_default_segfault_handler)() -- _glc
+
+      File system_xsb.c
+      static struct proc_table_t xsb_process_table -- controlled by MUTEX_SYS_SYSTEM
+    
+      File table_stats.c
+      struct maxTableSpaceUsage;  ???
+      NumSubOps numSubOps;  ???
+
+      File tables.c: 
+      Structure_Manager smALN -- controlled by mutex
+      Structure_Manager smConsSF -- controlled by mutex
+      Structure_Manager smProdSF -- controlled by mutex
+      Structure_Manager smVarSF  -- controlled by mutex
+
+      File thread_xsb.c
+      static xsb_thread_t *th_next;  controlled by th_mutex
+      static xsb_thread_t th_vec[1024];  controlled by th_mutex
+
+      File token_xsb.c:     
+      char badexpt[13];  ???
+      char badradix[21];  ???
+      char digval[257];  ???
+      char eofinrem[23];  ???
+      struct CHARS intab;  ???
+      char tok2long[15];  ???
+      int token_too_long_warning;  ???
+
+      File tr_utils.c
+      DelTFptr deltf_chain_begin:  OK
+      sys_mut: ok
+
+      File trace_xsb.c:  
+      double time_start; ok
+      double time_count: ok
+      static char *pspace_cat[18]: ok -- constant
+
+      File tries.c: 
+      long int ans_chk_ins; ok, global counter
+      long int ans_inserts; ok, global counter
+      long int subg_chk_ins; ok, global counter
+      long int subg_inserts; ok, global counter
+      static BasicTrieNode dummy_ans_node; -- _glc
+      smAssertBTHT, smAssertBTN, smTableBTN, smTableBTHT: MUTEX_SM
+
+      File tst_utils.c:
+      	   char *NodeTypeStrings[9] -- _table
+	   char *TrieTypeStrings[7] -- _table
+
+      File varstring.c:
+      	   struct varstr_ops VarStrOps -- _table
+
+      File ubi_BinTree.c:
+      	   static char ModuleID[79] -- _table
+
+      File ubi_SplayTree.c:
+      	   static char ModuleID[83] -- _table

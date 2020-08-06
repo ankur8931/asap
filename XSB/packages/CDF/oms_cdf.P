@@ -1,0 +1,43 @@
+:- compiler_options([ciao_directives]).
+
+:- import abolish_table_pred/1 from tables.
+
+oms_dont_use_cache.
+oms_use_cache.
+
+:- assert(caching_oms(0)).
+
+:- dynamic oms_dirty/1.
+:- make_oms_clean.
+
+make_oms_dirty(Name) :- 
+	(Name == 'OMS' -> 
+	    true
+	  ; 
+	    call_assert(oms_dirty(Name)) ).
+make_oms_clean :- retractall(oms_dirty(_)).
+
+/*
+:- index(oms_dirty/1,0,0).
+make_oms_dirty :- retractall(oms_dirty(_)),asserta(oms_dirty(1)).
+make_oms_clean :- retractall(oms_dirty(_)),asserta(oms_dirty(0)).
+*/
+
+:- comment(oms_update_list/1, "oms_update_list takes a list of
+assert/retracts to stored OMS relations and executes them.  All
+updates to any OMS relation should go through here.").
+
+oms_update_list(List) :-
+	oms_do_update_list(List).
+
+oms_do_update_list([]).
+oms_do_update_list([Term|Terms]) :-
+	oms_update_term(Term),
+	oms_do_update_list(Terms).
+
+oms_update_term(asserta(Term)) :-
+	assert_oms(Term).
+oms_update_term(retractall(Term)) :- 
+	retractall_oms(Term),
+	retractall(Term).
+

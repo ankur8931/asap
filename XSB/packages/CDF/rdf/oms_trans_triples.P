@@ -1,0 +1,281 @@
+/* translate triples into OMS */
+/********************************************************************/
+/*    RDF							    */
+/********************************************************************/
+
+rdf_init_print.
+
+rdf_final_print.
+/********************************************************************/
+
+rdf_init_rdf :-
+	class(OMSRoot,_,'OMS Root','OMS'),
+	newClass('RDF Resources',OMSRoot,'RDF',_ResCid),
+	newRelationshipClass('RDF Properties','RDF',_PropsCid).
+
+rdf_final_rdf.
+
+triple_as_print(S,R,T) :-
+	writeq(prop(S,R,T)),nl.
+
+triple_as_rdf(S,R,T) :-
+	rdf_get_cid(S,SCid),
+	rdf_get_rcid(R,RCid),
+	rdf_get_cid(T,TCid),
+	newRelationship(SCid,RCid,TCid).
+	
+rdf_get_cid(S,SCid) :-
+	(S = id(Nid,Sou)
+	 ->	(class(SCid,_,Nid,Sou)
+		 ->	true
+		 ;	class(ResCid,_,'RDF Resources','RDF'),
+			newClass(Nid,ResCid,Sou,SCid)
+		)
+	 ;	write('ERROR: Bad Class ID format: '),writeln(S),
+		fail
+	).
+
+rdf_get_rcid(R,RCid) :-
+	(R = id(Nid,Sou)
+	 ->	class(PropsCid,_,'RDF Properties','RDF'),
+		(class(RCid,_,Nid,Sou)
+		 ->	true
+		 ;	newClass(Nid,PropsCid,Sou,RCid)
+		),
+		(immediate_subclass(RCid,PropsCid)
+		 ->	true
+		 ;	newSubclass(RCid,PropsCid),
+			class(ResCid,_,'RDF Resources','RDF'),
+			retractall_subclass(RCid,ResCid)
+		)
+	 ;      write('ERROR: Bad Rel ID format: '),writeln(R),
+		fail
+	).
+		
+/********************************************************************/
+/*    DAML							    */
+/********************************************************************/
+:- import ensure_loaded/2 from consult.
+:- ensure_loaded(oms_daml_names,dync).
+
+daml_get_cid(S,SCid) :-
+	(S = id(Nid,Sou)
+	 ->	(class(SCid,_,Nid,Sou)
+		 ->	true
+		 ;	class(ThingCid,_,'Thing','http://www.daml.org/2001/03/daml+oil'),
+			newClass(Nid,ThingCid,Sou,SCid)
+		)
+	 ;	write('ERROR: Bad Class ID format: '),writeln(S),
+		fail
+	).
+
+daml_get_rcid(R,RCid) :-
+	(R = id(Nid,Sou)
+	 ->	class(PropsCid,_,'DAML Properties','http://www.daml.org/2001/03/daml+oil'),
+		(class(RCid,_,Nid,Sou)
+		 ->	true
+		 ;	newClass(Nid,PropsCid,Sou,RCid)
+		),
+		(immediate_subclass(RCid,PropsCid)
+		 ->	true
+		 ;	newSubclass(RCid,PropsCid),
+			class(ThingCid,_,'Thing','http://www.daml.org/2001/03/daml+oil'),
+			retractall_subclass(RCid,ThingCid)
+		)
+	 ;      write('ERROR: Bad Rel ID format: '),writeln(R),
+		fail
+	).
+		
+rdf_init_daml :-
+	class(OMSRoot,_,'OMS Root','OMS'),
+	newClass('Thing',OMSRoot,'http://www.daml.org/2001/03/daml+oil',_ResCid),
+	newRelationshipClass('DAML Properties','http://www.daml.org/2001/03/daml+oil',PropsCid),
+	(daml_property(PropNid,PropSou),
+	 newClass(PropNid,PropsCid,PropSou,_),
+	 fail
+	 ;
+	 true
+	),
+	class(StrelCid,_,'OMS Set-Valued Relations','OMS'),
+	(daml_strel(Nid,Sou),
+	 newClass(Nid,StrelCid,Sou,_),
+	 fail
+	 ;
+	 true
+	).
+
+rdf_final_daml :-
+	set_schrels_from_doman_range,
+	set_subclass_from_unionofs,
+	true.
+
+set_subclass_from_unionofs :-
+	class(MemCid,_,member,'http://www.w3.org/1999/02/22-rdf-syntax-ns'),
+	daml_union(UNid,USou),
+	class(UCid,_,UNid,USou),
+	findall(p(S,T),immediate_relationship(S,UCid,T),STs),
+	member(p(S,T),STs),
+	add_as_subclass_cids(T,S),
+	findall(p(T,C),immediate_relationship(T,MemCid,C),Members),
+	member(p(T,C),Members),
+	add_as_subclass_cids(C,T),
+	retractall_relationship(T,MemCid,C),
+	fail.
+set_subclass_from_unionofs.
+
+daml_union(disjointUnionOf,'http://www.daml.org/2001/03/daml+oil').
+daml_union(unionOf,'http://www.daml.org/2001/03/daml+oil').
+%%daml_union(intersectionOf,'http://www.daml.org/2001/03/daml+oil'). %% causes loop??
+daml_union(oneOf,'http://www.daml.org/2001/03/daml+oil'). %% should probably be done as objects and memberofs, not subclasses....
+
+set_schrels_from_doman_range :-
+	class(PropsCid,_,'DAML Properties','http://www.daml.org/2001/03/daml+oil'),
+	class(DomPCid,_,domain,'http://www.w3.org/2000/01/rdf-schema'),
+	class(RanPCid,_,range,'http://www.w3.org/2000/01/rdf-schema'),
+	set_schrels_from_domain_range(PropsCid,DomPCid,RanPCid).
+set_schrels_from_doman_range :-
+	class(PropsCid,_,'DAML Properties','http://www.daml.org/2001/03/daml+oil'),
+	class(DomPCid,_,domain,'http://www.daml.org/2001/03/daml+oil'),
+	class(RanPCid,_,range,'http://www.daml.org/2001/03/daml+oil'),
+	set_schrels_from_domain_range(PropsCid,DomPCid,RanPCid).
+set_schrels_from_doman_range.
+
+set_schrels_from_domain_range(PropsCid,DomPCid,RanPCid) :-
+	subclass(PropCid,PropsCid),
+	relationship(PropCid,DomPCid,DomCid),
+	relationship(PropCid,RanPCid,RanCid),
+%%	writeln(schrel(DomCid,PropCid,RanCid)),
+	newSchrel(DomCid,PropCid,RanCid),
+	fail.
+
+
+%%% check for loops in subclassof relationship???  At least subclass of self!
+triple_as_daml(S,id('subClassOf',Sou),T) :-
+	(Sou == 'http://www.w3.org/2000/01/rdf-schema'
+	 ;
+	 Sou == 'http://www.daml.org/2001/03/daml+oil'
+	),
+	!,
+	add_as_subclass(S,T).
+/********************************************************************/
+triple_as_daml(S,id('type','http://www.w3.org/1999/02/22-rdf-syntax-ns'),T) :-
+	T \== id('Class','http://www.daml.org/2001/03/daml+oil'),
+	T \== id('Restriction','http://www.daml.org/2001/03/daml+oil'),  % must be classes!
+	class(PropsCid,_,'DAML Properties','http://www.daml.org/2001/03/daml+oil'),
+	daml_get_cid(T,TCid), %%%??
+	\+ subclass(TCid,PropsCid),
+	!,
+	add_as_memberof(S,T).
+
+triple_as_daml(id(Sobj,SSou),R,id(Tobj,TSou)) :-
+	object(SOid,_,Sobj,SSou),
+	object(TOid,_,Tobj,TSou),
+	!,
+	daml_get_rcid(R,RCid),
+	newAttributeObject(SOid,RCid,TOid).
+triple_as_daml(id(Sobj,SSou),R,id(TNid,TSou)) :-
+	object(SOid,_,Sobj,SSou),
+	class(TCid,_,TNid,TSou),
+	!,
+	daml_get_rcid(R,RCid),
+	newAttribute(SOid,RCid,TCid).
+/********************************************************************/
+triple_as_daml(S,id('type','http://www.w3.org/1999/02/22-rdf-syntax-ns'),T) :-
+	!,
+	add_as_subclass(S,T).
+triple_as_daml(S,id(Nid,Sou),T) :-
+	daml_strel(Nid,Sou),
+	!,
+	class(RCid,_,Nid,Sou),
+	daml_get_cid(S,SCid),
+	daml_get_cid(T,TCid),
+/*** To use label as OMS name... ***
+	(Nid == label, T = id(atom(Name),'OMS')
+	 ->	class(SCid,_,SNatId,SSou),
+		updateClass(SCid,Name,SNatId,SSou)
+	 ;	true
+	),
+***/
+	newStrel(SCid,RCid,TCid).
+triple_as_daml(S,R,T) :-
+	add_as_relationship(S,R,T).
+
+add_as_relationship(S,R,T) :-
+	S = id(SNatID,SSou),
+	(object(_,_,SNatID,SSou)
+	 ->	add_as_attribute(S,R,T)
+	 ;	daml_get_cid(S,SCid),
+		daml_get_rcid(R,RCid),
+		daml_get_cid(T,TCid),
+		newRelationship(SCid,RCid,TCid)
+	).
+
+add_as_attribute(id(SNid,SSou),R,T) :-
+	object(SOid,_,SNid,SSou),
+	daml_get_rcid(R,RCid),
+	T = id(TNid,TSou),
+	(TSou == 'OMS',oms_primitive_type(TNid)
+	 ->	newAttribute(SOid,RCid,TNid)
+	 ; object(TOid,_,TNid,TSou)
+	 ->	newAttributeObject(SOid,RCid,TOid)
+	 ;	(TSou \== global
+		 ->	writeln('WARNING: Creating New Object '(TNid,TSou))
+		 ;	true
+		),
+		class(ThingCid,_,'Thing','http://www.daml.org/2001/03/daml+oil'),
+		newObject(TNid,ThingCid,TNid,TSou,TOid),
+		newAttributeObject(SOid,RCid,TOid)
+	).
+
+%%% check to handle cycles??
+add_as_subclass(S,T) :-
+	delete_object_if_one(S),
+	daml_get_cid(S,SCid),
+	daml_get_cid(T,TCid),
+	add_as_subclass_cids(SCid,TCid).
+
+add_as_subclass_cids(SCid,TCid) :-
+	(subclass(SCid,TCid)
+	 ->	true
+	 ; subclass(TCid,SCid)
+	 ->	writeln('CYCLIC: SC IGNORED')
+	 ;	class(ThingCid,_,'Thing','http://www.daml.org/2001/03/daml+oil'),
+		retractall_subclass(SCid,ThingCid),
+		newSubclass(SCid,TCid),
+		findall(Anc,(proper_subclass(TCid,Anc),
+			     immediate_subclass(SCid,Anc)
+			    ),Ancs),
+		(member(Anc,Ancs),
+		 retractall_subclass(SCid,Anc),
+		 fail
+		 ;	
+		 true
+		)
+	).
+
+/* Somewhat of a hack to delete a Nid/Sou object if it is found to be
+a subclass of something... How do you tell if something is an object
+or a class in DAML triples? */
+delete_object_if_one(id(NatID,Sou)) :-
+	(object(Oid,Name,NatID,Sou)
+	 ->	retractall_object(Oid,Name,NatID,Sou),
+		(immediate_memberof(Oid,Cid),
+		 retractall_memberof(Oid,Cid),
+		 fail
+		 ;
+		 true
+		)
+	 ;	true
+	).
+
+add_as_memberof(id(ONid,OSou),S) :-
+	daml_get_cid(S,SCid),
+	(object(Oid,ONid,ONid,OSou)
+	 ->	class(ThingCid,_,'Thing','http://www.daml.org/2001/03/daml+oil'),
+		(immediate_memberof(Oid,ThingCid)
+		 ->	retractall_memberof(Oid,ThingCid)
+		 ;	true
+		)
+	 ;	newObject(ONid,SCid,ONid,OSou,Oid)
+	),
+	newMemberof(Oid,SCid).

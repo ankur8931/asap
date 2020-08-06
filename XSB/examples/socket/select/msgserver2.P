@@ -1,0 +1,139 @@
+%% Like msgserver/client using socket_select, but here we use write 
+%% sockets and read sockets simultaneously.
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "timer_defs_xsb.h"
+#include "char_defs.h"
+
+#define Q_LENGTH  10
+
+:- ['auxdefs'].
+:- import tryN/5 from auxdefs.
+
+
+:- import 
+     socket/2, socket_bind/3, socket_listen/3, socket_accept/3, 
+     socket_set_option/3, socket_close/2, socket_recv/3,
+     socket_send/3, socket_set_select/4,
+     socket_select/6, socket_select_destroy/1 from socket.
+
+:- import file_close/1, fmt_write/3 from file_io.
+
+
+%% Port on which the server is listening
+xsb_port(6025).
+
+server :-
+	socket(Sockfd0, ErrCode),
+	writeln(socket(Sockfd0, ErrCode)),
+	(ErrCode =\= SOCK_OK
+	-> writeln('Cannot open socket'), fail
+	; true),
+	socket_set_option(Sockfd0,linger,SOCK_NOLINGER),
+	xsb_port(XSBPort),
+	tryN(4,
+	     socket_bind(Sockfd0, XSBPort, ErrBind),
+	     writeln(socket_bind(Sockfd0, XSBPort, ErrBind)),
+	     writeln('Cannot bind...'),
+	     ErrBind
+	    ),
+
+	socket_listen(Sockfd0,Q_LENGTH, ErrListen),
+	writeln(socket_listen(Sockfd0,Q_LENGTH, ErrListen)),
+
+	tryN(4,
+	     socket_accept(Sockfd0, Sockfd0_out1, ErrorCode),
+	     writeln(socket_accept1(Sockfd0, Sockfd0_out1, ErrorCode)),
+	     writeln('Cannot accept connection1'),
+	     ErrorCode
+	    ),
+	tryN(4,
+	     socket_accept(Sockfd0, Sockfd0_out2, ErrorCode2), 
+	     writeln(socket_accept(Sockfd0, Sockfd0_out2, ErrorCode2)),
+	     writeln('Cannot accept connection2'),
+	     ErrorCode2
+	    ),
+
+	socket_set_select(test, [Sockfd0_out1],[Sockfd0_out2],[]),
+	writeln(socket_set_select(test, [Sockfd0_out1],[Sockfd0_out2],[])),
+
+	server_loop(Sockfd0, Sockfd0_out1, Sockfd0_out2),
+
+	socket_select_destroy(test),
+	writeln('select destroyed').
+
+	
+:- dynamic timeout/0.
+
+server_loop(Sockfd_orig, Sockfd0, Sockfd1) :-
+    writeln(serverloop1),
+    socket_select(test,_,Availr,Availw,Availe,Err),
+    writeln( socket_select(test,notimeout,Availr,Availw,Availe,Err)),
+    	
+    (Availr == []
+    ->  writeln('no available read socket...waiting'),
+	sleep(4), assert(timeout), fail
+    ;  %% This tests the timer
+	set_timer(4),
+	write('Waiting for input... '),
+	socket_recv(Sockfd0, GoalStr,RetCode),
+	(RetCode == TIMEOUT_ERR
+	-> writeln('Timeout'), assert(timeout), fail
+	;  writeln('OK')
+	),
+	(RetCode == SOCK_OK 
+	->  file_open(GoalStr,sr,IOport),
+	    file_read(IOport,Goal),
+	    file_close(IOport),
+	    writeln(goal(Goal))
+	;   writeln('End of file or communication error'),
+	    Goal = end_of_file
+	),
+	Goal =.. [F|_Rest],
+	(F=end_of_file
+	->  writeln('Client quits...'),
+	    socket_close(Sockfd0,_),
+	    socket_close(Sockfd1,_),
+	    socket_close(Sockfd_orig,_),
+	    true
+	;   (    (Goal=h(_); Goal=g(_))
+	    ->   call(Goal), writeln(answer(Goal)),
+		fmt_write_string(OutGoalStr, '%S.', arg(Goal)),
+		(  Availw == []
+		-> writeln('no available write socket'),fail
+		;  socket_send(Sockfd1, OutGoalStr, _)
+		)
+	    ;   write('Invalid goal: '), writeln(Goal),
+		fmt_write_string(GoalStr1, '''+++Invalid goal: %S''.', arg(Goal)),
+		socket_send(Sockfd1, GoalStr1,_)
+	    ),
+	    fail
+	)
+    ).
+
+  
+server_loop(Sockfd_orig, Sockfd0, Sockfd1) :-
+  writeln(serverloop2),
+  (timeout -> retract(timeout)
+  ; socket_send(Sockfd1, 'end.', _)
+  ),
+  server_loop(Sockfd_orig, Sockfd0,Sockfd1).
+
+
+
+
+g(1).
+g(2).
+g(3).
+g(4).
+g(5). 
+
+
+
+h(a).
+h(b).
+h(c).
+h(d).
+h(e).
+

@@ -1,0 +1,77 @@
+
+:- import load_extensional_facts/1, load_intensional_rules/1 from cdf_io.
+:- [altCDF].
+:- [cdftp_chkCon].
+:- [tp_utils].
+
+:- import set_debug_off/0, set_debug_on/1 from tp_utils.
+:- import assert_cdf_term/1, retractall_cdf_term/1 from cdf_init_cdf.
+
+loadont:-
+	load_extensional_facts(ont1),
+	load_intensional_rules(ont1).
+
+testont:- 
+	loadont,
+	set_debug_off,
+	testval(cid(bookshelfStereo,o1),true),
+	testval(cid(expensiveStereo,o1),true),
+	testval(cid(expBookStereo,o1),false),
+	testval(cid(incon,o1),false),
+	testval(cid(con,o1),true),
+	testentails(cid(mother,fam),not(cid(man,fam)),true),
+	testentails(cid(mother,fam),not(cid(male,fam)),false),
+	testentails(cid(grandmother,fam),cid(parent,fam),false),
+	assert_cdf_term(isa_ext(cid(mother,fam),cid(parent,fam))),
+	testentails(cid(grandmother,fam),cid(parent,fam),true),
+	retractall_cdf_term(isa_ext(cid(mother,fam),cid(parent,fam))),
+	testcw(cid(person,fam),exists(rid(hasBrother,fam),
+	                                  cid(grandfather,fam)),true),
+	testcw(cid(person,fam),exists(rid(hasBrother,fam),
+	                                  cid(grandmother,fam)),false),
+	testcw(cid(person,fam),exists(rid(hasBrother_oops,fam),
+	                                  cid(grandmother,fam)),true),
+	testcw(cid(hitchhiker,mdl),
+	           atLeast(2,rid(hasPart,mdl),cid(handWithoutThumb,mdl)),false),
+	testentails(cid(hitchhiker,mdl),
+	           exists(rid(hasPart,mdl),cid(handWithThumb,mdl)),true),
+	set_debug_on(2).
+
+testcw(Id,CE,true):- 
+	writeln(cw_testing(Id,CE)),
+	(consistentWith(Id,CE) -> 
+	    true
+	  ; writeln('!!!failing'(cw_test(Id,CE,true)))).
+testcw(Id,CE,false):- 
+	writeln(cw_testing(Id,CE)),
+	(\+ consistentWith(Id,CE) -> 
+	    true
+	  ; writeln('!!!failing'(cw_test(Id,CE,false)))).
+
+testentails(Id,CE,true):- 
+	writeln(entails_testing(Id,CE)),
+	(allModelsEntails(Id,CE) -> 
+	    true
+	  ; writeln('!!!failing'(entails_test(Id,CE,true)))).
+testentails(Id,CE,false):- 
+	writeln(entails_testing(Id,CE)),
+	(\+ allModelsEntails(Id,CE) -> 
+	    true
+	  ; writeln('!!!failing'(entails_test(Id,CE,false)))).
+
+testval(Id,true):- 
+	writeln(sat_testing(Id)),
+	(checkIdConsistency(Id) -> 
+	    true
+	  ; writeln('!!!failing'(sat_test(Id,true)))).
+testval(Id,false):- 
+	writeln(sat_testing(Id)),
+	(\+ checkIdConsistency(Id) -> 
+	    true 
+	  ; writeln('!!!failing'(checkIdConsistency(Id,false)))).
+
+end_of_file.
+
+check_lce([cid(expensiveStereo,o1)]).
+
+checkIdConsistency([cid(expBookStereo,o1)]).

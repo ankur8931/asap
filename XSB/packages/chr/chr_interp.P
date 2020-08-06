@@ -1,0 +1,648 @@
+/* File:      chr.P
+** Author(s): Tom Schrijvers 
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: chr_interp.P,v 1.8 2011-04-10 22:50:06 tswift Exp $
+** 
+*/
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%       _                             _   _                
+%%   ___| |__  _ __   _ __ _   _ _ __ | |_(_)_ __ ___   ___ 
+%%  / __| '_ \| '__| | '__| | | | '_ \| __| | '_ ` _ \ / _ \
+%% | (__| | | | |    | |  | |_| | | | | |_| | | | | | |  __/
+%%  \___|_| |_|_|    |_|   \__,_|_| |_|\__|_|_| |_| |_|\___|
+%%
+%% hProlog CHR runtime:
+%%
+%% 	* based on the SICStus CHR runtime by Christian Holzbaur
+%% 
+%%          %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%          %  Constraint Handling Rules		      version 2.2 %
+%%          %								  %
+%%          %  (c) Copyright 1996-98					  %
+%%          %  LMU, Muenchen						  %
+%% 	    %								  %
+%%          %  File:   chr.pl						  %
+%%          %  Author: Christian Holzbaur	christian@ai.univie.ac.at %
+%%          %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% 
+%%	
+%%	* modified by Tom Schrijvers, K.U.Leuven, Tom.Schrijvers@cs.kuleuven.ac.be
+%%		- ported to hProlog
+%%		- modified for eager suspension removal
+%%		- ported to XSB
+%%
+%%      * First working version: 6 June 2003
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%:- module(chr,[]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                                       
+%:- use_module(library(assoc)).
+%:- use_module(library(lists)).
+
+:- export activate_constraint/3,
+	remove_constraint_internal/2,
+	insert_constraint_internal/5,
+	allocate_constraint/4,
+	constraint_generation/3,
+	sbag_member/2,
+	sbag_del_element/3,
+	run_suspensions/1,
+	run_suspensions_loop/1,
+	change_state/2,
+	extend_history/2,
+	novel_production/2,
+	merge_attributes/3,
+	lock/1,
+	unlock/1,
+	via/2,
+	via_1/2,
+	via_2/3,
+	merge/3,
+	not_locked/1,
+	global_term_ref_1/1,
+	set_global_term_ref_1/1,
+	suspended_chr_constraints/2,
+	suspended_constraints/2,
+	suspended_constraints2/3,
+	gen_ids/1,
+	get_chr_store/1,
+	set_chr_store/1,
+	get_chr_answer_store/2,
+	merge_chr_answer_store/1,
+	show_store/1.
+
+:- import globalvar/2 from globalvar.
+
+:- import 
+	create_mutable/2, 
+	update_mutable/2, 
+	get_mutable/2 from mutablevar.
+
+:- import 
+	get_assoc/3,
+	put_assoc/4,
+	empty_assoc/1 from assoc_xsb.
+
+:- import
+	set_arg/3,
+	delete_attributes/1,
+	get_attr/3,
+	del_attr/2,
+	put_attr/3 from machine.
+
+:- import call/1,call_c/1,
+	  arg/3,
+	  (=..)/2,
+	  compound/1,
+	  functor/3,
+	  ','/2
+   from standard.
+
+:- import findall/3, sort/2 from setof.
+
+:- import copy_term/2, member/2 from basics.
+
+:- import append_lists/2, take/3 from lists.
+
+:- import install_verify_attribute_handler/4 from machine.
+
+:- import term_variables/2 from constraintLib.
+
+:- install_verify_attribute_handler(locked,Attr,Value,locked_verify_attributes(Attr,Value)).
+
+/* 
+TLS: reconstruction
+
+For each constraint-module CHR-style constraints are kept in a data
+structure: v(BitMask,CL1,...,CLN)
+
+-- BitMask is a mask of which constraints functors exist for this module.
+(apparently we only get 32 constraqints per module).
+
+-- Each CLi is a list of constraint terms for a given constraint functor.
+
+
+
+*/
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+/*
+term_variables(Term, Vars) :-
+	listofvars(Term, Vs, []),
+	sort(Vs, Vars).	
+
+listofvars(Term, Vh, Vt) :-
+	(var(Term)
+	 ->	Vh = [Term | Vt]
+	 ;	Term =.. [_|Args],
+		listofvars1(Args, Vh, Vt)
+	).
+
+listofvars1([], V, V).
+listofvars1([T|Ts], Vh, Vt) :-
+	listofvars(T, Vh, Vm),
+	listofvars1(Ts, Vm, Vt).
+*/
+
+
+%   I N I T I A L I S A T I O N
+
+%?- nb_setval(id,0).
+
+%?- nb_setval(chr_global,_).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+show_store(Mod) :-
+ 	global_term_ref_1(Store),
+ 	( get_attr(Store,Mod,Attr) ->
+ 		( Attr =.. [v,_|Susps] ->
+ 			findall(_,(member(L,Susps),member(S,L),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],write(C),nl),_)
+ 		
+ 		;
+ 			findall(_,(member(S,Attr),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],write(C),nl),_)
+ 		)
+ 	;
+ 		true
+ 	).
+ 
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+merge_attributes( As, Bs, Cs) :-
+	sbag_union(As,Bs,Cs).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+run_suspensions( Slots) :-
+	    run_suspensions_( Slots).
+
+run_suspensions_loop([]).
+run_suspensions_loop([L|Ls]) :-
+	run_suspensions_(L),
+	run_suspensions_loop(Ls).
+
+run_suspensions_([]).
+run_suspensions_([S|Next] ) :-
+	%iter_next( State, S, Next),
+	arg( 2, S, Mref),
+	get_mutable( Status, Mref),
+	( Status==active ->
+	    update_mutable( triggered, Mref),
+	    arg( 4, S, Gref),
+	    get_mutable( Gen, Gref),
+	    Generation is Gen+1,
+	    update_mutable( Generation, Gref),
+	    arg( 3, S, Goal),
+	    call_c( Goal),
+	    get_mutable( Post, Mref),
+	    ( Post==triggered ->
+		update_mutable( removed, Mref)
+	    ;
+		true
+	    )
+	;
+	    true
+	),
+	run_suspensions_( Next).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+locked_verify_attributes(_,_) :- fail.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+lock(T) :- 
+	( var(T) -> 
+		put_attr( T, locked, x)
+	;
+		functor(T,_,N),
+		lock_arg(N,T)
+	).
+		
+lock_arg( 0, _) :- ! .
+lock_arg( 1, T) :- ! , arg( 1, T, A), lock( A).
+lock_arg( 2, T) :- ! , arg( 1, T, A), lock( A), arg( 2, T, B), lock( B).
+lock_arg( N, T) :-
+	arg( N, T, A),
+	lock( A),
+	M is N-1,
+	lock_arg( M, T).
+
+unlock( T) :-
+	( var(T) ->
+		del_attr( T, locked)
+	;
+		functor( T, _, N),
+		unlock_arg( N, T)
+	).
+
+unlock_arg( 0, _) :- ! .
+unlock_arg( 1, T) :- ! , arg( 1, T, A), unlock( A).
+unlock_arg( 2, T) :- ! , arg( 1, T, A), unlock( A), arg( 2, T, B), unlock( B).
+unlock_arg( N, T) :-
+	arg( N, T, A),
+	unlock( A),
+	M is N-1,
+	unlock_arg( M, T).
+
+none_locked( []).
+none_locked( [V|Vs]) :-
+	not_locked( V),
+	none_locked( Vs).
+
+not_locked( V) :- 
+	( var( V) ->
+  		( get_attr( V, locked, _) ->
+			fail
+		;
+			true
+		)
+	;
+		true
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Eager removal from all chains.
+%
+remove_constraint_internal( Susp, Agenda) :-
+	arg( 2, Susp, Mref),
+	get_mutable( State, Mref),
+	update_mutable( removed, Mref),		% mark in any case
+	( compound(State) ->			% passive/1
+	    Agenda = []
+	; State==removed ->
+	    Agenda = []
+	%; State==triggered ->
+	%     Agenda = []
+	;
+            Susp =.. [_,_,_,_,_,_,_|Args],
+	    term_variables( Args, Vars),
+	    global_term_ref_1( Global),
+	    Agenda = [Global|Vars]
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+via_1( X, V) :- var(X), !, X=V.
+via_1( T, V) :- compound(T), nonground( T, V), ! .
+via_1( _, V) :- global_term_ref_1( V).
+
+via_2( X, _, V) :- var(X), !, X=V.
+via_2( _, Y, V) :- var(Y), !, Y=V.
+via_2( T, _, V) :- compound(T), nonground( T, V), ! .
+via_2( _, T, V) :- compound(T), nonground( T, V), ! .
+via_2( _, _, V) :- global_term_ref_1( V).
+
+via(L,V) :-
+         ( nonground(L,V) ->
+                 true
+         ;
+                 global_term_ref_1(V)
+         ).
+
+%
+% The second arg is a witness.
+% The formulation with term_variables/2 is
+% cycle safe, but it finds a list of all vars.
+% We need only one, and no list in particular.
+%
+nonground( Term, V) :-
+	term_variables( Term, Vs),
+	Vs = [V|_].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+novel_production( Self, Tuple) :-
+	arg( 5, Self, Ref),
+	get_mutable( History, Ref),
+	( get_assoc( Tuple, History, _) ->
+	    fail
+	;
+	    true
+	).
+
+%
+% Not folded with novel_production/2 because guard checking
+% goes in between the two calls.
+%
+extend_history( Self, Tuple) :-
+	arg( 5, Self, Ref),
+	get_mutable( History, Ref),
+	put_assoc( Tuple, History, x, NewHistory),
+	update_mutable( NewHistory, Ref).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+constraint_generation( Susp, State, Generation) :-
+	arg( 2, Susp, Mref),
+	get_mutable( State, Mref),
+	arg( 4, Susp, Gref),
+	get_mutable( Generation, Gref). 	% not incremented meanwhile
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+allocate_constraint( Closure, Self, F, Args) :-
+	empty_history( History),
+	create_mutable( passive(Args), Mref),
+	create_mutable( 0, Gref),
+	create_mutable( History, Href),
+	gen_id( Id),
+	Self =.. [suspension,Id,Mref,Closure,Gref,Href,F|Args].
+
+%
+% activate_constraint( -, +, -).
+%
+% The transition gc->active should be rare
+%
+activate_constraint( Vars, Susp, Generation) :-
+	arg( 2, Susp, Mref),
+	get_mutable( State, Mref),
+	update_mutable( active, Mref),
+	( nonvar(Generation) ->			% aih
+	    true
+	;
+	    arg( 4, Susp, Gref),
+	    get_mutable( Gen, Gref),
+	    Generation is Gen+1,
+	    update_mutable( Generation, Gref)
+	),
+	( compound(State) ->			% passive/1
+	    term_variables( State, Vs),
+	    none_locked( Vs),
+	    global_term_ref_1( Global),
+	    Vars = [Global|Vs]
+	; State==removed ->			% the price for eager removal ...
+	    Susp =.. [_,_,_,_,_,_,_|Args],
+	    term_variables( Args, Vs),
+	    global_term_ref_1( Global),
+	    Vars = [Global|Vs]
+	;
+	    Vars = []
+	).
+
+insert_constraint_internal( [Global|Vars], Self, Closure, F, Args) :-
+	term_variables( Args, Vars),
+	none_locked( Vars),
+	global_term_ref_1( Global),
+	empty_history( History),
+	create_mutable( active, Mref),
+	create_mutable( 0, Gref),
+	create_mutable( History, Href),
+	gen_id( Id),
+	Self =.. [suspension,Id,Mref,Closure,Gref,Href,F|Args].
+
+%% insert_constraint_internal( [Global|Vars], Self, Term, Closure, F, Args) :-
+%% 	term_variables( Term, Vars),
+%% 	none_locked( Vars),
+%% 	global_term_ref_1( Global),
+%% 	empty_history( History),
+%% 	create_mutable( active, Mref),
+%% 	create_mutable( 0, Gref),
+%% 	create_mutable( History, Href),
+%% 	gen_id( Id),
+%% 	Self =.. [suspension,Id,Mref,Closure,Gref,Href,F|Args].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+change_state( Susp, State) :-
+	arg( 2, Susp, Mref),
+	update_mutable( State, Mref).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+empty_history( E) :- empty_assoc( E).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+gen_id( Id) :-
+	incval( id, Id).
+
+incval(id,Id) :-
+	globalvar(id,Ref),
+	( get_mutable(Id,Ref) ->
+		Id1 is Id + 1,
+		update_mutable(Id1,Ref)
+	;
+
+		Id = 0,
+		create_mutable(1,Ref)
+	).	
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+global_term_ref_1(X) :-
+	globalvar(chr_global,mutable(X)).
+
+set_global_term_ref_1(X) :-
+	globalvar(chr_global,G),
+	set_arg(G,1,X).
+
+get_chr_store(Store) :- global_term_ref_1(Store).
+set_chr_store(Store) :- set_global_term_ref_1(Store).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Simple externalisation of constraints for storage in tables.
+
+merge_chr_answer_store([]).
+merge_chr_answer_store([G|Gs]) :-
+	call(G),
+	merge_chr_answer_store(Gs).
+	
+get_chr_answer_store(Mod,AnswerStore) :-
+	suspended_constraints(AnswerStore,Mod).
+
+suspended_chr_constraints(Mod,List) :-
+	get_chr_store(Store),
+	( get_attr(Store,Mod,Attr) ->
+		( Attr = [] ->
+			List = []
+		; Attr = [_|_] ->
+			List = Attr
+		;
+			Attr =.. [_|Lists],
+			append_lists(Lists,List)
+		)
+	;
+		List = []
+	).
+
+suspended_constraints(L,Mod) :-
+	global_term_ref_1(G),
+	( get_attr(G,Mod,Attr) ->
+		( Attr = [] ->
+			L = []
+		; Attr = [_|_] ->
+			suspended_constraints_list(Attr,L,[])
+		;
+			Attr =.. [v,_|Vector],
+			suspended_constraints_vector(Vector,L,[])
+		)
+	;
+		L = []
+	).
+
+suspended_constraints_vector([],L,L).
+suspended_constraints_vector([X|Xs],L,T) :-
+	suspended_constraints_list(X,L,L1),
+	suspended_constraints_vector(Xs,L1,T).
+
+suspended_constraints_list([],L,L).
+suspended_constraints_list([S|Ss],[Goal|L],T) :-
+	suspended_constraint(S,Goal),
+	suspended_constraints_list(Ss,L,T).
+	
+suspended_constraint(S,Goal) :-
+	S =.. [suspension,_,_,Closure,_,_,_|Args],
+	functor(Closure,_,Arity),
+	set_arg(Closure,Arity,_FreshVar),
+	term_variables(Closure,Vars),
+	delete_attributes_list(Vars),
+	copy_term(Closure,Goal),
+	Goal =.. [_|Args1],
+	A1 is Arity - 1,
+	take(A1,Args1,Args).
+
+delete_attributes_list([]).
+delete_attributes_list([X|Xs]) :-
+	delete_attributes(X),
+	delete_attributes_list(Xs).
+
+
+gen_ids([]).
+gen_ids([V|Vs]) :-
+	gen_id(V),
+	gen_ids(Vs).
+
+suspended_constraints2(Susps,IDs,Mod) :-
+	global_term_ref_1(G),
+	( get_attr(G,Mod,Attr) ->
+		( Attr = [] ->
+			Susps = [], IDs = []
+		; Attr = [_|_] ->
+			suspended_constraints_list2(Attr,Susps,[],IDs1)
+		;
+			Attr =.. [v,_|Vector],
+			suspended_constraints_vector2(Vector,Susps,[],IDs1)
+		),
+		close_ids(IDs1),
+		sort(IDs1,IDs2),
+		id_vars(IDs2,IDs)
+	;
+		Susps = [], IDs = []
+	).
+
+suspended_constraints_vector2([],Susps,Susps,_).
+suspended_constraints_vector2([X|Xs],L,T,IDs) :-
+	suspended_constraints_list2(X,L,L1,IDs),
+	suspended_constraints_vector2(Xs,L1,T,IDs).
+suspended_constraints_list2([],L,L,_).
+suspended_constraints_list2([S|Ss],[S|L],T,IDs) :-
+	suspended_constraint2(S,IDs),
+	suspended_constraints_list2(Ss,L,T,IDs).
+
+suspended_constraint2(S,IDs) :-
+	S =.. [suspension,ID,_,Closure,_,HRef,_|_],
+	functor(Closure,_,Arity),
+	set_arg(Closure,Arity,_FreshVar),
+	term_variables(Closure,Vars),
+	delete_attributes_list(Vars),
+	id_lookup(IDs,ID,Var),
+	set_arg(S,1,Var),
+	get_mutable(History,HRef),
+	replace_ids(History,IDs).
+
+id_lookup([K-V|R],Key,Value) :-
+	( K = Key ->
+		V = Value
+	;
+		id_lookup(R,Key,Value)
+	).
+
+close_ids([]) :- !.
+close_ids([_|R]) :- close_ids(R).
+
+id_vars([],[]).
+id_vars([_-V|R],[V|Vs]) :-
+	id_vars(R,Vs).
+
+replace_ids(T,IDs) :-
+	( T == t ->
+		true
+	;
+		T = t(K,_,_,L,R),
+		functor(K,_,A),
+		replace_ids(A,K,IDs),
+		replace_ids(L,IDs),
+		replace_ids(R,IDs)
+	).
+
+replace_ids(N,T,IDs) :-
+	( N > 1 ->
+		arg(N,T,S),
+		arg(2,S,State),
+		( get_mutable(removed,State) ->
+			arg(1,S,ID),
+			id_lookup(IDs,ID,Var),
+			set_arg(S,1,Var)
+		;
+			true
+		),
+		N1 is N - 1,
+		replace_ids(N1,T,IDs)
+	;
+		true
+	).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+sbag_member( Element, [Head|Tail]) :-
+	sbag_member( Element, Tail, Head).
+
+% auxiliary to avoid choicepoint for last element
+%
+sbag_member( E, _,	     E).
+sbag_member( E, [Head|Tail], _) :-
+	sbag_member( E, Tail, Head).
+
+sbag_del_element( [],	  _,	[]).
+sbag_del_element( [X|Xs], Elem, Set2) :-
+	( X==Elem ->
+	    Set2 = Xs
+	;
+	    Set2 = [X|Xss],
+	    sbag_del_element( Xs, Elem, Xss)
+	).
+
+sbag_union( A, B, C) :-
+	merge( A, B, C).
+
+merge([],Ys,Ys).
+merge([X | Xs],YL,R) :-
+  ( YL = [Y | Ys] ->
+      arg(1,X,XId),
+      arg(1,Y,YId),	
+       ( XId < YId ->
+           R = [X | T],
+           merge(Xs,YL,T)
+       ; XId > YId ->
+           R = [Y | T],
+           merge([X|Xs],Ys,T)
+       ;
+           R = [X | T],
+           merge(Xs,Ys,T)
+       )    
+  ;
+       R = [X | Xs]
+  ).
+
+

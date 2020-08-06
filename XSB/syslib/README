@@ -1,0 +1,9 @@
+
+    This directory stores the system library files.
+
+Type  `make' to recompile.
+
+If some of the .xwam files get messed up as a result of a bug you
+introduced, try to type `make restore'. The previously saved .xwam files
+will be restored, so you might get a chance to fix the bug and
+recompile XSB.

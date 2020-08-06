@@ -1,0 +1,28 @@
+
+%% copied from the webCHR page after:
+%% 980202, 980311 Thom Fruehwirth, LMU
+
+%% works for natural numbers only (no fractions)
+%% computes greatest common divisor N of a list L of natural numbers: gcd(L,N)
+
+
+:- chr_module(gcd).
+
+%% top level
+compute_gcd([],0).
+compute_gcd([X|Xs],N) :-
+	l_gcd(V,[X|Xs]),
+	get_gcd_atts(V,[attr(N)],_).
+
+l_gcd(_,[]).
+l_gcd(V,[X|Xs]) :-
+	gcd(V,X),
+	l_gcd(V,Xs).
+
+
+
+:- constraints gcd/2.
+
+gcd(_,0) <=> true.
+gcd(V,N) \ gcd(V,M) <=> N=<M | L is M mod N, gcd(V,L).
+

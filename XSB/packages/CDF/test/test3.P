@@ -1,0 +1,19 @@
+
+% Tests explicit creation, and dumpomsext -- prob not needed.
+
+% Postponing newrelationship until redesign.
+
+test:- 
+	create_oms,
+	dump_omsext(test3dir),
+	shell('sh get_diff.sh test3dir').
+
+create_oms:- 
+	class(Rootid,'OMS Root','OMS Root',OMS),
+	newClass(c3,Rootid,test,C3_id),
+	newClass(c2,C3_id,test,C2_id),
+	newClass(c2alt,C3_id,test,C2alt_id),
+	newObject(o2,C2_id,o2,test,O2_id),
+	newMemberof(O2_id,C2alt_id).
+
+end_of_file.

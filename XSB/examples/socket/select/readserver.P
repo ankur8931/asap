@@ -1,0 +1,116 @@
+%% Readserver uses socket_select with multiple read sockets.
+%% Readclient writes to those sockets.
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "timer_defs_xsb.h"
+#include "char_defs.h"
+
+:- ['auxdefs'].
+:- import tryN/5 from auxdefs.
+
+#define Q_LENGTH  10
+
+
+:- import 
+     socket/2, socket_bind/3, socket_listen/3, socket_accept/3, 
+     socket_set_option/3, socket_close/2, socket_get0/3,
+     socket_put/3, socket_set_select/4, socket_select/6, socket_select_destroy/1 from socket.
+
+:- import file_close/1, fmt_write/3 from file_io.
+:- import ground/1 from basics.
+
+
+%% Port on which the server is listening
+xsb_port(6021).
+
+server :-
+	socket(Sockfd0, ErrCode),
+	(ErrCode =\= SOCK_OK
+	-> writeln('Cannot open socket'), fail
+	; true),
+	writeln(socket(Sockfd0, ErrCode)),
+	socket_set_option(Sockfd0,linger,SOCK_NOLINGER),
+	xsb_port(XSBPort),
+
+	tryN(4,
+	     socket_bind(Sockfd0, XSBPort, ErrBind),
+	     writeln(socket_bind(Sockfd0, XSBPort, ErrBind)),
+	     writeln('Cannot bind'),
+	     ErrBind
+	    ),
+
+	socket_listen(Sockfd0,Q_LENGTH, ErrListen),
+	writeln(socket_listen(Sockfd0,Q_LENGTH, ErrListen)),
+
+	socket_set_select(mytest, [Sockfd0],[Sockfd0],[Sockfd0]),
+	writeln(socket_set_select(mytest,[Sockfd0],[Sockfd0],[Sockfd0])),
+
+	socket_select(mytest,_, Availr, Availw, Availe, Err),
+ 	writeln(socket_select(mytest,_, Availr, Availw, Availe, Err)),       
+
+	(Availr == []
+	 -> writeln('no available read sockets ...'), fail
+	; tryN(4,
+             socket_accept(Sockfd0, Sockfd0_out1,ErrorCode1),
+             writeln(socket_accept1(Sockfd0, Sockfd0_out1,ErrorCode1)),
+             writeln('Cannot accept connection1'),
+             ErrorCode1  
+              )
+	),
+
+  	socket_select(mytest,_, Availr2, Availw2, Availe2, Err2),
+ 	writeln(socket_select(mytest,_, Availr2, Availw2, Availe2, Err2)),   
+	
+	(Availr2 == []
+	 -> writeln('no available read sockets ...'), fail
+	; 
+	  tryN(4,
+             socket_accept(Sockfd0, Sockfd0_out2,ErrorCode2),
+             writeln(socket_accept2(Sockfd0, Sockfd0_out2,ErrorCode2)),
+             writeln('Cannot accept connection2'),
+             ErrorCode2  
+            )
+	),
+
+
+    socket_set_select(mytest1,[Sockfd0_out1, Sockfd0_out2],[],[]),
+    writeln(socket_set_select(mytest1,[Sockfd0_out1,Sockfd0_out2],[],[])),
+
+    server_loop,
+
+    socket_select_destroy(mytest),
+    socket_select_destroy(mytest1),
+    writeln('destroy ...').
+
+server_loop:-
+    socket_select(mytest1, 3, Availr,Availw,Availe,Error),
+    writeln(socket_select(mytest1,3,Availr,Availw,Availe,Error)),
+    ( Availr== []
+     -> writeln('no available read sockets...')
+    ; 
+	(Error == SOCK_OK 
+	-> get0_list(Availr)
+	;   writeln('Timeout or communication error'),
+	    fail
+	)
+    ).
+	
+server_loop :- server_loop.
+      
+get0_list([]):- fail.
+get0_list([H|T]):-
+        (var(H) -> fail
+	; socket_get0(H,Char,Ecode)
+	),
+        writeln(socket_get0(H, Char, Ecode)),
+        ((Char==CH_EOF_C; Char == 4) ->
+	    writeln('Client quits...'),
+	    socket_close(H,_)
+	; ground(Char) ->
+	    fmt_write('%c', f(Char)),nl,
+	    get0_list(T)
+	; get0_list(T)
+        ).
+
+

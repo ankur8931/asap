@@ -1,0 +1,677 @@
+/* File:      format.P
+** Author(s): Adapted to XSB (by Swift) from Ciao.  The code
+** originally came from Quintus code and was  written by Richard
+** A. O'Keefe and others. 
+**
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+:- compiler_options([optimize,sysmod,xpp_on]).
+
+#include "flag_defs_xsb.h"
+
+
+:- export format/2, format/3, format_control/1.
+
+%:- import write/1, nl/0,writeln/1 from standard.
+
+:- import  put_code/2, nl/1, write/2, writeq/2, print/2,
+	write_canonical/2, current_output/1, 'C'/3, % C/2 used in -->
+	atom_codes/2, xsb_configuration/2
+	from usermod.
+
+:-  import throw/1 from standard.
+
+:- import check_nonvar/3 from error_handler.
+
+:- import check_open_stream_or_alias/5 from file_io.
+
+:- import (\=)/2 from standard.
+
+% ---------------------------------------------------------------------------------------------
+:- comment(title,"Formatted output").
+
+:- comment(module,"The @tt{format} family of predicates is due to
+Quintus Prolog, by way of Ciao.  They act as a Prolog analog to the C
+@tt{stdio} function @tt{printf()}, allowing formatted output.
+
+Output is formatted according to an output pattern which can have
+either a format control sequence or any other character, which will
+appear verbatim in the output. Control sequences act as place-holders
+for the actual terms that will be output.  Thus 
+@begin{verbatim}
+        ?- format(""Hello ~q!"",world).
+@end{verbatim}
+
+@noindent
+will print @tt{Hello world!}.
+
+If there is only one item to print it may be supplied alone.  If there
+are more they have to be given as a list. If there are none then an
+empty list should be supplied. There have to be as many items as
+control characters.
+
+The character @tt{~} introduces a control sequence. To print 
+        a @tt{~} verbatim just repeat it:  
+        @begin{verbatim}
+        ?- format(""Hello ~~world!"", []).
+        @end{verbatim}
+        @noindent
+        will result in @tt{Hello ~world!}.
+
+A format may be spread over several lines. The control
+        sequence @tt{\\c} followed by a @key{LFD} will translate to the 
+        empty string:  
+        @begin{verbatim}
+        ?- format(""Hello \\c
+        world!"", []).
+        @end{verbatim}
+        @noindent
+        will result in @tt{Hello world!}.
+
+	TLS: the \\c does not work properly.").
+
+:- comment(format_control/1,"
+The general format of a control sequence is @tt{~@var{N}@var{C}}.
+The character @var{C} determines the type of the control sequence.
+@var{N} is an optional numeric argument.  An alternative form of @var{N}
+is @tt{*}. @tt{*} implies that the next argument in @var{Arguments}
+should be used as a numeric argument in the control sequence.  Example:  
+
+@begin{verbatim}
+?- format(""Hello~4cworld!"", [0'x]).
+@end{verbatim}
+
+@noindent
+and
+
+@begin{verbatim}
+?- format(""Hello~*cworld!"", [4,0'x]).
+@end{verbatim}
+
+@noindent
+both produce
+
+@begin{verbatim}
+Helloxxxxworld!
+@end{verbatim}
+
+The following control sequences are available.
+
+@begin{itemize}
+
+@item ~a
+The argument is an atom.  The atom is printed without quoting.  
+
+@item ~@var{N}c
+
+TLS: printf-style integers and floats are not currently supported in XSB!
+
+(Print character.)  The argument is a number that will be interpreted as an
+ASCII code. @var{N} defaults to one and is interpreted as the number of
+times to print the character.  
+
+@item ~@var{N}e
+@item ~@var{N}E
+@item ~@var{N}f
+@item ~@var{N}g
+@item ~@var{N}G
+(Print float).  The argument is a float.  The float and @var{N} will be
+passed to the C @tt{printf()} function as  
+
+@begin{verbatim}
+printf(""%.@var{N}e"", @var{Arg})
+printf(""%.@var{N}E"", @var{Arg})
+printf(""%.@var{N}f"", @var{Arg})
+printf(""%.@var{N}g"", @var{Arg})
+printf(""%.@var{N}G"", @var{Arg})
+@end{verbatim}
+
+If @var{N} is not supplied the action defaults to
+
+@begin{verbatim}
+printf(""%e"", @var{Arg})
+printf(""%E"", @var{Arg})
+printf(""%f"", @var{Arg})
+printf(""%g"", @var{Arg})
+printf(""%G"", @var{Arg})
+@end{verbatim}
+
+@item ~@var{N}d
+(Print decimal.) The argument is an integer. @var{N} is interpreted as the
+number of digits after the decimal point.  If @var{N} is 0 or missing, no
+decimal point will be printed.  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~1d world!"", [42]).
+?- format(""Hello ~d world!"", [42]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello 4.2 world!
+Hello 42 world!
+@end{verbatim}
+
+@noindent
+respectively.
+
+@item ~@var{N}D
+(Print decimal.) The argument is an integer.  Identical to @tt{~@var{N}d}
+except that @tt{,} will separate groups of three digits to the left of the
+decimal point.  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~1D world!"", [12345]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello 1,234.5 world!
+@end{verbatim}
+V
+@item ~@var{N}r
+(Print radix.) The argument is an integer. @var{N} is interpreted as a radix.
+@var{N} should be >= 2 and <= 36.  If @var{N} is missing the radix defaults to
+8.  The letters @tt{a-z} will denote digits larger than 9.  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~2r world!"", [15]).
+?- format(""Hello ~16r world!"", [15]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello 1111 world!
+Hello f world!V
+@end{verbatim}
+
+@noindent
+respectively.
+
+@item ~@var{N}R
+(Print radix.) The argument is an integer.  Identical to @tt{~@var{N}r} except
+that the letters @tt{A-Z} will denote digits larger than 9.  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~16R world!"", [15]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello F world!
+@end{verbatim}
+
+@item ~@var{N}s
+(Print string.) The argument is a list of ASCII codes.  Exactly @var{N}
+characters will be printed. @var{N} defaults to the length of the string.
+Example:  
+
+@begin{verbatim}
+?- format(""Hello ~4s ~4s!"", [""new"",""world""]).
+?- format(""Hello ~s world!"", [""new""]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello new  worl!
+Hello new world!
+@end{verbatim}
+
+@noindent
+respectively.
+
+@item ~i
+(Ignore argument.) The argument may be of any type.  The argument will be
+ignored.  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~i~s world!"", [""old"",""new""]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello new world!
+@end{verbatim}
+
+@item ~k
+(Print canonical.) The argument may be of any type.  The argument will be
+passed to @tt{write_canonical/2} (@ref{Term output}).  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~k world!"", [[a,b,c]]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello .(a,.(b,.(c,[]))) world!
+@end{verbatim}
+
+@item ~p
+(print.) The argument may be of any type.  The argument will be passed to
+@tt{print/2} (@ref{Term output}).  Example:
+
+@noindent
+suposing the user has defined the predicate
+
+@begin{verbatim}
+portray([X|Y]) :- print(cons(X,Y)).
+@end{verbatim}
+
+@noindent
+then
+
+@begin{verbatim}
+?- format(""Hello ~p world!"", [[a,b,c]]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello cons(a,cons(b,cons(c,[]))) world!
+@end{verbatim}
+
+@item ~q
+(Print quoted.) The argument may be of any type.  The argument will be
+passed to @tt{writeq/2} (@ref{Term output}).  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~q world!"", [['A','B']]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello ['A','B'] world!
+@end{verbatim}
+
+@item ~w
+(write.) The argument may be of any type.  The argument will be passed to
+@tt{write/2} (@ref{Term output}).  Example:  
+
+@begin{verbatim}
+?- format(""Hello ~w world!"", [['A','B']]).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello [A,B] world!
+@end{verbatim}
+
+@item ~@var{N}n
+(Print newline.) Print @var{N} newlines. @var{N} defaults to 1.
+Example:  
+
+@begin{verbatim}
+?- format(""Hello ~n world!"", []).
+@end{verbatim}
+
+@noindent
+will print as
+
+@begin{verbatim}
+Hello
+ world!
+@end{verbatim}
+
+@item ~N
+(Fresh line.) Print a newline, if not already at the beginning of a line.
+@end{itemize}
+
+% TLS: dont keep track of line_position.
+
+The following control sequences are also available for compatibility,
+but do not perform any useful functions.
+
+@begin{itemize}
+@item ~@var{N}|
+(Set tab.) Set a tab stop at position @var{N}, where @var{N} defaults to
+the current position, and advance the current position there.
+
+@item ~@var{N}+
+(Advance tab.) Set a tab stop at @var{N} positions past the current
+position, where @var{N} defaults to 8, and advance the current position
+there.
+
+@item ~@var{N}t
+(Set fill character.) Set the fill character to be used in the next
+position movement to @var{N}, where @var{N} defaults to @key{SPC}.
+@end{itemize}
+
+").
+
+% ------------------------------------------------------------------------
+
+format_control(C) :- string(C).
+format_control(C) :- atom(C).  
+
+% format(+Control, +Arguments)
+% format(+Stream, +Control, +Arguments)
+% Stream Stream
+% atom or list of chars Control corresponds roughly to the first argument of
+%				the C stdio function printf().
+% list or atom Arguments	corresponds to the rest of the printf()
+%				arguments
+%
+
+
+% TLS: should probably replace parse_error.
+
+format(Control_in, Args_in) :- 
+	check_nonvar(Control_in,format/2,1),
+	check_nonvar(Args_in,format/2,1),
+	preproc_newlines(Control_in,Control),
+	preproc_newlines_list(Args_in,Args),
+        current_output(Curr),
+	format1(Curr,Control, Args), !.
+format(Control, Arguments) :-
+	throw(error(parse_error(format(Control, Arguments)), format/2)).
+
+format(Stream_or_alias, Control_in, Args_in) :-
+        check_open_stream_or_alias(Stream_or_alias,format/2,1,output,Stream),
+        check_nonvar(Control_in,format/2,2),
+        check_nonvar(Args_in,format/2,3),
+        preproc_newlines(Control_in,Control),
+        preproc_newlines_list(Args_in,Args),
+        ( format1(Stream,Control, Args) -> true ; true), 
+        !.
+format(_, Control, Arguments) :-
+	throw(error(parse_error(format(..., Control, Arguments)), format/3)).
+
+format1(Stream,Control, Arguments) :-
+	(   atom(Control) -> atom_codes(Control, ControlList)
+	;   ControlList=Control
+	),
+	(   ArgumentList=Arguments
+	;   ArgumentList=[Arguments]
+	),
+%	writeln(fmt_parse(Stream,ArgumentList, SpecList, ControlList, [])),
+	fmt_parse(ArgumentList, SpecList, ControlList, []), !,
+%	write(fmt_print(SpecList, 0, 0' , Stream)),nl,
+	fmt_print(SpecList, 0, 0' , Stream).
+
+fmt_print([], _, _, _).
+fmt_print([X|Xs], Tab, Fill, Stream) :- fmt_print(X, Xs, Tab, Fill, Stream).
+
+fmt_print(settab(Arg,Tab0PlusArg,Pos,Tab), Xs, Tab0, Fill, Stream) :- !,
+	Tab0PlusArg is Tab0+Arg,
+%	line_position(Stream, Pos),
+	Pos = 0,
+	(   Pos>Tab ->
+	    nl(Stream),
+	    putn(Stream,Tab, Fill)
+	;   Skip is Tab-Pos,
+	    putn(Stream,Skip, Fill)
+	),
+	fmt_print(Xs, Tab, Fill, Stream).
+fmt_print(fill(Fill), Xs, Tab, _, Stream) :- !,
+	fmt_print(Xs, Tab, Fill, Stream).
+fmt_print(spec(X,A,N), Xs, Tab, Fill, Stream) :- !,
+%	line_count(Stream, Lc0),
+	fmt_pr(Stream,X, A, N),
+%	line_count(Stream, Lc),
+	fmt_print(Lc0, Lc0, Xs, Tab, Fill, Stream).
+fmt_print(0'
+	  , Xs, _, _, Stream) :- !,
+	nl(Stream),
+	fmt_print(Xs, 0, 0' , Stream).
+/*
+%% This is wrong! It causes the legitimate things like
+%% format:format('foo\\nbar',[]).
+%% to output
+%% foo
+%% bar
+fmt_print(92, [110|Xs], _, _, Stream) :- !,
+	nl(Stream),
+	fmt_print(Xs, 0, 0' , Stream).
+*/
+fmt_print(C, Xs, Tab, Fill, Stream) :-
+	Char is truncate(C),
+	put_code(Stream,Char),
+	fmt_print(Xs, Tab, Fill, Stream).
+
+fmt_print(Lc, Lc, Xs, Tab, Fill, Stream) :- !,
+	fmt_print(Xs, Tab, Fill, Stream).
+fmt_print(_, _, Xs, _, _, Stream) :- !,
+	fmt_print(Xs, 0, 0' , Stream).
+
+%---------------
+
+fmt_parse([], []) --> [].
+fmt_parse(Args, Specs) --> [0'~, C1], !,
+	fmt_parse(C1, Args, Specs, 0, D, D).
+fmt_parse(Args, Specs) --> [0'\\, 0'c, 0'
+                           ], !,
+	fmt_parse(Args, Specs).
+fmt_parse(Args, [I|Specs]) --> [I],
+	{integer(I)},
+	fmt_parse(Args, Specs).
+
+fmt_parse(C, Args, Specs, Sofar, _, D) --> {C>=0'0, C=<0'9}, !,
+	{N is 10*Sofar+C-0'0},
+	[C1], fmt_parse(C1, Args, Specs, N, N, D).
+fmt_parse(0'*, [N|Args], Specs, _, _, D) -->
+	{integer(N)},
+	[C1], fmt_parse(C1, Args, Specs, 0, N, D).
+fmt_parse(0'~, Args, [0'~|Specs], _, 1, 1) -->
+	fmt_parse(Args, Specs).
+/*
+ fmt_parse(0'n, Args, [spec(0'c, 0'
+                           , N)|Specs], _, N, 1) -->
+ 	fmt_parse(Args, Specs).*/
+ fmt_parse(0'n, Args, [spec(0'c, 10, N)|Specs], _, N, 1) -->
+ 	fmt_parse(Args, Specs).
+fmt_parse(0'N, Args, [settab(0,_,_,0)|Specs], _, 1, 1) -->
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0'|, Args, [Spec|Specs], _, N, current) -->
+ 	(   {current=N} ->
+	    {Spec=settab(0,_,Tab,Tab)}
+ 	;   {Spec=settab(N,_,_,N)}
+ 	),
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0'+, Args, [settab(N,Tab,_,Tab)|Specs], _, N, 8) -->
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0't, Args, [fill(N)|Specs], _, N, 0' ) --> % faking
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0'`, Args, [fill(Fill)|Specs], 0, _, _) -->
+ 	[Fill, 0't],
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0'i, [_|Args], Specs, _, 1, 1) -->
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0'a, [A|Args], [spec(0'a, A, 1)|Specs], _, 1, 1) -->
+ 	{atom(A)},
+	fmt_parse(Args, Specs).
+ fmt_parse(0'c, [A|Args], [spec(0'c, A, N)|Specs], _, N, 1) -->
+ 	{integer(A)},
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0'k, [A|Args], [spec(0'k, A, 1)|Specs], _, 1, 1) -->
+ 	fmt_parse(Args, Specs).
+ fmt_parse(0'p, [A|Args], [spec(0'p, A, 1)|Specs], _, 1, 1) -->
+ 	fmt_parse(Args, Specs).
+fmt_parse(0'q, [A|Args], [spec(0'q, A, 1)|Specs], _, 1, 1) -->
+	fmt_parse(Args, Specs).
+fmt_parse(0'w, [A|Args], [spec(0'w, A, 1)|Specs], _, 1, 1) -->
+	fmt_parse(Args, Specs).
+fmt_parse(0'e, [A|Args], [spec(0'e, V, N)|Specs], _, N, 6) -->
+	{V is float(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'E, [A|Args], [spec(0'E, V, N)|Specs], _, N, 6) -->
+	{V is float(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'f, [A|Args], [spec(0'f, V, N)|Specs], _, N, 6) -->
+	{V is float(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'g, [A|Args], [spec(0'g, V, N)|Specs], _, N, 6) -->
+	{V is float(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'G, [A|Args], [spec(0'G, V, N)|Specs], _, N, 6) -->
+	{V is float(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'd, [A|Args], [spec(0'd, V, N)|Specs], _, N, 0) -->
+	{V is truncate(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'D, [A|Args], [spec(0'D, V, N)|Specs], _, N, 0) -->
+	{V is truncate(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'r, [A|Args], [spec(0'r, V, N)|Specs], _, N, 8) -->
+	{V is truncate(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0'R, [A|Args], [spec(0'R, V, N)|Specs], _, N, 8) -->
+	{V is truncate(A)},
+	fmt_parse(Args, Specs).
+fmt_parse(0's, [A|Args], [spec(0's, A, N)|Specs], _, N, Len) -->
+	{is_ascii_list(A, 0, Len)},
+	fmt_parse(Args, Specs).
+
+is_ascii_list(X, _, _) :- var(X), !, fail.
+is_ascii_list([], N, N).
+is_ascii_list([X|Xs], N0, N) :-
+	N1 is N0+1,
+	integer(X),
+	is_ascii_list(Xs, N1, N).
+
+%---------------
+
+fmt_pr(Str,0'a, Arg, _) :- write(Str,Arg). % display
+fmt_pr(Str,0'k, Arg, _) :- write_canonical(Str,Arg).
+fmt_pr(Str,0'p, Arg, _) :- print(Str,Arg).
+fmt_pr(Str,0'q, Arg, _) :- writeq(Str,Arg).
+fmt_pr(Str,0'w, Arg, _) :- write(Str,Arg).
+fmt_pr(Str,0'c, Arg, Number) :-
+	putn(Str,Number, Arg).
+fmt_pr(Str,0'e, Arg, Number) :-
+	'$format_print_float'(Str,0'e, Arg, Number).
+fmt_pr(Str,0'E, Arg, Number) :-
+	'$format_print_float'(Str,0'E, Arg, Number).
+fmt_pr(Str,0'f, Arg, Number) :-
+	'$format_print_float'(Str,0'f, Arg, Number).
+fmt_pr(Str,0'g, Arg, Number) :-
+	'$format_print_float'(Str,0'g, Arg, Number).
+fmt_pr(Str,0'G, Arg, Number) :-
+	'$format_print_float'(Str,0'G, Arg, Number).
+fmt_pr(Str,0'd, Arg, Number) :-
+	'$format_print_integer'(Str,0'd, Arg, Number).
+fmt_pr(Str,0'D, Arg, Number) :-
+	'$format_print_integer'(Str,0'D, Arg, Number).
+fmt_pr(Str,0'r, Arg, Number) :-
+	'$format_print_integer'(Str,0'r, Arg, Number).
+fmt_pr(Str,0'R, Arg, Number) :-
+	'$format_print_integer'(Str,0'R, Arg, Number).
+fmt_pr(Str,0's, Arg, Number) :-
+	putn_list(Str,Number, Arg).
+
+% TLS: Hack! but I didnt want to change file_puttoken.
+'$format_print_integer'(Str,_,Arg,_):- write(Str,Arg).
+'$format_print_float'(Str,_,Arg,_):- write(Str,Arg).
+
+putn(_Str,0, _) :- !.
+putn(Str,N, C) :-
+	N>0, N1 is N-1,
+	Char is truncate(C),
+	put_code(Str,Char),
+	putn(Str,N1, C).
+
+putn_list(_Str,0, _) :- !.
+putn_list(Str,N, []) :- !,
+	N1 is N-1,
+	put_code(Str,0' ),
+	putn_list(Str,N1, []).
+/*
+%% This is wrong! It causes the legitimate things like
+%% format:format('~s',["foo\\nbar"]).
+%% to output
+%% foo
+%% bar
+putn_list(Str,N, [92,110|Chars]) :-
+	N1 is N-2,
+	nl(Str),
+	putn_list(Str,N1, Chars).
+*/
+putn_list(Str,N, [C|Chars]) :-
+	N1 is N-1,
+	Char is truncate(C),
+	put_code(Str,Char),
+	putn_list(Str,N1, Chars).
+
+preproc_newlines_list(H,T):- 
+	xsb_configuration(host_os,Type),
+	(Type == windows -> 
+	    (nonvar(H),string(H) -> 
+	        preproc_newlines(H,T) 
+	      ;
+	        (isList(H) -> 
+		    preproc_newlines_list1(H,T)
+		;   H = T) )
+	  ;   
+	    H = T).
+
+preproc_newlines_list1([],[]).
+preproc_newlines_list1([H|T],[H1|T1]):-
+	(nonvar(H),is_list(H) -> 
+	    preproc_newlines1(H,H1)
+	  ; H1 = H),
+	preproc_newlines_list1(T,T1).
+
+preproc_newlines(H,T):- 
+	xsb_configuration(host_os,Type),
+	(Type == windows ->
+	    (	atom(H), H \= [], H \= ''
+	    ->	atom_codes(H,H1)
+	    ;	H1 = H
+	    ),
+	    preproc_newlines1(H1,T)
+	  ;   
+	    H = T).
+
+preproc_newlines1('','').
+preproc_newlines1([],[]).
+preproc_newlines1([H],[H]):-!.
+/*
+%% This one seems to have an effect only on windows.
+preproc_newlines1([92,110|Tin],[10|Tout]):- !,  %\n
+	preproc_newlines1(Tin,Tout).
+*/
+preproc_newlines1([H|Tin],[H|Tout]):- 
+	preproc_newlines1(Tin,Tout).
+
+string([]).
+string([H|T]):- integer(H),string(T).
+
+isList([]).
+isList([_|_]).

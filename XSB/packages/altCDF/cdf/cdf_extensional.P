@@ -1,0 +1,35 @@
+isa_ext(cid('CDF Primitive Types',cdf),cid('CDF Classes',cdf)).
+
+isa_ext(cid(allIntegers,cdf),cid('CDF Primitive Types',cdf)).
+isa_ext(cid(allFloats,cdf),cid('CDF Primitive Types',cdf)).
+isa_ext(cid(allAtoms,cdf),cid('CDF Primitive Types',cdf)).
+isa_ext(cid(allStructures,cdf),cid('CDF Primitive Types',cdf)).
+isa_ext(cid(atomicIntegers,cdf),cid(allAtoms,cdf)).
+
+isa_ext(cid(componentClasses,cdf),cid('CDF Classes',cdf)).
+
+isa_ext(cid(componentIDs,cdf),cid(componentClasses,cdf)).
+isa_ext(cid(cdf,cdf),cid(componentIDs,cdf)).
+
+isa_ext(cid(compNames,cdf),cid(componentClasses,cdf)).
+isa_ext(cid(compName(cid(cdf,cdf),cid(allAtoms,cdf)),cdf),cid(compNames,cdf)).
+
+isa_ext(cid(components,cdf),cid(componentClasses,cdf)).
+isa_ext(cid(component(cid(cdf,cdf),cid(allAtoms,cdf),cid(allIntegers,cdf)),cdf),
+	cid(components,cdf)).
+
+isa_ext(rid('Name',cdf),rid('CDF Object-Object Relations',cdf)).
+isa_ext(crid('Name',cdf),crid('CDF Class-Object Relations',cdf)).
+isa_ext(crrid('Name',cdf),crrid('CDF Higher-Order (Object-Object)-Object Relations',cdf)).
+isa_ext(crcrid('Name',cdf),crcrid('CDF Higher-Order (Class-Object)-Object Relations',cdf)).
+
+isa_ext(crid('Description',cdf),crid('CDF Class-Object Relations',cdf)).
+isa_ext(crrid('Description',cdf),crrid('CDF Higher-Order (Object-Object)-Object Relations',cdf)).
+isa_ext(crcrid('Description',cdf),crcrid('CDF Higher-Order (Class-Object)-Object Relations',cdf)).
+
+isa_ext(crid(componentDepends,cdf),crid('CDF Class-Object Relations',cdf)).
+isa_ext(crid(hasVersion,cdf),crid('CDF Class-Object Relations',cdf)).
+
+classHasAttr_ext(cid(cdf,cdf),
+		 crid(hasVersion,cdf),
+		 cid(0,cdfpt)).

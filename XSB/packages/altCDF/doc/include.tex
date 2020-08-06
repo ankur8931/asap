@@ -1,0 +1,157 @@
+\newcommand{\mycomment}[1]{}
+
+\newcommand{\cA}{{\cal A}}
+\newcommand{\cB}{{\cal B}}
+\newcommand{\cC}{{\cal C}}
+\newcommand{\cD}{{\cal D}}
+\newcommand{\cE}{{\cal E}}
+\newcommand{\cF}{{\cal F}}
+\newcommand{\cG}{{\cal G}}
+\newcommand{\cH}{{\cal H}}
+\newcommand{\cI}{{\cal I}}
+\newcommand{\cJ}{{\cal J}}
+\newcommand{\cK}{{\cal K}}
+\newcommand{\cL}{{\cal L}}
+\newcommand{\cM}{{\cal M}}
+\newcommand{\cN}{{\cal N}}
+\newcommand{\cO}{{\cal O}}
+\newcommand{\cP}{{\cal P}}
+\newcommand{\cQ}{{\cal Q}}
+\newcommand{\cR}{{\cal R}}
+\newcommand{\cS}{{\cal S}}
+\newcommand{\cT}{{\cal T}}
+\newcommand{\cU}{{\cal U}}
+\newcommand{\cV}{{\cal V}}
+\newcommand{\cW}{{\cal W}}
+\newcommand{\cX}{{\cal X}}
+
+\newcommand{\posvar}{\hat{\cal V}}
+\newcommand{\posn}{\pi}
+\newcommand{\rootsym}[2]{#1 |_{#2}}
+\newcommand{\kw}[1]{\mbox{\sf #1}}
+\newcommand{\id}[1]{{\it #1\/}}
+\newcommand{\abegin}{\kw{begin}}
+\newcommand{\aend}{\kw{end}}
+\newcommand{\ais}{\mbox{ := }}
+\newcommand{\mif}{\mbox{ :- }}
+\newcommand{\bc}{\mbox{$/*\;$}}
+\newcommand{\ec}{\mbox{$*/\;$}}
+
+\newcommand{\omsdl}{${\cal ALCQ}^{/\{\neg,\vee\}}$}
+
+\newcommand{\longline}{\noindent\rule{\textwidth}{.01in}}
+\newcommand{\la}{\mbox{$\leftarrow$}}	
+\newcommand{\nf}{\mbox{$\sim$}}
+\newcommand{\pnot}{\mbox{$\backslash +$}}
+\newcommand{\bottom}{\perp}
+\newcommand{\Ra}{\Rightarrow}
+
+%\newcommand{\pred}[1]{{\tt #1\/}}
+%\newcommand{\module}[1]{{\tt #1\/}}
+
+\newcommand{\gplotwidth}{6.5cm}
+
+\newcommand{\tb}{\hspace*{2em}}
+\newcommand{\tbb}{\hspace*{4em}}
+\newcommand{\tbbb}{\hspace*{6em}}
+\newcommand{\tbbbb}{\hspace*{8em}}
+\newcommand{\tbbbbb}{\hspace*{10em}}
+\newcommand{\tbbbbbb}{\hspace*{12em}}
+\newcommand{\tbbbbbbb}{\hspace*{14em}}
+\newcommand{\tc}{\hspace*{16em}}
+
+\newcommand{\lr}{{\mysc{lr}}}
+\newcommand{\rlr}{{\mysc{rlr}}}
+\newcommand{\rr}{{\mysc{rr}}}
+
+\newcommand{\subgS}{\emph{S}}
+
+\newcommand{\noden}{{\em n}}
+\newcommand{\subgp}{{\em p}}
+%\newcommand{\iff}{\mbox{ iff }}
+
+%not allowed in lncs
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{axiom}{Axiom}
+\newtheorem{instance}{Translation Rule}
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}{Corollary}[section]
+\newtheorem{example}{Example}[section]
+\newtheorem{dummylemma}{Dummy}[section]
+\newenvironment{myexample}
+               {\begin{ExampleN}~\rm} {\hfill  $\Box$\end{ExampleN}}
+%\newtheorem{ExampleN}[dummylemma]{\bf Example}%[section]
+\newtheorem{ExampleN}{\bf Example}[section]
+\newtheorem{Alg}{Algorithm}[subsection]
+
+
+%\newtheorem{proposition}{Proposition}[section]
+%\newenvironment{definition}[1]
+%               {\begin{DefinitioN}[#1]~\rm}{\hspace{1cm} \hfill $\Box$\end{DefinitioN}}
+
+\newenvironment{definition_nobox}[1]
+               {\begin{DefinitioN}[#1]~\rm}{\hspace{1cm} \end{DefinitioN}}
+
+\newenvironment{definition}
+               {\begin{DefinitioN}~\rm}{\hspace{1cm} \hfill $\Box$\end{DefinitioN}}
+%\newcommand{\qed}{\vrule height6pt width4pt}
+%\newcommand{\proof}[1]{{\noindent \bf Proof:~~}#1 \hspace{1cm} \medskip$\Box$\hfill}
+
+\newtheorem{JDefinitioN}[section]{\bf Definition}
+\newenvironment{jdefinition_nopar}
+               {\begin{JDefinitioN}~\rm}{\hspace{1cm} \hfill $\Box$\end{JDefinitioN}}
+
+%ok
+\newtheorem{algorithm}{\em Algorithm}[section] 
+
+%\newenvironment{SProg}{\begin{small}\begin{tt}\begin{tabular}[c]{l}}{\end{tabular}\end{tt}\end{small}}
+
+\newenvironment{SProg}{\begin{tt}\begin{tabular}[c]{l}}{\end{tabular}\end{tt}}
+
+\newenvironment{narrow_paragraph} % make narrower parag.
+  {\begin{list}{} %
+	{\setlength{\leftmargin}{10pt}%
+         \setlength{\rightmargin}{10pt}%
+	}%
+  }%
+  {\end{list}}
+
+\newcommand{\fig}{Figure}
+
+\floatstyle{ruled}
+%newfloat(type,placement,ext,within)
+\newfloat{Algorithm}{thpb}{lop}[section]
+
+\newtheorem{invariant}{Invariant}[section]
+\newtheorem{myrule}{Rule}[section]
+\newtheorem{DefinitioN}[dummylemma]{\bf Definition}%[section]
+\newcommand{\bbb}{\hspace*{0.2in}}
+
+\newcommand{\proofnobox}[1]{{\noindent \bf Proof:~~}#1}
+
+% prints all unprocessed floats up to this point
+%\clearpage
+
+% Handy command definitions
+%--------------------------
+\newcommand{\blob}{\rule{2.5mm}{2.5mm}}
+\newcommand{\eodef}{\hfill $\Box$}
+\newcommand{\eoex}{\hfill \blob}
+\newcommand{\lqed}{\qed\vspace{.1in}}
+\newcommand{\as}{\mbox{$/\hspace{-2mm}>$}}
+\newcommand{\equi}{\mbox{$\leftrightarrow$}}
+\newcommand{\tab}{\hspace*{4em}}
+\newcommand{\ind}{\hspace*{2em}}
+\newcommand{\lind}{\hspace*{1.9em}}
+
+% tiny comments on margin
+\setlength{\marginparwidth}{0.7in}
+\newcommand{\mnote}[1]
+    {\marginpar%
+        [{\tiny\begin{minipage}[t]{\marginparwidth}\raggedright#1%
+                        \end{minipage}}]%
+        {\tiny\begin{minipage}[t]{\marginparwidth}\raggedright#1%
+                        \end{minipage}}%
+    }
+

@@ -1,0 +1,87 @@
+/* Testing opaque feature */
+
+/* 
+Opaque predicates are non-incremental. Defining a predicate opaque
+informs to the engine that an incremental table can be dependent on
+opaque table (should not throw a abort) and tables that are dependent
+on opaque table. Here opaque tables can be changed or abolished
+without affecting any incrementally maintained tables. 
+
+*/
+
+:- import member/2 from basics.
+:- import variant/2 from subsumes.
+:- import incr_assert/1 from increval.
+
+:- table p/1.
+:- use_incremental_tabling p/1.
+
+:- table q/1.
+:- use_incremental_tabling q/1.
+
+:- dynamic f1/1.
+:- use_incremental_dynamic f1/1.
+
+
+:- table o/1.
+:- use_opaque_tabling o/1.
+%%:- use_incremental_tabling o/1.
+
+:- table t/1.
+%%:- use_incremental_tabling t/1. %%
+
+p(X):- q(X).
+p(X):- o(X).
+
+o(X):- t(X).
+
+q(X):-  f1(X).
+t(X):- f2(X).
+
+
+:- dynamic f2/1.
+
+:- incr_assert(f1(a)).
+:- incr_assert(f1(b)).
+:- incr_assert(f1(c)).
+
+:- assert(f2(d)).
+:- assert(f2(e)).
+
+
+test :-
+	check_curr_tables(1,[]),
+	(p(_),fail
+	 ;
+	 true
+	),
+	check_curr_tables(1,[o(_h205),o(d),o(e),p(_h165),p(a),p(b),p(c),p(d),p(e),q(_h189),q(a),q(b),q(c),t(_h217),t(d),t(e)]),
+	abolish_table_call(o(_)),
+	check_curr_tables(1,[p(_h289),p(a),p(b),p(c),p(d),p(e),q(_h313),q(a),q(b),q(c),t(_h329),t(d),t(e)]).	
+	
+check_curr_tables(Case,ShouldBe) :-
+	get_current_tables([p(_),q(_),o(_),t(_)],Tabs1),
+	(variant(Tabs1,ShouldBe)
+	 ->	writeln('OK'(Case))
+	 ;	writeln('ERROR'(Case,ShouldBe,Tabs1))
+	).
+	
+	
+get_current_tables(Preds,CallsAndAnswers) :-
+	findall(COA,get_call_or_answer(Preds,COA),CallsAndAnswersU),
+	sort(CallsAndAnswersU,CallsAndAnswers).
+
+get_call_or_answer(Preds,CallOrAnswer) :-
+	member(G,Preds),
+	get_calls(G,CS,Ret),
+	(CallOrAnswer = G
+	 ;
+	 get_returns(CS,Ret),
+	 CallOrAnswer = G
+	).
+
+/*
+
+Say we call p(X) then p(X)-->o(X) call edge is not there.
+
+*/

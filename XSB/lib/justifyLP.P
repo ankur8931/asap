@@ -1,0 +1,683 @@
+/* File:      justifyLP.P
+** Author(s): Hai-Feng Guo
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+% Generic justifier for XSB programs; allows justification of T/F/U values
+% NOTE : Any program predicate that depends recursively 
+%        on itself through negation must be tabled.
+%        This ensures that the delay list of any undefined 
+%        atom can be accessed (say via get_residual/2).
+
+
+% justifyLP(+G, +TV, ?T)
+%% --- Given a Goal G and its truth value TV inherited from evaluation,
+%% justifyLP/3 is used to construct a justification, where T is a handle
+%% of trie. If T is not instantiated when call justifyLP/3, it will be 
+%% instantiated to a handle for a new trie, which is used to save some
+%% partial justifications in R.
+
+justifyLP(G, true, T) :- justify_true(G, R, T), browser(R, T).
+justifyLP(G, false, T) :- justify_false(G, R, T), browser(R, T).
+justifyLP(G, undef, T) :- justify_undef(G, R, T), browser(R, T).                     
+
+% justify_true(G, R, T)
+% --- Given a Goal G, construct a true-justification R
+% justify_true/3 is used to construct a justification R.
+% T is a trie handle.
+
+justify_true(G, (G, true, Child, nil), T) :- 
+	(var(T) -> new_trie(T)
+                ;  true
+        ),
+	just(G, true, 0, -1, [], (G, true, Child, nil), T).
+
+% justify_false(G, R, T)
+% --- Given a Goal G, construct a false-justification R
+% justify_false/3 is used to construct a justification R.
+% T is a trie handle.
+
+justify_false(G, (G, false, Child, nil), T) :-
+	(var(T) -> new_trie(T)
+                ;  true
+        ),
+	just(G, false, 0, -1, [], (G, false, Child, nil), T).
+
+% justify_undef(G, R, T)
+% --- Given a Goal G, construct a undef-justification R
+% justify_undef/3 is used to construct a justification R.
+% T is a trie handle.
+
+justify_undef(G, (G, undef, Child, nil), T) :-
+	(var(T) -> new_trie(T)
+                ;  true
+        ),
+	just(G, undef, 0, -1, [], (G, undef, Child, nil), T).
+
+just(G, TV, DFS, LastNeg, Ancs, Root, T) :-
+	proved(G, TV, DFS, LastNeg, Ancs, Root, T).
+
+%----------------------------------------------------------------
+
+negated_goal(\+(G), G).
+negated_goal(not(G), G).
+negated_goal(tnot(G), G).
+negated_goal('t not'(G), G).
+
+%----------------------------------------------------------------
+
+proved(neg(G), TV, DFS, _LastNeg, Ancs, (neg(G), TV, (G, TV1, Child, nil), _Sibling), T) :-
+	NDFS is DFS+1,
+	add_to_ancestor(neg(G), DFS, Ancs, NAncs),
+	toggle_tv(TV1, TV), !,
+	proved(G, TV1, NDFS, DFS, NAncs, (G, TV1, Child, _), T).
+
+% TLS 12/05 close_open_table -> close_open_tables
+proved(leaf(G), TV, _DFS, _LastNeg, _Ancs, (leaf(G), TV, nil, _sibling), _) :- 
+	(TV = true -> call(G)
+		    ; \+((call(G), close_open_tables, !))
+	).
+
+proved(G, TV, DFS, LastNeg, Ancs, Root, T) :- 
+	NDFS is DFS + 1,
+	(tabled_goal(G)
+		-> proved_tab(G, TV),
+		   (TV==true
+	    		-> (ancestorchk(G, _AncDFS, Ancs)
+		   		-> fail 	% A cycle can never be a valid justification for "t"
+                   		;  (nb_asserted(seen(G, _), T) 
+					-> Root = (G, TV, tabled, _Sibling)
+					;  add_to_ancestor(G, DFS, Ancs, NAncs),
+					   findonerule(G, NDFS, LastNeg, NAncs, Child, T),
+					   Root = (G, TV, Child, _Sibling)
+				   )
+	       		   )
+			;  TV == undef ->
+            			(ancestorchk(G, _AncDFS, Ancs)
+	           			->
+% Any cycle of "u"s would be a valid justification of a "u"
+% so, no need to check
+			 		    Root = (ancestor(G), undef, nil, nil)
+	          			 ;  (nb_asserted(seen(G, _), T)
+						-> Root = (G, TV, tabled, _Sibling)
+						;
+					    add_to_ancestor(G, DFS, Ancs, NAncs),
+			 		    findfailsandrules(G, NDFS, LastNeg, NAncs, Child, T),
+					    Root = (G, TV, Child, _Sibling)
+					    )
+				   )
+	    		 ; % TV=false
+	       			  (ancestorchk(G, AncDFS, Ancs)
+	           			-> LastNeg < AncDFS,
+% A cycle may be a valid justification of "f" as long as
+% it *doesnt* contain a negation
+					   Root = (ancestor(G), TV, nil, nil)
+	           			;  (nb_asserted(seen(G, _), T)
+						-> Root = (G, TV, tabled, _Sibling)
+						; 
+					    add_to_ancestor(G, DFS, Ancs, NAncs),
+					    findfails(G, NDFS, LastNeg, NAncs, Child, T),
+					    Root = (G, TV, Child, _Sibling)
+		      	      		   ) 
+				  )
+	       	   )
+        	;  proved_nt(G, TV, DFS, LastNeg, Ancs, Root, T)
+        ).
+
+proved_nt(G, true, DFS, LastNeg, Ancs, (G, true, Child, Sibling), T) :-
+	just_true_nt(G, DFS, LastNeg, Ancs, (G, true, Child, Sibling), Tc, T),
+	justall_true(Tc, DFS, LastNeg, Ancs, T). 
+
+proved_nt(G, false, DFS, LastNeg, Ancs, (G, false, Child, Sibling), T) :- 
+	just_false_nt(G, DFS, LastNeg, Ancs, (G, false, Child, Sibling), Tc, T),
+	justall_false(Tc, DFS, LastNeg, Ancs, T).
+
+proved_nt(G, undef, DFS, LastNeg, Ancs, (G, undef, Child, Sibling), T) :-
+	just_failundef_nt(G, DFS, LastNeg, Ancs, (G, undef, Child, Sibling), Tc, T),
+	justall(Tc, DFS, LastNeg, Ancs, T).
+
+proved_tab(G, TV) :-
+	\+ get_calls(G, _, _), !, 
+        complete_call(G),
+        proved_tab(G, TV).
+proved_tab(G,true) :-
+        setof(G, get_residual(G, []), List), !, member(G, List).
+        % this is required; do not change setof to findall
+        % illustration r(b) in p80. of wfs_tests
+proved_tab(G, undef) :-
+        setof(G, get_residual(G, [_|_]), List), !, member(G, List).
+        % need to make sure we do not return mutiple ans.
+        % for the same undef. atom with diff. delay lists.
+proved_tab(G, false) :- \+ get_residual(G, _).
+
+complete_call(G) :- call(G); true.
+
+%-----------------------------------------------------------------------------
+                                                                                            
+findonerule(Goal, DFS, LastNeg, Ancs, Root, T) :-
+	get_clause(Goal,Body), 
+	(Body = [] 	-> Root = (fact, true)
+			; ( alltrue(Body, DFS, LastNeg, Ancs, Root, TcList, T),
+			    justall_true(TcList, DFS, LastNeg, Ancs, T),
+			    nb_assert(seen(Goal, Root), T)
+			  )
+	).
+
+alltrue([], _, _, _, nil, [], _).
+alltrue([G1|Gs], DFS, LastNeg, Ancs, (G1,true,Child,Sibling), Tc1, T) :- 
+	(tabled_call_true(G1, TV) 
+		-> (TV = true 
+			  -> (ancestorchk(G1, _AncDFS, Ancs)
+					-> fail
+					;  Child = tabled 
+			  )
+		    	  ; fail
+		   ),
+		   (nb_asserted(seen(G1,  _), T) 
+				-> Tc3 = []
+				; Tc3 = [(G1, TV)]
+		   )
+		 ;  just_true_nt(G1, DFS, LastNeg, Ancs, (G1, true, Child, Sibling), Tc3, T)
+        ),
+	alltrue(Gs, DFS, LastNeg, Ancs, Sibling, Tc2, T),
+        checkappend(Tc3, Tc2, Tc1).
+
+findonerule_nt(G, DFS, LastNeg, Ancs, Root, TcList, T) :- 
+        get_clause(G, Body),
+%	rule(G, Body),
+        (Body = [] ->  Root = (fact, true)
+                    ; alltrue(Body, DFS, LastNeg, Ancs, Root, TcList, T)
+        ).
+
+justall_true([], _, _, _, _).
+justall_true([(neg(G), true) | R], DFS, LastNeg, Ancs, T) :- !,
+        add_to_ancestor(neg(G), DFS, Ancs, NAncs),
+        just(G, false, DFS, LastNeg, NAncs, _, T),
+        justall_true(R, DFS, LastNeg, Ancs, T).        
+justall_true([(G, true) | R], DFS, LastNeg, Ancs, T) :-
+        add_to_ancestor(G, DFS, Ancs, NAncs),
+	findonerule(G, DFS, LastNeg, NAncs, _, T),
+	justall_true(R, DFS, LastNeg, Ancs, T). 
+
+
+just_true_nt(neg(G), DFS, _LastNeg, Ancs, (neg(G), true, (G, false, Child, nil), _), Tc, T) :- !,
+	NDFS is DFS + 1,
+	just_false_nt(G, NDFS, DFS, Ancs, (G, false, Child, nil), Tc, T).
+just_true_nt(leaf(G), _, _, _, (leaf(G), true, nil, _), [], _) :- !,
+	leaf_call(leaf(G), true).	
+just_true_nt(G, DFS, LastNeg, Ancs, (G, true, Child, _), Tc, T) :- 
+	NDFS is DFS + 1,
+	findonerule_nt(G, NDFS, LastNeg, Ancs, Child1, Tc, T), 
+	(Tc == [] -> (Child1 == (fact, true) 
+				-> Child = Child1
+				;  Child = (true, true)
+		    )	
+		 ;  Child = Child1
+	).
+
+tabled_call_true(neg(G), TV) :- !, tabled_call_true(G, TV1), toggle_tv(TV1, TV).
+tabled_call_true(G, TV) :- tabled_goal(G), proved_tab(G, TV).
+
+tabled_call_false(neg(G), TV, []) :-
+	!, tabled_call_true(G, TV1), toggle_tv(TV1, TV).
+tabled_call_false(G, TV, TcList) :-
+	tabled_goal(G), 
+	findall(G, proved_tab(G, true), TcList),
+	close_open_tables,
+	(TcList = [] ->
+		TV = false
+		; TV = true
+	).
+
+tabled_call_undef(neg(G), TV, TcList) :- !,
+	tabled_call_undef(G, TV1, TcList), toggle_tv(TV1, TV).
+tabled_call_undef(G, TV, TcList) :-
+	tabled_goal(G),
+	findall(G, proved_tab(G, _), TcList1),
+	proved_tab(G, TV),
+	(TV = true
+		-> TcList = TcList1
+		;  TcList = []
+	).
+
+leaf_call(neg(G), TV) :- leaf_call(G, TV1), toggle_tv(TV1, TV).	
+leaf_call(leaf(G), true) :- call(G).
+leaf_call(leaf(G), false) :- \+((call(G), close_open_tables,!)).
+
+
+
+just_false_nt(neg(G), DFS, _LastNeg, Ancs, (neg(G), false, (G, true, Child, nil), _), Tc, T) :-
+	!, NDFS is DFS + 1,
+	just_true_nt(G, NDFS, DFS, Ancs, (G, true, Child, nil), Tc, T).
+
+just_false_nt(leaf(G), _DFS, _LastNeg, _, (leaf(G), false, nil, _), [], _) :-
+	!, leaf_call(leaf(G), false).
+just_false_nt(G, DFS, LastNeg, Ancs, (G, false, Child, _), Tc, T) :-
+	NDFS is DFS + 1,
+	findfails_nt(G, NDFS, LastNeg, Ancs, Child1, Tc, T),
+	(Tc = [] -> (Child1 = (fact, false)
+				-> Child = Child1
+				;  Child = (false, false)
+		    )
+		 ;  Child = Child1
+	). 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+findfails(Goal, DFS, LastNeg, Ancs, Root, T) :-
+	findall(Body, get_clause(Goal,Body), BodyList),
+	(BodyList = [] -> Root = (fact, false)
+			; (
+			   failedlits(BodyList, DFS, LastNeg, Ancs, Root, TcList, T),
+			   justall_false(TcList, DFS, LastNeg, Ancs, T),
+			   nb_assert(seen(Goal, Root), T)
+                          )
+	).
+
+findfails_nt(Goal, DFS, LastNeg, Ancs, Root, TcList, T) :- 
+	findall(Body, get_clause(Goal, Body), BodyList),
+	(BodyList = [] -> Root = (fact, false), TcList = []
+			; failedlits(BodyList, DFS, LastNeg, Ancs, Root, TcList, T)
+	).			  
+
+justall_false([], _, _, _, _).
+justall_false([(neg(G), false) | R], DFS, LastNeg, Ancs, T) :-
+        add_to_ancestor(neg(G), DFS, Ancs, NAncs),
+	NDFS is DFS + 1,
+	just(G, true, NDFS, DFS, NAncs, _, T),
+	justall_false(R, DFS, LastNeg, Ancs, T).
+justall_false([(G, false) | R], DFS, LastNeg, Ancs, T) :- 
+	add_to_ancestor(G, DFS, Ancs, NAncs),
+	findfails(G, DFS, LastNeg, NAncs, _, T),
+	justall_false(R, DFS, LastNeg, Ancs, T).
+
+
+falseinst([G1|Gs]) :- (  proved(G1, false) ;
+                         (true_or_undef(G1), falseinst(Gs))
+                      ).
+% falseinst([]) will always fail
+
+failedlits([], _, _, _, nil, [], _).
+failedlits([Bd|Rest], DFS, LastNeg, Ancs, (Goal, TV, Child, Sibling), TcList, T) :-
+	findfalselit(Bd, DFS, LastNeg, Ancs, (Goal, TV, Child, Sibling), TcList1, Sibling1, T), 
+	failedlits(Rest, DFS, LastNeg, Ancs, Sibling1, TcList2, T),
+	checkappend(TcList1, TcList2, TcList).
+
+% Nondeterministically find a false literal.
+% Can be backtracked to another choice if the current choice results
+% in a cyclic justification of a true literal.
+
+findfalselit1(_, [], _, _, _, _, Sibling, [], Sibling, _) :- !.
+findfalselit1(G1, [Gf|Gr], Gs, DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList, Sibling1, T) :-
+	findall(Gs, G1 = Gf, [Gs1|_]),
+	findfalselit(Gs1, DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList1, Sibling, T),
+	findfalselit1(G1, Gr, Gs, DFS, LastNeg, Ancs, Sibling, TcList2, Sibling1, T),
+	checkappend(TcList1, TcList2, TcList).
+
+findfalselit([], _, _, _, _, _, _, _) :- !, fail.
+findfalselit([G1|Gs], DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList, Sibling1, T) :-
+	(tabled_call_false(G1, TV, Tc1)
+		-> (TV = true
+			-> (Tc1 = []
+				-> findfalselit(Gs, DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList, Sibling1, T)
+				;  findfalselit1(G1, Tc1, Gs, DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList, Sibling1, T)
+			   )
+			;  (ancestorchk(G1, _AncDFS, Ancs)
+				-> (TcList = [], Child = (ancestor, false))
+				;  Child = tabled,
+				   (nb_asserted(seen(G1, _), T)
+		 				-> TcList = []
+						; TcList = [(G1, false)]
+				   )
+			   ),
+                           G = G1, Sibling = Sibling1
+		   )
+		;  (leaf_call(G1, TV)
+			-> (TV = true
+				-> findfalselit(Gs, DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList, Sibling1, T)
+				;  G = G1, TcList = [], Sibling = Sibling1, Child = nil
+			   )
+			;  (just_false_nt(G1, DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList, T)
+				-> G = G1, Sibling = Sibling1
+				;  findall(G1, G1, GL),
+			   	findfalselit1(G1, GL, Gs, DFS, LastNeg, Ancs, (G, false, Child, Sibling), TcList, Sibling1, T)
+		   	   )
+		   )
+	).
+	
+
+
+%---------------------------------------------------------------------------
+
+findfailsandrules(Goal, DFS, LastNeg, Ancs, Root, T) :-
+	findall(Body, get_clause(Goal, Body), BodyList),
+	(BodyList == []
+		-> fail
+		;  failsandrules(BodyList, DFS, LastNeg, Ancs, Root, TcList, undef, T),
+		   justall(TcList, DFS, LastNeg, Ancs, T),
+		   nb_assert(seen(Goal, Root), T)
+	).
+
+
+ufinst(Body) :- (falseinst(Body), TV=false) ; (undefinst(Body), TV=undef).
+
+failsandrules([], _, _, _, nil, [], false, _) :- !.
+failsandrules([Bd|Rest], DFS, LastNeg, Ancs, (Goal, TV, Child, Sibling), TcList, TF, T) :-
+	failorrule(Bd, DFS, LastNeg, Ancs, (Goal, TV, Child, Sibling), TcList1, Sibling1, TF2, T),
+        failsandrules(Rest, DFS, LastNeg, Ancs, Sibling1, TcList2, TF1, T),
+        checkappend(TcList1, TcList2, TcList),
+	(TF2 = undef
+	    -> TF = undef
+	    ;  (TF1 = undef
+		  -> TF = undef
+	 	  ;  TF = false
+	       )
+	).
+
+failorrule([G1|Gs], DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList, Sibling1, TF, T) :-
+	(tabled_call_undef(G1, TV1, Tc1) 
+		-> (TV1 = true
+			-> (Tc1 = []
+				-> failorrule(Gs, DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList, Sibling1, TF, T)
+				;  failorrule1(G1, Tc1, Gs, DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList, Sibling1, TF, T)
+			   )
+                        ;  (ancestorchk(G1, _AncDFS, Ancs)
+                                -> TcList = [], Child = (ancestor, TV1)
+                                ;  TcList = [(G1, TV)], Child = tabled
+                           ),
+                           TV = TV1, G = G1, Sibling = Sibling1, TF = TV
+                   )
+                ;  (leaf_call(G1, TV1)
+                        -> (TV1 = true
+                                -> failorrule(Gs, DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList, Sibling1, TF, T)
+                                ;  G = G1, TV = TV1, TF = TV, TcList = [], Sibling = Sibling1, Child = nil
+                           )
+                        ;  (just_failundef_nt(G1, DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList, T)
+                                -> Sibling1 = Sibling, TF = TV
+                                ;  findall(G1, G1, GL),
+                                   failorrule1(G1, GL, Gs, DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList, Sibling1, TF, T)
+                           )
+                   )
+        ).			    
+
+failorrule1(_, [], _, _, _, _, Sibling, [], Sibling, false, _) :- !.
+failorrule1(G1, [Gf|Gr], Gs, DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList, Sibling1, TF, T) :-
+        findall(Gs, G1 = Gf, [Gs1|_]),
+        failorrule(Gs1, DFS, LastNeg, Ancs, (G, TV, Child, Sibling), TcList1, Sibling2, TF2, T),
+        failorrule1(G1, Gr, Gs, DFS, LastNeg, Ancs, Sibling2, TcList2, Sibling1, TF1, T),
+        checkappend(TcList1, TcList2, TcList),
+        (TF2 = undef
+	    -> TF = undef
+	    ;  (TF1 = undef
+		  -> TF = undef
+	 	  ;  TF = false
+	       )
+	).
+
+
+just_failundef_nt(G, DFS, LastNeg, Ancs, (G, TV, Child, _), Tc, T) :-
+        NDFS is DFS + 1,
+        findfailundef_nt(G, NDFS, LastNeg, Ancs, Child1, Tc, TV, T),
+        (Tc = [] -> (Child1 = (fact, false)
+                                -> Child = Child1
+                                ;  Child = (false, false)
+                    ),
+		    TV = false
+                 ;  Child = Child1
+        ).
+ 
+findfailundef_nt(Goal, DFS, LastNeg, Ancs, Root, TcList, TV, T) :-
+        findall(Body, get_clause(Goal, Body), BodyList),
+        (BodyList = [] -> Root = (fact, false), TcList = [], TV = false
+                        ; failsandrules(BodyList, DFS, LastNeg, Ancs, Root, TcList, TV, T)
+        ). 
+                                                                                                                                                           
+justall([], _, _, _, _).
+justall([(G, true) | R], DFS, LastNeg, Ancs, T) :-
+	justall_true([(G, true)], DFS, LastNeg, Ancs, T),
+	justall(R, DFS, LastNeg, Ancs, T).
+justall([(G, false) | R], DFS, LastNeg, Ancs, T) :-
+	justall_false([(G, false)], DFS, LastNeg, Ancs, T),
+        justall(R, DFS, LastNeg, Ancs, T).
+justall([(neg(G), undef) | R], DFS, LastNeg, Ancs, T) :- !,
+	justall([(G, undef) | R], DFS, LastNeg, Ancs, T).
+justall([(G, undef) | R], DFS, LastNeg, Ancs, T) :-
+	findfailsandrules(G, DFS, LastNeg, Ancs, _, T),
+	justall(R, DFS, LastNeg, Ancs, T).
+
+joinSibling((_, _, _, Sib1), Sib2) :- !, joinSibling(Sib1, Sib2).
+joinSibling(Sibling, Sibling).
+ 
+
+ 
+%-----------------------------------------------------------------
+
+insert(X, L, L) :- member(X, L), !.
+insert(X, L, [X|L]).
+
+add_to_ancestor(G, DFS, Ancs, [anc(G, DFS)|Ancs]) :- !.
+add_to_ancestor(_,_,Ancs, Ancs).
+
+ancestorchk(G, DFS, Ancs) :-
+	member(anc(G,DFS), Ancs).
+
+true_or_undef(G, DFS, LastNeg, Ancs, Root) :- proved(G, true, DFS, LastNeg, Ancs, Root).
+true_or_undef(G, DFS, LastNeg, Ancs, Root) :- proved(G, undef, DFS, LastNeg, Ancs, Root).
+
+toggle_tv(true, false).
+toggle_tv(false, true).
+toggle_tv(undef, undef). 
+
+tabled_goal(G) :- predicate_property(G, tabled).
+
+builtin(G) :- predicate_property(G, built_in).
+
+get_clause(G, Conj) :- rule(G, B), member(Conj, B).
+
+checkappend([], A, A) :- !.
+checkappend([F|R], L1, L2) :-
+	(ismember(F, L1) -> checkappend(R, L1, L2)
+		       ;  checkappend(R, [F|L1], L2)
+	). 
+
+ismember(_, []) :- !, fail.
+ismember((G, TV), [(G1, TV) | _]) :- G == G1, !.
+ismember(M, [_|R]) :- ismember(M, R).
+
+%%%%%%%%%%%%%%%%
+% Code to initialize justifier with appropriate program rules
+%%%%%%%%%%%%%%%%
+
+just_init(PgmFiles) :-
+	load_pgms(PgmFiles).
+
+load_pgms([]) :- !.
+load_pgms([P|Ps]) :- !, 
+	load_pgms(P),
+	load_pgms(Ps).
+load_pgms(PgmFile) :- 
+	see(PgmFile),
+	load_pgm,
+	seen.
+
+load_pgm :-
+	repeat,
+	read(Rule),
+	(Rule = end_of_file
+		-> true
+		; (Rule = ':-'(Directive)
+			-> ( Directive = table(PredSpec)
+				-> assert(tabled_pred(PredSpec))
+				;  true	% skip other directives
+			   )
+			;  ( Rule = ':-'(Head, Body)
+				-> (builtin_pred(Head)
+				      -> true
+				      ; (convert((Head;Body),[[CH]|CB]),
+					assert(rule(CH, CB)))
+				   )
+				;  assert(rule(Rule, [[]]))
+			   )
+		   ), fail
+	).
+
+
+convert(G, [[G]]) :- var(G), !.
+convert(true, [[]]) :- !.
+convert((G1 '->' G2 ; G3), C) :- !,
+	convert(((G1, G2); (not(G1), G3)), C).
+convert((G1 '->' G2), C) :- !,
+	convert((G1, G2), C).
+convert((G1; G2), C) :- !,
+	convert(G1, C1),
+	convert(G2, C2),
+	append(C1, C2, C).
+convert((G1, G2), C) :- !,
+	convert(G1, C1),
+	convert(G2, C2),
+	product(C1, C2, C).
+convert(G, C) :- 
+	negated_goal(G, NG),!,
+	convert(NG, C1),
+	(C1 = [[NC]]	-> C=[[neg(NC)]]
+			; writeln('++ERROR: conjunction/disjunction in scope of not!'(NG)),
+				C=[[]]
+	).
+convert(G, [[leaf(G)]]) :-
+	builtin(G), !.
+convert(G, [[G]]).
+
+product(L1, L2, L) :-
+	bagof(C, choose_from(L1, L2, C), L).
+choose_from(L1, L2, C) :-
+	member(C1, L1), member(C2, L2), append(C1, C2, C).
+
+builtin_pred(forall(_,_,_)).
+load_builtin_preds :-
+	assert(rule(forall(_,A,C), [[neg(exists_ce(A,C))]])),
+	assert(rule(exists_ce(A,C), [[A, neg(C)]])),
+	assert((exists_ce(A,C) :- A, not(C))).
+
+just_cleanup :-
+	retractall(rule(_,_)),
+	retractall(tabled_pred(_)).
+
+nb_assert(T, H) :-
+        (nb_asserted(T, H) -> true
+                           ;  trie_intern(T, H, _, _, _)
+        ), !. 
+
+nb_asserted(T, H) :- 
+	trie_interned(T, H, _, _).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Browser 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+browser((neg(G), TV, Child, _), H) :- !,
+        toggle_tv(TV, TV1),
+        browser((G, TV1, Child, _), H).
+
+browser((leaf(G), TV, nil, _), _) :- !,
+	write(G), write(' is '), write(TV), nl,
+	write('because it is a built-in predicate'), nl,
+	write('Please press a return key to upper level ... '),
+	loop,
+	get0(10), !.
+
+browser((G, TV, (ancestor, TV), _), _) :- !,
+	write(G), write(' is '), write(TV),
+        write(' because there is a cycle.'), nl,
+        write('Please press a return key to upper level ... '),
+        loop,
+        get0(10), !. 
+
+browser((G, TV, (fact, TV), _), _) :- !,
+	write(G), write(' is '), write(TV),
+        write(' because it is a fact.'), nl,
+        write('Please press a return key to upper level ... '),
+        loop,
+        get0(10), !. 
+
+browser((G, TV, (TV, TV), _), _) :- !,
+	loop,
+	write(G), write(' is '), write(TV), nl,
+	write('Non-tabled Call: trace -- 1; upper level -- 0: ?[0/1] '),
+	get0(A), get0(_),
+	(A = 48 -> true, !
+		;  %getRealG(G, G1),
+		   trace,
+		   tracer(G),
+		   notrace,
+		   fail
+	).
+
+browser((G, TV, tabled, _), H) :- !,
+	loop,
+	write(G), write(' is '), write(TV), write(' :  '), 
+	write('justify -- 1; upper level -- 0: ?[0/1] '),
+	get0(A), get0(_),
+	(A = 48 -> true, !              % 48 = '0'
+		; nb_asserted(seen(G, Child), H),
+                  write(G), write(' is '), write(TV), 
+                  write(' because the follow calls are '), write(TV), nl,
+		  just_browser(Child, H), fail
+	).
+		   
+browser((G, TV, Child, _), H) :- 
+	loop,
+	write(G), write(' is '), write(TV), write(' :  '), 
+	write('justify -- 1; upper level -- 0: ?[0/1] '),
+	get0(A), get0(_),
+	(A = 48 -> true, !              % 48 = '0'
+		; write(G), write(' is '), write(TV), 
+                  write(' because the follow calls are '), write(TV), nl, 
+                  just_browser(Child, H), fail
+	).
+
+just_browser(Child, H) :-
+	print_child(Child, 0, N),
+	(N = 1 -> Child = Child1
+		; write('Please choose [1 -- '), write(N), write(']: '),  % N <= 9 at present
+		  get0(A), get0(_),
+		  A1 is A - 48,
+		  getChild(Child, A1, Child1)
+	),
+	browser(Child1, H).
+
+print_child(nil, N, N).
+print_child((G, TV, _, Sibling), F, N) :-
+	F1 is F + 1,
+	write(F1), write(' -- '), write(G), 
+	write(' ('), write(TV), write(')'), nl,
+	print_child(Sibling, F1, N).
+
+getChild(G, 1, G) :- !.
+getChild((_, _, _, Sibling), N, Child) :-
+	N1 is N - 1,
+	getChild(Sibling, N1, Child).
+
+tracer(G) :- G, !.
+tracer(_).
+
+loop.
+loop :- loop.

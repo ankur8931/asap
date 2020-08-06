@@ -1,0 +1,597 @@
+:- assert(library_directory('C:/xsbsys/XSBCVS/lib/oms')).
+
+/* load OMS from RDF */
+
+:- ensure_loaded(xml).
+:- ensure_loaded(oms_init_oms).
+:- ensure_loaded(oms_trans_triples).
+
+:- import memberchk/2, append/3 from basics.
+:- import file_read_line_list/1 from file_io.
+:- import concat_atom/2 from string.
+:- import gensym/2 from gensym.
+
+testall :-
+	file(File),
+	write('Testing: '),writeln(File),
+	(load_rdf(File)
+	 ->	writeln(yes),nl
+	 ;	writeln(no),nl
+	),
+	fail.
+
+show_xml(File) :-
+	read_codes(File,Codes),
+	xml_parse(Codes,Doc),
+	writeln(Doc).
+
+%%:- import leash/1 from debugger.
+load_rdf(File) :-
+	do_xml_parse(File).
+load_rdf(_).			% reclaim space
+
+do_xml_parse(File) :-
+	read_codes(File,Codes),
+%%	leash([]),
+%%	trace,
+	xml_parse(Codes,Doc),
+%%	writeln(Doc),
+	init_oms_rels,
+	rdf_form_init,
+	oms_mergeRDFDoc(Doc),
+	rdf_form_final,
+	!,
+	fail.
+
+:- dynamic rdf_form/1.
+:- set_print.
+set_rdf :- retractall(rdf_form(_)), assert(rdf_form(rdf)).
+set_daml :- retractall(rdf_form(_)), assert(rdf_form(daml)).
+set_print :- retractall(rdf_form(_)), assert(rdf_form(print)).
+
+rdf_form_init :-
+	(rdf_form(print)
+	 ->	rdf_init_print
+	 ; rdf_form(rdf)
+	 ->	rdf_init_rdf
+	 ; rdf_form(daml)
+	 ->	rdf_init_daml
+	 ;	writeln('ERROR: No spec on what to do with triples...'),
+		fail
+	).
+	
+rdf_form_final :-
+	(rdf_form(print)
+	 ->	rdf_final_print
+	 ; rdf_form(rdf)
+	 ->	rdf_final_rdf
+	 ; rdf_form(daml)
+	 ->	rdf_final_daml
+	 ;	writeln('ERROR: No spec on what to do with triples...'),
+		fail
+	).
+	
+
+%%rdf_triple(S,_R,_T) :- writeln(rdf_triple(S)),fail.
+rdf_triple(S,R,T) :-
+	(rdf_form(print)
+	 ->	triple_as_print(S,R,T)
+	 ; rdf_form(rdf)
+	 ->	triple_as_rdf(S,R,T)
+	 ; rdf_form(daml)
+	 ->	triple_as_daml(S,R,T)
+	 ;	writeln(error(rdf_triple(S,R,T))),abort
+	).
+		
+
+oms_mergeRDFDoc(xml(_X,Content)) :-
+	!,
+%%	xml_pp(xml(_X,Content)),
+	rdf_RDF(Content,'',[]).
+oms_mergeRDFDoc(Doc) :-
+	writeln('ERROR: Illegal XML Syntax'),
+	xml_pp(Doc).
+
+rdf_RDF([],_URI,_NS).
+rdf_RDF([E1|E2],URI,NS) :-
+	rdf_RDF(E1,URI,NS),
+	rdf_RDF(E2,URI,NS).
+rdf_RDF(comment(_),_,_).
+rdf_RDF(doctype(_,_),_,_).
+rdf_RDF(namespace(URI,PrefC,Element),_,NS) :-
+	atom_codes(Pref,PrefC),
+	strip_hash(URI,URIH),
+	rdf_RDF(Element,URIH,[Pref=URIH|NS]).
+rdf_RDF(element('RDF',NameSpaces,Content),URI,NS0) :-
+	add_namespaces(NameSpaces,NS0,NS),
+%%	writeln(namespaces(NameSpaces,NS,URI,NS0,Content)),
+	rdf_objs(Content,URI,NS).
+
+add_namespaces([],NS,NS).
+add_namespaces([XmlnsPF=LocC|NameSpaces],NS0,NS) :-
+	atom_codes(XmlnsPF,[0'x,0'm,0'l,0'n,0's|CPF]),
+	!,
+	(CPF = [0':|PrefixC]
+	 ->	atom_codes(Prefix,PrefixC)
+	 ;	Prefix = ''
+	),
+	strip_hash(LocC,LocCH),
+	atom_codes(Loc,LocCH),
+	(member(Prefix=Loc,NS0)
+	 ->	add_namespaces(NameSpaces,NS0,NS)
+	 ;	add_namespaces(NameSpaces,[Prefix=Loc|NS0],NS)
+	).
+add_namespaces([_|NameSpaces],NS0,NS) :-
+	add_namespaces(NameSpaces,NS0,NS).
+
+%%rdf_objs(_,_,_) :- writeln(rdf_objs),fail.
+rdf_objs([],_,_).
+rdf_objs([comment(_)|Objs],URI,NS) :-
+	rdf_objs(Objs,URI,NS).
+rdf_objs([Obj|Objs],URI,NS) :-
+	rdf_obj(Obj,URI,NS,_Res),
+	rdf_objs(Objs,URI,NS).
+
+%%rdf_obj(_,_,_,_) :- writeln(rdf_obj),fail.
+rdf_obj(namespace(URI,_Pref,Element),_,NS,Res) :-
+	strip_hash(URI,URIH),
+	rdf_obj(Element,URIH,NS,Res).
+rdf_obj(Container,URI,NS,Res) :-
+	rdf_container(Container,URI,NS,Res).
+rdf_obj(Desc,URI,NS,Res) :-
+	rdf_description(Desc,URI,NS,Res).
+
+%%rdf_description(_,_URI,_NS,_NID) :- writeln(rdf_description),fail.
+rdf_description(element('Description',Atts,Content),URI,NS,NID) :-
+	rdf_idAboutAttr_Opt(Atts,URI,NS,'GENX',NID),
+	rdf_bagIdAttr_Opt(Atts,URI,NS,'GENY',_BagID),
+	rdf_propAttrs(Atts,NID,URI,NS,NS1),
+	rdf_propertyElts(Content,NID,URI,NS1).
+rdf_description(TypedNode,URI,NS,NID) :-
+	rdf_typedNode(TypedNode,URI,NS,NID).
+
+%%rdf_container(_Element,_URI,_NS,_NID) :- writeln(rdf_container),fail.
+rdf_container(Element,URI,NS,NID) :-
+	rdf_sequence(Element,URI,NS,NID).
+rdf_container(Element,URI,NS,NID) :-
+	rdf_bag(Element,URI,NS,NID).
+rdf_container(Element,URI,NS,NID) :-
+	rdf_alternative(Element,URI,NS,NID).
+
+%%rdf_idAboutAttr_Opt(_Atts0,_URI,_NS,_Gen,_ID) :- writeln(rdf_idAboutAttr_Opt),fail.
+rdf_idAboutAttr_Opt(Atts0,URI,NS,Gen,ID) :-
+	(member(Att,Atts0), rdf_idAboutAttr(Att,URI,NS,ID)
+	 ->	true
+	 ;	genID(Gen,URI,ID)
+	).
+
+%%rdf_idAboutAttr(_Atts0,_URI,_NS,_ID) :- writeln(rdf_idAboutAttr),fail.
+rdf_idAboutAttr(Att,URI,NS,ID) :-
+	rdf_idAttr(Att,URI,NS,ID).
+rdf_idAboutAttr(Att,URI,NS,ID) :-
+	rdf_aboutAttr(Att,URI,NS,ID).
+rdf_idAboutAttr(Att,URI,NS,ID) :-
+	rdf_aboutEachAttr(Att,URI,NS,ID).
+
+%%rdf_idAttr_Opt(_Atts0,_URI,_NS,_Gen,_Res) :- writeln(rdf_idAttr_Opt),fail.
+rdf_idAttr_Opt(Atts0,URI,NS,Gen,Res) :-
+	(member(Att,Atts0), rdf_idAttr(Att,URI,NS,Res)
+	 ->	true
+	 ;	genID(Gen,URI,Res)
+	).
+
+
+%%rdf_idAttr(ASG,A,B,C) :- writeln(rdf_idAttr(ASG,A,B,C)),fail.
+rdf_idAttr('ID'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+rdf_idAttr('rdf:ID'=IDC,URI,NS,ID) :-
+	makeID(IDC,URI,NS,ID).
+
+/********** Handle ID's ***********/
+%%extract_ns(_Atom,_URI,_NS,_) :- writeln(extract_ns),fail.
+extract_ns(Atom,URI,NS,id(Name,Sou)) :-
+	atom_codes(Atom,AtomC),
+	(append(PrefixC,[0':|NameC],AtomC)
+	 ->	atom_codes(Prefix,PrefixC),
+		atom_codes(Name,NameC),
+		(memberchk(Prefix=Sou,NS)
+		 ->	true
+		 ;	write('ERROR: Prefix not declared: '),
+			writeln(Prefix),
+			fail
+		)
+	 ;	Name = Atom,
+		Sou = URI
+	).
+
+
+%%makeID(IDC,URI,NS,ID) :- writeln(makeID(IDC,URI,NS,ID)),fail.
+makeID(IDC,_URI,NS,ID) :-
+	((IDC = [0'h,0't,0't,0'p,0':|_] ; IDC = [0'f,0'i,0'l,0'e,0':|_])
+	 ->	(lappend(Sou,[0'#|NidC],IDC)
+		 ->	(NidC \== []
+			 ->	atom_codes(SouA,Sou),
+				atom_codes(Nid,NidC),
+				ID = id(Nid,SouA)
+			 ;	atom_codes(NID,IDC),
+				ID = id(NID,global)
+			)
+		 ;	atom_codes(NID,IDC),
+			ID = id(NID,global)
+		)
+	 ; IDC = [0'#|Name]
+	 ->	atom_codes(NID,Name),
+		(memberchk(''=SouC,NS)
+		 ->	ID = id(NID,SouC)
+		 ;	writeln('ERROR: Default Namespace required, but none provided: '(NID)),
+			ID = id(NID,global)
+		)		
+	 ; (append(AbbrevC,[0':|Name],IDC),
+	    atom_codes(Abbrev,AbbrevC),
+	    memberchk(Abbrev=SouC,NS))
+	 ->	atom_codes(NID,Name),
+		ID = id(NID,SouC)
+	 ;	atom_codes(NID,IDC),
+		(memberchk(''=SouC,NS)
+		 ->	ID = id(NID,SouC)
+		 ;	writeln('ERROR: Default Namespace required, but none provided: '(NID)),
+			ID = id(NID,global)
+		)
+	).
+
+lappend([X|L1],L2,[X|L3]) :- lappend(L1,L2,L3).
+lappend([],L,L).
+
+genID(GenPre,URI,id(GennedID,URI)) :-
+	gensym(GenPre,GennedID).
+
+%%typeID(_,_) :- writeln(typeID),fail.
+typeID(NS,id(type,RDFURI)) :-
+	get_rdf_uri(NS,RDFURI).
+
+rdf_I_ID(I,NS,Prop) :-
+	concat_atom(['_',I],PropV),
+	get_rdf_uri(NS,RDFURI),
+	Prop = id(PropV,RDFURI).
+/********** End Handle ID's ***********/
+
+rdf_aboutAttr('about'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+rdf_aboutAttr('rdf:about'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+
+rdf_aboutEachAttr('aboutEach'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+rdf_aboutEachAttr('rdf:aboutEach'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+rdf_aboutEachAttr('aboutEachPrefix'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+rdf_aboutEachAttr('rdf:aboutEachPrefix'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+
+%%rdf_bagIdAttr_Opt(_Atts0,_URI,_NS,_Gen,_BagID) :- writeln(rdf_bagIdAttr_Opt),fail.
+rdf_bagIdAttr_Opt(Atts0,URI,NS,Gen,BagID) :-
+	(member(Att,Atts0), rdf_bagIdAttr(Att,URI,NS,BagID)
+	 ->	true
+	 ;	genID(Gen,URI,BagID)
+	).
+
+%%rdf_bagIdAttr(Atts0,_URI,_NS,_BagID) :- writeln(rdf_bagIdAttr(Atts0)),fail.
+rdf_bagIdAttr(bagID=BagIDC,_URI,_NS,BagID) :-
+	atom_codes(BagID,BagIDC).
+rdf_bagIdAttr('bagID'=IDC,URI,NS,ID) :-
+	!,
+	makeID(IDC,URI,NS,ID).
+rdf_bagIdAttr(IDName=IDC,_URI,NS,ID) :-
+	atom_codes(IDName,IDNameC),
+	once((append(PrefixC,":bagID",IDNameC)
+	      ;
+	      append(PrefixC,":ID",IDNameC)
+	     )),
+	atom_codes(Prefix,PrefixC),
+	memberchk(Prefix=URI,NS),
+	makeID(IDC,URI,NS,ID).
+
+%%rdf_propAttrs(_Props,_,_,_,_) :- writeln(rdf_propAttrs),fail.
+rdf_propAttrs([],_,_,NS,NS).
+rdf_propAttrs([Prop|Props],NID,URI,NS0,NS) :-
+	rdf_propAttr(Prop,NID,URI,NS0,NS1),
+	!,
+	rdf_propAttrs(Props,NID,URI,NS1,NS).
+rdf_propAttrs([_Prop|Props],NID,URI,NS0,NS) :-
+	rdf_propAttrs(Props,NID,URI,NS0,NS).
+
+%%rdf_propAttrs(_Props,_,_,_,_) :- writeln(rdf_propAttr),fail.
+rdf_propAttr(Prop,NID,URI,NS,NS) :-
+	rdf_typeAttr(Prop,URI,NS,Value),
+	typeID(NS,TypeID),
+	rdf_triple(NID,TypeID,Value).
+rdf_propAttr(XMLNSP=NURI,_NID,_URI,NS,[Pref=NURI|NS]) :-
+	atom_codes(XMLNSP,[0'x,0'm,0'l,0'n,0's,0':|PrefC]),
+	!,
+	atom_codes(Pref,PrefC).	
+rdf_propAttr(Prop=ValueC,NID,URI,NS,NS) :-
+	extract_ns(Prop,URI,NS,PropID),
+	PropID = id(PropV,_),
+	PropV \== about, PropV \== 'ID', PropV \== resource,
+	PropV \== type, PropV \== bagID, PropV \== aboutEach,
+	PropV \== parseType,
+	atom_codes(Value,ValueC),
+	rdf_triple(NID,PropID,id(atom(Value),'OMS')).
+
+
+%%rdf_typeAttr(_,_,_,_) :- writeln(rdf_typeAttr),fail.
+rdf_typeAttr(type=ValueC,URI,NS,Value) :-
+	makeID(ValueC,URI,NS,Value).
+
+%%rdf_propertyElts(_Elts,_NID,_URI,_NS) :- writeln(rdf_propertyElts),fail.
+rdf_propertyElts([],_NID,_URI,_NS).
+rdf_propertyElts([PropElt|PropElts],NID,URI,NS) :-
+	rdf_propertyElt(PropElt,NID,URI,NS),
+	rdf_propertyElts(PropElts,NID,URI,NS).	
+
+%%rdf_propertyElts(_Elts,_NID,_URI,_NS) :- writeln(rdf_propertyElt),fail.
+rdf_propertyElt(namespace(URI,_Pref,Element),NID,_,NS) :-
+	!,
+	strip_hash(URI,URIH),
+	rdf_propertyElt(Element,NID,URIH,NS).
+rdf_propertyElt(comment(_),_,_,_) :- !.
+rdf_propertyElt(element(comment,[],[]),_,_,_) :- !.
+rdf_propertyElt(element(Prop,Atts,Values),NID,URI,NS) :-
+	\+ memberchk(parseType=_,Atts),
+	\+ memberchk('rdf:parseType'=_,Atts),
+	rdf_idAttr_Opt(Atts,URI,NS,Prop,_ID),
+	rdf_values(Values,URI,NS,Res),
+	extract_ns(Prop,URI,NS,PropID),
+	rdf_triple(NID,PropID,Res).
+rdf_propertyElt(element(Prop,Atts,XML),NID,URI,NS) :-
+	rdf_idAttr_Opt(Atts,URI,NS,Prop,_ID),
+	once((member(Att,Atts),rdf_parseLiteral(Att,URI,NS))),
+	extract_ns(Prop,URI,NS,PropID),
+	rdf_triple(NID,PropID,XML).
+rdf_propertyElt(element(Prop,Atts,PropElts),NID,URI,NS) :-
+	rdf_idAttr_Opt(Atts,URI,NS,Prop,ID),
+	once((member(Att,Atts),rdf_parseResource(Att,URI,NS))),
+	extract_ns(Prop,URI,NS,PropID),
+	rdf_triple(NID,PropID,ID),
+	rdf_propertyElts(PropElts,ID,URI,NS).	
+rdf_propertyElt(element(Prop,Atts,PropElts),NID,URI,NS) :-
+	rdf_idAttr_Opt(Atts,URI,NS,Prop,ID),
+	once((member(Att,Atts),rdf_parseDamlCollection(Att,URI,NS))),
+	extract_ns(Prop,URI,NS,PropID),
+	rdf_triple(NID,PropID,ID),
+	daml_typedNodes(PropElts,ID,URI,NS).
+rdf_propertyElt(element(Prop,Atts,[]),NID,URI,NS) :-
+	rdf_idRefAttr_Opt(Atts,URI,NS,Prop,Res),
+	rdf_bagIdAttr_Opt(Atts,URI,NS,Prop,_BagID),
+	extract_ns(Prop,URI,NS,PropID),
+	rdf_triple(NID,PropID,Res),
+	rdf_propAttrs(Atts,Res,URI,NS,_).
+
+
+%%daml_typedNodes(_,_ID,_URI,_NS) :- writeln(daml_typedNodes),fail.
+daml_typedNodes([],_ID,_URI,_NS).
+daml_typedNodes([comment(_)|TypedNodes],ID,URI,NS) :-
+	!,
+	daml_typedNodes(TypedNodes,ID,URI,NS).
+daml_typedNodes([TypedNode|TypedNodes],ID,URI,NS) :-
+	rdf_typedNode(TypedNode,URI,NS,SID),
+	get_rdf_uri(NS,RDFURI),
+	rdf_triple(ID,id(member,RDFURI),SID),
+	daml_typedNodes(TypedNodes,ID,URI,NS).
+
+%%rdf_typedNode(_,_ID,_URI,_NS) :- writeln(rdf_typedNode),fail.
+rdf_typedNode(namespace(URI,_Pref,Element),_OURI,NS,NID) :-
+	strip_hash(URI,URIH),
+	rdf_typedNode(Element,URIH,NS,NID).
+rdf_typedNode(element(TypeName,Atts,Content),URI,NS,NID) :-
+	extract_ns(TypeName,URI,NS,TypeNameID),
+	TypeNameID = id(TypeNameP,_),
+	TypeNameP \== 'Bag',
+	TypeNameP \== 'Seq',
+	TypeNameP \== 'Alt',
+	rdf_idAboutAttr_Opt(Atts,URI,NS,TypeName,NID),
+	rdf_bagIdAttr_Opt(Atts,URI,NS,TypeName,_BagID),
+	typeID(NS,TypeID),
+	rdf_triple(NID,TypeID,TypeNameID),
+	(member(Att,Atts),rdf_parseDamlCollection(Att,URI,NS)
+	 ->	daml_typedNodes(Content,NID,URI,NS)
+	 ;	rdf_propAttrs(Atts,NID,URI,NS,NS1),
+		rdf_propertyElts(Content,NID,URI,NS1)
+	).
+
+rdf_idRefAttr_Opt(Atts0,URI,NS,Gen,Res) :-
+	(member(Att,Atts0), rdf_idRefAttr(Att,URI,NS,Res)
+	 ->	true
+	 ;	genID(Gen,URI,Res)
+	).
+
+rdf_idRefAttr(Att,URI,NS,ID) :-
+	rdf_idAttr(Att,URI,NS,ID).
+rdf_idRefAttr(Att,URI,NS,ID) :-
+	rdf_resourceAttr(Att,URI,NS,ID).
+
+rdf_values([comment(_)|Values],URI,NS,Res) :-
+	!,
+	rdf_values(Values,URI,NS,Res).
+rdf_values([Value|_],URI,NS,Res) :-
+	!,
+	rdf_value(Value,URI,NS,Res).
+%%rdf_values([],_URI,_NS,id(atom(''),'OMS')).  %% NO GOOD
+
+rdf_value(pcdata(ValueC),_,_,id(atom(Value),'OMS')) :-
+	atom_codes(Value,ValueC).
+rdf_value(Obj,URI,NS,Res) :-
+	rdf_obj(Obj,URI,NS,Res).
+
+rdf_resourceAttr(resource=ResC,URI,NS,ID) :-
+	makeID(ResC,URI,NS,ID).
+rdf_resourceAttr('rdf:resource'=ResC,URI,NS,ID) :-
+	makeID(ResC,URI,NS,ID).
+
+rdf_sequence(element('Seq',Atts,Content),URI,NS,NID) :-
+	rdf_idAttr_Opt(Atts,URI,NS,'SEQ',NID),
+	rdf_members(Content,1,NID,URI,NS).
+rdf_sequence(element('Seq',Atts,[]),URI,NS,NID) :-
+	rdf_idAttr_Opt(Atts,URI,NS,'SEQ',NID),
+	rdf_memberAttrs(Atts,NID,URI,NS).
+
+rdf_bag(element('Bag',Atts,Content),URI,NS,NID) :-
+	rdf_idAttr_Opt(Atts,URI,NS,'BAG',NID),
+	rdf_members(Content,1,NID,URI,NS).
+
+rdf_alternative(element('Alt',Atts,Content),URI,NS,NID) :-
+	rdf_idAttr_Opt(Atts,URI,NS,'ALT',NID),
+	rdf_members(Content,1,NID,URI,NS).
+
+rdf_members([],_,_,_,_).
+rdf_members([Member|Members],N,NID,URI,NS) :-
+	rdf_member(Member,N,NID,URI,NS),
+	N1 is N+1,
+	rdf_members(Members,N1,NID,URI,NS).
+
+rdf_member(Member,N,NID,URI,NS) :-
+	rdf_referencedItem(Member,N,NID,URI,NS).
+rdf_member(Member,N,NID,URI,NS) :-
+	rdf_inlineItem(Member,N,NID,URI,NS).
+
+rdf_referencedItem(element(li,[Att],[]),I,NID,URI,NS) :- 
+	rdf_I_ID(I,NS,Prop),
+	rdf_resourceAttr(Att,URI,NS,Value),
+	rdf_triple(NID,Prop,Value).
+
+rdf_inlineItem(element(li,_,[Val]),I,NID,URI,NS) :- % ignore atts?
+	rdf_I_ID(I,NS,Prop),
+	rdf_value(Val,NID,URI,Value),
+	rdf_triple(NID,Prop,Value).
+rdf_inlineItem(element(li,[Attr],[XML]),I,NID,URI,NS) :-
+	rdf_parseLiteral(Attr,URI,NS),
+	rdf_I_ID(I,NS,Prop),
+	rdf_triple(NID,Prop,XML).
+rdf_inlineItem(element(li,[Attr],PropElts),I,NID,URI,NS) :-
+	rdf_parseResource(Attr,URI,NS),
+	rdf_I_ID(I,NS,Prop),
+	genID(li,URI,Targ),
+	rdf_triple(NID,Prop,Targ),
+	rdf_propertyElts(PropElts,Targ,URI,NS).
+
+rdf_memberAttrs([],_,_,_).
+rdf_memberAttrs([Attr|Attrs],NID,URI,NS) :-
+	rdf_memberAttr(Attr,NID,URI,NS),
+	rdf_memberAttrs(Attrs,NID,URI,NS).
+
+rdf_memberAttr(RDF_N=StringC,NID,_URI,_NS) :-
+	atom_codes(RDF_N,RDF_NC),
+	append("rdf:_",_,RDF_NC),
+	atom_codes(String,StringC),
+	rdf_triple(NID,RDF_N,String).
+
+rdf_parseLiteral(parseType="Literal",_URI,_NS).
+rdf_parseLiteral('rdf:parseType'="Literal",_URI,_NS).
+rdf_parseResource(parseType="Resource",_URI,_NS).
+rdf_parseResource('rdf:parseType'="Resource",_URI,_NS).
+rdf_parseDamlCollection(parseType="daml:collection",_URI,_NS).
+rdf_parseDamlCollection('rdf:parseType'="daml:collection",_URI,_NS).
+rdf_parseDamlCollection('rdf:parseType'="http://www.daml.org/2001/03/daml+oil.daml#collection",_URI,_NS).
+
+get_rdf_uri(NS,RDFURI) :-
+	(member(rdf=RDFURI,NS)
+	 ->	true
+	 ; member(''=RDFURI,NS)
+	 ->	true
+	 ;	writeln('ERROR: rdf URI not defined.'),
+		fail
+	).
+
+get_resource_attr(Atts,_URI,_NS,Res) :-
+	(memberchk(resource=ResC,Atts)
+	 ->	true
+	 ; memberchk('rdf:resource'=ResC,Atts)  %% fix NS processing
+	 ->	true
+	),
+	atom_codes(Res,ResC).
+
+read_codes(File,Codes) :-
+	see(File),
+	file_read_all_lines(Lines,[]),
+	seen,
+	make_flat(Lines,Codes).
+
+file_read_all_lines(Lines0,Lines) :-
+	(file_read_line_list(Line)
+	 ->	Lines0 = [Line|Lines1],
+		file_read_all_lines(Lines1,Lines)
+	 ;	Lines0 = Lines
+	).
+
+make_flat([Line],Line) :- !.
+make_flat([Line|Lines],LongLine) :-
+	make_flat(Lines,LongLine1),
+	append(Line,LongLine1,LongLine).
+
+atomify(Term,Result) :-
+	(var(Term)
+	 ->	Result = Term
+	 ; atomic(Term)
+	 ->	Result = Term
+	 ; Term = [X|_R], integer(X), X < 256
+	 ->	atom_codes(Result,Term)
+	 ;	Term =.. List,
+		atomify_list(List,RList),
+		Result =.. RList
+	).
+
+atomify_list([],[]).
+atomify_list([T|Ts],[R|Rs]) :-
+	atomify(T,R),
+	atomify_list(Ts,Rs).
+
+strip_hash(Hashed,UnHashed) :-
+	(atom(Hashed)
+	 ->	atom_codes(Hashed,HashedC),
+		strip_hash_c(HashedC,UnHashedC),
+		atom_codes(UnHashed,UnHashedC)
+	 ;	strip_hash_c(Hashed,UnHashed)
+	).
+
+strip_hash_c(Hashed,UnHashed) :-
+	append(UnHashed,"#",Hashed),
+	!.
+strip_hash_c(Hashed,Hashed) :-
+	writeln(error_hashed(Hashed)).
+
+file('test10.rdf').
+file('test11.rdf').
+file('test12.rdf').
+file('test13.rdf').
+file('test14.rdf').
+file('test15.rdf').
+file('test16.rdf').
+file('test17.rdf').
+file('test18.rdf').
+file('test19.rdf').
+file('test20.rdf').
+file('test21.rdf').
+file('test22.rdf').
+file('test1.rdf').
+file('test2.rdf').
+file('test3.rdf').
+file('test4.rdf').
+file('test5.rdf').
+file('test6.rdf').
+file('test7.rdf').
+file('test8.rdf').
+file('test9.rdf').
+file('test23.rdf').
+file('test24.rdf').
+file('test25.rdf').
+
+
+end_of_file.

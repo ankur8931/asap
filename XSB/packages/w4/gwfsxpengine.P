@@ -1,0 +1,96 @@
+%%% GWFSXp engine( Version 1.0/December 2002)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/projectos/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This modules implements a RuleML engine supporting default and explicit negation
+%%% under the Paraconsistent Well-founded Semantics with Explicit Negation, defined in
+%%%
+%%% C. V. Damásio, L. M. Pereira. Default negation in the heads: why not?, 
+%%% In R. Dyckhoff et al (eds.), Extensions of Logic Programming, ELP'96, Leipzig, 
+%%% Lecture Notes in Artificial Intelligence 1050, Springer-Verlag, 1996, pp. 103-118 
+%%%
+%%% For a more complete description, see my PhD. thesis available at http://centria.di.fct.unl.pt/~cd/publicacoes/tese
+%%%
+%%% C. V. Damásio. Paraconsistent Extended Logic Programming with Constraints. 
+%%% PhD. Thesis, Faculdade de Ciências e Tecnologia da Universidade Nova de Lisboa, pp 375. October 1996. 
+%%%
+%%% Currently, the engine is implemented as a (tabled) meta-interpreter. 
+%%% Constructive negation is not yet supported, so beware of floundering goals.
+%%% The current query engine does not support cuts and most builtin predicates.
+%%% Only is/2 and usual arithmetic comparison operators are supported.
+%%%
+%%% After asserting your rulebase resorting to predicate assert_rulebase/1 you can query
+%%% the system with demo/1 and demo/2.
+%%%
+
+:- op( 600, xfx, '@' ).
+:- op( 900, fy, not ).
+:- op( 900, fy, neg ).
+
+:- export demo/1.
+:- export demo/2.
+
+:- import rule/5 from rulebase.
+
+
+% The GWFSXp meta-interpreter
+
+demo( NG ) :- demo( _, NG ).
+
+demo(Label,NG) :- abolish_all_tables, !,
+            (demo_top_goal(Label,NG),fail; get_residual(demo_top_goal(Label,NG),[])).
+
+:- table demo_top_goal/2.
+:- table demo_wfsxp_t_goal/2.
+:- table demo_wfsxp_tu_goal/2.
+
+demo_top_goal( Label, Goal ) :- demo_wfsxp_t( Label, Goal ).
+
+demo_wfsxp_t( _, true ) :- !.
+demo_wfsxp_t( Label, (A,B) ) :- !,
+	demo_wfsxp_t( Label, A ), 
+	demo_wfsxp_t( Label, B ).
+demo_wfsxp_t( Label, not A ) :- !,
+	tnot( demo_wfsxp_tu_goal( Label, A ) ).
+demo_wfsxp_t( Label, A ) :-
+	( builtin(A) -> call(A) ; demo_wfsxp_t_goal( Label, A ) ).
+
+demo_wfsxp_tu( _, true ) :- !.
+demo_wfsxp_tu( Label, (A,B) ) :- !,
+	demo_wfsxp_tu( Label, A ), 
+	demo_wfsxp_tu( Label, B ).
+demo_wfsxp_tu( Label, not A ) :- !,
+	tnot( demo_wfsxp_t_goal( Label, A ) ).
+demo_wfsxp_tu( Label, A ) :-
+	( builtin(A) -> call(A) ; demo_wfsxp_tu_goal( Label, A ) ).
+
+demo_wfsxp_t_goal( Label, A ) :-
+	rule( A, Body, Label, _, _ ),
+	demo_wfsxp_t( Label, Body ).
+
+demo_wfsxp_tu_goal( Label, A ) :-
+	neg_complement( A, NegA ),
+	rule( A, Body, Label, _, _ ),
+	demo_wfsxp_tu( Label, Body ),
+	tnot( demo_wfsxp_t_goal( Label, not A) ),
+	tnot( demo_wfsxp_t_goal( Label, NegA ) ).
+
+neg_complement( neg A, A ) :- !.
+neg_complement( A, neg A ).
+
+% Predefined builtins
+builtin( is(_,_) ).
+builtin( '<'(_,_) ).
+builtin( '=<'(_,_) ).
+builtin( '=:='(_,_) ).
+builtin( '=\='(_,_) ).
+builtin( '>'(_,_) ).
+builtin( '>='(_,_) ).
+

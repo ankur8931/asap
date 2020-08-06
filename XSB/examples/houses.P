@@ -1,0 +1,128 @@
+/* File:      houses.P
+** Author(s): Jiyang Xu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) ECRC 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: houses.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+/************************************************************************/
+%
+% This program is the solution of the following puzzle:
+%
+%	In a street, there are five house. Each is painted with a
+% different colour. In each house lives somebody coming from a different
+% country. Each has a favorite pet, a favorite drink and a favorite
+% cigarette brand.
+%
+%	We know that:
+%
+% 1- The english lives in the red house.
+% 2- The dog belongs to the spanish.
+% 3- One uses to drink coffee in the green house.
+% 4- The ukrainian drinks tea.
+% 5- The green house is on the right of the white one.
+% 6- The Old Gold smoker breeds snails.
+% 7- One uses to smoke Kool in the yellow house.
+% 8- One uses to drink milk in the house in the middle.
+% 9- The norvegian lives in the first house on the left.
+% 10- The smoker of Chesterfield lives beside the owner of the fox.
+% 11- The smoker of Kool lives beside the owner of the horse.
+% 12- The Gitanes smoker drinks wine.
+% 13- The japanese smokes Craven.
+% 14- The norvegian lives beside the the blue house.
+%	Who breeds the zebra?
+%	Who drinks water?
+%
+%  The algorithm uses a constraint directed search.
+%
+/************************************************************************/
+
+demo :-   bagof( X, go3( X ), L ), write(L), nl.
+
+go :- cputime(X0), houses_iter(20), cputime(X1), X is X1 - X0,
+	write('cputime used: '), write(X), write(' sec'), nl.
+
+houses_iter(0) :- !.
+houses_iter(_) :- bagof( X, go3( X ), _ ), fail.
+houses_iter(N) :- M is N-1,
+	          houses_iter(M).
+
+%% memb/2
+%%-------
+memb( X, [_|Y] ) :- memb( X, Y ).
+memb( X, [X|_] ).
+
+%% testp/4
+%%--------
+testp( X, Y, [X|_], [Y|_] ).
+testp( X, Y, [_|R], [_|S] ) :- testp( X, Y, R, S ).
+
+testp_seq( X, Y, [X|_], [Y|_] ).
+testp_seq( X, Y, [_|R], [_|S] ) :- testp_seq( X, Y, R, S ).
+
+%% on_right/4
+%%-----------
+on_right( X, Y, [X|_], [_, Y|_] ).
+on_right( X, Y, [_|R], [_|S] ) :- on_right( X, Y, R, S ).
+
+
+on_right_seq( X, Y, [X|_], [_, Y|_] ).
+on_right_seq( X, Y, [_|R], [_|S] ) :- on_right_seq( X, Y, R, S ).
+
+%% on_left/4
+%%----------
+on_left( X, Y, [_, X|_], [Y|_] ).
+on_left( X, Y, [_|R], [_|S] ) :- on_left( X, Y, R, S ).
+
+on_left_seq( X, Y, [_, X|_], [Y|_] ).
+on_left_seq( X, Y, [_|R], [_|S] ) :- on_left_seq( X, Y, R, S ).
+
+%% beside/4
+%%---------
+beside( X, Y, Xs, Ys ) :- on_right( X, Y, Xs, Ys ).
+beside( X, Y, Xs, Ys ) :- on_left( X, Y, Xs, Ys ).
+
+beside_seq( X, Y, Xs, Ys ) :- on_right_seq( X, Y, Xs, Ys ).
+beside_seq( X, Y, Xs, Ys ) :- on_left_seq( X, Y, Xs, Ys ).
+
+%% go3/1
+%%------
+go3( config( Countries, Colours, Animals, Drinks, Cigarettes ) ) :-
+	Countries = [norway, _, _, _, _], 		% const 9
+	Colours = [_, _, _, _, _], 
+	Animals = [_, _, _, _, _], 
+	Drinks = [_, _, milk, _, _], 			% const 8
+	Cigarettes = [_, _, _, _, _], 	
+	testp(england, red, Countries, Colours), 	% const 1
+	testp(japan, craven, Countries, Cigarettes), 	% const 13
+	beside(norway, blue, Countries, Colours), 	% const 14
+	on_right(white, green, Colours, Colours), 	% const 5
+	testp_seq(yellow, kool, Colours, Cigarettes), 	% const 7
+	testp_seq(spain, dog, Countries, Animals), 		% const 2
+	testp_seq(old_gold, snail, Cigarettes, Animals), 	% const 6
+	testp_seq(gitane, wine, Cigarettes, Drinks), 	% const 12
+	testp_seq(ukr, tea, Countries, Drinks), 		% const 4
+	testp_seq(green, coffe, Colours, Drinks), 		% const 3
+	beside_seq(chesterfield, fox, Cigarettes, Animals),	% const 10
+	beside_seq(kool, horse, Cigarettes, Animals), 	% const 11
+	memb(zebra, Animals), 				% query 1
+	memb(water, Drinks).				% query 2
+
+

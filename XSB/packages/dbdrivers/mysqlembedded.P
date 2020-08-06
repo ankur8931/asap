@@ -1,0 +1,42 @@
+/*
+** File: mysqlembedded.P
+** Author: Saikat Mukherjee
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2002-2006
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+% This dynamically loads up the MySQL embedded server driver.
+
+:- import bootstrap_package/2 from packaging.
+:- import slash/1 from machine.
+:- import fmt_write_string/3 from file_io.
+:- import
+	driverMySQLEmbedded_register/0,
+	driverMySQLEmbedded_initialise/0,
+	driverMySQLEmbedded_lib_init/0
+   from mysqlembedded_driver.
+
+
+:-	slash(Slash),
+	fmt_write_string(Dir, 'dbdrivers%smysqlembedded', a(Slash)),
+	bootstrap_package([Dir,cc], mysqlembedded_driver),
+	[mysqlembedded_driver_config],
+	driverMySQLEmbedded_register,
+	driverMySQLEmbedded_initialise,
+	driverMySQLEmbedded_lib_init. 

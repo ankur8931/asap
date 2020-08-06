@@ -1,0 +1,65 @@
+/* File:      push_io.P
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2000
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: push_io.P,v 1.3 2004/08/31 15:14:12 tswift Exp $
+** 
+*/
+
+:- compiler_options([sysmod]).
+
+:- dynamic input_streams/2.
+
+:- export get_stdin/2.
+
+get_stdin(Stack,Stream):- input_streams(Stack,Stream).
+
+/* 
+   push_stdin/2 acts like see/1 except that it is used in low-level situations
+   where see/1 can't be used (i.e., at the level of file_read/write).
+   It doesn't require the user to save the old I/O stream.
+   Instead, it pushes the current stream on the stack.
+   pop_stdin/1 pops the stream back up.
+*/
+push_stdin(Stack,_) :-
+	\+atom(Stack),
+	abort('PUSH_STDIO: First argument (stack name) must be an atom').
+push_stdin(Stack,Stream) :- 
+	seeing(Input),
+	see(Stream),
+	(input_streams(Stack,L) 
+	-> retractall(input_streams(Stack,_))
+	; L = []
+	),
+	assert(input_streams(Stack,[Input|L])).
+
+%% fails if the IO stack is empty
+%% Pops up the previously saved stream from the stack and "see's" it.
+%% Closes the current stream
+pop_stdin(Stack) :-
+	\+atom(Stack),
+	abort('[POP_STDIO] First argument (stack name) must be an atom').
+pop_stdin(Stack) :-
+	(input_streams(Stack,[H|T])
+	-> retractall(input_streams(Stack,_))
+	; fail
+	),
+	assert(input_streams(Stack,T)),
+	seen,
+	see(H).

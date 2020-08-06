@@ -1,0 +1,26 @@
+<!DOCTYPE doc [
+<!ELEMENT doc (foo*,a)>
+<!ELEMENT foo (#PCDATA)>
+<!ELEMENT a (b,c,d)>
+<!ELEMENT b EMPTY>
+<!ELEMENT c EMPTY>
+<!ELEMENT d (f)>
+<!ELEMENT f (#PCDATA)>
+<!ENTITY e1 SYSTEM "http://public.ug.cs.sunysb.edu/~kifer/test/001.ent">
+<!ENTITY e SYSTEM "files/001.ent">
+<!ENTITY ee "adsdd">
+]>
+<doc>
+  <foo att1="123" att2="ppp">
+  Test1 &e1; Test2 &ee;
+  </foo>
+  &e;
+  <a>
+  aaaaaaaaaaa
+  <b att="1"/>
+  <c att="2"/>
+  <d>dddddddd
+  <f>kkkkkkk</f>
+  </d>
+  </a>
+</doc>

@@ -1,0 +1,26 @@
+/*
+** Package for justifying predicates
+**
+** Author(s): Giridhar Pemmasani
+** Contact:   giri@lmc.cs.sunysb.edu
+** Reference:
+**   Giridhar Pemmasani, Haifeng Guo, Yifei Dong,  C. R. Ramakrishnan,
+**     I. V. Ramakrishnan, "Online Justification for Tabled Logic Programs",
+**     FLOPS, 2004.
+*/
+
+:- import bootstrap_package/2 from packaging.
+:- import slash/1 from machine.
+:- bootstrap_package('justify',justify),
+   [jxm].
+
+:- import jxm_/1, just_true_/2, just_false_/2 from jxm.
+
+jxm(File) :-
+    jxm_(File).
+
+just_true(P, E) :-
+    just_true_(P, E).
+
+just_false(P, E) :-
+    just_false_(P, E).

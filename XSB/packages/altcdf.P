@@ -1,0 +1,41 @@
+/* File:      cdf.P
+** Author(s): swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: altcdf.P,v 1.6 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+%% bootstrap(package-dirname-as-string, package-name-as-symbol).
+%% This also asserts 
+%% package_configuration(dir(PackageName), FullPackageDirname)
+%% some packages use it.
+
+:- import bootstrap_package/2 from packaging.
+:- import load_cdf_init_cdf/0 from cdf_init_cdf.
+
+init_cdf:- 
+	bootstrap_package(['altCDF',cdftp,doc],'altCDF'),
+	[cdf_checks],
+	load_cdf_init_cdf,	%	[cdf_init_cdf],  %% should not consult a module
+%%	[cdf_io],  %% should not consult a module
+	[cdf_init].
+
+:- init_cdf.
+

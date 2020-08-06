@@ -1,0 +1,48 @@
+/* File:      xpath.P
+** Author(s): Rohan Shirwaikar
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2004
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: xpath.P,v 1.5 2012-09-27 02:25:58 kifer Exp $
+** 
+*/
+
+:- import bootstrap_package/2 from packaging.
+:- import allocate_xpath_error_term__/1,
+	  parse_xpath__/4
+   from xpathparser.
+:- export parse_xpath/4.
+
+:- bootstrap_package([xpath,cc], xpath), [xpathconfig].
+
+
+throw_error( Error) :- var( Error),!.
+throw_error( Error) :- throw( Error).
+
+parse_xpath( X,Y,Z,N):-
+	( var(Z) -> true
+	;
+	    abort('++ABORT[xpath]> The output term should be a variable')
+	),
+	( atom(N) -> true
+	;
+	    abort('++ABORT[xpath]> The namespace list should be a space separated string of the pairs of the form prefix=namespace')
+	),
+	allocate_xpath_error_term__(XpathErr),
+        parse_xpath__(X,Y,Z,N),
+	throw_error(XpathErr).

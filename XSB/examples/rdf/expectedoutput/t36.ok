@@ -1,0 +1,14 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : dc = http://purl.org/metadata/dublin_core#],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://www.foo.com/cool.html],[element(http://purl.org/metadata/dublin_core# : Creator,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Seq,[ID = CreatorsAlphabeticalBySurname,http://www.w3.org/1999/02/22-rdf-syntax-ns# : _1 = Mary Andrew,http://www.w3.org/1999/02/22-rdf-syntax-ns# : _2 = Jacky Crystal],[])])])])
+
+----------RDF----------
+
+[description(description,about(http://www.foo.com/cool.html),[http://purl.org/metadata/dublin_core# : Creator = description(http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq,id(#CreatorsAlphabeticalBySurname),[http://www.w3.org/1999/02/22-rdf-syntax-ns# : _1 = literal(Mary Andrew),http://www.w3.org/1999/02/22-rdf-syntax-ns# : _2 = literal(Jacky Crystal)])])]
+
+--------Triples--------
+
+{#CreatorsAlphabeticalBySurname, http://www.w3.org/1999/02/22-rdf-syntax-ns#type, http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq}
+{#CreatorsAlphabeticalBySurname, http://www.w3.org/1999/02/22-rdf-syntax-ns#_1, literal(Mary Andrew)}
+{#CreatorsAlphabeticalBySurname, http://www.w3.org/1999/02/22-rdf-syntax-ns#_2, literal(Jacky Crystal)}
+{http://www.foo.com/cool.html, http://purl.org/metadata/dublin_core#Creator, #CreatorsAlphabeticalBySurname}

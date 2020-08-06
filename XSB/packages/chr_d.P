@@ -1,0 +1,42 @@
+/* File:      chr_d.P
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+%% bootstrap(package-dirname-as-string, package-name-as-symbol).
+%% This also asserts 
+%% package_configuration(dir(PackageName), FullPackageDirname)
+%% some packages use it.
+
+:- import bootstrap_package/2 from packaging.
+
+init_chr_d:- 
+	bootstrap_package([chr_d],'chr_d'),
+	[chr2attv],
+	[attv_aux],
+	[flatten_chr],
+	[print_chrd].
+
+:- init_chr_d.
+
+
+chrd_trans(Mod) :-
+	str_cat(Mod,'.',Mod_),
+	str_cat(Mod_,chr,CHR),
+	str_cat(Mod_,'P',ATTV),
+	chr2attv(CHR,ATTV).

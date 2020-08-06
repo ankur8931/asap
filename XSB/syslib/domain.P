@@ -1,0 +1,198 @@
+/* File:      domain.P
+** Author(s): Jiyang Xu, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: domain.P,v 1.1.1.1.12.1 2004/09/29 19:44:27 ruim Exp $
+** 
+*/
+
+
+% To compile this file the following operator declarations are needed.
+
+:- op(700,xfx,in).
+:- op(700,xfx,'/=').
+
+/*== Type Checking ':'/2 ============================================ */
+
+X : [M, N] :- !, 		/* integer subrange type */
+	integer(M),
+	integer(N),
+	term_type(X, TX),
+	( TX =:= 0 -> dom_range(X, M, N)
+	; TX =:= 2 -> X >= M, X =< N
+	; TX =:= 14 -> dom_type(X, TD), 
+	  ( TD =:= 17 ->
+	    dom_min(X, M0), dom_size(X, S),
+	    ( M0 = M, N is M0 + S - 1, !
+	    ; dom_range(Y, M, N), Y = X
+	    )
+	  ; TD =:= 16
+	  )
+	).
+X : int(_) :- !,		/* integer type */
+	term_type(X, TX),
+	( TX =:= 0 -> dom_range(X, -100000000, 100000000)
+	; TX =:= 2 -> true
+	; TX =:= 14 -> dom_type(X, TD),
+	   ( TD =:= 16 -> true
+	   ; TD =:= 17 -> true
+	   )
+	).
+_X : float(_) :- !,		/* floating point type */
+	write('"X : float(_)" is not implemented yet.'), nl.
+X : Type :-			/* Assume finite type for now */
+	term_type(Type, TT), TT = 1,
+	term_psc(Type, Psc),
+	term_type(X, TX),
+	( TX =:= 0 -> dom_enum(X, Psc)
+	; TX =:= 5 -> X in Type
+	; TX =:= 14 -> dom_type(X, TD), TD = 18,	% DOMATOM
+		dom_min(X, Psc0), Psc=Psc0
+	).
+
+
+/*== Generic Type Predicate in/2 =====================================*/
+
+X in [M, N] :- !, int(X, M, N).
+X in Type :- term_type(Type, TT), TT = 1,
+	term_psc(Type, Psc),
+	term_new(Psc, Call),
+	psc_arity(Psc, A),
+	call_args(A, Type, Call),
+	arg(1, Call, X),
+	!,
+	call(Call).
+
+call_args(1, _, _).
+call_args(I, Type, Call) :- I > 1,
+	arg(I, Type, X),
+	arg(I, Call, X),
+	J is I - 1,
+	call_args(J, Type, Call).
+
+/*== Builtin Type int/3 ===============================================*/
+
+int(X, M, N) :- integer(M), integer(N),
+	term_type(X, T),
+	( T =:= 2 -> X >= M, X =< N			% integer
+	; T =:= 14 -> dom_type(X, DT), 
+	  ( DT =:= 17 ->		% DOMRANGE
+	    dom_size(X, S),
+	    dom_elem_enum(X, 0, S)
+	  ; DT =:= 19 ->		% DOMVAR
+	    dom_range(Y, M, N),
+	    S is N-M+1,
+	    dom_elem_enum(Y, 0, S),
+	    X = Y
+	  )
+	; T =:= 0 ->					% variable
+	    dom_range(X, M, N),
+	    S is N-M+1,
+	    dom_elem_enum(X, 0, S)
+	).
+
+dom_elem_enum(X, I, _) :- dom_elem(X, I).
+dom_elem_enum(X, I, N) :- J is I + 1, J < N, dom_elem_enum(X, J, N).
+
+/*=== Builtin Type int/1 ============================================*/
+
+int(X) :- term_type(X, T),
+	( T =:= 2 -> true
+	; T =:= 14 -> dom_type(X, DT), DT =:= 17,
+		dom_size(X, S), dom_elem_enum(X, 0, S)
+	; T =:= 0 -> enum_int(0, X)
+	).
+
+enum_int(X, X).
+enum_int(X, Y) :- X1 is X + 1, enum_int(X1, Y).
+
+/*=== Constraint Builtins ===========================================*/
+
+intype(X) :- term_type(X, T), 
+	( T =:= 14 -> dom_size(X, N), dom_elem_enum(X, 0, N)
+	; true
+	).
+
+plus(X, Y, Z) :- dom_plus(X, Y, Z).
+
+times(X, Y, Z) :- dom_times(X, Y, Z).
+
+X /= Y :- var(Y), !, dom_diff(X, Y, 0).
+X /= Y+D :- !, integer(D), dom_diff(X, Y, D).
+X /= Y-D :- !, integer(D), dom_diff(Y, X, D).
+X /= Y :- !, dom_diff(Y, X, 0).
+
+deleteff_p(List, X, Rest) :-
+	deleteff_p_findmin(List, 256, Min),
+	deleteff_p_select(List, X, Rest, Min).
+	
+deleteff_p_findmin([], Min, Min).
+deleteff_p_findmin([(_,H)|T], Min0, Min1) :-
+	term_type(H, TT),
+	( TT =:= 14 -> dom_esize(H, DS),
+		( DS < Min0 -> deleteff_p_findmin(T, DS, Min1)
+		; deleteff_p_findmin(T, Min0, Min1)
+		)
+	; TT =:= 0 -> fail
+	; TT = 1
+	).
+
+deleteff_p_select([(ID,H)|T], (ID,H), T, Min) :- 
+	term_type(H, TT),
+	( TT =:= 14 -> dom_esize(H, DS), DS =< Min
+	; Min =:= 1
+	),
+	!.
+deleteff_p_select([H|T], X, [H|NT], Min) :- 
+	deleteff_p_select(T, X, NT, Min).
+
+deleteff(List, X, Rest) :- 
+	deleteff_findmin(List, 256, Min),
+	deleteff_select(List, X, Rest, Min).
+
+deleteff_findmin([], Min, Min).
+deleteff_findmin([H|T], Min0, Min1) :-
+	term_type(H, TT),
+	( TT =:= 14 -> dom_esize(H, DS),
+		( DS < Min0 -> deleteff_findmin(T, DS, Min1)
+		; deleteff_findmin(T, Min0, Min1)
+		)
+	; TT =:= 0 -> fail
+	; TT = 1
+	).
+
+deleteff_select([H|T], H, T, Min) :- 
+	term_type(H, TT),
+	( TT =:= 14 -> dom_esize(H, DS), DS =< Min
+	; Min =:= 1
+	),
+	!.
+deleteff_select([H|T], X, [H|NT], Min) :- 
+	deleteff_select(T, X, NT, Min).
+
+generate([]).
+generate([H|T]) :- intype(H), generate(T).
+
+generate_ff([]).
+generate_ff([H|T]) :- 
+	deleteff([H|T], X, R),
+	intype(X), 
+	generate_ff(R).
+

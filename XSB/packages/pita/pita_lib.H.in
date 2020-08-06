@@ -1,0 +1,88 @@
+/* File:      pita_lib.H
+** Author(s): Fabrizio Riguzzi and Terrance Swift
+** Contact:   fabrizio.riguzzi@unife.it, xsb-contact@cs.sunysb.edu
+**
+** Copyright (C) Copyright: Fabrizio Riguzzi and Terrance Swift
+**                          ENDIF - University of Ferrara
+**                          Centro de Inteligencia Artificial,
+**                          Universidade Nova de Lisboa, Portugal
+**
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+**
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+**
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+
+:- foreign_pred init(+reorder) from 
+	initc(reorder:int):void.
+:- foreign_pred reorder(+method) from
+        reorderc(method:int):void.
+:- foreign_pred end from 
+	endc:void.
+:- foreign_pred ret_prob(+node, -retval) from 
+	ret_probc(node:int):float.
+
+:- foreign_pred add_var(+nVal, +probs,-retval) from 
+	add_varc(nVal:int,probs:term):int.
+
+:- foreign_pred equality(+varIndex,+ value,-retval) from 
+	equalityc(varIndex:int,value:int):int. 
+
+:- foreign_pred one(-retval) from 
+	onec:int. 
+:- foreign_pred zero(-retval) from 
+	zeroc:int. 
+:- foreign_pred bdd_not(+node,-retval) from 
+	bdd_notc(node:int):int. 
+:- foreign_pred and(+nodea,+nodeb,-retval) from 
+	andc(nodea:int,nodeb:int):int. 
+:- foreign_pred or(+nodea,+nodeb,-retval) from 
+	orc(nodea:int,nodeb:int):int. 
+
+:- foreign_pred ite(+nodea,+nodeb,+nodec,-retval) from 
+	itec(nodea:int,nodeb:int,nodec:int):int. 
+
+:- foreign_pred nand(+nodea,+nodeb,-retval) from
+        nandc(nodea:int,nodeb:int):int.
+
+:- foreign_pred nor(+nodea,+nodeb,-retval) from
+        norc(nodea:int,nodeb:int):int.
+
+:- foreign_pred xor(+nodea,+nodeb,-retval) from
+        xorc(nodea:int,nodeb:int):int.
+
+:- foreign_pred xnor(+nodea,+nodeb,-retval) from
+        xnorc(nodea:int,nodeb:int):int.
+
+:- foreign_pred update_prob(+varIndex,+prob) from 
+	update_probc(varIndex:int,prob:float):void. 
+
+
+:- foreign_pred create_dot(+node,+filename) from 
+	create_dotc(node:int,filename:term):void. 
+
+:- foreign_pred indep(+node1,+node2,-retval) from 
+	independent(node1:int,node2:int):int. 
+
+:- foreign_pred absent_bdd(+var,+node,-retval) from 
+	absent(var:int,node:int):int. 
+
+
+:- foreign_pred rec_deref(+node) from 
+	rec_derefc(node:int):void. 
+
+:- foreign_pred print_info from
+    print_infoc():void.
+
+:- ldoption('@ldflags@').    

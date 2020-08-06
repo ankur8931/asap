@@ -1,0 +1,174 @@
+
+%----------------------------------------------------------------------
+% A simple reader for XSB programs to convert them into the 
+% internal representation of the justifier.
+
+% ASSUMPTION : Comments appear in between clauses/decl in the prog.
+%              file, and not within a clause/declartion.
+% If XSB had a fmt_read/3 style builtin for arbitrary IO Ports and not
+% just the current input stream, I would not need this assumnption.
+% ---  Abhik, 1/30/00.
+%-----------------------------------------------------------------------
+
+:- import ith/3, reverse/2 from basics.
+:- import file_read/2 from xsb_read.
+:- import file_pos/2, file_seek/4 from file_io.
+:- import file_open/3, file_close/1, file_read_line/3 from file_io.
+:- import str_sub/3, str_length/2, str_cat/3 from string.
+
+program_read(ProgramFile) :-
+	file_open(ProgramFile, r, Port),
+	read_and_assert(Port),
+	file_close(Port).
+
+read_and_assert(Port) :- 
+	file_pos(Port, Pos),
+	( file_read_line(Port,Line,_)
+	     -> process_inp(Line, Port, Pos),
+		read_and_assert(Port)  
+	     ;  true
+        ).
+
+%---------------------------------------------------------------
+
+process_inp(Line, Port, _) :- begin_comment(Line), !, 
+			      get_comment(Line, Port).
+
+process_inp(Line, _, _) :- 
+	( line_comment(Line) ;  only_whitespaces(Line) ), !. 
+
+process_inp(Line, Port, Pos) :- 
+	declaration(Line), !, 
+	file_seek(Port, Pos, 0, Ret),
+	(Ret == 0 -> file_read(Port, Declaration),
+		     ( tabled_decl(Declaration, PredList)
+			   -> assert_tabled(PredList)
+			   ;  true
+                     )
+                   ; writeln('ERROR : Cannot seek to beginning of line'), fail
+        ).
+
+		           	
+process_inp(Line, Port, Pos) :- 
+	begin_clause(Line), !, 
+	file_seek(Port, Pos, 0, Ret), 
+	(Ret == 0 -> file_read(Port, Clause),
+	             ( Clause = (Head :- Body)
+                         -> assert(rule(Head, Body))
+			 ;  assert(rule(Clause, true))  % Clause is a fact
+                     )
+                  ;  writeln('ERROR : Cannot seek to beginning of line'), fail
+        ).
+
+process_inp(Line, _, _) :- 
+	writeln('ERROR : Encountered problemmatic line given below:'),
+	writeln(Line), fail.
+
+
+%-------------------------------------------------------------------
+
+get_comment(Line, _) :- end_comment(Line), !.
+
+get_comment(_, Port) :- 
+	( file_read_line(Port, Line, _) 
+		-> get_comment(Line, Port)
+		;  writeln('ERROR : EOF reached while scanning comment'), fail
+        ).
+
+tabled_decl(Declaration, PredList) :-
+	Declaration =.. [_,Decl],
+	Decl = table(PredList).
+
+assert_tabled((P/N, Rest)) :- !, assert(tabled_pred(P, N)), 
+                              assert_tabled(Rest).
+assert_tabled(P/N) :- !, assert(tabled_pred(P/N)).
+assert_tabled(_) :- writeln('ERROR : Wrong format in tabled declaration : '),
+                    writeln('Expected a comma list of predicate names'), fail.
+
+%-----------------------------------------------------------------
+
+begin_comment(Str) :-  prefix('/*', Str).
+
+begin_clause(Str) :- prefix_alphabet(Str).
+
+line_comment(Str) :- prefix('%', Str).
+
+declaration(Str) :- str_cat(':', '-', Pattern),
+		    prefix(Pattern, Str).
+
+end_comment(Str) :- suffix('*/', Str).
+
+
+%---------------------------------------------------------
+
+prefix(Sub, Str) :- init_whitespaces(Str, W),
+		    str_sub(Sub, Str, W).
+
+suffix(Sub, Str) :- end_whitespaces(Str, W),
+		    str_length(Str, LStr),
+		    str_length(Sub, LSub),
+		    N is LStr - W - LSub,
+		    str_sub(Sub, Str, N).
+
+%---------------------------------------------------------
+
+
+prefix_alphabet(Str) :-
+	atom_codes(Str, CharList),
+	find_whitespaces(CharList, 0, W),
+	N is W + 1, ith(N, CharList, Beg),
+	lcase_alphabet(Beg).
+
+only_whitespaces(Str) :-
+	init_whitespaces(Str, W), 
+	str_length(Str, W).
+
+init_whitespaces(Str, W) :- 
+	atom_codes(Str, CharList),
+	find_whitespaces(CharList, 0, W).
+
+end_whitespaces(Str, W) :- 
+	atom_codes(Str, CList),
+	reverse(CList, RCList), 
+	find_whitespaces(RCList, 0, W).
+
+find_whitespaces([], W, W).
+find_whitespaces([C|Rest], M, W) :-
+	( whitespace(C) -> N is M + 1, 
+		           find_whitespaces(Rest, N, W)
+                        ;  W = M
+        ).
+
+whitespace(32).   % space-bar
+whitespace(9).    % tab
+whitespace(10).   % \n
+
+lcase_alphabet(A) :- integer(A), A > 96, A < 123.
+
+%--------------------------------------------------
+
+/*
+
+get_declaration(T) :-
+	(T = ':-' -> ( fmt_read("%s", T, _),
+		       T ='table' -> tabled_declaration
+                                  ;  get_declaration
+                     )
+                  ;  ( T = ':-table' -> tabled_declaration
+                                     ;  get_declaration
+                     )
+        ).
+
+get_declaration :-
+	fmt_read("%s", T, R),
+	( R < 0 -> writeln('ERROR: End of file reached while scanning declaration'), fail
+                ;  ( end_decl(T) -> true
+                                 ;  get_declaration
+                   )
+        ).	
+
+
+tabled_declaration :-
+	read(PredList), assert_tabled(PredList).
+
+*/

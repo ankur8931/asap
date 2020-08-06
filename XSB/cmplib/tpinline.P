@@ -1,0 +1,162 @@
+/* File:      tp_geninline.P 
+** Author(s): Saumya Debray, Kostis Sagonas, Terrance Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: tpinline.P,v 1.16 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/* geninline(+Pname, +Args, +HoldRegs, +ARSize, -Pil, -PilRest, +Tin,	*/
+/*           -Tout, e(+PredSym,+NC))					*/
+/*	Generate code for inline predicates.				*/
+/*		+ Args: in intermediate program format.			*/
+/*		- Pil-PilRest: pil code generated, as a differential	*/
+/*			       list.					*/
+/*======================================================================*/
+%:- import console_writeln/1 from standard.
+
+geninline(true, [], _, _, Pil, Pil, T, T, _).
+geninline(fail, [], _, _, [fail|Pil], Pil, T, T, _).
+geninline(halt, [], _, _, [halt|Pilr], Pilr, T, T, _).
+
+geninline('_$builtin', [integer(N)], _, _, [builtin(N)|Pilr], Pilr, T, T, _).
+geninline('_$savecp', [Arg], _, _, Pil, Pilr, Tin, Tout, _) :-
+	geninline_savecp(Arg, Pil, Pilr, Tin, Tout).
+geninline('_$cutto', [Arg], HoldR, ARSize, Pil, Pilr, Tin, Tout, _) :-
+	geninline_cutto(Arg, HoldR, ARSize, Pil, Pilr, Tin, Tout).
+
+geninline(is, [Arg1,Arg2], HoldR, _, Pil, Pilr, Tin, Tout, EPN) :-
+%	console_writeln(geninline_isindeed(Arg1, Arg2, HoldR, Pil, Pilr, Tin, Tout, EPN)),
+	geninline_isindeed(Arg1, Arg2, HoldR, Pil, Pilr, Tin, Tout, EPN).
+geninline(@=, [Arg1,Arg2], _HoldR, _, Pil, Pilr, Tin, Tout, _EPN) :-
+	geninl_load_lhs(Arg1, R1, Pil, Pilm, Tin, Tmid, _),
+	geninl_load_lhs(Arg2, R2, Pilm,
+			[fun_test_ne(R1,R2,abs(-1))|Pilr], Tmid, Tout, _).
+geninline(=, [Lhs,Rhs], HoldR, _, Pil, Pilr, Tin, Tout, _) :-
+	(if_void_var(Lhs),if_void_var(Rhs)
+	 ->	Pilr = Pil, Tout = Tin
+	 ;	geninl_load_lhs(Lhs, R, Pil, Pil1, Tin, Tmid0, SaveReg),
+		release_if_tvar_if_done(Rhs, R, HoldR, Tmid0, Tmid1),
+		tgetpar(Rhs, R, Pil1, Pilr, Tmid1, Tmid2),
+		(SaveReg = [HR],memberchk(HR,Tmid2)
+		 ->	Tmid3 = Tmid2
+		 ;	append(SaveReg, Tmid2, Tmid3)
+		),
+		geninl_unload_lhs(Lhs, R, HoldR, Tmid3, Tout)
+	).
+geninline(Op, [Arg1,Arg2], HoldR, _, Pil, Pilr, Tin, Tout, EPN) :-
+	arithrelop(Op),
+	!,
+	eval_relop(Op, Arg1, Arg2, HoldR, abs(-1),
+		   Pil, Pilr, Tin, Tout, EPN).
+geninline(TermCompOp, [Arg1,Arg2], HoldR, _, Pil, Pilr, Tin, Tout, _) :-
+	term_comp_op(TermCompOp), !,
+	geninl_load_lhs(Arg1, R1, Pil, Pilm, Tin, Tmid, _),
+	geninl_load_lhs(Arg2, R2, Pilm,
+			[term_comp(R1,R2,R3),JumpInst|Pilr], Tmid, Tout1, _),
+	term_comp_tab(TermCompOp, R3, abs(-1), JumpInst),
+	getreg(Tout1, R3),
+	geninl_unload_lhs(Arg1, R1, HoldR, Tout1, Tout2),
+	geninl_unload_lhs(Arg2, R2, HoldR, Tout2, Tout).
+geninline(Cof, [Arg], HoldR, _, Pil, Pilr, Tin, Tout, _EPN) :-
+	inline_jumpcof_cond(Cof,1,CofNum), !,
+	geninl_load_lhs(Arg, R, Pil, 
+			[jumpcof(CofNum,R,abs(-1))|Pilr], Tin, Tmid, _),
+	geninl_unload_lhs(Arg, R, HoldR, Tmid, Tout).
+
+/*======================================================================*/
+/*======================================================================*/
+geninl_load_lhs(Term,R,Pil,Pilr,Tin,Tout,SaveR) :-
+	(Term = varocc(_Vid,Prag)
+	 ->	alloc_reg(Prag, Tin, Tmid), vprag_type(Prag, T),
+		vprag_occ(Prag, Oc), vprag_loc(Prag, Loc),
+		(T = t
+		 ->	R = Loc, Tout = Tmid,
+			(Oc==l
+			 ->	SaveR = []
+			 ; Oc==v
+			 ->	SaveR = []
+			 ;	SaveR = [R]
+			)
+		 ;      getreg(Tmid, R), hold(R, Tmid, Tout), SaveR = []
+		),
+		putvarinst(Prag, R, Pil, Pilr,0)
+/* it seems unlikely we'll get a putdval here, so tabled = 0 */
+	; getreg(Tin, R), hold(R, Tin, Tmid), SaveR = [],
+	  tputpar(Term, R, Pil, Pilr, Tmid, Tout,0)
+	).
+%   telling(X),tell(userout),
+%   write('called with term: '),write(Term),
+%   write('  Tin= '),write(Tin),write('  Tout= '),write(Tout),nl,
+%   write('  Pil= '),write(Pil), write(' Pilr= '),write(Pilr),nl,told,tell(X).
+%
+%:- import tell/1, telling/1, told/0, write/1, nl/0 from standard.
+
+
+geninl_unload_lhs(Term, R, HoldR, Tin, Tout) :-
+	( Term = varocc(Vid,Prag) -> 
+		release_if_done(Vid, R, Prag, HoldR, Tin, Tout)
+	; release(R, Tin, Tout)
+	).
+
+/*======================================================================*/
+/*======================================================================*/
+
+geninline_savecp(varocc(_,Prag), Pil, Pilr, Tin, Tout) :-
+	vprag_type(Prag, Type),
+	( Type == t ->
+		Pil = [gettbreg(R)|Pilr], alloc_reg(Prag, Tin, Tout)
+	; Pil = [getpbreg(R)|Pilr], Tin = Tout
+	),
+	vprag_loc(Prag, R).
+
+geninline_cutto(varocc(_,Prag), HoldR, ARSize, Pil, Pilr, Tin, Tout) :-
+	get_max(HoldR,0,MReg0),get_max(Tin,MReg0,MReg),
+	vprag_type(Prag, Type),
+	( Type == t ->
+		vprag_loc(Prag, R), vprag_occ(Prag, Oc),
+		alloc_reg(Prag, Tin, Tmid), Pil = [puttbreg_ci(R,MReg,ARSize)|Pilr],
+		( (Oc=l; Oc=v), release(R, Tmid, Tout) ; Tmid = Tout )
+	; Pil = [putpbreg_ci(R,MReg,ARSize)|Pilr], Tin = Tout, vprag_loc(Prag, R)
+	).
+
+get_max([],M,M).
+get_max([N|R],M0,M) :-
+	(N > M0
+	 ->	get_max(R,N,M)
+	 ;	get_max(R,M0,M)
+	).
+
+/*======================================================================*/
+/*======================================================================*/
+
+release_if_tvar_if_done(varocc(Vid,Prag),N,HoldR,Tin,Tout) :- !,
+	release_if_done(Vid,N,Prag,HoldR,Tin,Tout).
+release_if_tvar_if_done(_,_,_HoldR,Tin,Tin).
+
+if_void_var(varocc(_,Prag)) :- vprag_occ(Prag,v).
+
+/*======================================================================*/
+/*======================================================================*/
+
+force_tp_geninline_loaded.
+

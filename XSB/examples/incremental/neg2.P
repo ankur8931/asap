@@ -1,0 +1,115 @@
+:- import incr_assert_inval/1, incr_retractall_inval/1, incr_table_update/0 from increval.
+
+test :-
+	(incr_assert_inval(b(3)),
+	 incr_table_update,
+	 check_ans(1,X,p(X),[1,3]),
+	 fail
+	 ;	
+	 incr_assert_inval(a(1)),
+	 incr_table_update,
+	 check_ans(2,X,p(X),[3]),
+	 fail
+	 ;	
+	 incr_retractall_inval(a(1)),
+	 incr_table_update,
+	 check_ans(3,X,p(X),[1,3]),
+	 fail
+	 ;
+	 true
+	).
+
+:- table p/1, q/1.
+:- use_incremental_tabling p/1, q/1.
+
+:- dynamic a/1, b/1.
+:- use_incremental_dynamic a/1, b/1.
+
+p(X):- b(X),not q(X).
+q(X):- a(X).
+
+b(1).
+a(2).
+
+check_ans(Num,Var,Call,RightAnswers) :-
+	findall(Var,Call,Answers),
+	sort(Answers,SAnswers),
+	(SAnswers == RightAnswers
+	 ->	writeln('OK'(Num))
+	 ;	writeln(error(Num,SAnswers,RightAnswers))
+	).			
+/*
+ A Sample RUN of this program;
+
+End XSB (cputime 0.03 secs, elapsetime 2.64 secs)
+dsaha@187-dhcp:~/y06/spring/cvsxsb/XSBv3/XSB/examples/incremental$ ../../bin/xsb
+[xsb_configuration loaded]
+[sysinitrc loaded]
+
+XSB Version 2.7.1+ (CVS) of March 5, 2005
+[i686-pc-linux-gnu; mode: optimal; engine: slg-wam; gc: indirection; scheduling: local]
+
+| ?- [neg2].
+[Compiling ./neg2]
+++Warning[XSB]: [Compiler] ./neg2: Singleton variable X in a clause of query/0
+[neg2 compiled, cpu time used: 0.0520 seconds]
+[neg2 loaded]
+
+yes
+| ?- p(X).
+
+X = 1;
+
+no
+| ?- import incr_assert/1, incr_retractall/1, update/1 from increval.
+
+yes
+| ?- incr_assert(b(3)).
+
+yes
+| ?- update(X).
+
+X = [p(_h154),q(3)]
+
+yes
+| ?- p(X).
+
+X = 3;
+
+X = 1;
+
+no
+| ?- incr_assert(a(1)).
+
+yes
+| ?- update(X).
+
+X = [p(_h165),q(1)]
+
+yes
+| ?- p(X).
+
+X = 3;
+
+no
+| ?- incr_retractall(a(1)).
+
+yes
+| ?- update(X).
+
+X = [p(_h166),q(1)]
+
+yes
+| ?- p(X).
+
+X = 1;
+
+X = 3;
+
+no
+| ?- halt.
+
+End XSB (cputime 0.06 secs, elapsetime 145.87 secs)
+dsaha@187-dhcp:~/y06/spring/cvsxsb/XSBv3/XSB/examples/incremental$ 
+
+*/

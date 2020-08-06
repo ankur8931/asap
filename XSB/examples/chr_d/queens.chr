@@ -1,0 +1,106 @@
+
+%
+% N-queens for chr_d
+%
+% to run:
+% %% compile into Prolog:
+% ?- [chr_d], chr2attv('queens.chr','queens.P').
+%
+% %% run generated program: 
+% ?- [queens].
+% ?- solve(4,L) % or other number
+%
+
+:- import length/2 from basics.
+
+:- chr_module(queens).
+
+q(N) :-
+	statistics(0),
+	solve(N,L),
+	writeln(L),
+	statistics.
+
+time(N) :-
+	cputime(T0),
+	solve(N,_),
+	cputime(T1),
+	Time is T1-T0,
+	writeln(time(queens,N,Time)).
+
+solve(N,L) :-
+	build_domains(N,L),
+      	queens(L),
+	labeling(L).	
+
+queens([]).
+queens([X|Xs]) :-
+	safe(X,Xs,1),
+	queens(Xs).
+
+safe(_,[],_).
+safe(X,[Y|Ys],N) :-
+	no_attack(X,Y,N),
+	N1 is N+1,
+	safe(X,Ys,N1).
+
+labeling([]).
+labeling([X|Xs]) :-
+	label(X),
+	labeling(Xs).
+
+
+:- constraints label/1, dom/2, no_attack/3.
+:- never_stored label/1.
+
+dom(_,[]) <=> fail.
+
+dom(X,D1), dom(X,D2) <=> D1 = D2 | true.
+
+no_attack(X,Y,N) \ dom(Y,D) <=> number(X), 
+                                XpN is X+N, XmN is X-N, 
+                                remove_values([X,XpN,XmN],D,D1), 
+                                D1 \= D 
+                              | dom(Y,D1).
+
+no_attack(Y,X,N) \ dom(Y,D) <=> number(X),
+                                XpN is X+N, XmN is X-N,
+                                remove_values([X,XpN,XmN],D,D1), 
+                                D1 \= D
+                              | dom(Y,D1).
+
+
+label(X), dom(X,L) <=> member(X,L).
+label(_) <=> true.
+
+
+build_domains(N,L) :-
+	length(L,N),
+	build_int_list(N,NL),
+	l_build_domains(NL,L).
+
+l_build_domains(_,[]).
+l_build_domains(NL,[X|Xs]) :-
+	dom(X,NL),
+	l_build_domains(NL,Xs).
+
+build_int_list(0,[]).
+build_int_list(N,NL) :-
+	N > 0,
+	N1 is N-1,
+	build_int_list(N1,N1L),
+	append(N1L,[N],NL).
+
+
+remove_values([],L,L).
+remove_values([X|Xs],L1,L2) :-
+	remove_value(X,L1,L3),
+	remove_values(Xs,L3,L2).
+
+remove_value(_,[],[]).
+remove_value(X,[Y|Ys],Zs) :-
+	(X = Y
+	 -> Zs = Ys
+	  ; Zs = [Y|Xs],
+	    remove_value(X,Ys,Xs)
+	).

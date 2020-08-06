@@ -1,0 +1,455 @@
+/* This process defines the M number of threads parallely. The parameter N
+   is the number of objects in the system. Each thread has an identification
+   number that is denoted by I. all_of_threads calls process thread with the
+   thread identification number(I) and the number of objects(N) that the
+   thread can try to meta-lock.
+*/
+
+
+{*
+
+:- datatype lockstate.
+lockstate(busy).
+lockstate(not_busy).
+
+:- datatype multiword.
+multiword(null).
+multiword(m(A,B)) :- typeof(A,integer), typeof(B,lockstate).
+
+:- datatype boolean.
+boolean(true).
+boolean(false).
+*}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* The parameter Thread_id denotes the thread number and the parameter N
+   denotes the number of objects in the system.
+*/
+
+thread(Thread_id, N,
+        Swap,
+        Mutex_other,
+        Bits_for_grab,
+        Succ,
+        Metalock_bits_other,
+        Metalock_bits,
+        Thread_to_thread,
+        Cas_req,
+        Cas_object_to_thread,
+        Mutex) ::=
+
+	nondet_choice(N,I) o                     %% this process nondeterminis-
+                                                 %% -tically selects on of the N
+                                                 %% objects. The selected object
+                                                 %% number is I.
+
+	thread_body(Thread_id,I,
+                    Swap,
+                    Mutex_other,
+                    Bits_for_grab,
+                    Succ,
+                    Metalock_bits_other,
+                    Metalock_bits,
+                    Thread_to_thread,
+                    Cas_req,
+                    Cas_object_to_thread,
+                    Mutex) o                     %% thread with the identi-
+                                                 %% -fication number Thread_id
+                                                 %% calls thread_body to get
+                                                 %% and then release meta-lock
+ 		                                 %% of the object I.
+	thread(Thread_id, N,
+               Swap,
+               Mutex_other,
+               Bits_for_grab,
+               Succ,
+               Metalock_bits_other,
+               Metalock_bits,
+               Thread_to_thread,
+               Cas_req,
+               Cas_object_to_thread,
+               Mutex).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* This prolog predicate calls the predicate choose to nondeterministically
+   select on the N objects present in the system. The selected object number
+   is I.
+*/
+
+{*
+nondet_choice(N,I) :-
+	choose(1,N,I).
+
+choose(J,N,I) :-
+	J < N
+	->	(I = J; (J1 is J+1, choose(J1,N,I)))
+	;	I=N.
+*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+thread_body(Thread_id, I,
+            Swap,
+            Mutex_other,
+            Bits_for_grab,
+            Succ,
+            Metalock_bits_other,
+            Metalock_bits,
+            Thread_to_thread,
+            Cas_req,
+            Cas_object_to_thread,
+            Mutex) ::=
+
+
+       getmetalock(Thread_id,I,
+                   Swap,
+                   Mutex_other,
+                   Bits_for_grab,
+                   Succ,
+                   Metalock_bits_other,
+                   Metalock_bits,
+                   Thread_to_thread) o           %% thread with identification
+                                                 %% number Thread_id tries to
+                                                 %% meta-lock object I.
+       action(got_metalock(Thread_id, I))  o
+       releasemetalock(Thread_id,I,
+                       Cas_req,
+                       Cas_object_to_thread,
+                       Mutex,
+                       Succ,
+                       Metalock_bits_other,
+                       Bits_for_grab,
+                       Metalock_bits,
+                       Thread_to_thread).        %% thread releases the meta-lock.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+getmetalock(Thread_id:integer,Object_id:integer,
+            Swap,
+            Mutex_other,
+            Bits_for_grab,
+            Succ,
+            Metalock_bits_other,
+            Metalock_bits,
+            Thread_to_thread) ::=
+
+	out(Swap, (Object_id,m(Id,Lockstate),m(Thread_id,busy))) o
+                                                 %% thread does an atomic swap
+                                                 %% operation.
+	action(requesting_metalock(Thread_id,Object_id)) o
+	if Lockstate == busy then
+	   getmetalockslow(Thread_id,Id,Object_id,
+			   Mutex_other,
+                           Bits_for_grab,
+                           Succ,
+                           Metalock_bits_other,
+                           Metalock_bits,
+                           Thread_to_thread)            %% waiting for some other thread
+                                                 %% to release the meta-lock.
+   .                                        %% thread gets the meta-lock.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+releasemetalock(Thread_id,Object_id,
+                Cas_req,
+                Cas_object_to_thread,
+                Mutex,
+                Succ,
+                Metalock_bits_other,
+                Bits_for_grab,
+                Metalock_bits,
+                Thread_to_thread) ::=
+
+	out(Cas_req,(Object_id,Thread_id)) o     %% thread tries to do atomic
+                                                 %% compare and swap of the
+                                                 %% object multiuseword.
+	in(Cas_object_to_thread, (Thread_id,Object_id,Newword)) o
+                                                 %% object sends MUW to
+                                                 %% the requesting thread
+	if Newword == null then
+	   releasemetalockslow(Thread_id,Object_id,
+	                       Mutex,
+	                       Succ,
+		               Metalock_bits_other,
+			       Bits_for_grab,
+	                       Metalock_bits,
+	                       Thread_to_thread).%% some other thread is trying
+                                                 %% to get meta-lock of the
+                                                 %% object.
+						 %% thread releases the meta-lock.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* object process can receive request from the thread for atomic swap operation
+   or atomic compare and swap operation. The parameter Multiuseword denotes
+   the current Multiuseword ((Thread_id, Lockstate)) of the object.
+*/
+
+object(Multiuseword:multiword,Object_id:integer,
+       Swap,
+       Cas_req,
+       Cas_object_to_thread) ::=
+
+	in(Swap, (Object_id,Multiuseword,m(Thread_id,State))) o
+	object(m(Thread_id,State),Object_id,Swap,Cas_req,Cas_object_to_thread)
+	#
+	in(Cas_req, (Object_id,Thread_id)) o
+	if Multiuseword == m(Thread_id,busy) then {
+	   out(Cas_object_to_thread, (Thread_id,Object_id,Multiuseword)) o
+	   action(released_metalock(Thread_id,Object_id)) o
+	   object(m(Thread_id,not_busy),Object_id,
+	           Swap,
+	           Cas_req,
+	           Cas_object_to_thread) }
+	else {
+	   out(Cas_object_to_thread,(Thread_id,Object_id,null)) o
+	   object(Multiuseword,Object_id,
+	          Swap,
+	          Cas_req,
+	          Cas_object_to_thread) }.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+getmetalockslow(Thread_id,Pred_id,Object_id,
+                Mutex_other,
+                Bits_for_grab,
+                Succ,
+                Metalock_bits_other,
+                Metalock_bits,
+                Thread_to_thread) ::=
+
+	out(Mutex_other,(Pred_id,Object_id)) o  %% thread tries to get the
+                                                %% mutex of its predecessor
+	in(Bits_for_grab,(Pred_id,Object_id,Grab_bits)) o
+                                                %% thread gets the Bits_for
+                                                %% grab from the predecessor or
+                                                %% the hand_off process
+
+	if Grab_bits == false then		%% thread won the race and
+	   { out(Succ, (Pred_id,Object_id,Thread_id)) o %% it gives successor
+	     in(Metalock_bits_other,(Thread_id,Object_id))
+	   }                                    %% information to its
+                                                %% predecessor. It waits for
+                                                %% predecessor to send in the
+                                                %% signal via metalock_bits
+	else
+	   in(Metalock_bits,(Pred_id,Object_id))  o    %% thread has lost the race
+                                                %% it waits for the predecessor
+                                                %% to send signal via its
+                                                %% own metalock_bits
+	in(Thread_to_thread,Pred_id).
+                                                %% hand_off process is complete.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+releasemetalockslow(Thread_id,Object_id,
+                    Mutex,
+                    Succ,
+                    Metalock_bits_other,
+                    Bits_for_grab,
+                    Metalock_bits,
+                    Thread_to_thread
+                    ) ::=
+
+	out(Mutex,(Thread_id, Object_id)) o     %% thread tries to get its own
+                                                %% mutex
+
+	in(Succ,(Thread_id,Object_id,Succ_id)) o
+	if Succ_id \= 0 then                    %% thread lost the race to its
+	   out(Metalock_bits_other,(Succ_id,Object_id))
+                                                %% successor and it sends out
+                                                %% signal via successor's
+                                                %% metalock_bits
+	else {
+	   out(Bits_for_grab,(Thread_id,Object_id,true)) o
+                                                %% thread has won the race and
+	   out(Metalock_bits,(Thread_id,Object_id))} o  %% sends out signal via its own
+                                                %% metalock_bits for the
+                                                %% successor
+	action(released_metalock(Thread_id,Object_id)) o
+	out(Thread_to_thread,Thread_id).
+                                                %% hand_off process is complete.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* hand_off process receives lock mutex signals from two threads (one for
+   getmetalockslow and another for releasemetalockslow via mutex_other
+   and mutex respectively) and sends out appropriate messages via
+   bits_for_grab or succ gate to start the handoff process between threads
+*/
+
+
+hand_off(Mutex,
+         Mutex_other,
+         Bits_for_grab,
+         Succ)
+          ::=
+
+	in(Mutex, (Thread_id,Object_id)) o
+	in(Mutex_other, (Thread_id,Object_id)) o
+	  {
+	   out(Bits_for_grab,(Thread_id,Object_id,false))
+	   #
+	   out(Succ,(Thread_id,Object_id,0))
+	  } o
+	hand_off(Mutex,
+	         Mutex_other,
+	         Bits_for_grab,
+	         Succ).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+all_of_threads(I:integer,M:integer,N:integer,
+               Swap,
+               Mutex_other,
+               Bits_for_grab,
+               Succ,
+               Metalock_bits_other,
+               Metalock_bits,
+               Thread_to_thread,
+               Cas_req,
+               Cas_object_to_thread,
+               Mutex) ::=
+
+   if I<M then
+	 {thread(I,N,
+                 Swap,
+                 Mutex_other,
+                 Bits_for_grab,
+                 Succ,
+                 Metalock_bits_other,
+                 Metalock_bits,
+                 Thread_to_thread,
+                 Cas_req,
+                 Cas_object_to_thread,
+                 Mutex) |
+         {K is I + 1 o all_of_threads(K,M,N,
+                                      Swap,
+                                      Mutex_other,
+                                      Bits_for_grab,
+                                      Succ,
+                                      Metalock_bits_other,
+                                      Metalock_bits,
+                                      Thread_to_thread,
+                                      Cas_req,
+                                      Cas_object_to_thread,
+                                      Mutex)}}
+	else
+	 thread(I,N,
+                Swap,
+                Mutex_other,
+                Bits_for_grab,
+                Succ,
+                Metalock_bits_other,
+                Metalock_bits,
+                Thread_to_thread,
+                Cas_req,
+                Cas_object_to_thread,
+                Mutex).
+
+/* This process parallely defines N objects in the system.
+*/
+
+all_of_Objects(Multiuseword,I:integer,N:integer,
+               Swap,
+               Cas_req,
+               Cas_object_to_thread) ::=
+
+   if I< N then
+	{object(Multiuseword, I,
+                Swap,
+                Cas_req,
+                Cas_object_to_thread) |
+        {K is I + 1 o all_of_Objects(Multiuseword, K, N,
+                                     Swap,
+                                     Cas_req,
+                                     Cas_object_to_thread)}}
+    else
+	 object(Multiuseword, I,
+                Swap,
+                Cas_req,
+                Cas_object_to_thread).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* System definition */
+
+metaj(M,N) ::=
+
+{ all_of_threads(1,M,N,
+                Swap,
+                Mutex_other,
+                Bits_for_grab,
+                Succ,
+
+                Metalock_bits_other,
+                Metalock_bits,
+                Thread_to_thread,
+
+                Cas_req,
+                Cas_object_to_thread,
+                Mutex)
+
+|all_of_Objects(m(0,not_busy),1,N,
+                Swap,
+                Cas_req,
+                Cas_object_to_thread)
+
+|hand_off(Mutex,
+          Mutex_other,
+          Bits_for_grab,
+          Succ)
+}.
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* deadlock */
+
+deadlock += [-]ff \/ <->deadlock.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* no mutual exclusion (I is Object_id) */
+
+nomutualex(I) +=
+	<{got_metalock(_,I)}> formula1(I) \/
+	<->nomutualex(I).
+
+formula1(I) +=
+	<{got_metalock(_,I)}> tt \/
+	<-{released_metalock(_,I)}> formula1(I).
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* liveness (I is Thread_id, J is Object_id) */
+
+liveness(I,J) -=
+           [requesting_metalock(I,J)] formula(I,J)
+	/\ [-] liveness(I,J).
+
+
+formula(I,J) +=    <got_metalock(I,J)> tt
+		\/ form(I,J)
+		\/ [-] formula(I,J).
+
+
+
+form(I,J) +=
+	   <got_metalock(I,J)> tt
+	\/ [-{requesting_metalock(_,_)}] form(I,J).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

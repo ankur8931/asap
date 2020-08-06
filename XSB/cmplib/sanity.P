@@ -1,0 +1,160 @@
+/* File:      sanity.P
+** Author(s): Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: sanity.P,v 1.7 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+
+dump_module(SpecFile, module(SymTab,_DC,CL,QR)) :-
+	open(SpecFile,write,SStr),
+	write_envs(SStr,SymTab), write_queries(SStr,QR), write_preds(SStr,CL),
+	close(SStr).
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+write_envs(OStr,SymTab) :-
+	sym_gen(Sym, SymTab),
+	sym_name(Sym, Name, Arity),
+	( sym_prop(ex, Sym) ->
+		write(OStr,':- export '), writeq(OStr,Name), file_put(OStr,0'/),
+		write(OStr,Arity), file_put(OStr,0'.), nl(OStr)
+	; sym_prop(im(Mod), Sym) ->
+		write(OStr,':- import '), writeq(OStr,Name), file_put(OStr,0'/),
+		write(OStr,Arity), write(OStr,' from '), writeq(OStr,Mod), file_put(OStr,0'.), nl(OStr)
+	; sym_prop((local), Sym) ->
+		write(OStr,':- local '), writeq(OStr,Name), file_put(OStr,0'/),
+		write(OStr,Arity), file_put(OStr,0'.), nl(OStr)
+	),
+	fail.
+write_envs(OStr,_) :- nl(OStr).
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+write_queries(OStr,[pred(_PredSym,QrCls,_)|_]) :- 'write queries'(OStr,QrCls).
+
+'write queries'(OStr,[]) :- nl(OStr).
+'write queries'(OStr,[clause(_,QrBody,_)|QrCls]) :-
+	( QrBody = inlinegoal(true,0,_) -> true
+	; QrBody = if(Qr,_) -> write(OStr,'?- '), write_body(OStr,Qr), file_put(OStr,0'.), nl(OStr)
+	; write(OStr,'?- '), write_body(OStr,QrBody), file_put(OStr,0'.), nl(OStr)
+	),
+	'write queries'(OStr,QrCls).
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+write_preds(_OStr,[]).
+write_preds(OStr,[Pred|Preds]) :-
+	Pred = pred(Sym,ClauseList,_Pragma),
+	sym_name(Sym, Name, Arity),
+	write_pred_props(OStr,Sym, Name, Arity),
+	write_clauses(OStr,ClauseList, Name, Arity),
+	write_preds(OStr,Preds).
+
+write_pred_props(OStr,Sym, Name, Arity) :-
+	( sym_prop(index(Pos), Sym) ->
+		write(OStr,':- index '), writeq(OStr,Name), file_put(OStr,0'/),
+		write(OStr,Arity), file_put(OStr,0'-), write(OStr,Pos), file_put(OStr,0'.), nl(OStr)
+	; true ),
+	( sym_prop(mode(Mode), Sym) ->
+		write(OStr,':- mode  '), write(OStr,Mode), file_put(OStr,0'.), nl(OStr)
+	; true ),
+	( sym_prop(tabled(_,_), Sym) ->
+		write(OStr,':- table '), writeq(OStr,Name), file_put(OStr,0'/),
+		write(OStr,Arity), file_put(OStr,0'.), nl(OStr)
+	; true ).
+
+write_clauses(OStr,[], _, _) :- nl(OStr).
+write_clauses(OStr,[Cl|Cls], Name, Arity) :-
+	Cl = clause(HeadArgs,Body,_),
+	writeq(OStr,Name), 
+	( Arity =:= 0 -> true
+	; file_put(OStr,0'(), HeadArgs = [Arg|Args], write_args(OStr,Arg, Args), file_put(OStr,0'))
+	),
+	( Body = inlinegoal(true,0,_) -> true
+	; write(OStr,' :- '), nl(OStr), write_body(OStr,Body)
+	),
+	file_put(OStr,0'.), nl(OStr),
+	write_clauses(OStr,Cls, Name, Arity).
+
+/*	The following works for all representations (both internal and	*/
+/*	intermediate.							*/
+
+write_body(_OStr,nil).
+write_body(OStr,and(G1,G2)) :- 
+	write_body(OStr,G1), write(OStr,', '), nl(OStr),
+	write_body(OStr,G2).
+write_body(OStr,or(G1,G2)) :- 
+	write_body(OStr,G1), nl(OStr),
+	write(OStr,'        '), write(OStr,' ; '), nl(OStr),
+	write_body(OStr,G2).
+write_body(OStr,if(G1,G2)) :- 
+	write_body(OStr,G1), write(OStr,' -> '), nl(OStr),
+	write_body(OStr,G2).
+write_body(OStr,if_then_else(G1,G2,G3)) :-
+	write(OStr,'( '), write_body(OStr,G1), write(OStr,' -> '), nl(OStr), 
+	write_body(OStr,G2), nl(OStr), 
+	write(OStr,' ; '), nl(OStr), 
+	write_body(OStr,G3), write(OStr,' )'), nl(OStr).
+write_body(OStr,not(G)) :- write(OStr,'\+ '), write_body(OStr,G).
+write_body(OStr,goal(Sym,GoalArgs)) :-
+	write(OStr,'        '), 
+	sym_name(Sym, Name, Arity),
+	writeq(OStr,Name),
+	( Arity =:= 0 -> true
+	; file_put(OStr,0'(), GoalArgs = [Arg|Args], write_args(OStr,Arg, Args), file_put(OStr,0'))
+	).
+write_body(OStr,inlinegoal(Name,Arity,Args)) :-
+	write(OStr,'        '), 
+	( Arity =:= 0 -> write(OStr,Name)
+	; Arity =:= 1 ->
+		writeq(OStr,Name), file_put(OStr,0'(), Args = [Arg], write_arg(OStr,Arg), file_put(OStr,0'))
+	; Args = [Arg1,Arg2], write_arg(OStr,Arg1),
+	  file_put(OStr,0' ), write(OStr,Name), file_put(OStr,0' ), write_arg(OStr,Arg2)
+	).
+
+:- index write_args/3-3.
+
+write_args(OStr,One, []) :- write_arg(OStr,One).
+write_args(OStr,One, [Two|Rest]) :-
+	write_arg(OStr,One), write(OStr,', '), write_args(OStr,Two, Rest).
+
+write_arg(OStr,varocc(ID)) :- 
+	( integer(ID) -> file_put(OStr,0'_) ; true ), write(OStr,ID).
+write_arg(OStr,constant(Sym)) :- sym_name(Sym,Name,_), writeq(OStr,Name).
+write_arg(OStr,integer(I)) :- write(OStr,I).
+write_arg(OStr,real(R)) :- write(OStr,R).
+write_arg(OStr,string(R)) :- write(OStr,R).
+write_arg(OStr,structure(Sym,StructArgs)) :-
+	sym_name(Sym, Name, Arity),
+	( Name == '.', Arity =:= 2 ->
+		file_put(OStr,0'[), StructArgs = [H,T],
+		write_arg(OStr,H), file_put(OStr,0'|),
+		write_arg(OStr,T), file_put(OStr,0'])
+	; writeq(OStr,Name), file_put(OStr,0'(),
+	  StructArgs = [Arg|Args], write_args(OStr,Arg, Args), file_put(OStr,0'))
+	).
+
+/* --------------------- end of file sanity.P ------------------------- */
+

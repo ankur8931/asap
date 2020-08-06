@@ -1,0 +1,22 @@
+XSB Frequently Asked Questions
+------------------------------
+
+- Where can I get the XSB manual?
+
+A postscript version of the XSB manual is distributed together
+with the system. An HTML version is available online at
+
+	http://xsb.sourceforge.net/
+
+
+----------------------------------------------------------------------
+
+- XSB can't be compiled due to a missing header file.
+
+Send us a report at xsb-development@sourceforge.net
+
+
+- Virtual memory exhausted error during compilation.
+
+This is a known problem with some compilers on some systems.
+Try to disable optimization by configuring with --disable optimization

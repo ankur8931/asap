@@ -1,0 +1,62 @@
+%%%	xmc.P:  Startup file for XMC
+
+%% ----------------------------------------------------------------------
+%%	xlc(S): compile XL program to trans rules.
+%% ----------------------------------------------------------------------
+
+:- import bootstrap_package/2 from packaging.
+:- import slash/1 from machine.
+:- bootstrap_package('xmc',xmc).
+
+:- xsb_configuration(install_dir,ID), slash(SL), 
+	fmt_write_string(XMCDIR, '%s%spackages%sxmc',
+			 args(ID,SL,SL)),
+	assert(xmc_directory(XMCDIR)).
+			
+:- [mucalculus].
+
+xlc(File) :-
+	cleanup,
+	str_cat(File, '.xl', XLFile),
+	str_cat(XLFile, 'o', XLOFile),
+	parse(XLFile, XLOFile, stderr),
+	typecheck(XLOFile),
+	comp_form,
+	xlcomp.
+
+cleanup :-
+	retractall(trans(_,_,_)),
+	retractall((trans(_,_,_) :- _)),
+	retractall((trans(_,_,_,_,_) :- _)),
+	retractall(startstate(_,_)),
+	retractall(symlookup(_,_,_,_)),
+	retractall(atype(_,_)),			% from type checker
+	retractall(fDef(_,_)),
+	abolish_all_tables.
+
+%% ----------------------------------------------------------------------
+%%	mck(P, F): Top level modelcheck predicate:
+%%		   Does process named P model formula named F?
+%% ----------------------------------------------------------------------
+
+mck(P, F) :-
+	start(P, S),
+	models(S, form(F)).
+
+xmc_gui :-
+	xsb_configuration(itkwish_path,ITKWISH),
+	(   ITKWISH = no
+	->  write('Incr Tcl/Tk not found; try re-configuring.')
+	;   xsb_configuration(install_dir,ID),
+	    slash(SL),
+	    fmt_write_string(PRG, '%s%spackages%sxmc%sxmc-gui',
+			     args(ID, SL, SL, SL)),
+	    exec(PRG)
+	).
+
+%xmc_gui :- check_gui('@itkwish_path@').
+%check_gui(no) :-
+%	write('Incr Tcl/Tk has not been found during configuration.'),
+%	!, fail.
+%check_gui(_) :-
+%	exec('@prefix@/packages/xmc/xmc-gui').

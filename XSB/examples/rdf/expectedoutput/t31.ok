@@ -1,0 +1,33 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : dc = http://purl.org/metadata/dublin_core#,xmlns : dcq = http://purl.org/metadata/dublin_core_qualifiers#],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://www.dlib.org/dlib/may98/05contents.html],[element(http://purl.org/metadata/dublin_core# : Title,[],[DLIB Magazine - The Magazine for Digital Library Research
+      - May 1998]),element(http://purl.org/metadata/dublin_core# : Description,[],[D-LIB magazine is a monthly compilation of
+     contributed stories, commentary, and briefings.]),element(http://purl.org/metadata/dublin_core# : Contributor,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : parseType = Resource],[element(http://purl.org/metadata/dublin_core_qualifiers# : AgentType,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : resource = http://purl.org/metadata/dublin_core_qualifiers#Editor],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : value,[],[Amy Friedlander])]),element(http://purl.org/metadata/dublin_core# : Publisher,[],[Corporation for National Research Initiatives]),element(http://purl.org/metadata/dublin_core# : Date,[],[1998-01-05]),element(http://purl.org/metadata/dublin_core# : Type,[],[electronic journal]),element(http://purl.org/metadata/dublin_core# : Subject,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Bag,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[],[library use studies]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[],[magazines and newspapers])])]),element(http://purl.org/metadata/dublin_core# : Format,[],[text/html]),element(http://purl.org/metadata/dublin_core# : Identifier,[],[urn:issn:1082-9873]),element(http://purl.org/metadata/dublin_core# : Relation,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : parseType = Resource],[element(http://purl.org/metadata/dublin_core_qualifiers# : RelationType,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : resource = http://purl.org/metadata/dublin_core_qualifiers#IsPartOf],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : value,[resource = http://www.dlib.org],[])])])])
+
+----------RDF----------
+
+[description(description,about(http://www.dlib.org/dlib/may98/05contents.html),[http://purl.org/metadata/dublin_core# : Title = literal(DLIB Magazine - The Magazine for Digital Library Research
+      - May 1998),http://purl.org/metadata/dublin_core# : Description = literal(D-LIB magazine is a monthly compilation of
+     contributed stories, commentary, and briefings.),http://purl.org/metadata/dublin_core# : Contributor = description(description,_h918,[http://purl.org/metadata/dublin_core_qualifiers# : AgentType = description(description,about(http://purl.org/metadata/dublin_core_qualifiers#Editor),[]),rdf : value = literal(Amy Friedlander)]),http://purl.org/metadata/dublin_core# : Publisher = literal(Corporation for National Research Initiatives),http://purl.org/metadata/dublin_core# : Date = literal(1998-01-05),http://purl.org/metadata/dublin_core# : Type = literal(electronic journal),http://purl.org/metadata/dublin_core# : Subject = description(http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag,_h1112,[rdf : li = literal(library use studies),rdf : li = literal(magazines and newspapers)]),http://purl.org/metadata/dublin_core# : Format = literal(text/html),http://purl.org/metadata/dublin_core# : Identifier = literal(urn:issn:1082-9873),http://purl.org/metadata/dublin_core# : Relation = description(description,_h1430,[http://purl.org/metadata/dublin_core_qualifiers# : RelationType = description(description,about(http://purl.org/metadata/dublin_core_qualifiers#IsPartOf),[]),rdf : value = description(description,about(http://www.dlib.org),[])])])]
+
+--------Triples--------
+
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Title, literal(DLIB Magazine - The Magazine for Digital Library Research
+      - May 1998)}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Description, literal(D-LIB magazine is a monthly compilation of
+     contributed stories, commentary, and briefings.)}
+{__Description547, http://purl.org/metadata/dublin_core_qualifiers#AgentType, http://purl.org/metadata/dublin_core_qualifiers#Editor}
+{__Description547, http://www.w3.org/1999/02/22-rdf-syntax-ns#value, literal(Amy Friedlander)}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Contributor, __Description547}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Publisher, literal(Corporation for National Research Initiatives)}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Date, literal(1998-01-05)}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Type, literal(electronic journal)}
+{__Description548, http://www.w3.org/1999/02/22-rdf-syntax-ns#type, http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag}
+{__Description548, http://www.w3.org/1999/02/22-rdf-syntax-ns#_1, literal(library use studies)}
+{__Description548, http://www.w3.org/1999/02/22-rdf-syntax-ns#_2, literal(magazines and newspapers)}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Subject, __Description548}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Format, literal(text/html)}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Identifier, literal(urn:issn:1082-9873)}
+{__Description549, http://purl.org/metadata/dublin_core_qualifiers#RelationType, http://purl.org/metadata/dublin_core_qualifiers#IsPartOf}
+{__Description549, http://www.w3.org/1999/02/22-rdf-syntax-ns#value, http://www.dlib.org}
+{http://www.dlib.org/dlib/may98/05contents.html, http://purl.org/metadata/dublin_core#Relation, __Description549}

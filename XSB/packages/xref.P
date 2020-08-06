@@ -1,0 +1,11 @@
+:- import ensure_package_bootstrapped/2 from packaging.
+
+init_xref:- 
+	ensure_package_bootstrapped([xref],'xref'),
+	(import build_xref/0, build_xref/1,
+	        dump_xref/0, dump_xref/1,
+		print_pred/3, print_file/3,
+	        xld/0, xld/1, xhelp/1, xhelpd/1, xhelpf/1
+	 from xxref).
+
+:- init_xref.

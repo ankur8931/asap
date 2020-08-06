@@ -1,0 +1,169 @@
+/* File:      writeasm.P
+** Author(s): Kostis F. Sagonas, Jiyang Xu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: writeasm.P,v 1.7 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+
+write_asmheader(AStr, ModName, SymTab, IsModule) :-
+	(IsModule =:= 1
+	 ->	write(AStr,module), sp(AStr), my_writeq(AStr,ModName)
+	 ;	write(AStr,globalmod)
+	),
+	nl(AStr),
+	(option(optimize) -> writeln(AStr,optimize) ; true ),
+	writeln(AStr,symtab),
+	write_symbols(AStr,SymTab), nl(AStr).
+
+/* I made the following "SymTab" structure indepedent (Kostis 7/16/92) */
+
+write_symbols(AStr,SymTab) :-
+	sort_by_index(SymTab, Sorted_SymList),
+	rest_write_symbols(AStr,Sorted_SymList),
+	fail.	% undo the binding of the tail of the hash table part of
+		% the symbol table (caused by the sorting of the symbols).
+write_symbols(_,_).
+
+rest_write_symbols(AStr,SymList) :-
+	member(Sym, SymList),
+	write_symbol(AStr,Sym),
+	fail.	% get next symbol from SymTab and reclaim the space used.
+rest_write_symbols(_,_).
+
+write_symbol(AStr,Sym) :-
+	sym_env(Sym, Env),
+	sym_category(Sym, Cat),
+	p_tab(AStr), write_sym(AStr,Sym), p_tab(AStr),
+	( nonvar(Cat) -> my_writeq(AStr,Cat) ; write(AStr,'no_cat') ),
+	sp(AStr),
+	( nonvar(Env) -> my_writeq(AStr,Env) ; write(AStr,'no_env') ),
+	nl(AStr),
+	!.
+
+write_asm_instructions(AStr,Insts) :-
+	write_asm_instructions(AStr,Insts,0).
+
+:- index write_asm_instructions/3-2.
+write_asm_instructions(_AStr,[],_).
+write_asm_instructions(AStr,[One|Rest],N) :-
+	write_asm_inst(AStr,One,N,N1),
+	write_asm_instructions(AStr,Rest,N1).
+
+write_asm_inst(AStr,label(T,L),N,N) :- 
+	!, 
+	simplify_label(L, Sym-Id),
+	write(AStr,Id), write(AStr,':'), sp(AStr),
+	( T = pred, sym_prop(pred,Sym)
+	  -> write_pred_label(AStr,Sym)
+	   ; write(AStr,'% '), write(AStr,T) ),
+	nl(AStr).
+write_asm_inst(AStr,call(Sym,A),N0,N) :- 
+	!,
+	N is N0+8,
+	p_hex(AStr,N0),
+	p_tab(AStr), write(AStr,call), sp(AStr), write_sym(AStr,Sym), sp(AStr), writeln(AStr,A).
+write_asm_inst(AStr,check_interrupt(Sym,A),N0,N) :- 
+	!,
+	N is N0+8,
+	p_hex(AStr,N0),
+	p_tab(AStr), write(AStr,check_interrupt), sp(AStr), write_sym(AStr,Sym), sp(AStr), writeln(AStr,A).
+write_asm_inst(AStr,switchonbound(Narg,Lab,NCls),N0,N) :- 
+	!,
+	N is N0+12,
+	p_hex(AStr,N0),
+	p_tab(AStr), write(AStr,switchonbound), sp(AStr),
+	write(AStr,r), write(AStr,Narg), sp(AStr), write_label(AStr,Lab), sp(AStr), writeln(AStr,NCls).
+write_asm_inst(AStr,switchon3bound(N1,N2,N3,Lab,NCls),D0,D) :- 
+	!,
+	D is D0+12,
+	p_hex(AStr,D0),
+	p_tab(AStr), write(AStr,switchon3bound), sp(AStr),
+	write(AStr,r), write(AStr,N1), sp(AStr), write(AStr,r), write(AStr,N2), sp(AStr),
+	write(AStr,r), write(AStr,N3), sp(AStr), write_label(AStr,Lab), sp(AStr), writeln(AStr,NCls).
+write_asm_inst(AStr,cases(Lab,Arity,N1,_),N,N) :-  % ?? code address??
+	!,
+	p_tab(AStr), write(AStr,cases), sp(AStr),
+	write_label(AStr,Lab), sp(AStr), write(AStr,Arity), sp(AStr), writeln(AStr,N1).
+write_asm_inst(AStr,arglabel(T,V,L),N,N) :-   % ?? code address??
+	!,
+	p_tab(AStr), write(AStr,arglabel), sp(AStr), write(AStr,T),
+	( T = i -> sp(AStr), write(AStr,V)
+	; T = c -> sp(AStr), write_sym(AStr,V)
+	; T = s -> sp(AStr), write_sym(AStr,V)
+	; true
+	),
+	sp(AStr), write_label(AStr,L), nl(AStr).
+write_asm_inst(AStr,Inst,N0,N) :- 
+	functor(Inst, Op, A),
+	functor(Inst0, Op, A),
+	asm_inst(Inst0, InstLen, _, ArgPattens),
+	N is N0+InstLen,
+	p_hex(AStr,N0),
+	p_tab(AStr), write(AStr,Op), write_inst_args(AStr,ArgPattens, Inst, 0), nl(AStr).
+
+write_pred_label(AStr,Sym) :-
+	( sym_prop(internal,Sym) ->
+		write(AStr,'% internal pred '), write_sym(AStr,Sym)
+	;
+		write(AStr,'entry '), write_sym(AStr,Sym)
+	).
+
+write_inst_args(_AStr,[], _, _). 
+write_inst_args(AStr,[One|Rest], Inst, I) :-
+	( One=p, I1 is I
+	; One=pp, I1 is I
+	; One=ppp, I1 is I
+	; I1 is I + 1, arg(I1, Inst, Arg), write_inst_arg(AStr,One, Arg)
+	),
+	write_inst_args(AStr,Rest, Inst, I1).
+
+write_inst_arg(AStr,v(_V), Loc) :- write(AStr,' v'), write(AStr,Loc).
+write_inst_arg(AStr,r(_R), Loc) :- write(AStr,' r'), write(AStr,Loc).
+write_inst_arg(AStr,s(_I), Sym) :- sp(AStr), write_sym(AStr,Sym).
+write_inst_arg(AStr,c(_I), Sym) :- sp(AStr), write_sym(AStr,Sym).
+write_inst_arg(AStr,i(_N), Int) :- sp(AStr), write(AStr,Int).
+write_inst_arg(AStr,n(_N), Int) :- sp(AStr), write(AStr,Int).
+write_inst_arg(AStr,d(_N), Int) :- sp(AStr), write(AStr,Int).
+write_inst_arg(AStr,a(_A), Int) :- sp(AStr), write(AStr,Int).
+write_inst_arg(AStr,l(_L), Lab) :- sp(AStr), write_label(AStr,Lab).
+write_inst_arg(AStr,t(_T), Arg) :- sp(AStr), write(AStr,Arg).
+
+%simplify_label((Sym,LabId), Name/Arity-LabId) :- sym_name(Sym, Name, Arity).
+simplify_label((Other,LabId), Other-LabId).
+simplify_label(abs(-1), fail - (-1)).
+
+write_sym(AStr,Sym) :-
+	( sym_name(Sym,Name,Arity) -> write_sym2(AStr,Name,Arity)
+	; my_writeq(AStr,Sym) ).
+
+write_sym2(AStr,Name,Arity) :- my_writeq(AStr,Name), write(AStr,' / '), write(AStr,Arity).
+
+my_writeq(AStr,'$') :- !, file_put(AStr,0''), file_put(AStr,0'$), file_put(AStr,0'').
+my_writeq(AStr,X) :- writeq(AStr,X).
+
+write_label(AStr,Lab) :- simplify_label(Lab, _N-Id), write(AStr,Id).
+
+sp(AStr) :- file_put(AStr,0' ).
+p_tab(AStr) :- file_put(AStr,9).
+
+p_hex(AStr,Num) :- fmt_write(AStr,"%04x",Num).

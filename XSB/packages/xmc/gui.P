@@ -1,0 +1,258 @@
+/* File:      gui.P  ---  Prolog interface procedures for GUI
+** Author(s): Yifei Dong
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: gui.P,v 1.6 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+:- import fmt_write_string/3 from file_io.
+:- import member/2 from basics.
+
+%%-----------------------------------------------------------------------
+%%	Procedures for GUI
+
+xmc_compile(File, Succeed) :-
+	cleanup,
+	str_cat(File, '.xl', XLFile),
+	str_cat(XLFile, 'o', XLOFile),
+	str_cat(File, '.err', ErrFile),
+	tell(ErrFile),
+	((parse(XLFile, XLOFile, ErrFile),
+	  typecheck(XLOFile),
+	  comp_form,
+	  xlcomp) ->
+		Succeed = true
+	;	Succeed = ErrFile),
+	told.
+
+xmc_modelcheck(Process, Formula, Truth) :-
+	start(Process, StartState) ->
+	    (fDef(Formula,_) ->
+		(rec_models(StartState, Formula), close_open_tables ->
+		    Truth = true
+		;   Truth = false)
+	    ;   fmt_write_string(Truth, "Formula `%S' is not defined.",
+				args(Formula))
+	    )
+	;   fmt_write_string(Truth, "Process `%S' is not defined.",
+				args(Process)).
+
+get_models(Process, Formula, Models) :-
+	start(Process, StartState),
+	Models = rec_models(StartState, Formula).
+
+%%----------------------------------------------------------------
+%% for justifier GUI
+
+begin_justification :-
+	resolve_file_name('mucalculus.P', MCFile),
+	resolve_file_name('annot.P', AnnotFile),
+	just_init(MCFile, AnnotFile).
+
+:- import slash/1 from machine.
+resolve_file_name(Name, FullName) :-
+	xmc_directory(D),
+	slash(S),
+	str_cat(D, S, D1),
+	str_cat(D1, Name, FullName). 
+
+:- dynamic '$justifier_trie'/1.
+
+get_process_list(InNode, Process, Line,Char, VarbindingsString) :-
+%
+% Patch to fix a wierd problem with getting variable bindings from the gui
+% Strangely, the nontabled nodes appear within {}'s. The source of the problem
+% has not been tracked down. This is a quickfix....		-CR
+%
+	(InNode = {Node}
+	-> true
+	; InNode = Node
+        ),
+	'$justifier_trie'(T),
+	nb_asserted(seen(Node, Goal, Child), T),
+	(  (Goal =.. [models, IState, _];
+		Goal =.. [rec_models, IState, _]) ->
+		intern(State, IState),
+		symlookup(State, Process, (Line,Char), Varbindings)
+	 ; (Child = ancestor ->
+		nb_asserted(num(NodeNum), Goal, _),
+	        get_process_list(num(NodeNum), Process, Line,Char, Varbindings)
+	   ;
+		(functor(Goal, transition, 3);
+		functor(Goal, trans_member, 3);
+		functor(Goal, trans_not_a, 3);
+		functor(Goal, trans_not_member, 3)), 
+		arg(1, Goal, IState1),
+		intern(State1, IState1),
+		symlookup(State1, Process, (Line,Char), Varbindings)
+	   )
+	),
+	conv_binding_string(Varbindings, VarbindingsString).
+
+conv_binding_string(VB, VBS) :-
+	conv_binding_string_1(VB, '', VBS1),
+	fmt_write_string(VBS, "[%s]", args(VBS1)).
+
+conv_binding_string_1([], String, String).
+conv_binding_string_1([(Name = Value) | L], OldString, String) :-
+	fmt_write_string(S1, "%s = %S", args(Name, Value)),
+	(L == []
+	 -> fmt_write_string(NewString, "%s%s", args(OldString,S1))
+	 ;  fmt_write_string(NewString, "%s%s, ", args(OldString,S1))
+	),
+	conv_binding_string_1(L, NewString, String).
+
+getroot(Predicate, Id, Display, Truth) :-
+	justification_root(Predicate, node(Id, Pred, _, Truth)),
+	translate_node(Pred, Display).
+
+getchild(NodeID, Id, Display, Truth) :-
+	get_child(NodeID, node(Id, Pred, _, Truth)),
+	translate_node(Pred, Display).
+
+translate_node(Pred, Display) :-
+	( (Pred =.. [models, IState, Formula]; 
+		Pred =.. [rec_models, IState, FName], Formula = form(FName))
+	  ->	
+	    intern(State, IState),
+	    get_state_number(State, SN),
+	    convert_formula(Formula, FormText),
+	    fmt_write_string(Display, "State#%d |= %S",
+			     args(SN, FormText))
+		
+	 ; (Pred =.. [transition, IState1, Action, IState2] ;
+		Pred =.. [trans_not_a, IState1, Action, IState2] ;
+		Pred =.. [trans_member, IState1, Action, IState2] ;
+		Pred =.. [trans_not_member, IState1, Action, IState2] )
+		->
+	    %%
+	    intern(State1, IState1),
+	    get_state_number(State1, SN1),
+	    convert_action(Action, ActName),
+		( (functor(Pred, trans_not_a, 3);
+			functor(Pred, trans_not_member, 3))
+			-> fmt_write_string(Act, "! %s", ActName)
+			;  Act = ActName
+		),
+	    ( nonvar(IState2) ->
+		intern(State2, IState2),
+		get_state_number(State2, SN2),
+		fmt_write_string(Display, "State#%d --%s--> State#%d",
+				 args(SN1, Act, SN2))
+		;      fmt_write_string(Display, "State#%d --%s--> X",
+					args(SN1, Act))
+	    )
+	 ; Pred =.. [ancestor, P] ->
+		translate_node(P, D),
+		fmt_write_string(Display, "Ancestor:   %S", args(D))
+
+	 ; Display = Pred
+	).
+
+:- import conget/2, conset/2 from gensym.
+:- import trie_intern/3, trie_interned/3 from intern.
+
+get_state_number(State, Number) :-
+	(trie_interned(state(State,Number),_,_) ->
+	    true
+	 ;  conget(state_number, X),
+	    Number is X+1,
+	    conset(state_number, Number),
+	    trie_intern(state(State,Number),_,_)
+	).
+
+
+convert_formula(tt, tt).
+convert_formula(ff, ff).
+
+convert_formula(form(F), Form) :-
+	fmt_write_string(Form, "%S", args(F)).
+
+convert_formula(neg_form(F), Form) :-
+	fmt_write_string(Form, "not %S", args(F)).
+
+convert_formula(fAnd(X1,X2), Form) :-
+	convert_formula(X1, F1),
+	convert_formula(X2, F2),
+	fmt_write_string(Form, "(%s /\\ %s)", args(F1,F2)).
+
+convert_formula(fOr(X1,X2), Form) :-
+	convert_formula(X1, F1),
+	convert_formula(X2, F2),
+	fmt_write_string(Form, "(%s \\/ %s)", args(F1,F2)).
+
+convert_formula(fDiam(A,X), Form) :-
+	convert_action(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "<%s> %s", args(B,F)).
+
+convert_formula(fDiamMinus(A,X), Form) :-
+	convert_action(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "<-%s> %s", args(B,F)).
+
+convert_formula(fDiamSet(A,X), Form) :-
+	convert_set(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "<%s> %s", args(B,F)).
+
+convert_formula(fDiamSetMinus(A,X), Form) :-
+	convert_set(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "<-%S> %s", args(B,F)).
+
+convert_formula(fBox(A,X), Form) :-
+	convert_action(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "[%S] %s", args(B,F)).
+
+convert_formula(fBoxMinus(A,X), Form) :-
+	convert_action(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "[-%S] %s", args(B,F)).
+
+convert_formula(fBoxSet(A,X), Form) :-
+	convert_set(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "[%S] %s", args(B,F)).
+
+convert_formula(fBoxSetMinus(A,X), Form) :-
+	convert_set(A, B),
+	convert_formula(X, F),
+	fmt_write_string(Form, "[-%S] %s", args(B,F)).
+
+convert_action(action(A), B) :-
+	!, fmt_write_string(B, "%S", args(A)).
+
+convert_action(A, B) :-
+	fmt_write_string(B, "%S", args(A)).
+
+convert_set([], '') :- !.
+convert_set(L, T) :-
+	conv_set(L, S),
+	fmt_write_string(T, "{%s}", args(S)).
+
+conv_set([A], T) :-
+	convert_action(A,T).
+conv_set([A,B|L], T) :-
+	convert_action(A, At),
+	conv_set([B|L], Bt),
+	fmt_write_string(T, "%s,%s", args(At,Bt)).

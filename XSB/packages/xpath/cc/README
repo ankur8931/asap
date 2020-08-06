@@ -1,0 +1,9 @@
+
+For Windows: the libxml2.dll, iconv.dll, zlib1.dll
+are downloaded from http://www.zlatkovic.com/libxml.en.html
+The .h files for libxml2 are in libxml/ subdirectory.
+Also downloaded from the same place.
+
+libxml/ is used only foor Windows.
+iconv.h is also used only for Windows. For Unix both iconv.h and libxml/*.h
+come from normal places, since these fales are included using <...>

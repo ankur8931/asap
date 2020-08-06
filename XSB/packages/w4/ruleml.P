@@ -1,0 +1,220 @@
+%%% RuleML query engine (Version 1.0/October 2002)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/projectos/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This module implements the top level RuleML compiler predicates.
+%%% Given a XML File to read, it 
+%%% The language is extended with default and explicit negation, which can
+%%% be applied to every atom in the language. The combinations allowed are:
+%%%
+%%% - Atom
+%%% - neg Atom
+%%% - not Atom
+%%% - not neg Atom
+%%%
+%%% All names in the language are converted to Prolog atoms in UTF-8 encoding.
+%%%
+
+
+:- import readProlog/2 from prologread.
+:- import writeProlog/2 from prologwrite.
+:- import isRuleBase/1 from rulemlread.
+:- import readRuleML/2 from rulemlread.
+:- import writeRuleML/2 from rulemlwrite.
+:- import writeAnswer/2 from rulemlwrite.
+
+:- import rule/5 from rulebase.
+:- import rule/6 from rulebase.
+:- import assertRulebase/1 from rulebase.
+:- import updateRulebase/1 from rulebase.
+:- import abolishRulebases/0 from rulebase.
+:- import abolishRulebase/1 from rulebase.
+
+:- import demo/2 from gwfsxpengine.
+
+:- ensure_loaded( prologread ).
+:- ensure_loaded( prologwrite ).
+:- ensure_loaded( rulemlread ).
+:- ensure_loaded( rulemlwrite ).
+:- ensure_loaded( rulebase ).
+:- ensure_loaded( gwfsxpengine ).
+
+% readRules( In, RuleBase ).
+% If the first term is not a rule base, then reads it from a file.
+% InFile is an atom with the path to the file with the RuleML rulebase.
+%
+
+readRules( RuleBase, RuleBase ) :-
+	isRuleBase( RuleBase ), !.
+readRules( prolog(InFile), RuleBase ) :-
+	readProlog( InFile, RuleBase ).
+readRules( ruleML(InFile), RuleBase ) :-
+	readRuleML( InFile, RuleBase ).
+
+
+% Reloads a rule base. If the rulebase has already been loaded, its previous rules are discarded.
+
+reloadRules( In ) :-
+	reloadRules( In, _ ).
+
+reloadRules( In, RuleBase ) :- 
+	readRules( In, RuleBase ), 
+	abolishRulebase( RuleBase ), 
+	assertRulebase( RuleBase ).
+
+
+% Loads a rule base, inserting the rules in the existing knowledge base.
+
+loadRules( In ) :-
+	loadRules( In, _ ).
+
+loadRules( In, RuleBase ) :- 
+	readRules( In, RuleBase ), 
+	assertRulebase( RuleBase ).
+
+% Updates a rule base, inserting the rules in a new step
+
+updateRules( In ) :-
+	updateRules( In, _ ).
+
+updateRules( In, RuleBase ) :- 
+	readRules( In, RuleBase ), 
+	updateRulebase( RuleBase ).
+
+
+% Consults a rule base by loading it, and executing the queries provided in the rulebase
+% The output is a XML document with the answer substitutions, written to the current output
+
+consultRules( In ) :-
+	current_output( Out ),
+	consultRules( In, Out ).
+
+
+% Consults a rule base by loading it, and executing the queries provided in the rulebase
+% If Answers is a variable then it returns a list of answer substitutions or writes. Otherwise,
+% the second argument is assumed to be a stream.
+
+consultRules( In, Answers ) :-
+	loadRules( In, rulebase( Label, _, _, Queries) ),
+	queryRules( Label, Queries, Answers ).
+
+
+% Reconsults a rule base by reloading it, and executing the queries provided in the rulebase
+% The output is a XML document with the answer substitutions, written to the current output
+
+reconsultRules( In ) :-
+	current_output( Out ),
+	reconsultRules( In, Out ).
+
+% Reconsults a rule base by reloading it, and executing the queries provided in the rulebase
+% If Answers is a variable then it returns a list of answer substitutions or writes. Otherwise,
+% the second argument is assumed to be a stream.
+
+reconsultRules( In, Answers ) :-
+	reloadRules( In, rulebase( Label, _, _, Queries) ),
+	queryRules( Label, Queries, Answers ).
+
+% Abolishes all instances of a given RuleBase.
+% The argument can be either a rulebase term or a rule base label
+abolishRules( RuleBase ) :- abolishRulebase( RuleBase ).
+
+% Abolishes all rulebases in the current knowledge base
+abolishRules :- abolishRulebases.
+
+% Queries all loaded rule bases.
+queryRules( Queries, Answers ) :-
+	queryRules( _, Queries, Answers ).
+
+% The queryRules/3 predicate allows a list of queries to be executed 
+% with respect to a given rule base.
+% The answers are returned either in a list or outputed to a stream, in XML format.
+
+queryRules( Label, Queries, Answers ) :-
+	var( Answers ), !,
+	collectRuleAnswers( Queries, Label, Answers ). 
+	
+queryRules( Label, Queries, Stream ) :-
+	write( Stream, '<answers>' ),
+	writeRuleMLAnswers( Queries, Label, Stream ),
+	write( Stream, '</answers>' ).
+
+
+% Collects the answers to the queries in a list of lists.
+collectRuleAnswers( [], _, [] ) :- !.
+collectRuleAnswers( [Query|RestQueries], Label, [Answers|RestAnswers] ) :- 
+	collectQueryAnswers( Query, Label, Answers ), !,
+	collectRuleAnswers( RestQueries, Label, RestAnswers ).
+
+collectQueryAnswers( query(Body,Label,Vars), RuleBaseLabel, Answers ) :-
+	findall( answer(Label,Vars), demo( RuleBaseLabel, Body ), Answers ).
+
+
+% Writes the answers to the queries to a stream
+writeRuleMLAnswers( [], _, _ ) :- !.
+writeRuleMLAnswers( [Query|RestQueries], Label, Stream ) :- 
+	writeQueryAnswers( Query, Label, Stream ), !,
+	writeRuleMLAnswers( RestQueries, Label, Stream ).
+
+writeQueryAnswers( query(Body,Label,Vars), RuleBaseLabel, Stream ) :- 
+	demo( RuleBaseLabel, Body ),
+	writeAnswer( answer( Label, Vars ), Stream ),
+	fail.
+writeQueryAnswers( _, _, _).
+
+
+% Lists the rules in a given RuleBase
+listRules( RuleBaseLabel, Pred, Out ) :-
+	var( Out ), !,
+	getRules( RuleBaseLabel, Pred, Out ).
+listRules( RuleBaseLabel, Pred, Out ) :-
+	writeRules( RuleBaseLabel, Pred, Out ).
+
+listAllRules( RuleBaseLabel, Out ) :-
+	listRules( RuleBaseLabel, _, Out ).
+
+
+% Obtains the rules in a given RuleBase for a predicate indicator (Name/Arity) or all if the 2nd argument is a variable.
+% The result is a rulebase term.
+getRules( RuleBaseLabel, Pred, rulebase( RuleBaseLabel, bidirectional, Rules, [] ) ) :-
+	( var(Pred) -> Head = _ ; Pred = Name/Arity, functor(Head, Name, Arity ) ), 
+	findall( rule( Head, Body, Label, Vars ), rule( Head, Body, RuleBaseLabel, Label, Vars ), Rules ).
+
+% The same as before, but obtains the whole rule base.
+getAllRules( RuleBaseLabel, RuleBase ) :-
+	getRules( RuleBaseLabel, _, RuleBase ).
+
+
+% writes all the rules in a given RuleBase for a predicate indicator (Name/Arity) or all if the 2nd argument is a variable.
+% The output is in Rule ML format.
+
+writeRules( RuleBaseLabel, Pred, Stream ) :-
+	getRules( RuleBaseLabel, Pred, RuleBase ),
+	writeRuleML( RuleBase, Stream ).
+
+% writes the whole rule base in Rule ML format.
+writeAllRules( RuleBaseLabel, Stream ) :-
+	writeRules( RuleBaseLabel, _, Stream ).
+
+
+% General translation predicates:
+
+ruleML2prolog( InFile, OutFile ) :-
+	readRuleML( InFile, RuleBase ),
+	open( OutFile, write, OutStream ),
+	writeProlog( RuleBase, OutStream ),
+	close( OutStream ).
+
+prolog2ruleML( InFile, OutFile ) :-
+	readProlog( InFile, RuleBase ),
+	open( OutFile, write, OutStream ),
+	writeRuleML( RuleBase, OutStream ),
+	close( OutStream ).
+
+

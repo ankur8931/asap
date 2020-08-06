@@ -1,0 +1,722 @@
+/* File:      varproc.P
+** Author(s): Jiyang Xu, Terrance Swift, Kostis Sagonas, David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: varproc.P,v 1.15 2011-06-25 11:55:06 dwarren Exp $
+** 
+*/
+
+%%%:- import writeq/1,writeln/1,tell/1,telling/1 from standard.
+%%:- import writeln/2 from standard.
+
+varproc(VarListTab, VarTab, PvarCount) :-
+	get_lastchunk(VarTab, LastChunk, []),
+	mark_occurrences(VarTab),
+	mark_type(VarListTab, VarTab, LastChunk),
+	alloc_vars(VarTab, VarListTab, 0, PvarCount).
+
+/*======================================================================*/
+/* get_lastchunk(+VarTab, -LastChunks0, ?LastChunks)			*/
+/*	Get the chunk id(s) of the last chunk(s).			*/
+/*		LastChunks0-LastChunks: is a difference-list.		*/
+/*======================================================================*/
+get_lastchunk([One|Rest], LastChunk0, LastChunk) :-
+	(Rest == []
+	 ->	get_lastchunk1(One, LastChunk0, LastChunk)
+	 ;	get_lastchunk(Rest, LastChunk0, LastChunk)
+	).
+
+get_lastchunk1(goal(CkId,_,_,_), [CkId|LastChunk], LastChunk).
+get_lastchunk1(inlinegoal(CkId,_,_,_), [CkId|LastChunk],LastChunk).
+get_lastchunk1(head(_VOList), [1|LastChunk],LastChunk).
+get_lastchunk1(branch(A,B), LastChunk0, LastChunk) :- 
+	get_lastchunk(A, LastChunk0, LastChunk1),
+        get_lastchunk(B, LastChunk1, LastChunk).
+get_lastchunk1(ifthenelse(_,B,C), LastChunk0, LastChunk) :- 
+        get_lastchunk(B, LastChunk0, LastChunk1),
+        get_lastchunk(C, LastChunk1, LastChunk).
+
+/*======================================================================*/
+/* mark_occurrences(#VarTab)	[dsw rewrote]	        		*/
+/*	Fills in occurrence information (f, s, l, or v).		*/
+/*	      #VarTab  has the occurrence attribute of the		*/
+/*		       varocc(Vid,vrec()) structures marked		*/
+/*		       after the exit from this predicate.		*/
+/*======================================================================*/
+
+mark_occurrences(VarTab) :-
+	collect_variables(VarTab,[],MarkTab),
+	leaflist(MarkTab,MarkList),
+	mark_collected_vars(MarkList).
+
+/*======================================================================*/
+/* mark_collected_vars(#OccList) runs each variable occurrence		*/
+/* structure and binds the occurrence variables to the appropriate one	*/
+/* of f (first), s (subsequent), l (last) or v (void).  The occurrence	*/
+/* structure is collected so that the variables appear from the end of	*/
+/* the clause to the front, so, e.g., the first encountered is marked l	*/
+/* (last). (dsw) 							*/
+/*======================================================================*/
+
+mark_collected_vars([]).
+mark_collected_vars([[_|OccStr]|MarkList]) :-
+	mark_occ_str0(OccStr),
+	mark_collected_vars(MarkList).
+
+% Nothing marked, first seen should be l (for last)
+mark_occ_str0([]).
+mark_occ_str0([One|Rest]) :-
+	(var(One)
+	 ->	(Rest == []
+		 ->	One = v
+		 ;	One = l,
+			mark_occ_str1(Rest)
+		)
+	 ;	One = br(OneA,OneB),
+		mark_occ_str2(OneA,Rest),
+		mark_occ_str2(OneB,Rest),
+		mark_occ_str1(Rest)
+	).
+
+% last has been marked, so next ones will be s or f
+mark_occ_str1([]).
+mark_occ_str1([One|Rest]) :-
+	(var(One)
+	 ->	(Rest == []
+		 ->	One = f
+		 ;	One = s,
+			mark_occ_str1(Rest)
+		)
+	 ;	One = br(OneA,OneB),
+		mark_occ_str1(OneA,Rest),
+		mark_occ_str1(OneB,Rest),
+		mark_occ_str1(Rest)
+	).
+
+% last has been marked, More is [] iff nothing follows
+mark_occ_str1([],_More).
+mark_occ_str1([One|Rest],More) :-
+	(var(One)
+	 ->	(Rest == [], More == []
+		 ->	One = f
+		 ;	One = s,
+			mark_occ_str1(Rest,More)
+		)
+	 ;	One = br(OneA,OneB),
+		(Rest == [] -> Rest1 = More ; Rest1 = Rest),
+		mark_occ_str1(OneA,Rest1),
+		mark_occ_str1(OneB,Rest1),
+		mark_occ_str1(Rest,More)
+	).
+
+% last still not yet marked, More is [] iff nothing follows
+mark_occ_str2([],_More).
+mark_occ_str2([One|Rest],More) :-
+	(var(One)
+	 ->	(Rest == [], More == []
+		 ->	One = v
+		 ;	One = l,
+			mark_occ_str1(Rest,More)
+		)
+	 ;	One = br(OneA,OneB),
+		(Rest == [] -> Rest1 = More ; Rest1 = Rest),
+		mark_occ_str2(OneA,Rest1),
+		mark_occ_str2(OneB,Rest1),
+		mark_occ_str1(Rest,More)
+	).
+	
+
+/*======================================================================*/
+/* collect_variables(+OccList,+InitialTab,-FinalTab) runs the variable	*/
+/* occurrence structure and for each variable collects a structure	*/
+/* (containing variables) that represents its occurrences in the	*/
+/* clause.  The occurrences are put on the front of a list as they are	*/
+/* encountered so we're done, e.g., the first variable in the list	*/
+/* is the last occurrence in the clause.  Each variable is the Occ	*/
+/* value in the varocc structure.  Conjunctions are represented as	*/
+/* lists; disjunctions are represented with br(A,B).  This returns a	*/
+/* 2-3 tree of pairs of variable ID and corresponding occurrence	*/
+/* structure. (dsw)							*/
+/*======================================================================*/
+collect_variables([],MarkTab,MarkTab).
+collect_variables([Goal|Goals],MarkTab0,MarkTab) :-
+	collect_variables_in_seg(Goal,MarkTab0,MarkTab1),
+	collect_variables(Goals,MarkTab1,MarkTab).
+
+collect_variables_in_seg(head(VOList),MarkTab0,MarkTab) :-
+	collect_variables_in_occ_list(VOList,MarkTab0,MarkTab).
+collect_variables_in_seg(goal(_,_,_,VOList),MarkTab0,MarkTab) :-
+	collect_variables_in_occ_list(VOList,MarkTab0,MarkTab).
+collect_variables_in_seg(inlinegoal(_,_,_,VOList),MarkTab0,MarkTab) :-
+	collect_variables_in_occ_list(VOList,MarkTab0,MarkTab).
+collect_variables_in_seg(branch(A,B),MarkTab0,MarkTab) :-
+	collect_variables(A,[],MarkTabA),
+	collect_variables(B,[],MarkTabB),
+	leaflist(MarkTabA,TabAList),
+	leaflist(MarkTabB,TabBList),
+	add_branch_occs(TabAList,TabBList,MarkTab0,MarkTab).
+collect_variables_in_seg(ifthenelse(A,B,C),MarkTab0,MarkTab) :-
+	collect_variables(A,MarkTab0,MarkTab1),
+	(C = [inlinegoal(_,fail,0,_)]
+	 ->	collect_variables(B,MarkTab1,MarkTab)
+	 ;	collect_variables_in_seg(branch(B,C),MarkTab1,MarkTab)  %% this looks wrong to me.
+	).
+
+collect_variables_in_occ_list([],MarkTab,MarkTab).
+collect_variables_in_occ_list([varocc(Vid,VPrag)|VarOccs],MarkTab0,MarkTab) :-
+	vprag_occ(VPrag,Occ),
+	prependval(MarkTab0,Vid,Occ,MarkTab1),
+	collect_variables_in_occ_list(VarOccs,MarkTab1,MarkTab).
+
+add_branch_occs(TabAList,TabBList,MarkTab0,MarkTab) :-
+	(TabAList == []
+	 ->	(TabBList == []
+		 ->	MarkTab = MarkTab0
+		 ;	TabBList = [[Vid|Occs]|TabBList0],
+			prependval(MarkTab0,Vid,br([],Occs),MarkTab1),
+			add_branch_occs([],TabBList0,MarkTab1,MarkTab)
+		)
+	 ;	TabAList = [[AVid|AOccs]|TabAList0],
+		(TabBList == []
+		 ->	prependval(MarkTab0,AVid,br(AOccs,[]),MarkTab1),
+			add_branch_occs(TabAList0,[],MarkTab1,MarkTab)
+		 ;	TabBList = [[BVid|BOccs]|TabBList0],
+			(AVid == BVid
+			 ->	prependval(MarkTab0,AVid,br(AOccs,BOccs),MarkTab1),
+				add_branch_occs(TabAList0,TabBList0,MarkTab1,MarkTab)
+			 ; AVid @< BVid
+			 ->	prependval(MarkTab0,AVid,br(AOccs,[]),MarkTab1),
+				add_branch_occs(TabAList0,TabBList,MarkTab1,MarkTab)
+			 ;	prependval(MarkTab0,BVid,br([],BOccs),MarkTab1),
+				add_branch_occs(TabAList,TabBList0,MarkTab1,MarkTab)
+			)
+		)
+	).
+
+prependval(Tree0,Key,V,Tree) :-
+	(updatevs(Tree0,Key,OV,[V|OV],Tree) % add it if var is already there
+	 ->	true
+	 ;	addkey(Tree0,Key,[V],Tree)  % initialize if first occurrence
+	).
+
+
+/*======================================================================*/
+/* mark_type(#VarListTab, #VarTab, +LastChunk, ??)			*/
+/*	Computes and fills in the Type and Use of variables.		*/
+/*	      #VarList is a list of variable(Vid,VPrag) structures	*/
+/*		       where Vprag is uninstantiated on entry (gets	*/
+/*		       instantiated by this predicate.			*/
+/*	      #VarTab  has the type attribute of the varocc(Vid,vrec())	*/
+/*		       structures marked after the exit from this	*/
+/*		       predicate in the way described below.		*/
+/*									*/
+/*   The types of variables filled in can be:				*/
+/*	vh - the void variable in the head top level;			*/
+/*	 t - when the both following conditions hold:			*/
+/*	    * first occur in head, in structure, or in the last chunk	*/
+/*	    * does not occur in more than one chunk			*/
+/*		(head is considered part of the first chunk)		*/
+/*	    I improved the scheme a little bit, now if for every	*/
+/*	    indepedant occurrence blocks, above two condition hold, OK.	*/
+/*	 p - otherwise							*/
+/*	 Also sets Use to d or u if Type is p				*/
+/*	 Also sets vprag_lastchunk					*/
+/*======================================================================*/
+
+/* in VarList, (23tree of variables, add fields:
+FirstChunks = [_|_] for first 2 chunk ids that var appears in.
+OKt = var or 1, 1 if first occur in head or in last chunk or if
+	any occur is in str, var otw.
+Safe = var or 1, 1 if safe, var otw.
+*/
+
+mark_type(VarListTab,VarTab,LastChunk) :-
+	collect_type_in_tab(VarTab,VarListTab,LastChunk),
+	leaflist(VarListTab,VarList),
+	mark_thru_tab(VarList).
+
+mark_thru_tab([]).
+mark_thru_tab([[_Vid|t(v(Type,_Loc,Use,_NoUse),[_|Secnd],OKt,Safe,_OccInChunk)]|Rest]) :-
+	(nonvar(Secnd) % in >1 chunk
+	 ->	Type = p
+	 ; nonvar(OKt)
+	 ->	Type = t
+	 ; Type = p
+	 ->	true
+	 ;	true % Type is vh but already determined
+	),
+	(Type == p
+	 ->	(var(Safe)
+		 ->	Use = d
+		 ;	Use = u
+		)
+	 ;	true
+	),
+	mark_thru_tab(Rest).
+
+collect_type_in_tab([],_,_).
+collect_type_in_tab([One|Rest],VarListTab,LastChunk) :-
+	collect_type1(One,VarListTab,LastChunk),
+	collect_type_in_tab(Rest,VarListTab,LastChunk).
+
+collect_type1(head(VOList),VarListTab,LastChunk) :-
+	collect_type2(VOList,1,VarListTab,LastChunk).
+collect_type1(goal(CkId,_,_,VOList),VarListTab,LastChunk) :-
+	collect_type2(VOList,CkId,VarListTab,LastChunk).
+collect_type1(inlinegoal(CkId,_,_,VOList),VarListTab,LastChunk) :-
+	collect_type2(VOList,CkId,VarListTab,LastChunk).
+collect_type1(branch(A,B),VarListTab,LastChunk) :-
+	collect_type_in_tab(A,VarListTab,LastChunk),
+	collect_type_in_tab(B,VarListTab,LastChunk).
+collect_type1(ifthenelse(A,B,C),VarListTab,LastChunk) :-
+	collect_type_in_tab(A,VarListTab,LastChunk),
+	collect_type_in_tab(B,VarListTab,LastChunk),
+	collect_type_in_tab(C,VarListTab,LastChunk).
+
+collect_type2([],_CkId,_VarListTab,_LastChunk).
+collect_type2([varocc(Vid,Prag)|Rest],CkId,VarListTab,LastChunk) :-
+	find(VarListTab,Vid,t(_Common,FirstChnks,OKt,Safe,_OccInChunk)),
+	(FirstChnks = [CkId|_]
+	 ->	true
+	 ; FirstChnks = [_|CkId]
+	 ->	true
+	 ; true
+	),
+	(memberchk(CkId,LastChunk)
+	 ->	vprag_lastchunk(Prag,1)
+	 ;	vprag_lastchunk(Prag,0)
+	),
+	(vprag_level(Prag,s)
+	 ->	OKt = 1
+	 ; vprag_level(Prag,sc)
+	 ->	OKt = 1
+	 ;	true
+	),
+	vprag_occ(Prag,Occ),
+	(Occ == f	  % determine if the variable is safe when pval in the last goal
+	 ->	((vprag_context(Prag, b) ; vprag_context(Prag, i)),
+		 \+vprag_level(Prag, s) % unsafe if top(t) or subterm in conditional(sc)
+		 ->	Safe = 0	% unsafe 
+%%		        ,(vprag_level(Prag,sc)->writeln(userout,newly_unsafe(Vid,Prag)) ; true)
+		 ;	true
+		),		% determine if the variable must be permanent
+		(vprag_context(Prag, h)
+		 ->	OKt = 1
+		 ; member(CkId,LastChunk)
+		 ->	OKt = 1
+		 ;	true
+		)
+	 ; Occ == v	% determine if the variable can be typed "vh"
+	 ->	(vprag_context(Prag, h), vprag_level(Prag, t)
+		 ->	vprag_type(Prag, vh)
+		 ; member(CkId,LastChunk)
+		 ->	OKt = 1
+		 ;	true
+		)
+	 ;	true
+	),
+	collect_type2(Rest,CkId,VarListTab,LastChunk).
+
+/*======================================================================*/
+/* alloc_vars(#VarList, #VarTab, +PvarCountIn, -PvarCountOut)		*/
+/*	Allocates locations for permanent variables, and computes	*/
+/*	"use" and "nouse" locations for temporary variables.  The	*/
+/*	location attribute of all temporary variables remains		*/
+/*	uninstantiated.							*/
+/*======================================================================*/
+
+
+alloc_vars([],_,PV,PV) :- !.
+alloc_vars(VarTab,VarListTab,PV0,PV) :-
+	get_pre_uses(VarTab,VarListTab,[],UseTab,PV0,PV1,VarTabRem,MaxRes),
+	(UseTab \== []
+	 ->	leaflist(UseTab,UseTabL),
+%		collect_all_bus(UseTabL,ABUs0),sort(ABUs0,ABUs),
+		collect_all_bus(UseTabL,ABUs0,[]),sort(ABUs0,ABUs),
+		set_use_nouse(UseTabL,ABUs,VarListTab,MaxRes)
+	 ;	true
+	),
+	alloc_vars(VarTabRem,VarListTab,PV1,PV).
+
+set_use_nouse([],_ABUs,_VarListTab,_MaxRes).
+set_use_nouse([[Vid|hbu(HUs,BUs)]|Rest],ABUs,VarListTab,MaxRes) :-
+	set_diff(ABUs,BUs,NU),
+	find(VarListTab,Vid,t(v(_,_,Use,NoUse),_,_,_,OccInChunk)),
+	(var(OccInChunk) -> ChkArg = 0 ; ChkArg = MaxRes),
+	conflict_avoid(BUs,HUs,NU,Use,NoUse,ChkArg),
+	!,
+	set_use_nouse(Rest,ABUs,VarListTab,MaxRes).
+
+collect_all_bus([],L,L).
+collect_all_bus([[_Vid|hbu(_,BUs)]|Rest],AllBUs0,AllBUs) :-
+	append(BUs,T,AllBUs0),
+	collect_all_bus(Rest,T,AllBUs).
+
+set_diff([],_,[]).
+set_diff([X|R],S,D) :-
+	(member(X,S)
+	 ->	set_diff(R,S,D)
+	 ;	D=[X|D1],
+		set_diff(R,S,D1)
+	).
+
+/*======================================================================*/
+/* get_pre_uses(+Goals,+VarTable,+UseTab0,-UseTab,+PermVar0,		*/
+/*              -PermVar,-GoalsRemaining, -MaxReserved)			*/
+/*  Collects information to compute "Use" and "NoUse" for temporary	*/
+/*  variables.  VarTable is the table of variables, used to record	*/
+/*  Whether a variable occurs in a goal in the chunk.			*/
+/*  UseTab0 is the current state of the table being used to accumulate	*/
+/*  occurrence info, and UseTab is its state on return.			*/
+/*  PermVar0 is the number of permanent variables on entry, and PermVar	*/
+/*  is the number on exit.						*/
+/*  GoalsRemaining is the list of goals the first chunk has been	*/
+/*  processed and its temp var occurrence info collected into UseTab.	*/
+/*  MaxReserved is the max arity of the trailing goals of the chunk (or	*/
+/*  0 if all are inlines.)						*/
+/*  The Use lists computed are:						*/
+/*		-HUse0:  occurs at the top level of head.		*/
+/*		-BUse0:  occurs at the top level of body		*/
+/*			 (excluding inlines).				*/
+/*======================================================================*/
+
+get_pre_uses([],_VarListTab,UseTab,UseTab,PV,PV,[],0).
+get_pre_uses([One|Rest],VarListTab,UseTab0,UseTab,PV0,PV,Rem,Arity) :-
+	get_pre_uses_one(One,VarListTab,UseTab0,UseTab,PV0,PV,Rem,Arity,Rest).
+get_pre_uses(lists(A,B),VarListTab,UseTab0,UseTab,PV0,PV,Rem,MaxRes) :- 
+	(A == []
+	 ->	get_pre_uses(B,VarListTab,UseTab0,UseTab,PV0,PV,Rem,MaxRes)
+	 ;	Rem = lists(ARem,B),
+		get_pre_uses(A,VarListTab,UseTab0,UseTab,PV0,PV,ARem,MaxRes)
+	).
+
+get_pre_uses_one(goal(_,_,Arity,VOList),VarListTab,UseTab0,UseTab,PV0,PV,Rest,Arity,Rest) :-
+	accum_pre_uses(VOList,VarListTab,UseTab0,UseTab,PV0,PV).
+get_pre_uses_one(head(VOList),VarListTab,UseTab0,UseTab,PV0,PV,VarTabRem,MaxRes,Rest) :-
+	accum_pre_uses(VOList,VarListTab,UseTab0,UseTab1,PV0,PV1),
+	get_pre_uses(Rest,VarListTab,UseTab1,UseTab,PV1,PV,VarTabRem,MaxRes).
+get_pre_uses_one(inlinegoal(_,_,_,VOList),VarListTab,UseTab0,UseTab,PV0,PV,VarTabRem,MaxRes,Rest) :-
+	accum_pre_uses(VOList,VarListTab,UseTab0,UseTab1,PV0,PV1),
+	get_pre_uses(Rest,VarListTab,UseTab1,UseTab,PV1,PV,VarTabRem,MaxRes).
+get_pre_uses_one(ifthenelse(A,B,C),VarListTab,UseTab0,UseTab,PV0,PV,VarTabRem,MaxRes,Rest) :-
+	get_pre_uses(A,VarListTab,UseTab0,UseTab1,PV0,PV1,RemA,MaxRes1),
+	(MaxRes1 =:= 0, RemA == []
+	 ->	get_pre_uses(B,VarListTab,UseTab1,UseTab2,PV1,PV2,RemB,MaxRes2),
+		get_pre_uses(C,VarListTab,UseTab2,UseTab,PV2,PV,RemC,MaxRes3),
+		VarTabRem = lists(RemB,lists(RemC,Rest)),
+		(MaxRes2 > MaxRes3 -> MaxRes = MaxRes2 ; MaxRes = MaxRes3)
+	 ;	UseTab = UseTab1, PV = PV1,
+		VarTabRem = lists(RemA,lists(B,lists(C,Rest))),
+		MaxRes = 0
+	).
+get_pre_uses_one(branch(A,B),VarListTab,UseTab0,UseTab,PV0,PV,VarTabRem,MaxRes,Rest) :-
+	get_pre_uses(A,VarListTab,UseTab0,UseTab1,PV0,PV1,RemA,MaxRes1),
+	(MaxRes1 =:= 0, RemA == []
+	 ->	get_pre_uses(B,VarListTab,UseTab1,UseTab2,PV1,PV2,RemB,MaxRes2),
+		(MaxRes2 =:= 0, RemB == []
+		 ->	get_pre_uses(Rest,VarListTab,UseTab2,UseTab,PV2,PV,VarTabRem,MaxRes)
+		 ;	UseTab = UseTab2, PV = PV2, VarTabRem = lists(RemB,Rest),
+			MaxRes = MaxRes2
+		)
+	 ;	UseTab = UseTab1, PV = PV1, VarTabRem = lists(RemA,lists(B,Rest)),
+		MaxRes = MaxRes1
+	).
+
+accum_pre_uses([],_VarListTab,UseTab,UseTab,PV,PV).
+accum_pre_uses([varocc(Vid,Prag)|Rest],VarListTab,UseTab0,UseTab,PV0,PV) :-
+	vprag_type(Prag,VT),
+	(VT == p
+	 ->	UseTab1 = UseTab0,
+		vprag_loc(Prag,Loc),
+		(var(Loc)
+		 ->	Loc is PV0+2, PV1 is PV0+1
+		 ;	PV1 = PV0
+		)
+	 ; VT == vh
+	 ->	UseTab1 = UseTab0, PV1 = PV0
+	 ; % VT == t
+		PV1 = PV0,
+		vprag_context(Prag,HB),
+		(HB == b
+		 ->	find(VarListTab,Vid,t(_Common,_FirstChnks,_OKt,_Safe,0))
+		 ;	true
+		),
+		vprag_level(Prag,Level),
+		(Level == t
+		 ->
+			(HB == h
+			 ->	vprag_argno(Prag,Arg),
+				(updatevs(UseTab0,Vid,hbu(HU,BBB),hbu([Arg|HU],BBB),UseTab1)
+				 ->	true
+				 ;	addkey(UseTab0,Vid,hbu([Arg],[]),UseTab1)
+				)
+			 ; HB == b
+			 ->	vprag_argno(Prag,Arg),
+				(updatevs(UseTab0,Vid,hbu(HHH,BU),hbu(HHH,[Arg|BU]),UseTab1)
+				 ->	true
+				 ;	addkey(UseTab0,Vid,hbu([],[Arg]),UseTab1)
+				)
+			 ; % HB == i
+			 	(addkey(UseTab0,Vid,hbu([],[]),UseTab1)
+				 ->	true
+				 ;	UseTab1 = UseTab0
+				)
+			)
+		 ;      (addkey(UseTab0,Vid,hbu([],[]),UseTab1)
+			 ->	true
+			 ;	UseTab1 = UseTab0
+			)
+		)
+	),
+	accum_pre_uses(Rest,VarListTab,UseTab1,UseTab,PV1,PV).
+
+/*======================================================================*/
+/* conflict_avoid(+BUse0, +HUse0, +NoUse0, -Use, -NoUse, +ChkArg)	*/
+/*	Computes Use and NoUse from the partial information obtained	*/
+/*	by compute_use1/9.						*/
+/*======================================================================*/
+
+conflict_avoid(BUse0, HUse0, NoUse0, Use, NoUse, ChkArg) :-
+	conf_real_use(HUse0, Use, BUse0, ChkArg),
+	conf_nouse1(NoUse0, Use, NoUse),
+	conf_nouse2(ChkArg, Use, NoUse).
+
+conf_real_use([], Use, Use, _ChkArg).
+conf_real_use([One|More], Use, UseR, ChkArg) :-
+	(One =< ChkArg
+	 ->	Use=UseM		% conflict or already in BUse
+	 ; member(One, UseR)
+	 ->	Use=UseM		% alread in BUse
+	 ;	Use = [One|UseM]	% head par in front
+	),
+	conf_real_use(More, UseM, UseR, ChkArg).
+
+conf_nouse1([], _, _).
+conf_nouse1([One|More], Use, NoUse) :-
+	(member(One, Use) ; memberchk(One, NoUse)),
+	!,
+	conf_nouse1(More, Use, NoUse).
+
+conf_nouse2(N, Use, NoUse) :-
+	(N =:= 0
+	 ->	closetail(NoUse)
+	 ; ( member2(N, Use) ; memberchk(N, NoUse) )
+	 ->	  N1 is N - 1,
+		conf_nouse2(N1, Use, NoUse)
+	).
+
+
+/*======================================================================*/
+/*									*/
+/* The format of the VPrag record is as follows:			*/
+/*									*/
+/* vrec(Context,Level,ArgNo,Occurrence,v(Type,Loc,Use,NoUse),LastChunk)	*/
+/*									*/
+/*======================================================================*/
+
+/*------------------------------------------------------*/
+/* The following information is filled by inprog/2.	*/
+/*------------------------------------------------------*/
+
+vprag_context(vrec(C,_,_,_,_,_), C).	% h - Head, i - Inline, b - Body
+vprag_level(vrec(_,C,_,_,_,_), C).	% t - top level, s - second level
+vprag_argno(vrec(_,_,C,_,_,_), C).
+
+/*--------------------------------------------------------------*/
+/* The following information is filled by mark_occurrences/1.	*/
+/*--------------------------------------------------------------*/
+
+vprag_occ(vrec(_,_,_,C,_,_), C).
+	% f - first occ, s - subsequent occ, l - last occ, v - void
+
+/*--------------------------------------------------------------*/
+/* The following information is filled by mark_type/3.		*/
+/*--------------------------------------------------------------*/
+
+vprag_lastchunk(vrec(_,_,_,_,_,C), C).
+vprag_common(vrec(_,_,_,_,C,_), C).  %% structure, some filled in by alloc_vars/2.
+vprag_type(vrec(_,_,_,_,v(C,_,_,_),_), C).
+	% t - Temp var, p - Permanent var, vh - void var at head, v - void not head
+
+/*------------------------------------------------------*/
+/* The following information is filled by alloc_vars/2.	*/
+/*------------------------------------------------------*/
+
+% for temp var, the register number; (If nonvoid, extensible list of nums)
+% for perm var, numbered from 1
+vprag_loc(vrec(_,_,_,_,v(T,Loc,_,_),_), C) :-
+	(T == t -> last_on_opentailed(Loc,C) ; C = Loc).
+
+last_on_opentailed([C0|T],C) :-
+	(var(T)
+	 ->	C = C0
+	 ;	last_on_opentailed(T,C)
+	).
+
+vprag_locnew(vrec(_,_,_,_,v(_,Loc,_,_),_), C) :-
+	new_on_opentailed(Loc,C).
+
+new_on_opentailed([C0|T],C) :-
+	(var(C0)
+	 ->	C = C0
+	 ;	new_on_opentailed(T,C)
+	).
+
+	% for temp var, the "use" list; for perm var, "d", "u" or "p"
+vprag_use(vrec(_,_,_,_,v(_,_,C,_),_), C).
+	% for temp var, the "nouse" list; for perm var, not used.
+vprag_nouse(vrec(_,_,_,_,v(_,_,_,C),_), C).
+
+/*----------------------------------------------------------------------*/
+/* The non-first occurrence of a permanent variable in the last chunk	*/
+/* must be marked by either "u" or "d".  It is marked as "u" if its	*/
+/* first occurrence is in the top level of a body (inline) goal; and	*/
+/* is marked as "d" otherwise.						*/
+/*----------------------------------------------------------------------*/
+
+vprag_type1(Prag, T) :-
+	vprag_type(Prag, T0),
+	(T0 = p, vprag_lastchunk(Prag,1), (vprag_occ(Prag,l) ; vprag_occ(Prag,s))
+	 ->	vprag_use(Prag,T)
+	 ;	T = T0
+	).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+/* 
+This is a set of routines that supports indexed tables. Tables
+are sets of key-value_list pairs. With each key is associated a list
+of values. It uses 2-3 trees for the index (modified by D.S. Warren
+from Ivan Bratko: ``Prolog Programming for Artificial
+Intelligence'', Addison Wesley, 1986). Operations are: 
+
+Keys must be ground! (so numbervar them)
+
+addkey(Tree,Key,V,Tree1) adds a new Key with value V, returning 
+    new Tree1. Fails if the key is already there.
+
+find(Tree,Key,V) finds the entry with Key and returns associated
+    values in V.
+
+updatevs(Tree,Key,OldV,NewV,Tree1) replaces value of entry with key
+    Key and value OldV with NewV.
+
+leaflist(Tree,List) returns a list of all [K|V] in the Tree.
+
+*/
+
+
+addkey(Tree,X,V,Tree1) :-
+	ins2(Tree,X,V,Trees),
+	cmb0(Trees,Tree1).
+addkey([],X,V,[X|V]).
+
+
+find([X|V],Xs,V) :- X == Xs.
+find(n2(T1,M,T2),X,V) :-
+	M @=< X
+	 ->	find(T2,X,V)
+	 ;	find(T1,X,V).
+find(n3(T1,M2,T2,M3,T3),X,V) :-
+	M2 @=< X
+	 ->	(M3 @=< X
+		 ->	find(T3,X,V)
+		 ;	find(T2,X,V)
+		)
+	 ;	find(T1,X,V).
+
+leaflist(Tree,List) :-
+	(Tree == []
+	 ->	List = []
+	 ;	leaflist(Tree,List,[])
+	).
+
+leaflist(Node,List0,List) :-
+	(Node @= [_|_]
+	 ->	List0 = [Node|List]
+	 ; Node = n2(T1,_,T2)
+	 ->	leaflist(T1,List0,List1),
+		leaflist(T2,List1,List)
+	 ;	Node = n3(T1,_,T2,_,T3),
+		leaflist(T1,List0,List1),
+		leaflist(T2,List1,List2),
+		leaflist(T3,List2,List)
+	).
+
+% updatevs(Tab0,X,Ov,Nv,Tab) updates Tab0 to Tab, by replacing
+% Ov of entry with key X by Nv.
+
+updatevs([X|Ov],Xs,Ov,Nv,[X|Nv]) :- X == Xs.
+updatevs(n2(T1,M,T2),X,Ov,Nv,n2(NT1,M,NT2)) :-
+	M @=< X
+	 ->	NT1=T1, updatevs(T2,X,Ov,Nv,NT2)
+	 ;	NT2=T2, updatevs(T1,X,Ov,Nv,NT1).
+updatevs(n3(T1,M2,T2,M3,T3),X,Ov,Nv,n3(NT1,M2,NT2,M3,NT3)) :-
+	M2 @=< X
+	 ->	(M3 @=< X
+		 ->	NT2=T2, NT1=T1, updatevs(T3,X,Ov,Nv,NT3)
+		 ;	NT1=T1, NT3=T3, updatevs(T2,X,Ov,Nv,NT2)
+		)
+	 ;	NT2=T2, NT3=T3, updatevs(T1,X,Ov,Nv,NT1).
+
+ins2(n2(T1,M,T2),X,V,Tree) :- 
+	M @=< X
+	 ->	ins2(T2,X,V,Tree1),
+		cmb2(Tree1,T1,M,Tree)
+	 ;	ins2(T1,X,V,Tree1),
+		cmb1(Tree1,M,T2,Tree).
+ins2(n3(T1,M2,T2,M3,T3),X,V,Tree) :- 
+	M2 @=< X
+	 ->	(M3 @=< X
+		 ->	ins2(T3,X,V,Tree1),
+			cmb4(Tree1,T1,M2,T2,M3,Tree)
+		 ;	ins2(T2,X,V,Tree1),
+			cmb5(Tree1,T1,M2,M3,T3,Tree)
+		)
+	 ;	ins2(T1,X,V,Tree1),
+		cmb3(Tree1,M2,T2,M3,T3,Tree).
+ins2([A|V],X,Vn,Tree) :-
+	A @=< X
+	 ->	(X @=< A
+		 ->	fail
+		 ;	Tree = t([A|V],X,[X|Vn])
+		)
+	 ;	Tree = t([X|Vn],A,[A|V]).
+
+cmb0(t(Tree),Tree).
+cmb0(t(T1,M,T2),n2(T1,M,T2)).
+
+cmb1(t(NT1),M,T2,t(n2(NT1,M,T2))).
+cmb1(t(NT1a,Mb,NT1b),M,T2,t(n3(NT1a,Mb,NT1b,M,T2))).
+
+cmb2(t(NT2),T1,M,t(n2(T1,M,NT2))).
+cmb2(t(NT2a,Mb,NT2b),T1,M,t(n3(T1,M,NT2a,Mb,NT2b))).
+
+cmb3(t(NT1),M2,T2,M3,T3,t(n3(NT1,M2,T2,M3,T3))).
+cmb3(t(NT1a,Mb,NT1b),M2,T2,M3,T3,t(n2(NT1a,Mb,NT1b),M2,n2(T2,M3,T3))).
+
+cmb4(t(NT3),T1,M2,T2,M3,t(n3(T1,M2,T2,M3,NT3))).
+cmb4(t(NT3a,Mb,NT3b),T1,M2,T2,M3,t(n2(T1,M2,T2),M3,n2(NT3a,Mb,NT3b))).
+
+cmb5(t(NT2),T1,M2,M3,T3,t(n3(T1,M2,NT2,M3,T3))).
+cmb5(t(NT2a,Mb,NT2b),T1,M2,M3,T3,t(n2(T1,M2,NT2a),Mb,n2(NT2b,M3,T3))).
+
+force_varproc_loaded.
+

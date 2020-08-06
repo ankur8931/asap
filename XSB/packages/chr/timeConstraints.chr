@@ -1,0 +1,234 @@
+/* File:      timeConstraints
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+% PATH CONSISTENCY to be used with time.pl
+%% thom fruehwirth ECRC 921030,930212,930802,930804,930908,931216,931223
+%% christian holzbaur 961022 more mods for Sicstus
+%% thom fruehwirth LMU 980206, 980312
+% XSB Version Barry Evans 2006
+
+
+/*---------- start of timeConstraints.chr -------------------------------*/
+:- chr_module(timeConstraints).
+:- export arc/4, path/6, labeling/0.
+
+:- import globalize/1, var_compare/3, lookup_variable_id/2 from constraintLib.
+:- import ground/1, length/2, member/2 from basics.
+
+:- import
+	transl/4,
+	intersection/3,
+	equality/2,
+	shift_interval/3,
+	bind_value/3,
+	unique/1,
+	universal/3,
+	empty/2,
+	path1/5 from time.
+
+% MDL Temporal Constraint Tracing stuff
+:- ensure_loaded(chr_TimeMachine).
+:- import	chr_TraceNewPath/1,
+			chr_TraceConstraintRuleFired/2,
+			chr_TraceConstraintRuleFired/3,
+			chr_GraphStep/0
+			from chr_TimeMachine.
+
+nonground(X) :- \+ ground(X).
+
+%% handler path_consistency.		(Sicstus pragma)
+
+:- constraints (arc)/4, (path)/6.
+
+/* 
+arc(X,Y,L,T): there is an arc in the constraint network between
+variables X and Y with constraint L of type T
+
+path(N,X,Y,L,T,I): there is a path in the constraint network between
+variables X and Y with constraint L of type T.  N is length of L; I is
+length of path?  */
+
+%% start up
+add_path @
+arc(X,Y,L,T) <=> ground(L),ground(T),length(L,N) |
+	     globalize(X),	% attach attribute to vars to have order on them
+	     globalize(Y),
+	     sort(L,SortedL),
+	     chr_TraceNewPath(path(N,X,Y,SortedL,T,1)),
+	     path(N,X,Y,SortedL,T,1),
+	     chr_GraphStep.
+
+%% ground case
+ground @
+path(N,X,Y,L,T,I) <=> ground(X-Y-L-T) |
+		  chr_TraceConstraintRuleFired(ground,path(N,X,Y,L,T,I)),
+		  path1(N,X,Y,L,T).
+
+%% simple cases
+empty @
+path(N,X,Y,L,T,I) <=> empty(N,L) |
+		  chr_TraceConstraintRuleFired(empty,path(N,X,Y,L,T,I)),
+		  fail.
+
+universal @
+path(N,X,Y,L,T,I) <=> universal(N,L,T) |
+		  chr_TraceConstraintRuleFired(universal,path(N,X,Y,L,T,I)),
+		  true.
+
+/* TLS: check to see if equality is possible */
+equality @
+path(N,X,X,L,T,I) <=> equality(L,T),
+		  chr_TraceConstraintRuleFired(universal,path(N,X,Y,L,T,I)).
+
+/* TLS: here, make the two variables the same -- but why after equality? */
+unify @
+path(1,X,Y,L,T,I) <=> unique(L),equality(L,T) |
+		  chr_TraceConstraintRuleFired(unify,path(1,X,Y,L,T,I)),
+		  X=Y. % can cause problems with var order
+
+%% special cases for finite domains
+%findom_unique @
+%path(1,X,Y,L,p-p,I) <=> number(X),unique(L)
+%|
+%chr_TraceConstraintRuleFired(findom_unique,path(1,X,Y,L,p-p,I)),
+%bind_value(X,Y,L).
+
+%findom_x @
+%path(N,X,Y,L,p-p,I) <=> number(X),X=\=0
+%|
+%chr_TraceConstraintRuleFired(findom_x,path(N,X,Y,L,p-p,I)),
+%shift_interval(X,L,L1),
+%chr_TraceNewPath(path(N,0,Y,L1,p-p,I)),
+%path(N,0,Y,L1,p-p,I),
+%chr_GraphStep.
+
+%findom_y @
+%path(N,Y,X,L,p-p,I) <=> number(X)
+%|
+%chr_TraceConstraintRuleFired(findom_y,path(N,Y,X,L,p-p,I)),
+%equality([Eq],p-p),transl(L,L2,[Eq],p-p-p), % invert path
+%shift_interval(X,L2,L1),
+%chr_TraceNewPath(path(N,0,Y,L1,p-p,I)),
+%path(N,0,Y,L1,p-p,I),
+%chr_GraphStep.
+
+path_already_in_store1 @
+path(N, X, Y, L, T, I) \ path(N, X, Y, L, T, J) <=> I =< J |
+	chr_TraceConstraintRuleFired(path_already_in_store1,path(N,X,Y,L,T,I),
+				     path(N,X,Y,L,T,J)),
+	true.
+
+path_already_in_store2 @
+path(N1, X, Y, L1, T, I) \ path(N2, X, Y, L2, T, J) <=>
+	 intersection(L1, L2, L3),
+	 L3 == L1,
+	 N1 < N2
+	 |
+	 chr_TraceConstraintRuleFired(path_already_in_store2,path(N1,X,Y,L1,T,I),
+	                              path(N2,X,Y,L2,T,J)),
+	 true.
+
+
+%% intersection (has to come before transitivity)
+intersect_xy_xy @
+path(N1, X, Y, L1, U-V, I), path(N2, X, Y, L2, U-V, J) <=> % 10
+	 intersection(L1, L2, L3),
+	 L3 \== L1,
+	 L3 \== L2
+	 |
+	 chr_TraceConstraintRuleFired(intersect_xy_xy,path(N1,X,Y,L1,U-V,I), 
+	                              path(N2,X,Y,L2,U-V,J)),
+	 length(L3, N3),
+         K is min(I, J),
+         chr_TraceNewPath(path(N3, X, Y, L3, U-V, K)),
+         path(N3, X, Y, L3, U-V, K),
+         chr_GraphStep.
+% pragma already_in_heads.
+
+intersect_yx_xy @
+path(N1, Y, X, L1, U-V, I), path(N2, X, Y, L, V-U, J) <=> % 11
+	 chr_TraceConstraintRuleFired(intersect_yx_xy,path(N1,Y,X,L1,U-V,I),
+	                              path(N2,X,Y,L,V-U,J)),
+	 equality([Eq], V-V), 
+	 transl(L, L2, [Eq], V-U-V), % invert 2nd path
+	 intersection(L1, L2, L3),
+	 length(L3, N3),
+	 K is min(I, J),
+	 chr_TraceNewPath(path(N3, Y, X, L3, U-V, K)),
+	 path(N3, Y, X, L3, U-V, K),
+	 chr_GraphStep.
+
+%% transitivity
+propagate_xy_yz @
+path(N1, X, Y, L1, U-V, I), path(N2, Y, Z, L2, V-W, J) ==>
+	 nonground(Y),
+	 J=1, (I=1 -> var_compare(<, X, Z) ; true) % or J=1 or N2=1 or X@<Z
+	 |
+	 chr_TraceConstraintRuleFired(propagate_xy_yz,path(N1,X,Y,L1,U-V,I),
+	                              path(N2,Y,Z,L2,V-W,J)),
+	 transl(L1, L2, L3, U-V-W),
+	 length(L3, M),
+	 K is I+J,
+	 chr_TraceNewPath(path(M, X, Z, L3, U-W, K)),
+	 path(M, X, Z, L3, U-W, K),
+	 chr_GraphStep.
+
+propagate_xy_xz @
+path(N1, X, Y, L1, U-V, I), path(N2, X, Z, L3, U-W, J) ==>
+		nonground(X),
+		min(I, J)=:=1, var_compare(<, Y, Z) % or J=1 or N2=1
+		|
+		chr_TraceConstraintRuleFired(propagate_xy_xz,path(N1,X,Y,L1,U-V,I),
+						path(N2,X,Z,L3,U-W,J)),
+		transl(L1, L2, L3, U-V-W),
+		length(L2, M),
+		K is I+J,
+		chr_TraceNewPath(path(M, Y, Z, L2, V-W, K)),
+		path(M, Y, Z, L2, V-W, K),
+		chr_GraphStep.
+
+propagate_xy_zy @
+path(N1, X, Y, L3, U-V, I), path(N2, Z, Y, L2, W-V, J) ==>
+	 nonground(Y),
+	 min(I, J)=:=1, var_compare(<, X, Z) % or J=1 or N2=1
+	 |
+	 chr_TraceConstraintRuleFired(propagate_xy_zy,path(N1,X,Y,L3,U-V,I),
+					path(N2,Z,Y,L2,W-V,J)),
+	 transl(L1, L2, L3, U-W-V),
+	 length(L1, M),
+	 K is I+J,
+	 chr_TraceNewPath(path(M, X, Z, L1, U-W, K)),
+	 path(M, X, Z, L1, U-W, K),
+	 chr_GraphStep.
+
+
+%% labeling by choice of primitive relation
+:- constraints labeling/0.
+labeling, path(N, X, Y, L, T, I)#Id <=> N>1 |	
+chr_TraceConstraintRuleFired(labeling,path(N,X,Y,L,T,I)),
+member(R, L), 
+chr_TraceNewPath(path(1,X,Y,[R],T,I)),
+path(1, X, Y, [R], T, I),
+chr_GraphStep,
+labeling
+pragma passive(Id).
+
+/*--------------- eof timeConstraints.chr ------------------------------------*/

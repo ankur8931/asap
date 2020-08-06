@@ -1,0 +1,573 @@
+/* File:      write_term.P
+** Author(s): Adapted to XSB (by Swift) from Ciao where the authorship
+**	is as follows: 
+**	Adapted from shared code written by Richard A. O'Keefe.
+**	Changes by Mats Carlsson, Daniel Cabeza, and Manuel Hermenegildo.
+**
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+:- compiler_options([ciao_directives,sysmod,optimize,xpp_on]).
+
+#include "thread_defs_xsb.h"
+
+:- export write_term/2, write_term/3, write_option/1,code_class/2.
+
+:- import current_infixop/4, current_postfixop/3, current_prefixop/3
+								from xsb_ciao. 
+:- import check_nonvar/3, instantiation_error/3,
+	  type_error/4,domain_error/4 from error_handler.
+
+:- import write/1 from standard.
+
+:- import xsb_sys_mutex_lock/1, xsb_sys_mutex_unlock/1 from thread.
+:- import xsb_stream_lock/1, xsb_stream_unlock/1 from file_io.
+
+%:- import get_atts/2 from atts.
+
+:- op(200,fy,(?)).
+:- op(500,fy,(@)).
+
+:- import (multifile)/1, op/3, arg/3, put_code/1,abort/1,
+%	display/1, 
+	writeq/1, functor/3, atom_codes/2,
+	set_output/1, current_output/1 from  usermod.
+:- import portray/1 from usermod.
+
+display(Term):- write(Term).
+
+%---------------------------------------------------------------% 
+% Adapted to XSB (by TLS) from Ciao where the authorship is as follows:
+% Adapted from shared code written by Richard A. O'Keefe.  Changes by
+% Mats Carlsson, Daniel Cabeza, and Manuel Hermenegildo.
+
+write_term(Stream, Term, OptList) :-
+	xsb_stream_lock( Stream ),
+        current_output(Curr),
+        set_output(Stream),
+        Default = options(false,false,false,false,1000000),
+        compute_options(OptList, 3, OptList, Default, 1200, Options, Priority),
+        write_out(Term, Options, Priority, 0, 0, '(', 2'100, _),
+	set_output(Curr),
+	xsb_stream_unlock( Stream ).
+
+write_term(Term,OptList):- 
+        current_output(Curr),
+	xsb_sys_mutex_lock( Curr ),
+        Default = options(false,false,false,false,1000000),
+        compute_options(OptList, 2, OptList, Default, 1200, Options, Priority),
+        write_out(Term, Options, Priority, 0, 0, '(', 2'100, _),
+	xsb_sys_mutex_unlock( Curr ).
+
+:- comment(write_option/1, "@var{Opt} is a valid write option which
+ affects the predicate @tt{write_term/3} and similar ones. Possible
+ write_options are: @begin{itemize} @item @bf{quoted(}@em{bool}@bf{):}
+ If @em{bool} is @tt{true}, atoms and functors that can't be read back
+ by @pred{read_term/3} are quoted, if it is @tt{false}, each atom and
+ functor is written as its name. Default value is @tt{false}.
+
+ @item @bf{ignore_ops(}@em{flag}@bf{):} If @em{flag} is @tt{true},
+ each compound term is output in functional notation, if it is
+ @tt{ops}, curly bracketed notation and list notation is enabled when
+ outputing compound terms, if it is @tt{false}, also operator notation
+ is enabled when outputing compound terms. Default value is
+ @tt{false}.
+
+ @item @bf{numbervars(}@em{bool}@bf{):} If @em{bool} is
+ @tt{true}, a term of the form @tt{'$VAR'(N)} where @tt{N} is an
+ integer, is output as a variable name consisting of a capital letter
+ possibly followed by an integer, a term of the form @tt{'$VAR'(Atom)}
+ where @tt{Atom} is an atom, as this atom (without quotes), and a term
+ of the form @tt{'$VAR'(String)} where @tt{String} is a character
+ string, as the atom corresponding to this character string.  See
+ predicates @tt{numbervars/3} and @tt{prettyvars/1}.  If @em{bool} is
+ @tt{false} this cases are not treated in any special way.  Default
+ value is @tt{false}.
+ 
+ @item @bf{portrayed(}@em{bool}@bf{):} If @em{bool} is @tt{true}, then 
+ call multifile predicates @pred{portray/1} and @pred{portray_attribute/1},
+ to provide the user handlers for pretty printing some terms.
+ @tt{portray_attribute/1} is called whenever an attributed variable is to be
+ printed, @tt{portray/1} is called whenever a non-variable term is to be
+ printed.  If either call succeeds, then it is assumed that the term has been
+ output, else it is printed as usual.  If @em{bool} is @tt{false}, these
+ predicates are not called. Default value is @tt{false}.  This option is 
+ set by the toplevel when writting the final values of variables, and by the
+ debugging package when writting the goals in the tracing messages.  Thus you
+ can vary the forms of these messages if you wish.
+
+ @item @bf{max_depth(}@em{depth}@bf{):} @em{depth} is a positive integer or
+ cero. If it is positive, it denotes the depth limit on printing compound
+ terms. If it is cero, there is no limit. Default value is @tt{0} (no limit).
+
+ @item @bf{priority(}@em{prio}@bf{):} @em{prio} is an integer between 1 and
+ 1200. If the term to be printed has higher priority than @em{prio}, it will be
+ printed parenthesized.  Default value is 1200 (no term parenthesized).
+
+@end{itemize}.").
+
+write_option(quoted(Qt)) :- (Qt = true ; Qt = false),!.
+write_option(ignore_ops(IO)) :- ignore_ops_flag(IO).
+write_option(numbervars(NV)) :- (NV = true ; NV = false),!.
+write_option(portrayed(Pr)) :- (Pr = true ; Pr = false),!.
+write_option(max_depth(MD)) :- integer(MD), MD >= 0.
+write_option(priority(Prio)) :- integer(Prio), Prio >= 1, Prio =< 1200.
+
+compute_options(V, N, OL,  _, _, _, _) :- var(V), !,
+	instantiation_error(OL,write_term/N,N).
+	%%check_nonvar_list(V,write_term/N,N).
+compute_options([], _, _OL, Options, Prio, Options, Prio) :- !.
+compute_options([Opt|Opts], N, OL, Options1, Prio1, Options, Prio) :- !,
+        one_opt(Opt, N, Options1, Prio1, Options2, Prio2),
+        compute_options(Opts, N, OL, Options2, Prio2, Options, Prio).
+compute_options(_Opts, N, OL, _, _, _, _) :-
+        type_error(list, OL, write_term/N, N).
+
+one_opt(V, N, _, _, _, _) :- var(V), !,
+	check_nonvar(V,write_term/N,N).
+one_opt(quoted(Qt),     _, options(_ ,IO,NV,Pr,Li), Prio,
+                           options(Qt,IO,NV,Pr,Li), Prio) :- boolean(Qt), !.
+one_opt(ignore_ops(IO), _, options(Qt,_ ,NV,Pr,Li), Prio,
+                           options(Qt,IO,NV,Pr,Li), Prio) :- ignore_ops_flag(IO), !.
+one_opt(numbervars(NV), _, options(Qt,IO,_, Pr,Li), Prio,
+                           options(Qt,IO,NV,Pr,Li), Prio) :- boolean(NV), !.
+one_opt(portrayed(Pr),  _, options(Qt,IO,NV,_, Li), Prio,
+                           options(Qt,IO,NV,Pr,Li), Prio) :- boolean(Pr), !.
+one_opt(max_depth(MD),  _, options(Qt,IO,NV,Pr,_ ), Prio,
+                           options(Qt,IO,NV,Pr,Li), Prio) :-
+                           integer(MD), MD >= 0, !,
+                           (MD = 0 -> Li = 1000000; Li = MD).
+one_opt(priority(Prio), _, Opts, _, Opts, Prio) :-
+        integer(Prio), Prio >= 1, Prio =< 1200, !.
+one_opt(Opt, N, _, _, _, _) :-
+        domain_error(write_option, Opt,write_term/N,N).
+
+boolean(true).
+boolean(false).
+
+:- prop(ignore_ops_flag(Flag)
+        # "@var{Flag} is either the atom @tt{true}, the atom
+          @tt{false} or the atom @tt{ops}.").
+
+ignore_ops_flag(true).
+ignore_ops_flag(ops).
+ignore_ops_flag(false).
+
+%   writes a parenthesis if the context demands it.
+%   Context = 2'000 for alpha
+%   Context = 2'001 for quote
+%   Context = 2'010 for other
+%   Context = 2'100 for punct
+
+% TLS: this is a guess.
+'$atom_mode'(_,2'000).
+
+maybe_open_paren(P, Prio, Lpar, '(', _, 2'100) :-
+	P > Prio, !,
+	display(Lpar).
+maybe_open_paren(_, _, Lpar, Lpar, C, C).
+
+maybe_close_paren(P, Prio, _, 2'100) :-
+	P > Prio, !,
+	display(')').
+maybe_close_paren(_, _, C, C).
+
+%   maybe_space(LeftContext, TypeOfToken)
+%   generates spaces as needed to ensure that two successive
+%   tokens won't run into each other.
+
+/*
+TLS: I'm simplifying this.  The original ciao code had spaces depend
+in a rather persnickety way on the '$atom_mode', but I'm trying
+something much simpler for now.
+
+In any case, I really should tie the spacing in with the tokenizing somehow.
+*/
+
+%maybe_space(_Ci,_Co):- put_code(0' ).
+
+maybe_space(Ci, Co) :-
+	(   Ci\/Co<2'100, xor(Ci,Co,C),C < 2'010 -> put_code(0' )
+        ;   true
+        ).
+
+/*
+sticky_contexts(alpha, alpha).
+sticky_contexts(quote, quote).
+sticky_contexts(other, other).
+sticky_contexts(alpha, quote).
+sticky_contexts(quote, alpha).
+*/
+
+printable_list([]).
+printable_list([H|T]):- 
+	printable_char(H),
+	printable_list(T).
+
+printable_char(V) :- var(V), !, fail.
+printable_char(9).  % TAB
+printable_char(10). % NEWLINE
+printable_char(32). % SPACE
+printable_char(B) :-
+        integer(B), B > 32, B < 256, code_class1(B, C), C > 0. % Not layout
+
+%   write_out(Term, Options, Prio, PrePrio, Depth, Lpar, Ci, Co)
+%   writes out a Term given Options
+%   at nesting depth Depth
+%   in a context of priority Priority (that is, expressions with
+%   greater priority must be parenthesized),
+%   and prefix operators =< PrePrio must be parenthesized,
+%   where the last token to be
+%   written was of type Ci, and reports that the last token it wrote
+%   was of type Co.
+
+%% Print hooks
+
+%%:- multifile portray_attribute/2. %not used now
+
+:- pred(portray_attribute(Attr, Var) : nonvar * var # "@em{A user
+defined predicate.} When an attributed variable @var{Var} is about to
+be printed, this predicate receives the variable and its attribute
+@var{Attr}.  The predicate should either print something based on
+@var{Attr} or @var{Var}, or do nothing and fail. In the latter case,
+the default printer (@pred{write/1}) will print the attributed
+variable like an unbound variable, e.g. @tt{_673}.").
+
+:- multifile portray/1.
+
+:- pred(portray(?Term)
+   # "@em{A user defined predicate.} This should either print the @var{Term}
+      and succeed, or do nothing and fail.  In the latter case, the default
+      printer (@tt{write/1}) will print the @var{Term}.").
+
+% this clause is for attributed variables -- DMCAI -- ATTRVARS
+%
+/* TLS: need to handle this in some reasonable way.
+
+get_attribute(Var,Atts):- get_atts(Var,Atts).
+
+write_out(Term, Options,  _, _, _, _, _, 2'000) :-
+	get_attribute(Term,M),
+        Options = options(_,_,_,true,_),
+	( \+ portray_attribute(M,Term) ->
+              fail		 % portray_attribute might bind variables
+        ; true
+        ),
+        !.
+*/
+write_out(Term, _, _, _, _, _, Ci, 2'000) :-
+	var(Term), !,
+	maybe_space(Ci, 2'000),
+	displayq(Term).
+write_out(_, Options, _, _, Depth, _, Ci, 2'010) :-
+        Options = options(_,_,_,_,Limit),
+	Depth >= Limit, !,
+	maybe_space(Ci, 2'010),
+	display(...).
+write_out('$VAR'(N), Options, _, _, _, _, Ci, Co) :-
+        Options = options(_,_,true,_,_),
+	write_VAR(N, Ci, Co), !.
+write_out(Term, Options, _, _, _, _, _, 2'000) :-
+        Options = options(_,_,_,true,_),
+	(   \+ portray(Term) ->
+	    fail		 % portray might bind variables
+        ;   true
+        ), !.
+write_out(Atom, Options, _, PrePrio, _, Lpar, _, 2'100) :-
+	atom(Atom),
+	current_prefixop(Atom, P, _),
+	P =< PrePrio, !,
+	display(Lpar),
+        Options = options(Quote,_,_,_,_),
+	write_atom(Quote, Atom, 2'100, _),
+	put_code(0')).
+write_out(Atom, Options, _, _, _, _, Ci, Co) :-
+	atom(Atom), !,
+        Options = options(Quote,_,_,_,_),
+	write_atom(Quote, Atom, Ci, Co).
+write_out(N, _, _, _, _, _, Ci, 2'000) :-
+	number(N), !,
+	(   N < 0 -> maybe_space(Ci, 2'010)
+	;   maybe_space(Ci, 2'000)
+	),
+	displayq(N).
+write_out(Term, Options, _, _, Depth, _, Ci, 2'100) :-
+        Options = options(Quote,true,_,_,_), % Ignore lists and operators
+	functor(Term, Atom, Arity), !,
+	write_atom(Quote, Atom, Ci, _),
+	Depth1 is Depth+1,
+	write_args(0, Arity, Term, Options, Depth1).
+% Handle {...}, lists and operators
+write_out({Term}, Options, _, _, Depth, _, _, 2'100) :- !,
+	put_code(0'{),
+	Depth1 is Depth+1,
+	write_out(Term, Options, 1200, 0, Depth1, '(', 2'100, _),
+	put_code(0'}).
+write_out([Char|Tail], Options, _, _, Depth, _, _, Co) :-
+% 	TLS: change.
+%        current_prolog_flag(write_strings, on),
+            printable_list([Char|Tail]), !,
+	put_code(0'"),  % print characters after '"'
+        put_string_code(Char),
+	Depth1 is Depth+1,
+	write_string_tail(Tail, Options, Depth1, Co).
+write_out([Head|Tail], Options, _, _, Depth, _, _, 2'100) :- !,
+	put_code(0'[),
+	Depth1 is Depth+1,
+	write_out(Head, Options, 999, 0, Depth1, '(', 2'100, _),
+	write_tail(Tail, Options, Depth1).
+write_out(Term, Options, _, _, Depth, _, Ci, 2'100) :-
+        Options = options(Quote,ops,_,_,_), % Ignore operators
+	functor(Term, Atom, Arity), !,
+	write_atom(Quote, Atom, Ci, _),
+	Depth1 is Depth+1,
+	write_args(0, Arity, Term, Options, Depth1).
+write_out((A,B), Options, Prio, _, Depth, Lpar, Ci, Co) :- !,
+	%  This clause stops writeq quoting commas.
+	Depth1 is Depth+1,
+	maybe_open_paren(1000, Prio, Lpar, Lpar1, Ci, C1),
+	write_out(A, Options, 999, 0, Depth1, Lpar1, C1, _),
+	put_code(0',),
+	write_out(B, Options, 1000, 1000, Depth1, '(', 2'100, C2),
+	maybe_close_paren(1000, Prio, C2, Co).
+write_out(Term, Options, Prio, PrePrio, Depth, Lpar, Ci, Co) :-
+	functor(Term, F, N),
+	Depth1 is Depth+1,
+        Options = options(Quote,_,_,_,_),
+	write_out_(N, F, Term, Quote, Options, Prio, PrePrio, Depth1, Lpar, Ci, Co).
+
+write_out_(1, F, Term, Quote, Options, Prio, _, Depth, Lpar, Ci, Co) :-
+        current_postfixop(F, P, O), !,
+	(current_infixop(F, _, _, _) -> O1=1200; O1=O),
+	maybe_open_paren(O1, Prio, Lpar, Lpar1, Ci, C1),
+	arg(1, Term, A),
+	write_out(A, Options, P, 1200, Depth, Lpar1, C1, C2),
+	write_atom(Quote, F, C2, C3),
+	maybe_close_paren(O1, Prio, C3, Co).
+write_out_(1, F, Term, Quote, Options, Prio, PrePrio, Depth, Lpar, Ci, Co) :-
+        current_prefixop(F, O, P),
+	arg(1, Term, A),
+        (number(A) -> F \== (-) ; true), !,
+	(PrePrio=1200 -> O1 is P+1; O1=O),	% for "fy X yf" etc. cases
+	maybe_open_paren(O1, Prio, Lpar, _, Ci, C1),
+	write_atom(Quote, F, C1, C2),
+	write_out(A, Options, P, P, Depth, ' (', C2, C3),
+	maybe_close_paren(O1, Prio, C3, Co).
+write_out_(2, F, Term, Quote, Options, Prio, PrePrio, Depth, Lpar, Ci, Co) :-
+        current_infixop(F, P, O, Q), !,
+	(PrePrio=1200 -> O1 is Q+1; O1=O),	% for "U xfy X yf" etc. cases
+	maybe_open_paren(O1, Prio, Lpar, Lpar1, Ci, C1),
+	arg(1, Term, A),
+	write_out(A, Options, P, 1200, Depth, Lpar1, C1, C2),
+	write_atom(Quote, F, C2, C3),
+	arg(2, Term, B),
+	write_out(B, Options, Q, Q, Depth, '(', C3, C4),
+	maybe_close_paren(O1, Prio, C4, Co).
+write_out_(N, F, Term, Quote, Options, _, _, Depth, _, Ci, 2'100) :-
+	write_atom(Quote, F, Ci, _),
+	write_args(0, N, Term, Options, Depth).
+
+write_VAR(N, Ci, 2'000) :-
+	integer(N), N >= 0, !,
+	maybe_space(Ci, 2'000),
+	Letter is N mod 26 + 0'A,
+	put_code(Letter),
+	(   N>=26 ->
+	    Rest is N//26, displayq(Rest)
+	;   true
+        ).
+write_VAR(N, Ci, 2'000) :-
+	integer(N), N < 0, !,
+	maybe_space(Ci, 2'000),
+	put_code(0'_).
+write_VAR(Atom, Ci, Co) :-
+	atom(Atom), !,
+	'$atom_mode'(Atom, Co),
+	maybe_space(Ci, Co),
+	display(Atom).
+%% Added the case in which the name is a string. MH
+write_VAR(String, Ci, Co) :-
+	nonvar(String),
+	% This type test is incomplete!
+	String = [X|_],
+	integer(X),
+	atom_codes(Atom,String), !,
+	'$atom_mode'(Atom, Co),
+	maybe_space(Ci, Co),
+	display(Atom).
+
+write_atom(false, Atom, Ci, Co) :-
+	'$atom_mode'(Atom, Co),
+	maybe_space(Ci, Co),
+        display(Atom).
+write_atom(true, Atom, Ci, Co) :-
+	'$atom_mode'(Atom, Co),
+	maybe_space(Ci, Co),
+        displayq(Atom).
+
+
+%   write_args(DoneSoFar, Arity, Term, Options, Depth)
+%   writes the remaining arguments of a Term with Arity arguments
+%   all told in SynStyle, LexStyle, given that DoneSoFar have already been written.
+
+write_args(0, _, _, Options, Depth) :-
+        Options = options(_,_,_,_,Limit),
+        Depth >= Limit, !,
+        put_code(0'(), display(...),	put_code(0')).
+write_args(N, N, _, _, _) :- !,
+	put_code(0')).
+write_args(I, N, Term, Options, Depth) :-
+	write_sep(I),
+	J is I+1,
+	arg(J, Term, A),
+	write_out(A, Options, 999, 0, Depth, '(', 2'100, _),
+	write_args(J, N, Term, Options, Depth).
+
+write_sep(0) :- !, put_code(0'().
+write_sep(_) :- put_code(0',).
+
+
+
+%   write_tail(Tail, Options, Depth)
+%   writes the tail of a list given Options, Depth.
+
+write_tail(Var, _, _) :-			%  |var]
+	var(Var), !,
+	put_code(0'|),
+	displayq(Var),
+	put_code(0']).
+write_tail([], _, _) :- !,			%  ]
+	put_code(0']).
+write_tail(_, Options, Depth) :-
+        Options = options(_,_,_,_,Limit),
+	Depth >= Limit, !,
+	put_code(0'|),
+	display(...),
+	put_code(0']).
+write_tail([Head|Tail], Options, Depth) :- !, %  ,Head tail
+	put_code(0',),
+	write_out(Head, Options, 999, 0, Depth, '(', 2'100, _),
+	Depth1 is Depth+1,
+	write_tail(Tail, Options, Depth1).
+write_tail(Other, Options, Depth) :-	%  |junk]
+	put_code(0'|),
+	write_out(Other, Options, 999, 0, Depth, '(', 2'100, _),
+	put_code(0']).
+
+write_string_tail(Var, _, _, 2'000) :-
+	var(Var), !,
+        put_code(0'"),
+	put_code(0'|),
+	put_code(0'|),
+	displayq(Var).
+write_string_tail([], _, _, 2'100) :- !,
+	put_code(0'").
+write_string_tail(_, Options, Depth, 2'010) :-
+        Options = options(_,_,_,_,Limit),
+	Depth >= Limit, !,
+        put_code(0'"),  % end string with '"'
+	put_code(0'|),
+	put_code(0'|),
+	display(...).
+write_string_tail([Char|Tail], Options, Depth, Co) :-
+        printable_char(Char), !,
+        put_string_code(Char),
+	Depth1 is Depth+1,
+	write_string_tail(Tail, Options, Depth1, Co).
+write_string_tail(Other, Options, Depth, Co) :-
+        put_code(0'"),  % end string with '"'
+	put_code(0'|),
+	put_code(0'|),
+	write_out(Other, Options, 999, 0, Depth, '(', 2'100, Co).
+
+put_string_code(0'") :- !, display('""').  %"
+put_string_code(0'\\) :- !, display('\\\\').
+put_string_code(C) :- put_code(C).
+
+xor(A,B,C):- 
+	C is ((A \/ B) - (A /\ B)).
+
+displayq(Term):- writeq(Term).
+
+:- comment(code_class(Code,Class), "Unifies @var{Class} with an integer
+   corresponding to the lexical class of the character whose code is
+   @var{Code}, with the following correspondence:
+   @begin{verbatim}
+    0 - layout (includes space, newline, tab)
+    1 - small letter
+    2 - capital letter (including '_')
+    3 - digit
+    4 - graphic (includes #$&*+-./:<=>?@@^\\`~ )
+    5 - punctuation (includes !;""'%(),[]@{|@} )
+   @end{verbatim}
+   Note that in @concept{ISO-Prolog} the back quote @tt{`} is a punctuation
+   character, whereas in Ciao it is a graphic character.  Thus, if
+   compatibility with @concept{ISO-Prolog} is desired, the programmer should
+   not use this character in unquoted names.").
+
+code_class(N,Class):- 
+	code_class1(N,Class),!.
+code_class(N,_Class):- 
+	abort('unknown code class for'(N)).
+
+code_class1(9,0).	% tab
+code_class1(10,0).	% cr
+code_class1(13,0).	% lf
+code_class1(32,0).	% space
+
+code_class1(N,1):- N >= 97,N =< 122.
+
+code_class1(N,2):- N >= 65,N =< 90.
+code_class1(95,2).
+
+code_class1(N,3):- N >= 48,N =< 57.
+
+code_class1(35,4).	% #
+code_class1(36,4).	% $
+code_class1(38,4).	% &
+code_class1(42,4).	% *
+code_class1(43,4).	% +
+code_class1(45,4).	% -
+code_class1(46,4).	% .
+code_class1(47,4).	% /
+code_class1(58,4).	% :
+code_class1(60,4).	% <
+code_class1(61,4).	% =
+code_class1(62,4).	% >
+code_class1(63,4).	% ?
+code_class1(64,4).	% @
+code_class1(92,4).	% \
+code_class1(94,4).	% ^
+code_class1(96,4).	% `
+code_class1(126,4).	% ~
+
+code_class1(33,5).	% !
+code_class1(34,5).	% "
+code_class1(37,5).	% %
+code_class1(39,5).	% '	% guess : tls
+code_class1(40,5).	% (
+code_class1(41,5).	% ) 
+code_class1(44,5).	% ,
+code_class1(59,5).	% ;
+code_class1(91,5).	% [
+code_class1(93,5).	% ]
+code_class1(123,5).	% {
+code_class1(124,5).	% |
+code_class1(125,5).	% }

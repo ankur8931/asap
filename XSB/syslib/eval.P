@@ -1,0 +1,178 @@
+/* File:      eval.P
+** Author(s): Warren, Xu, Sagonas, Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** *
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: eval.P,v 1.24 2008/02/04 19:32:26 dwarren Exp $
+** 
+*/
+/**
+:- compiler_options([xpp_on,optimize,sysmod]).
+
+#include "celltags_xsb.h"
+#include "thread_defs_xsb.h"
+***/
+/*-------------------------------------------------------------------------
+
+NOTE: In XSB, evaluable functions within is/2 or arithmetic comparison
+literals (e.g. =<) are handled in one of two ways.  First, they may be
+compiled (via tp_eval.P in cmplib); if so, no functions from this file
+are used.  eval/2 and associated predicates are only used when
+"dynamic" arithmetic expressions are to be evaluated -- from the
+command line or from dynamic code.  In addition, eval/2 is called when
+a constraint such as {X = 2+3} in static or dynamic code to evaluated
+via the clpqr library package.
+
+With the exception of min/2, max/2 and exp/2 below, all functions here
+are also compiled as evaluable functions.  These exceptional functions
+are not (as I recall) part of the ISO standard, but are used by clpqr.
+Thus if min/2, max/2 and exp/2 are in an arithmetic expression in is/2
+or an arithmetic comparison operator within static code, they will be
+treated as terms and not evaluable functions.  If they occur within a
+constraint, they will be evaluated via a call by clpqr to eval/2, and
+all will work out.  You'll also be able to use them from the command
+line.
+
+Currently, min/2 and max/2 are written directly in prolog, while exp/2
+calls a builtin.  One fine day, we might make them compilable into
+instructions, but this doesnt seem a high priority in 08/02.
+
+According to the Prolog standard, arithmetic comparisons and
+evaluations can cause overflow and instantiation errors
+ONLY. Everything else should simply fail as far as evaluation is
+concerned.
+
+-------------------------------------------------------------------------*/
+
+/* entirely replaced by is/2 */
+eval(Expr, Res) :- Res is Expr.
+
+
+/* construct double precision numbers using single precision to pass thru xwam files */
+pi(Pi) :- Pi is 31415.0/10000.0+92653.0/1000000000.0+58979.3/100000000000000.0.
+%pi(3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679).
+e(E) :- E is 27182.0/10000.0+81828.0/1000000000.0+45904.5/100000000000000.0.
+%e(2.7182818284590452354).
+
+end_of_file.
+/** all the following is irrelevant; now in C **/
+
+eval(Expr, Res) :- 
+	eval(Expr,Res,Expr).
+
+/* TLS Refactored code so that it fails if expression is evalable but
+   equality is wrong -- e.g.
+   0 is 5 mod 2  
+   now fails, rather than incorrectly throwing a type error.
+
+   Thus, each clause of eval0/3 now needs a shallow cut.
+*/
+
+eval(Arg, Res,Expr) :- 
+	(number(Arg)
+	 ->	Res=Arg
+	 ; var(Arg)
+	 ->	eval_instantiation_abort(Expr)
+%	 ; atom(Arg)
+%	 ->	throw(error(type_error(arithmetic_expression,Expr),
+%			    ('Non evaluable arithmetic expression:',Expr)))
+	 ; term_type(Arg,T),T =:= XSB_LIST
+	 ->	throw(error(type_error(arithmetic_expression,Expr),
+			    ('Non evaluable arithmetic expression:',Expr)))
+	 ; eval0(Arg, Res,Expr)
+     ).
+
+/* TLS: we are now more ISO-compatable for fp-to-integer rounding
+functions, 9.1.5.1.  To be completely compatable, we'd have to check for
+overflow.  */
+eval0('+'(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y,Res2,Expr), Res is Res1 + Res2.  
+eval0('-'(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 - Res2.  
+eval0('*'(X,Y), Res,Expr) :- !,eval(X,Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 * Res2.  
+eval0('/'(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+ 		eval(Y, Res2,Expr), Res is Res1 / Res2.  
+eval0('//'(X,Y),Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 // Res2.
+eval0(div(X,Y),Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 div Res2.
+eval0(rem(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 rem Res2.  
+eval0(mod(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 mod Res2.  
+eval0(/\(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 /\ Res2.  
+eval0(\/(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 \/ Res2.  
+eval0(<<(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 << Res2.  
+eval0(>>(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), 
+		eval(Y, Res2,Expr), Res is Res1 >> Res2.  
+eval0(min(X,Y), Res,Expr) :- !,eval(X, Res1,Expr),eval(Y, Res2,Expr),
+			     (Res1 =< Res2 -> Res = Res1 ; Res = Res2).
+eval0(max(X,Y), Res,Expr) :- !,eval(X, Res1,Expr),eval(Y, Res2,Expr),
+			     (Res1 >= Res2 -> Res = Res1 ; Res = Res2).
+eval0(exp(X,Y), Res,Expr) :- !,eval(X, Res1,Expr),eval(Y, Res2,Expr),
+			     pow(Res1,Res2,Res).
+eval0(**(X,Y), Res,Expr) :- !,eval(X, Res1,Expr),eval(Y, Res2,Expr),
+			     Res is Res1 ** Res2.
+eval0(^(X,Y), Res,Expr) :- !,eval(X, Res1,Expr),eval(Y, Res2,Expr),
+			     Res is Res1 ^ Res2.
+eval0(><(X,Y), Res,Expr) :- !,eval(X, Res1,Expr),eval(Y, Res2,Expr),
+			     Res is Res1 >< Res2.
+eval0(xor(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), eval(Y, Res2,Expr),
+			     Res is Res1 xor Res2.
+
+eval0(-(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is -(Res1).
+eval0(\(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is \(Res1).  
+eval0(float(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is float(Res1).  
+eval0(floor(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is floor(Res1).  
+eval0(abs(X),Res,Expr) :- !,eval(X, Res1,Expr), Res is abs(Res1).  
+eval0(truncate(X),Res,Expr) :- !,eval(X, Res1,Expr), Res is truncate(Res1).  
+eval0(round(X),Res,Expr) :- !,eval(X, Res1,Expr), Res is round(Res1).  
+eval0(ceiling(X),Res,Expr) :- !,eval(X, Res1,Expr), Res is ceiling(Res1).  
+eval0(sin(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is sin(Res1).
+eval0(cos(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is cos(Res1).
+eval0(tan(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is tan(Res1).
+eval0(asin(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is asin(Res1).
+eval0(acos(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is acos(Res1).
+eval0(atan(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is atan(Res1).
+eval0(atan2(X,Y), Res,Expr) :- !,eval(X, Res1,Expr), eval(Y, Res2,Expr), Res is atan2(Res1,Res2).
+eval0(exp(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is exp(Res1).
+eval0(log(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is log(Res1).
+eval0(log10(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is log10(Res1).
+eval0(sqrt(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is sqrt(Res1).
+eval0(sign(X), Res,Expr) :- !,eval(X, Res1,Expr), Res is sign(Res1).
+
+eval0(pi,Pi,_Expr):- !,pi(Pi).
+eval0(e,E,_Expr):- !,e(E).
+eval0(Expr,_E,_Expr):- !,
+	throw(error(type_error(arithmetic_expression,Expr),
+			    ('Non evaluable arithmetic expression:',Expr))).
+`
+eval_instantiation_abort(Expr):- 
+	var(Expr),!,
+	throw(error(instantiation_error,
+              ('Error: Uninstantiated Arithmetic Expression'))).
+eval_instantiation_abort(Expr):- 
+	throw(error(instantiation_error,
+	      ('Unbound variable in arithmetic expression: ',Expr))).
+
+
+/* ---------------------- end of file eval.P --------------------------	*/

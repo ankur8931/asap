@@ -1,0 +1,571 @@
+:- compiler_options([spec_off]).
+
+:- document_export 
+            checkContexts/6,
+            sat_test/1,sat/3,sat/1,
+	subsumes/2.
+
+:- document_import tp_subclass/2,topIdentifier/1,bottomIdentifier/1
+                from cdftp_cdfsc.
+:- document_import inClass/3 from cdftp_getObj.
+:- document_import cdftp_preprocess/3 from cdftp_preproc.
+
+:- import member/2,memberchk/2, length/2,append/3,ith/3 from basics.
+:- import reset_gennum/0,tp_gennum/1,tp_gensym/2,
+	tp_writeln/2 from tp_utils.
+
+:- [cdftp_getObj].
+
+nonDetType(acyclic).
+%nonDetType(all).
+
+sat_test(Expr):- 
+	(sat(Expr,_AbdIn,_ConstIn) -> 
+	    true
+	  ; writeln(cannot_satisfy(Expr)),fail).
+	
+sat(Expr):- sat(Expr,_,_).
+
+%------------------------------------------------------------------------------------------
+/* Divides work into abduction (building a structure) and
+constraint-checking (checking that the structure satisfies all
+constraints.
+
+When an atomic class identifier is encountered, elt(Elt,Class) is
+abduced.  At this point it is checked that there is no constraint of
+the form elt(Elt,no(C1)) where Class is a subclass of C1. (not
+checking unique constraints at this time).  Any all (atMost)
+constraints on this class will have set up any constraints on Elt
+already.
+
+When exists(R,C) is encountered, rel(Elt,Rel,Elt1)
+(invrel(Elt,Rel,Elt1)) is abduced.  Then C is treversed.  Next, 'all'
+constraints are traversed, abducing when necessary.  Finally, atMost
+constraints are traversed.
+
+
+When 
+Constraints are of the form: 
+--- elt(Elt,not(Class)).  When this is encountered, a check is made
+that the current structure does not specify elt(Elt,C1) and C1
+subclass Class.
+
+--- atMost(Elt,Rel,Class)
+
+--- Or(elt(Elt,not(Class)),not(unique(Class))).  
+
+-- sameAs
+
+No metanot needed.  Nots are pushed in preproc.
+
+*/
+
+%------------------------------------------------------------------------------------------
+
+sat(ExprIn,AbdOut,ConstOut):- 
+	sat(ExprIn,AbdOut,ConstOut,_N).
+
+sat(ExprIn,AbdOut,ConstOut,_N):- 
+	cdftp_preprocess(ExprIn,Expr,_N),
+	reset_gennum,
+	tp_gennum(N),
+	meta(Expr,N,abd([],[N]),AbdOut,[],ConstOut),
+	checkFinalConstraints(ConstOut,AbdOut),
+	tp_writeworld(ConstOut,AbdOut).
+
+tp_writeworld(ConstOut,AbdOut):- 
+	tp_writeln(3,'Brave New World:'),
+	tp_writeln(3,const(ConstOut)),
+	tp_writeln(3,AbdOut).
+
+subsumes(Big,Little):- \+ sat((Little,not(Big))).
+
+meta(','(Class,B),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !, 
+	meta(Class,Elt,AbdIn,AbdMid,ConstIn,ConstMid),
+	meta(B,Elt,AbdMid,AbdOut,ConstMid,ConstOut).
+meta(';'(Class,B),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !, 
+	(meta(Class,Elt,AbdIn,AbdOut,ConstIn,ConstOut)
+         ; 
+	 meta(B,Elt,AbdIn,AbdOut,ConstIn,ConstOut)).
+meta(exists(inv(R),Class),Elt,AbdIn,AbdOut,CnstIn,CnstOut):- !,
+	getNewElt(inv(R),AbdIn,Elt,NewElt,AbdMid),
+	metaExistsInvRel(Class,Elt,R,NewElt,AbdMid,AbdOut,CnstIn,CnstOut).
+meta(exists(R,Class),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	getNewElt(R,AbdIn,Elt,NewElt,AbdMid),
+	metaExistsRel(Class,Elt,R,NewElt,AbdMid,AbdOut,ConstIn,ConstOut).
+meta(all(inv(R),Class),Elt,AbdIn,AbdOut,ConstIn,
+	                                [allinvrel(Elt,R,Class)|ConstOut]):- !,
+	findall(E1,(abduced(rel(E1,SubRel,Elt),AbdIn),
+	            tp_subclass(SubRel,R)               ),Elts),
+	metaList(Elts,Class,AbdIn,AbdOut,ConstIn,ConstOut),
+	checkatMostInv(Elt,R,AbdOut,ConstOut).
+meta(all(R,Class),Elt,AbdIn,AbdOut,ConstIn,[allrel(Elt,R,Class)|ConstOut]):- !,
+	findall(E1,(abduced(rel(Elt,SubRel,E1),AbdIn),
+	            tp_subclass(SubRel,R)),Elts),
+	metaList(Elts,Class,AbdIn,AbdOut,ConstIn,ConstOut),
+	checkatMost(Elt,R,AbdOut,ConstOut).
+meta(atLeast(N,inv(R),C),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	chooseInv(N,Elt,AbdIn,AbdMid,EltSet),
+	metaAtLeastInvRel(EltSet,Elt,R,C,AbdMid,AbdMid1,ConstIn,ConstMid),
+	EltSet = [NewElt|_],
+	checkAlls(Elt,R,NewElt,AbdMid1,AbdOut,ConstMid,ConstOut).
+meta(atLeast(N,R,C),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	choose(N,Elt,AbdIn,AbdMid,EltSet),
+	metaAtLeastRel(EltSet,Elt,R,C,AbdMid,AbdMid1,ConstIn,ConstMid),
+	EltSet = [NewElt|_],
+	checkAlls(Elt,R,NewElt,AbdMid1,AbdOut,ConstMid,ConstOut).
+meta(atMost(N,inv(R),C),Elt,AbdIn,AbdIn,Cnst,[atMostInv(Elt,N,R,C)|Cnst]):- !,
+	constrainAtMostInv(atMostInv(Elt,N,R,C),AbdIn).
+meta(atMost(N,R,C),Elt,AbdIn,AbdIn,ConstIn,[atMost(Elt,N,R,C)|ConstIn]):- !,
+	constrainAtMost(atMost(Elt,N,R,C),AbdIn).
+meta(sameAs(R1,C1,R2,C2),Elt,AbdIn,AbdIn,Cnst,[sameAs(Elt,R1,C1,R2,C2)|Cnst]):- !.
+meta(not(Class),Elt,Abd,Abd,ConstIn,ConstOut):- !,
+	constrainNotElt(Class,Elt,Abd,ConstIn,ConstOut).
+meta(component(_),_Elt,Abd,Abd,Const,Const):- !.
+meta(Bot,_Elt,Abd,Abd,Const,Const):- 
+	bottomIdentifier(Bot),!,
+	fail.
+meta(Top,_Elt,Abd,Abd,Const,Const):- 
+	topIdentifier(Top),!.
+% this also handles unique classes.
+meta(Class,Elt,AbdIn,AbdOut,ConstIn,ConstIn):- 
+	abduceElt(Class,Elt,AbdIn,AbdOut,ConstIn).
+
+%-----------------------------------------------------
+
+% Should be called only from all.
+% checking for uniques because there existed R relations to a given world W, 
+% Now we may be specifying that all R relations are to a given object, so if world W 
+% also had an object, we fail due to the unique names assumption.
+metaList([],_Class,AbdIn,AbdIn,ConstIn,ConstIn).
+metaList([Elt|Rest],Class,AbdIn,AbdOut,ConstIn,ConstOut):- 
+%	\+ twoUniques(Class,Elt,AbdIn),
+	meta(Class,Elt,AbdIn,AbdMid,ConstIn,ConstMid),
+	metaList(Rest,Class,AbdMid,AbdOut,ConstMid,ConstOut).
+
+%-----------------------------------------------------
+
+/* Note that we 1) abduce the rel; 2) traverse the target class; 3)
+check the alls (which may abduce more), and 4) check the atMost (which
+does not add more abduction). */
+metaExistsRel(Class,Elt,R,NewElt,AbdIn,AbdOut,ConstIn,ConstOut):- 
+	abduceRel(R,Elt,NewElt,AbdIn,AbdMid,ConstIn),
+	meta(Class,NewElt,AbdMid,AbdMid1,ConstIn,ConstMid),
+	checkAlls(Elt,R,NewElt,AbdMid1,AbdOut,ConstMid,ConstOut),
+            checkatMost(Elt,R,AbdOut,ConstOut).
+
+metaExistsInvRel(Class,Elt,R,NewElt,AbdIn,AbdOut,ConstIn,ConstOut):- 
+	abduceInvRel(R,Elt,NewElt,AbdIn,AbdMid,ConstIn),
+	meta(Class,NewElt,AbdMid,AbdMid1,ConstIn,ConstMid),
+	checkInvAlls(Elt,R,NewElt,AbdMid1,AbdOut,ConstMid,ConstOut),
+            checkatMostInv(Elt,R,AbdOut,ConstOut).
+
+%---------------
+
+metaAtLeastRel([],Elt,R,_Class,AbdIn,AbdIn,CnstIn,CnstIn):- 
+            checkatMost(Elt,R,AbdIn,CnstIn).
+metaAtLeastRel([NewElt|Rest],Elt,R,Class,AbdIn,AbdOut,CnstIn,CnstOut):- 
+	abduceRel(R,Elt,NewElt,AbdIn,AbdMid,CnstIn),
+	meta(Class,NewElt,AbdMid,AbdMid1,CnstIn,CnstMid),
+	checkAlls(Elt,R,NewElt,AbdMid1,AbdOut1,CnstMid,CnstOut1),
+	metaAtLeastRel(Rest,Elt,R,Class,AbdOut1,AbdOut,CnstOut1,CnstOut).
+
+metaAtLeastInvRel([],Elt,R,_Class,AbdIn,AbdIn,CnstIn,CnstIn):- 
+            checkatMostInv(Elt,R,AbdIn,CnstIn).
+metaAtLeastInvRel([NewElt|Rest],Elt,R,Class,AbdIn,AbdOut,
+	                                                       CnstIn,CnstOut):- 
+	abduceInvRel(R,Elt,NewElt,AbdIn,AbdMid,CnstIn),
+	meta(Class,NewElt,AbdMid,AbdMid1,CnstIn,CnstMid),
+	checkInvAlls(Elt,R,NewElt,AbdMid1,AbdOut1,CnstMid,CnstOut1),
+	metaAtLeastInvRel(Rest,Elt,R,Class,AbdOut1,AbdOut,
+	                                                       CnstOut1,CnstOut).
+
+%-----------------------------------------------------
+% Abducing
+
+% checkAbd checks for elt(Elt,not(Class).
+% TLS: object change.
+%abduceElt(unique(_Class),_Elt,AbdIn,AbdIn,_Const):-!.
+
+%abduceElt(unique(Class),Elt,AbdIn,AbdOut,Const):-!,
+%	checkAbd(elt(Elt,unique(Class)),AbdOut,Const),
+%	updateElt(AbdIn,elt(Elt,unique(Class)),AbdOut).
+abduceElt(Class,Elt,AbdIn,AbdOut,Const):- 
+	checkAbd(elt(Elt,Class),AbdOut,Const),
+	\+ twoUniques(Class,Elt,AbdIn),
+	updateElt(AbdIn,elt(Elt,Class),AbdOut).
+
+twoUniques(unique(cid(O1,_)),Elt,AbdIn):- 
+ 	    abduced(elt(Elt,unique(cid(O2,_))),AbdIn),
+	    O1 \== O2.
+
+abduceRel(R,Elt,NewElt,AbdIn,AbdOut,_Const):- 
+%	checkAbd(rel(Elt,R,NewElt),AbdIn,Const),
+	updateRel(AbdIn,rel(Elt,R,NewElt),AbdOut).
+
+abduceInvRel(R,Elt,NewElt,AbdIn,AbdOut,_Const):- 
+%	checkAbd(invrel(Elt,R,NewElt),AbdIn,Const),
+	updateRel(AbdIn,rel(NewElt,R,Elt),AbdOut).
+
+getNewElt(R,abd(Abd,EltsIn),Elt,NewElt,abd(Abd,EltsOut)):- !,
+	nonDetType(Type),
+	getNewElt(Type,R,Abd,Elt,NewElt,EltsIn,EltsOut).
+
+getNewElt(tree,_R,_AbdIn,_Elt,NewElt,EltsIn,[NewElt|EltsIn]):- 
+	tp_gensym(x,NewElt).
+getNewElt(acyclic,R,AbdIn,Elt,NewElt,EltsIn,EltsOut):- 
+	(tp_gensym(x,NewElt),EltsOut = [NewElt|EltsIn]
+               ; 
+	 (R = inv(Rel) -> Rel1 = rel(NewElt,Rel,Elt)  ; Rel1 = rel(Elt,R,NewElt)),
+	  member(Rel1,AbdIn),EltsOut = EltsIn).
+getNewElt(all,_R,_AbdIn,_Elt,NewElt,EltsIn,EltsOut):- 
+	(tp_gensym(x,NewElt),EltsOut = [NewElt|EltsIn]
+               ; 
+	  member(NewElt,EltsIn),EltsOut = EltsIn).
+
+%-----------------------------------------------------
+% Constraining
+
+constrainNotElt(Class,Elt,Abd,ConstIn,ConstOut):- 
+	(topIdentifier(Class) -> fail
+               ; checkConstraint(elt(Elt,not(Class)),Abd),
+    	     updateNotElt(ConstIn,elt(Elt,not(Class)),ConstOut)).
+
+%----------------------------------------------------------
+% Updates (Abd & Const)
+
+updateRel(abd(Worldin,Elts),Term,abd(WorldOut,Elts)):- 
+	updateRel1(Worldin,Term,WorldOut).
+
+updateRel1([],Term,[Term]).
+updateRel1([rel(Elt,R1,Elt1)|Rest],rel(Elt,R,Elt1),AbdOut):- !,
+          (tp_subclass(R1,R) -> 
+	      AbdOut = [rel(Elt,R1,Elt1)|Rest]
+	      ; (tp_subclass(R,R1) -> 
+	             AbdOut = AbdMid
+		   ; AbdOut = [rel(Elt,R1,Elt1)|AbdMid]),
+		     updateRel1(Rest,rel(Elt,R,Elt1),AbdMid)).
+updateRel1([Term|R],T1,[Term|AbdOut]):- 
+	updateRel1(R,T1,AbdOut).
+
+%---------- 
+
+updateElt(abd(Worldin,Elts),Term,abd(WorldOut,Elts)):- 
+	updateElt1(Worldin,Term,WorldOut).
+
+updateElt1([],Term,[Term]).
+updateElt1([elt(Elt,C)|R],elt(Elt,Class),AbdOut):- !,
+          (tp_subclass(C,Class) -> 
+	      AbdOut = [elt(Elt,C)|R]
+	      ; (tp_subclass(Class,C) -> 
+	             AbdOut = [elt(Elt,Class)|AbdMid]
+		   ; AbdOut = [elt(Elt,C)|AbdMid]),
+	         updateElt1(R,elt(Elt,Class),AbdMid)).
+updateElt1([Term|R],T1,[Term|AbdOut]):- 
+	updateElt1(R,T1,AbdOut).
+
+%---------- 
+/*
+ * no longer used
+updateUniqueElt(abd(Worldin,Elts),Term,abd(WorldOut,Elts)):- 
+	updateUniqueElt1(Worldin,Term,WorldOut).
+
+updateUniqueElt1([],Term,[Term]).
+updateUniqueElt1([elt(Elt,C)|R],elt(Elt,Class),AbdOut):- !,
+	(tp_subclass(Class,C) -> 
+	    AbdOut = [elt(Elt,Class)|AbdMid]
+              ; AbdOut = [elt(Elt,C)|AbdMid],
+	    updateUniqueElt1(R,elt(Elt,Class),AbdMid)).
+updateUniqueElt1([elt(Elt1,C)|_R],elt(Elt,C),_):- 
+	Elt \== Elt1,!,
+	fail.	
+updateUniqueElt1([Term|R],T1,[Term|AbdOut]):- 
+	updateUniqueElt1(R,T1,AbdOut).
+*/
+%---------- 
+% Executes on Constraint List..  We are trying to add not(Class) as a
+% new constraint.  This does not evaluate the constraint: it only
+% tries to ensure all classes are prinicple.
+% updateNotElt(ConstrIn,Term,CounstrOut).
+
+updateNotElt([],Term,[Term]).
+updateNotElt([elt(Elt,not(C))|R],elt(Elt,not(Class)),ConstOut):- !,
+          (tp_subclass(Class,C) -> 
+	      ConstOut = [elt(Elt,not(C))|R]
+	      ; (tp_subclass(C,Class) -> 
+	             ConstOut = [elt(Elt,not(Class))|ConstMid]
+		   ; ConstOut = [elt(Elt,not(C))|ConstMid]),
+  	         updateNotElt(R,elt(Elt,not(Class)),ConstMid)).
+updateNotElt([Term|R],T1,[Term|ConstOut]):- 
+	updateNotElt(R,T1,ConstOut).
+
+%----------------------------------------------------------
+% Checks
+
+%checkAbd(elt(Elt,Class),_Abd,Constraint):- 
+%        writeln(checkAbd(elt(Elt,Class),_Abd,Constraint)),
+%	\+ (Class = cid(Id,NS),
+%	    currentConstr(elt(Elt,not(C1)),Constraint),
+%	    tp_subclass(cid(Id,NS),C1)).
+
+checkAbd(elt(Elt,Class),_Abd,Constraint):- 
+%        writeln(checkAbd(elt(Elt,Class),_Abd,Constraint)),
+	\+ (currentConstr(elt(Elt,not(C1)),Constraint),
+	    tp_subclass(Class,C1)).
+
+%-----------------------------------------------------
+% For alls, need to abduce -- this is why the meta.
+checkAlls(Elt,Rel,NewElt,AbdMid1,AbdOut,ConstIn,ConstMid):- 
+	findall(Class,(currentConstr(allrel(Elt,SupRel,Class),ConstIn),
+ 	                      tp_subclass(Rel,SupRel)              ),Classes),
+	checkAlls_1(Classes,NewElt,AbdMid1,AbdOut,ConstIn,ConstMid).
+
+checkInvAlls(Elt,Rel,NewElt,AbdMid1,AbdOut,ConstIn,ConstMid):- 
+	findall(Class,(currentConstr(allinvrel(Elt,SupRel,Class),ConstIn),
+ 	                      tp_subclass(Rel,SupRel)              ),Classes),
+	checkAlls_1(Classes,NewElt,AbdMid1,AbdOut,ConstIn,ConstMid).
+
+checkAlls_1([],_NewElt,Abd,Abd,Const,Const).
+checkAlls_1([C|Rest],NewElt,AbdIn,AbdOut,ConstIn,ConstOut):- 
+	meta(C,NewElt,AbdIn,AbdMid,ConstIn,ConstMid),
+	checkAlls_1(Rest,NewElt,AbdMid,AbdOut,ConstMid,ConstOut).
+
+%-----------------------------------------------------
+% This is called to check constraints after exists.
+checkatMost(Elt,R,Abd,Const):- 
+	((currentConstr(atMost(Elt,N,Rsup,Class),Const),
+	  tp_subclass(R,Rsup)) -> 
+	    findall(E1,((abduced(rel(Elt,Rsub,E1),Abd) 
+                                ; abduced(invrel(E1,Rsub,Elt),Abd)),
+  	                        tp_subclass(Rsub,Rsup),
+%			writeln(checking(inClass(Class,E1,Abd))),nl,
+			inClass(Class,E1,Abd)),Es),
+	    sort(Es,Esort),
+	    length(Esort,L),
+	    L =< N
+	  ; true).
+checkatMostInv(Elt,R,Abd,Const):- 
+	((currentConstr(atMostInv(Elt,N,Rsup,Class),Const),
+	  tp_subclass(R,Rsup)) -> 
+	    findall(E1,((abduced(invrel(Elt,Rsub,E1),Abd)
+	                     ; abduced(rel(E1,Rsub,Elt),Abd)),
+  	                        tp_subclass(Rsub,Rsup),
+			inClass(Class,E1,Abd)),Es),
+	    sort(Es,Esort),
+	    length(Esort,L),
+	    L =< N
+	  ; true).
+%-----------------------------------------------------
+
+constrainAtMost(atMost(Elt,N,R,Class),Abd):- 
+	    findall(E1,((abduced(rel(Elt,Rsub,E1),Abd) 
+                                ; abduced(invrel(E1,Rsub,Elt),Abd)),
+  	                        tp_subclass(Rsub,R),
+			inClass(Class,E1,Abd)),Es),
+	    sort(Es,Esort),
+	    length(Esort,L),
+	    L =< N.
+
+constrainAtMostInv(atMostInv(Elt,N,R,Class),Abd):- 
+	    findall(E1,((abduced(rel(E1,Rsub,Elt),Abd) 
+                                ; abduced(invrel(Elt,Rsub,E1),Abd)),
+  	                        tp_subclass(Rsub,R),
+			inClass(Class,E1,Abd)),Es),
+	    sort(Es,Esort),
+	    length(Esort,L),
+	    L =< N.
+
+%-----------------------------------------------------
+
+checkConstraint(elt(Elt,not(C1)),Abd):- 
+	\+ (abduced(elt(Elt,Class),Abd),
+	    tp_subclass(Class,C1)).
+	   
+checkFinalConstraints(ConstOut,AbdOut):- 
+	\+ finalConstraintFailure(ConstOut,ConstOut,AbdOut).
+
+finalConstraintFailure(Const,Const,Abd):- 
+	currentConstr(sameAs(Elt,R1,C1,R2,C2),Const),
+	findall(Elt1,(abduced_subrel(rel(Elt,R1,Elt1),Abd),
+	                  inClass(C1,Elt1,Abd)),Elt1L),
+	sort(Elt1L,Elt1S),
+	findall(Elt2,(abduced_subrel(rel(Elt,R2,Elt2),Abd),
+	                  inClass(C2,Elt2,Abd)),Elt2L),
+	sort(Elt2L,Elt2S),
+	Elt1S \== Elt2S.
+finalConstraintFailure(Const,Const,Abd):- 
+	currentConstr(differentFrom(Elt,R1,C1,R2,C2),Const),
+	findall(Elt1,(abduced_subrel(rel(Elt,R1,Elt1),Abd),
+	                  inClass(C1,Elt1,Abd)),Elt1L),
+	sort(Elt1L,Elt1S),
+	findall(Elt2,(abduced_subrel(rel(Elt,R2,Elt2),Abd),
+	                  inClass(C2,Elt2,Abd)),Elt2L),
+	sort(Elt2L,Elt2S),
+	Elt1S = Elt2S.
+	         
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+abduced_subrel(rel(E,R,E1),Struct):- 
+	abduced(rel(E,Rsub,E1),Struct),
+	tp_subclass(Rsub,R).
+	
+abduced(Term,abd(Struct,_Elts)):- member(Term,Struct).
+currentConstr(Term,Struct):- member(Term,Struct).
+
+choose(N,Elt,abd(Abd,EltsIn),abd(Abd,EltsOut),Set):- 
+	findall(Elt1,member(rel(Elt,_,Elt1),Abd),Eset),
+	choose1(N,Eset,Olds,News),
+	append(Olds,News,Set),
+	append(News,EltsIn,EltsOut).
+
+chooseInv(N,Elt,abd(Abd,EltsIn),abd(Abd,EltsOut),Set):- 
+	findall(E1,member(rel(E1,_,Elt),Abd),Eset),
+	choose1(N,Eset,Olds,News),
+	append(Olds,News,Set),
+	append(News,EltsIn,EltsOut).
+
+choose1(N,Eset,Olds,News):- 
+	createNewElts(N,New),
+	chooseN(New,0,M,News),
+	Diff is N - M,
+	choose2(Diff,Eset,Olds).
+
+% chooseN(+List,+N,-N,-List)
+chooseN([],N,N,[]):- !.
+chooseN([H|T],N,Nfin,[H|T1]):- 
+	N1 is N + 1,
+	chooseN(T,N1,Nfin,T1).
+chooseN([_|T],N,Nfin,T1):- 
+	chooseN(T,N,Nfin,T1).
+
+% choose2(+N,+List,-List)
+choose2(0,_,[]):- !.
+choose2(N,[H|T],[H|T1]):- 
+	N1 is N - 1,
+	choose2(N1,T,T1).
+choose2(N,[_|T],T1):- 
+	choose2(N,T,T1).
+
+createNewElts(0,[]):- !.
+createNewElts(N,[New|Rest]):- 
+	tp_gensym(x,New),
+	N1 is N - 1,
+	createNewElts(N1,Rest).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+checkContexts(Constraints,AncList,Structure,WorldList,CtxtSort,Worlds):- 
+	omit_negative_loops(Constraints,AncList),
+	length(WorldList,Worlds),
+	functor(Contexts,contexts,Worlds),
+	functor(CtxtSort,contexts,Worlds),
+	checkContexts_1(Structure,Contexts,Worlds,WorldList,CtxtSort).
+	
+omit_negative_loops([],_AncList).
+omit_negative_loops([Elt|Rest],AncList):- 
+	(Elt = elt(_,not(Id)) -> 
+	    \+ member(Id,AncList)
+	  ; true),
+	  omit_negative_loops(Rest,AncList).
+
+checkContexts_1([],CtxtIn,Num,_WL,CtxtSort):- 
+	cauterizeContexts(0,Num,CtxtIn,CtxtSort).
+checkContexts_1([elt(N,Class)|Rest],CtxtIn,Num,WorldList,CtxtSort):- !,
+	ith(Index,WorldList,N),
+	arg(Index,CtxtIn,Arg),
+	memberchk(Class,Arg),
+	checkContexts_1(Rest,CtxtIn,Num,WorldList,CtxtSort).
+checkContexts_1([_|Rest],CtxtIn,Num,WorldList,CtxtSort):- 
+	checkContexts_1(Rest,CtxtIn,Num,WorldList,CtxtSort).
+	
+cauterizeContexts(Num,Num,_CtxtIn,_CtxtSort):- !.
+cauterizeContexts(N,Num,CtxtIn,CtxtSort):- 
+	N1 is N + 1,
+	arg(N1,CtxtIn,Arg),
+	cauterizeList(Arg,NewArg),
+	sort(NewArg,Sarg),
+	arg(N1,CtxtSort,Sarg),
+	cauterizeContexts(N1,Num,CtxtIn,CtxtSort).
+
+cauterizeList(X,[]):-var(X),!.
+cauterizeList([H],[H]):-!.
+cauterizeList([H|T],[H|T1]):-
+	cauterizeList(T,T1).
+
+%----------------------------------------
+
+end_of_file.
+
+
+choose1(N,Eset,Set,New):- 
+	length(Eset,M),
+	(M =< N -> 
+	      Diff is N - M,
+	      createNewElts(Diff,New),
+	      append(Eset,New,Set)
+	   ;  choose2(N,Eset,Set)).
+
+
+% TLS: probably need to do LFP
+apply_ics(abd(Abdin,Elts),AbdOut,ConstIn,ConstOut):- 
+	findall(not(Ic),ic(Ic),IcList),
+	list_to_comma(IcList,Ics),
+	apply_ics_1(Elts,Ics,abd(Abdin,Elts),AbdOut,ConstIn,ConstOut),!.
+
+apply_ics_1([],_Ics,Abd,Abd,Const,Const).
+apply_ics_1([Elt|Rest],Ics,AbdIn,AbdOut,ConstIn,ConstOut):- 
+	meta(Ics,Elt,AbdIn,AbdMid,ConstIn,ConstMid), 
+	apply_ics_1(Rest,Ics,AbdMid,AbdOut,ConstMid,ConstOut).
+
+
+metaNot(';'(Class,B),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !, 
+	metaNot(Class,Elt,AbdIn,AbdMid,ConstIn,ConstMid),
+	metaNot(B,Elt,AbdMid,AbdOut,ConstMid,ConstOut).
+metaNot(','(Class,B),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !, 
+	(metaNot(Class,Elt,AbdIn,AbdOut,ConstIn,ConstOut)
+         ; 
+	 metaNot(B,Elt,AbdIn,AbdOut,ConstIn,ConstOut)).
+metaNot(exists(R,Class),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	meta(all(R,not(Class)),Elt,AbdIn,AbdOut,ConstIn,ConstOut).
+metaNot(all(R,Class),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	meta(exists(R,not(Class)),Elt,AbdIn,AbdOut,ConstIn,ConstOut).
+metaNot(atLeast(N,R),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	N1 is N - 1,
+	meta(atMost(N1,R),Elt,AbdIn,AbdOut,ConstIn,ConstOut).
+metaNot(atLeast(N,R,C),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	N1 is N - 1,
+	meta(atMost(N1,R,C),Elt,AbdIn,AbdOut,ConstIn,ConstOut).
+metaNot(atMost(N,R),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	N1 is N + 1,
+	meta(atLeast(N1,R),Elt,AbdIn,AbdOut,ConstIn,ConstOut).
+metaNot(atMost(N,R,C),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	N1 is N + 1,
+	meta(atLeast(N1,R,C),Elt,AbdIn,AbdOut,ConstIn,ConstOut).
+metaNot(not(Class),Elt,AbdIn,AbdOut,ConstIn,ConstOut):- !,
+	meta(Class,Elt,AbdIn,AbdOut,ConstIn,ConstOut).
+metaNot(unique(Class),Elt,AbdIn,AbdIn,ConstIn,ConstOut):- 
+	constrainNotUniqueElt(Class,Elt,AbdIn,ConstIn,ConstOut).
+metaNot(Bot,_Elt,Abd,Abd,Const,Const):- 
+	bottomIdentifier(Bot),!.
+meta(Id,_Elt,Abd,Abd,Const,Const):- 
+	topIdentifier(Id),
+	!,fail.
+metaNot(Class,Elt,AbdIn,AbdIn,ConstIn,ConstOut):- 
+	constrainNotElt(Class,Elt,AbdIn,ConstIn,ConstOut).
+
+%----------
+
+/*
+finalConstraintFailure(Const,Const,Abd):- 
+	currentConstr(atMost(Elt,N,R,C),Const),
+	findall(Elt1,(abduced_subrel(rel(Elt,R,Elt1),Abd),
+	                  inClass(C,Elt1,Abd)),EltList),
+	length(EltList,M),
+	M > N.
+finalConstraintFailure(Const,Const,Abd):- 
+	currentConstr(atMostInv(Elt,N,R,C),Const),
+	findall(Elt1,(abduced_subrel(rel(Elt1,R,Elt),Abd),
+	                  inClass(C,Elt1,Abd)),EltList),
+	length(EltList,M),
+	M > N.
+*/

@@ -1,0 +1,5 @@
+
+SGML parser is incomplete. Needs to be updated using SWI prolog.
+The following files are not parsed correctly:
+XSB/examples/rdf/suite/xsdtypes.rdf 
+XSB/examples/rdf/suite/xmllit.rdf

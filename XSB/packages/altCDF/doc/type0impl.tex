@@ -1,0 +1,415 @@
+\section{The Type-0 Query Interface} \label{sec:type0query}
+
+There are two main design goals behind the Type-0 query interface.
+\begin{itemize}
+\item to provide a Prolog interface to CDF based on  
+the axioms in Chapter~\ref{sec:type0}, and the {\sc inh} proof system
+derived from \refsec{sec:inheritance} along with
+Proposition~\ref{prop:necesscondinh}.
+\item to provide a highly efficient and scalable interface to CDF.
+\end{itemize}
+
+Indeed, the Type-0 interface has been used to support CDF instances
+containing nearly a million extensional facts that require heavy
+manipulation and access, and are used as back-ends to interactive
+graphical systems.  As discussed below, this need for efficiency
+affects certain aspects of the interface.
+
+\subsection{Virtual Identifiers}
+As discussed, Type-0 instances do not make contain facts of the form
+\pred{necessCond/2}.  In the implementation of CDF, {\tt necessCond/2}
+goals can be called, and their implementation obeys the first-argument
+inheritance for {\tt necessCond}.  However, it is important to note
+that {\bf the Type-0 interface does not use information in virtual
+identifiers} as the following example shows.
+
+\begin{example} \rm 
+Consider the CDF instance containing only the fact
+{\small 
+{\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> necessCond\_ext(cid(a,test),vid(exists(rid(r,test),cid(b,test)))).
+\end{tabbing} } } 
+%
+\noindent
+by the semantics of Chapter~\ref{chap:type1}, this CDF instance
+logically entails {\small {\tt
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> hasAttr(oid(a,test),rid(r.text),cid(b,text))$^{\cI}$
+\end{tabbing} } } 
+%
+\noindent
+However the Type-0 interface will answer ``no'' to the query 
+{\small 
+{\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> ?- hasAttr(oid(a,test),rid(r.text),cid(b,text)).
+\end{tabbing} } } 
+%
+\end{example}
+
+\subsection{Computing Irredundant Answers}
+
+Consider the running sutures example of Chapter~\ref{sec:type0} to
+which is added a fact
+%
+{\small 
+{\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> hasAttr(oid(sutureU245H),rid(needleDesign),cid('Adson Dura')).
+\end{tabbing} } } 
+%
+\noindent
+Suppose the query {\tt ?-
+hasAttr(oid(sutureU245H),rid(needleDesign),Y)} were asked.  Via an
+{\sc inh} proof, rhe CDF instance would imply the answers 
+%
+{\small {\tt
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\>  hasAttr(oid(sutureU245H),rid(needleDesign),cid('Adson Dura')) \\
+\> hasAttr(oid(sutureU245H),rid(needleDesign),cid(needleDesignTypes)) \\
+\>  hasAttr(oid(sutureU245H),rid(needleDesign),cid('CDF Classes))
+\end{tabbing} } }
+%
+\noindent
+The last two answers are, of course, redundant according to
+Definition~\ref{def:redund}.  Omitting redundant answers is important
+both for human comprehension of information in a CDF instance, and to
+reduce excessive backtracking in applications.
+
+% TLS coversAttr
+Computation of irredundant answers is done in CDF by creating a {\em
+preference relation}\ \ on the relations {\tt hasAttr/3}, {\tt
+classHasAttr/3}, {\tt allAttr/3}, {\tt minAttr/3}, {\tt maxAttr/3} and
+{\tt necessCond} using the techniques of \cite{CuSw02}.  The schematic
+code for a query to {\tt hasAttr/3} in which the first argument is
+known to be bound, and the second two free, is shown in
+Figure~\ref{fig:preference}.  Basic information concerning {\tt
+hasAttr/3} within a CDF instance is kept via the predicate {\tt
+immed\_hasAttr/3} (and similarly for other CDF relations), and {\tt
+hasAttr/3} uses {\tt immed\_hasAttr/3} to compute implications via
+inheritance upon demand.  In the compilation of the code in
+Figure~\ref{fig:preference}, well-founded negation is used to ensure
+that only preferred answers are returned.  It is easy to see by
+comparing the preference rules of Figure~\ref{fig:preference} with
+Propositions~\ref{prop:inh1}-\ref{prop:inh2}, that the preference rule
+ensures that answers are returned only if they are not implied by
+other answers.  Similar approaches are used for other query modes and
+CDF relations.  
+
+\begin{figure}[htb] 
+%-------------------------------------------
+{\small {\sf  
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+%
+\> hasAttr(X,Y,Z):- \\
+\> \> 	nonvar(X), \\
+\> \> 	(var(Y) -$>$ hasAttr\_bff(X,Y,Z) ; hasAttr\_bbf(X,Y,Z)). \\
+	   \\
+\> :- table hasAttr\_bbf/3. \> \> :- table hasAttr\_bff/3.\\
+\> hasAttr\_bbf(X,Y,Z):-  \> \> hasAttr\_bff(X,Y,Z):-  \\
+\> \> 	isa(X,XSup), 	\> \> 	isa(X,XSup), \\
+\> \> 	isa(Y,YSup), 	\> \>  	immed\_hasAttr(XSup,Y,Z). \\
+\>  \> 	immed\_hasAttr(XSup,YSup,Z). \\
+\\
+\> prefer(hasAttr\_bbf(X,y,Z1),hasAttr\_bbf(X,Y,Z2)):-  
+\> \> prefer(hasAttr\_bff(X,Y1,Z1),hasAttr\_bff(X,Y2,Z2)):-  \\
+\> \> 	isa(Z1,Z2),\pnot(Z1 = Z2). 
+\> \> 	isa(Y1,Y2),\pnot(Y1 = Y2), \\
+\> \> \> \> 	isa(Z1,Z2),\pnot(Z1 = Z2).
+%
+\end{tabbing} } }
+\caption{Schematic Representation for Selected Modes of {\tt
+hasAttr/3} Implementation} 
+\label{fig:preference}
+\end{figure}
+
+\subsection{Implementations of {\tt isa/2}} \label{sec:isaimpl}
+
+In implementing {\tt isa/2} there are a number of tradeoffs to be made
+between semantic power and efficiency.  We discuss some of them here
+in order to motivate the design of the Type-0 API.
+
+\subsubsection{To Table or Not to Table}  Tabling {\tt isa/2} (or the
+predicates that underly it) may have several advantages.  First,
+consider the goal {\tt ?- isa(cid('CDF Root',cdf),X)} that traverses
+through the entire {\tt isa/2} hierarchy.  Is {\tt isa/2} is tabled,
+{\tt X} will be instantiated once for each class in the hierarchy.  If
+{\tt isa/2} is not tabled, {\tt X} will be instantiated for every path
+in the hierarchy whose initial class is {\tt cid('CDF Root',cdf)}.
+Since the number of paths in a directed graph can be exponential in
+the number of nodes in the graph, a failure to table {\tt isa/2} can
+potentially be disasterous.  Whether it is or not depends on the
+structure of the inheritance hierarchy.  To the extent the hierarchy
+is tree-like, tabling {\tt isa/2} will not be of benefit, as the
+number of paths from any node in a tree is equal to the number of
+nodes in the tree.  Indeed, in such a case, tabling {\tt isa/2} could
+be a disadvantage, as large parts of the hierarchy may need to be
+materialized in a table.  On the other hand, if there is much multiple
+inheritance in the hierarchy, tabling {\tt isa/2} can vastly improve
+performance.
+%
+A second consideration is whether intensional rules are used in a CDF
+instance, and if so, the form of the rules.  If intensional rules
+themselves call predicates in the Type-0 interface, there is a risk of
+infinite loops if {\tt isa/2} isn't tabled.
+
+As a result of these considerations, certain predicates underlying
+{\tt isa/2} are tabled.  However, this tabling can be removed by
+reconfiguring and recompiling CDF.  To do this, the file {\tt
+cdf\_definitions.h} in {\tt \$XSBHOME/packages/altCDF} must be edited,
+changing the line
+
+{\tt DEFINE TABLED\_ISA 1}
+
+\noindent to
+
+{\tt DEFINE TABLED\_ISA 0}
+
+\noindent
+and recompiling {\tt cdf\_init\_cdf.P}.
+
+\subsubsection{Product Classes}
+%
+From an operational perspective however, a query @tt{?- isa(X,Y)} can
+easily be intractable if product classes are used.
+
+\begin{example} \rm
+Let {\tt cid(boolean,s)} be a class with two subclasses: {\tt
+oid(true,s)} and {\tt oid(false,s)}.  Then the product class {\tt
+cid(f(cid(boolean,s),...,cid(boolean,s),s)} will contain a number of
+subclasses exponential in the arity of {\tt f}.
+\end{example}
+
+In order to use product classes in practical applications the
+implementation of {\tt isa/2} distinguishes a general isa relation in
+which a given fact may be proved using Instance Axioms, the Domain
+Containment Axiom (Axiom~\ref{ax:contained}) and the Implicit Isa
+Axiom (Axiom~\ref{ax:implsc}) from {\em explicit} isa proved without
+the Implicit Subclassing Axiom.  Based on this distinction, two
+restrictions are made:
+
+\begin{enumerate}
+
+\item {\em Restriction 1}: Axioms used to prove answers to the query
+{\tt ?- isa(X,Y)} depend on the instantiation of {\tt X} and {\tt Y}.
+
+\item {\em Restriction 2}: If {\tt immediate\_isa(Id1,Id2)} is true then
+{\tt Id2} is an atomic identifier.
+\end{enumerate}
+
+We discuss each restriction in turn.  The behavior of {\tt isa/2} for
+various instantiation patterns is as follows.
+
+\begin{enumerate} 
+
+\item If {\tt Id1} and {\tt Id2} are both ground, the Implicit
+Subclassing Axiom is used, if necessary.
+
+\item If {\tt Id1} is not ground, the Implicit Subclassing Axiom is
+{\em not} used, in order to avoid returning a number of answers that
+is exponential in the size of a product identifier.
+
+\item If {\tt Id1} is ground but not {\tt Id2} then the Implicit
+Subclassing Axiom may used in the first step of a derivation.  In
+other words, in any isa derivation for this instantiation pattern, the
+first step may use the Implicit Subclassing Axiom to "match" a term in
+the {\tt immediate\_isa/2} relation, but subsequent steps must use
+explicit isa.  Upon backtracking the Implicit Subclassing Axiom may be
+used again to begin a new derivation, but subsequent steps in this
+derivation must cannot use this axiom.
+\end{enumerate}
+
+The second assumption helps to reinforce the assumption of case 3
+above.  Without it, users might expect that the Implicit Subclassing
+Axiom could be used in each step of a derivation of an {\tt isa/2}
+fact.  Such an implementation would slow down the execution of {\tt
+isa/2} so that it would be unusable for many
+applications~\footnote{Given Restriction 2, atomic identifiers usually
+occur within the inner loops of {\tt isa/2}.  Atomic identifiers have
+the advantage that these inner loops can use unification to traverse
+the hierarchy.  If product identifers are used, they must be
+abstracted using {\tt functor/3} and the hierarchies of their inner
+arguments traversed, a much slower method.}.
+
+\begin{example}  \rm Suppose we have the following CDF instance.
+
+{\small {\tt
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+%
+\> isa\_ext(cid(bot,s),cid(mid,s)). \\
+\> isa\_ext(cid(mid,s),cid(top,s)). \\
+\\
+\> isa\_ext(cid(prod(cid(mid,s),cid(top,s)),s),cid(myClass,s)).
+\end{tabbing} } }
+
+\begin{itemize}
+%
+\item The query 
+{\small {\tt
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+
+\> ?- isa(cid(prod(cid(bot,s),cid(mid,s)),s),cid(prod(cid(mid,s),cid(mid,s)),s)
+\end{tabbing} } }
+
+would succeed.
+
+\item 
+{\small {\tt
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+
+\> ?- isa(cid(prod(cid(bot,s),cid(mid,s)),s),X)
+\end{tabbing} } }
+would successively unify {\tt X} with 
+{\small {\tt
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+\> (1) cid(prod(cid(bot,s),cid(mid,s)),s), \\
+\> (2) cid(prod(cid(mid,s),cid(top,s)),s), \\
+\> (3) cid(myClass,s), {\rm and} \\
+\> (4) cid('CDF Root',cdf)
+\end{tabbing} } }
+
+\item The query
+{\small {\tt
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+
+\> ?- isa(X,cid(prod(cid(mid,s),cid(mid,s)),s))
+\end{tabbing} } }
+would unify {\tt X} only with {\tt
+cid(prod(cid(mid,s),cid(mid,s)),s)}
+
+\end{itemize}
+\end{example}
+
+\subsection{The Type-0 API} \label{sec:type0api}
+
+Exceptions to all predicates in this API are based on the context {\tt
+query} (See \refsec{sec:consist}).
+
+\begin{description}
+
+%----------------------------------------------------------------
+\mycomment{
+\ourpreditem{implicit\_isa/2}  {\tt implicit\_isa(Id1,Id2)} forms a partial
+implementation of the Implicit Subclassing Axioms for product
+identifiers\ref{???}.  As an example of implicit isaing of product
+classes, {\tt id(f(id(a,source1),id(b,source2),source3)} is a subclass
+of {\tt id(f(id(c,source1),id(b,source2),source3)} if {\tt
+id(a,source1)} is a subset of {\tt id(a,source1)}.  Because the use of
+product identifiers can isa relations that are exponential in the size
+of the product identifiers, the implementation described below
+attempts to partially traverse the implicit isa relation in a manner
+that is semantically meaningful while also remaining tractable.
+
+The semantics of {\tt implicit\_isa/2} is mode-dependent.  Let fully
+ground inputs be treated as {\tt +} and non-fully ground inputs treated
+as {\tt -}.  Suppose we have a call {\tt implicit\_isa(C1,C2)}:
+
+\begin{itemize} 
+\item {\tt implicit\_isa(+,+)}: succeeds if {\tt C1} is
+not equal to {\tt C2} and {\tt C1} is lower than {\tt C2} on the isa
+hierarchy by the isa axioms.
+
+\item {\tt implicit\_isa(+,-)}: succeeds if {\tt C1} \=
+{\tt C2}, {\tt C1} is a subclass, (member, etc) of {\tt C2} by the isa
+axioms {\em and} for some {\tt C3} {\tt immed\_isa(C2,C3)} is true.
+
+\item {\tt implicit\_isa(-,+)}: fails.
+
+\item {\tt implicit\_isa(-,-)}: fails.
+\end{itemize}
+
+The motivation for this partial implementation is as follows.  If both
+terms are ground, determining their relation in the isa hierarchy is
+linear in the sizes of the terms.  In all cases where variables are
+present, there is the possibility of backtracking through a large
+isa\_relation.  For the instantiation pattern {\tt immed\_isa(+,-)}
+this is addressed by searching through only those product identifiers
+that occur in the first argument of the immediate isa relation.
+Because of the assumption that product identifiers can occur only in
+the first argument of the immediate isa relation, this option is not
+available for the instantiation patterns {\tt implicit\_isa(-,+)} and
+{\tt implicit\_isa(-,-)}, so they fail. }
+%----------------------------------------------------------------
+
+\ourpredmoditem{isa/2}{cdf\_init\_cdf} The operational semantics of
+{\tt isa/2} is defined in \refsec{sec:isaimpl}.
+
+\mycomment{
+/* TLS: the supporting predicates for isa/2 may or may not be tabled.
+Certain of the CDF operations depend on the prolog semantics of isa.
+Rather than changing these predicates, I moved isa tabling to a lower
+level, past mode checks, and the first call to isa in each mode.  This
+should cause no extra tabling beyond tabling isa/2, and perhaps a bit
+less tabling.  If you definately want tabled behavior use
+table\_isa/2.  Note that explosive\_isa/2, proper\_isa/2*/}
+
+\ourpredmoditem{explosive\_isa/2}{cdf\_init\_cdf}
+{\tt explosive\_isa(Sub,Sup)} follows the isa axioms for product
+identifiers rather than the algorithm of {\tt isa/2}. Thus if neither
+{\tt Id1} nor {\tt Id2} are product identifiers, or if {\tt Id1} and
+{\tt Id2} are fully ground product identifiers, {\tt explosive\_isa/2}
+behaves as {\tt isa/2}.  Otherwise, suppose {\tt Id1} is a (perhaps
+partially ground) product identifier whose Nid has the outer functor
+{\tt F/A}.  If the Nid of {\tt Id2} is a variable, it is instantiated
+to a skeleton of {\tt F/N}; otherwise its outer functor must be {\tt
+F/A}.  In either case, both Nids are broken into their constituent
+identifiers and {\tt explosive\_isa/2} is recursively called on each
+of these.  {\tt explosive\_isa/2} thus removes Restriction 1 above,
+but not Restriction 2.
+
+\ourpredmodrptitem{allAttr/3}{cdf\_init\_cdf}
+
+\ourpredmodrptitem{hasAttr/3}{cdf\_init\_cdf}
+
+\ourpredmodrptitem{maxAttr/4}{cdf\_init\_cdf}
+
+\ourpredmodrptitem{minAttr/4}{cdf\_init\_cdf}
+
+\ourpredmoditem{classHasAttr/3}{cdf\_init\_cdf}
+%
+These predicates assume they are operating on a CDF instance, $\cO$ in
+which the {\tt isa/2} relation is acyclic.  For efficiency reasons,
+given a goal, $G$, the behavior of these predicates further depends on
+whether various arguments of $G$ are ground atomic identifiers. 
+\begin{itemize}
+\item  If either the first argument of $G$ is a ground atomic
+identifier, or the second and third arguments of $G$ are ground atomic
+identifiers, each answer $G\theta$ will be a member of a set $S$ which
+is the most specific irredundant set containing only elements that
+unify with $G$.
+%
+\item Otherwise, each answer $G\theta$ will be a member of a set $S$ that 
+is the most specific irredundant set containing only elements that
+unify with $G$.
+\end{itemize}
+
+
+\ourpredmoditem{nessesCond/2}{cdf\_init\_cdf}
+Given a goal {\tt nessesCond(?Id,-Vid)}, each answer
+$nessesCond(Id,Vid)\theta$ will be a member of a set $S$ which is the
+most specific irredundant set containing only elements that unify with
+{\tt nessesCond(?Id,-Vid)}.  
+
+\ourpreddomitem{isType0Term/1}{cdf\_checks}
+{\tt isType0Term(?Term)} succeeds if {\tt Term} unifies with an
+extensional fact (e.g. a term of the form {\tt isa\_ext(A,B)}, {\tt
+hasAttr\_ext(A,B)}, etc.), an intensional rule head (e.g. a term of
+the form {\tt isa\_int(A,B)}, {\tt hasAttr\_int(A,B)}, etc.), or a
+semantic type-0 predicate (e.g. a term of the form {\tt isa(A,B)},
+{\tt hasAttr(A,B)}, etc.).
+
+\end{description}
+
+%TLS: check out loops in hasAttr.

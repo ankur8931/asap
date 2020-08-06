@@ -1,0 +1,12 @@
+
+% This is a basic test of oms_filter
+
+% note: this test assumes unique names in ext1.P
+:- [oms_filters].
+
+test:- 
+	test_subset.
+
+test_subset:- 
+	oms_subset([ext(c1,test)],[],test2dir),
+	shell('sh get_diff.sh test2dir').

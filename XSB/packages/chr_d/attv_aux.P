@@ -1,0 +1,436 @@
+
+:- import put_attr/3, get_attr/3,
+	get_attributes/2, put_attributes/2 from machine.
+:- import length/2, member/2, append/3, ith/3 from basics.
+:- import delete_ith/4 from listutil.
+:- import subsumes_chk/2 from subsumes.
+
+%
+% Auxiliary predicates for attv constraint processing
+%
+
+% pose_all_constr(Constr,Pos,X,Atts):
+% - pose each constraint declared in Constr for X against each element
+%   of corresponding attribute list in Atts 
+pose_all_constr(_,_,_,[]).
+pose_all_constr([F/A|Cs],Pos,X,ConstrAtts) :-
+	pose_one_constr(F,A,0,X,ConstrAtts,OtherConstrAtts),
+	NextPos is Pos+A,
+	pose_all_constr(Cs,NextPos,X,OtherConstrAtts).
+
+
+% pose_one_constr(F,A,Pos,X,ALs,OtherALs):
+% - pose F constraint for X against each element of Atts
+pose_one_constr(_,A,A,_,L,L).
+pose_one_constr(F,A,I,X,[AL|ALs],OtherConstrAtts) :-
+	I < A,
+	Pos is I+1,
+	pose_constraints(F,Pos,X,AL),
+	pose_one_constr(F,A,Pos,X,ALs,OtherConstrAtts).
+
+
+pose_constraints(_,_,_,[]).
+pose_constraints(F,Pos,X,[C|Cs]) :-
+	pose_constraint(F,Pos,X,C),
+	pose_constraints(F,Pos,X,Cs).
+
+
+pose_constraint(F,Pos,X,C) :-
+	C =.. [attr|Args],
+	delete_ith(Pos,AllArgs,X,Args),
+	str_cat(F,'_1',F1),
+	Goal =.. [F1|AllArgs],
+	call(Goal).
+
+
+my_print(X) :- writeln(X).
+
+% merge corresponding attribute sets
+merge_attr_lists([],[],[]).
+merge_attr_lists([A1|A1s],[A2|A2s],[A|As]) :-
+	append_unique(A1,A2,A),
+	merge_attr_lists(A1s,A2s,As).
+
+merge_attr_lists_ds(L1,L2,L) :-
+	append_unique(L1,L2,L).
+
+
+% merge_atts(Var,L1,L2,L):
+% L is sorted result of combining L1 and L2 
+% with Var omitted and no repetitions
+merge_atts(Var,L1,L2,L) :-
+	append_unique(Var,L1,L2,L3),
+	sort(L3,L).
+
+
+% append_unique(Var,L1,L2,L):
+% L is result of appending L1 and L2 with Var
+% and any duplicated elements omitted
+append_unique(Var,[],L1,L) :-
+	var_member(Var,L1), !,
+	append_unique(Var,L1,[],L).
+append_unique(_,[],L,L).
+append_unique(Var,[X|L1],L2,L3) :-
+	Var == X,!,
+	append_unique(Var,L1,L2,L3).
+append_unique(Var,[X|L1],L2,L3) :-
+	var_member(X,L2),!,
+	append_unique(Var,L1,L2,L3).
+append_unique(Var,[X|L1],L2,[X|L3]) :-
+	append_unique(Var,L1,L2,L3).
+ 
+
+
+
+% append with no duplicates
+append_unique([],L,L).
+append_unique([X|L1],L2,L) :-
+	append_unique(L1,L2,L3),
+	(var_member(X,L3)
+	 -> L = L3
+	  ; L = [X|L3]
+	).
+
+% remove duplicates from a list
+remove_duplicates([],[]).
+remove_duplicates([X|Xs],L) :-
+	remove_duplicates(Xs,Ys),
+	(var_member(X,Xs)
+	 -> L = Ys
+	  ; L = [X|Ys]).
+
+
+% insert attribute according to variable order defined
+% using order/2 CHR
+insert_ordered(List,[],[Attr]) :-
+	Attr =.. [attr|List].
+insert_ordered(ListX,[AttrY|Ys],Zs) :-
+	AttrY =.. [attr|ListY],
+	(ordered_before(ListX,ListY)
+	 -> AttrX =.. [attr|ListX],
+	    Zs = [AttrX,AttrY|Ys]
+	  ; insert_ordered(ListX,Ys,Ws),
+	    Zs = [AttrY|Ws]
+	).
+
+ordered_before([],[]).
+ordered_before([X|Xs],[Y|Ys]) :-
+	(X == Y
+	 -> true
+	  ; check_order(X,Y)
+	),
+	ordered_before(Xs,Ys).
+
+
+% set membership on variables
+var_member(V, [X|Xs]) :-
+	(V == X
+	 -> true
+	  ; var_member(V,Xs)
+	).
+
+
+% check if any element of L is a variable
+var_in_list([]) :- fail.
+var_in_list([X|Xs]) :-
+	var(X), !
+	;
+	var_in_list(Xs).
+
+
+% a no-fail put_atts in case the variable gets bound
+nf_put_atts(Var,Mod,Atts) :-
+	var(Var),
+	put_attr(Var,Mod,Atts).
+
+nf_put_atts(Term,_) :-
+	\+ var(Term).
+
+
+% retrieve N-th attribute Attr from variable V's attribute set
+get_nth_attr(V,Mod,N,Attr) :-
+	var(V),
+	get_attr(V,Mod,Atts),
+	arg(N,Atts,Attr).
+
+% retrieve N-th non-empty attribute Attr from variable V's attribute set
+ne_get_nth_attr(V,Mod,N,Attr) :-
+	var(V),
+	get_attr(V,Mod,Atts),
+	arg(N,Atts,Attr),
+	Attr \= [].
+
+get_nth_attr(V,Mod,N,Pattern,Attr) :-
+	var(V),
+	get_attr(V,Mod,Atts),
+	arg(N,Atts,PosAtts),
+	match_pattern(PosAtts,Pattern,Attr),
+	Attr \= [].
+
+get_constr_pos_attr(V,Mod,Constr,Pos,Attr) :-
+	var(V),
+	get_attr(V,Mod,Atts),
+	member(Constr-Pos-Attr,Atts).
+
+
+match_pattern([],_,[]).
+match_pattern([X|Xs],Pattern,Ys) :-
+	match_pattern(Xs,Pattern,Zs),
+%	(X = Pattern
+	(subsumes_chk(Pattern,X)
+	 -> Ys = [X|Zs]
+	  ; Ys = Zs
+	).
+
+
+% same non-failing
+nf_get_nth_attr(V,Mod,N,Attr) :-
+	(var(V)
+	 -> get_attr(V,Mod,Atts),
+	    arg(N,Atts,Attr)
+	  ; Attr = []
+	).
+
+% get all matches for given constraint
+get_all_head_matches([V|Vs],Mod,[P|Ps],[A|As],Attr,
+		                              [AL|ALs],AttrList):-
+	(get_nth_attr(V,Mod,P,A)
+	 -> Attr = A, AttrList = AL
+	  ; get_all_head_matches(Vs,Mod,Ps,As,Attr,ALs,AttrList)
+	).
+
+
+abs_ith(Index,List,Element) :-
+	( integer(Index) -> ith(Index,List,Element)
+	;   abs_ith1(List,1,Index,Element)
+	).
+
+abs_ith1([X|_],I,I,Y) :- X == Y.
+abs_ith1([_|L],I1,I,X) :- I2 is I1+1, abs_ith1(L,I2,I,X).
+
+
+
+abs_remove([],_,[]).
+abs_remove([X|Xs],Y,Zs) :-
+	(X == Y
+	 -> Zs=Xs
+	  ; abs_remove(Xs,Y,Ws),
+	    Zs = [X|Ws]
+	).
+
+abs_remove_f([X|Xs],Y,Zs) :-
+	(X == Y
+	 -> Zs=Xs
+	  ; abs_remove_f(Xs,Y,Ws),
+	    Zs = [X|Ws]
+	).
+
+abs_remove_attr([],_,_,_,[]).
+abs_remove_attr([A|As],Constr,Pos,Arg,L) :-
+	(A = Constr-Pos-L1
+	 -> abs_remove(L1,Arg,L2),
+	    (L2 = []
+	     -> L = As
+	      ; L = [Constr-Pos-L2|As]
+	    )
+	  ; abs_remove_attr(As,Constr,Pos,Arg,Ls),
+	    L = [A|Ls]
+	).
+
+
+select(Constr-Pos-List,[X|Xs],Ys) :-
+	(X = Constr-Pos-List
+	 -> Ys = Xs
+	  ; select(Constr-Pos-List,Xs,Zs),
+	    Ys = [X|Zs]
+	).
+
+% sort attribute sets into standard order
+% for sorted constraint storage -- currently not in use
+attr_sort(X) :-
+	attr_sort(X,[],_).
+
+attr_sort(X,SortedIn,SortedOut) :-
+	(var_member(X,SortedIn)
+	 -> SortedOut = SortedIn
+	  ; (is_attv(X)
+	     -> get_attributes(X,AX),
+		l_attr_sort(AX,[X|SortedIn],SAX,SortedOut),
+		(SAX \== AX
+		 -> writeln(sorted(X,AX)),
+		    put_attributes(X,SAX),		    
+		    writeln(to(X,SAX)),nl
+		  ; true
+		)
+	      ; SortedOut = SortedIn)
+	).
+
+l_attr_sort([],Sorted,[],Sorted).
+l_attr_sort([Mod,Attr|Atts], SortedIn, [Mod,SAttr|SAtts], SortedOut) :-
+	Attr =.. [v|AttrLists],
+	l_rec_attr_sort(AttrLists,SortedIn,SAttrLists,Sorted),
+	SAttr =.. [v|SAttrLists],
+	l_attr_sort(Atts,Sorted,SAtts,SortedOut).
+
+l_rec_attr_sort([],Sorted,[],Sorted).
+l_rec_attr_sort([AttrL|AttrLs],SortedIn,[SAttrL|SAttrLs],SortedOut) :-
+	(AttrL == []
+	 -> SAttrL = [],
+	    Sorted = SortedIn
+	  ; rec_attr_sort(AttrL,SortedIn,SAttrL,Sorted)
+	),
+	l_rec_attr_sort(AttrLs,Sorted,SAttrLs,SortedOut).
+
+rec_attr_sort(Attr,SortedIn,SAttr,SortedOut) :-
+	rec_attr_sort_1(Attr,SortedIn,SortedOut),
+	sort(Attr,SAttr).
+
+rec_attr_sort_1([],Sorted,Sorted).
+rec_attr_sort_1([attr(A)|As],SortedIn,SortedOut) :-
+	attr_sort(A,SortedIn,Sorted),
+	rec_attr_sort_1(As,Sorted,SortedOut).
+
+
+l_reconstruct_store([],[]).
+l_reconstruct_store([C|Cs],[S|Ss]) :-
+	(is_attv(C)
+	 -> reconstruct_store(C,S)
+	  ; S = []
+	),
+	l_reconstruct_store(Cs,Ss).
+
+reconstruct_store([],_,[],[]).
+reconstruct_store([F/A|FAs],Var,Atts,Store) :-
+	length(AttsF,A),
+	append(AttsF,AttsFs,Atts),
+	atts2store(AttsF,Var,F,ConstrF),
+	reconstruct_store(FAs,Var,AttsFs,ConstrFs),
+	append(ConstrF,ConstrFs,Store).
+
+atts2store(Atts,Var,F,Store) :-
+	atts2store(Atts,Var,F,1,Store).
+
+atts2store([],_,_,_,[]).
+atts2store([A|As],Var,F,I,Constraints) :-
+	atts2store_1(A,Var,F,I,CA),
+	I1 is I+1,
+	atts2store(As,Var,F,I1,CAs),
+	append(CA,CAs,Constraints).
+
+atts2store_1([],_,_,_,[]).
+atts2store_1([A|As],Var,F,I,[C|Cs]) :-
+	A =.. [attr|ArgsA],
+	delete_ith(I,ArgsF,Var,ArgsA),
+	C =.. [F|ArgsF],
+	atts2store_1(As,Var,F,I,Cs).
+
+
+reconstruct_store_m([],[],_,[],[]).
+reconstruct_store_m([F/A|FAs],Modes,Var,Atts,Store) :-
+	length(AttsF,A),
+	append(AttsF,AttsFs,Atts),
+	atts2store_1_m(AttsF,Var,F,ConstrF),
+	reconstruct_store_m(FAs,Modes,Var,AttsFs,ConstrFs),
+	append(ConstrF,ConstrFs,Store).
+reconstruct_store_m([],[F/A-Modes|FAs],Var,Atts,Store) :-
+%	length(Modes,FA),
+	length(AttsF,A),
+	append(AttsF,AttsFs,Atts),
+	atts2store_2_m(AttsF,Var,F,Modes,ConstrF),
+	reconstruct_store_m([],FAs,Var,AttsFs,ConstrFs),
+	append(ConstrF,ConstrFs,Store).
+
+atts2store_1_m(Atts,Var,F,Store) :-
+	atts2store_1_m(Atts,Var,F,1,Store).
+
+atts2store_1_m([],_,_,_,[]).
+atts2store_1_m([A|As],Var,F,I,Constraints) :-
+	atts2store_1_m_1(A,Var,F,I,CA),
+	I1 is I+1,
+	atts2store_1_m(As,Var,F,I1,CAs),
+	append(CA,CAs,Constraints).
+
+atts2store_1_m_1([],_,_,_,[]).
+atts2store_1_m_1([A|As],Var,F,I,[C|Cs]) :-
+	A =.. [attr|ArgsA],
+	delete_ith(I,ArgsF,Var,ArgsA),
+	C =.. [F|ArgsF],
+	atts2store_1_m_1(As,Var,F,I,Cs).
+
+atts2store_2_m(Atts,Var,F,Modes,Store) :-
+	atts2store_2_m(Atts,Var,F,1,Modes,Store).
+
+atts2store_2_m([],_,_,_,[],[]).
+atts2store_2_m([],_,_,_,Modes,[]) :-
+	all_ground(Modes).
+atts2store_2_m([A|As],Var,F,I,[M|Modes],Constraints) :-
+	I1 is I+1,
+	atts2store_2_m(As,Var,F,I1,Modes,CAs),
+	(M = g
+	 -> Constraints = CAs
+	  ; atts2store_2_m_1(A,Var,F,I,CA),
+	    append(CA,CAs,Constraints)
+	).
+
+atts2store_2_m_1([],_,_,_,[]).
+atts2store_2_m_1([A|As],Var,F,I,[C|Cs]) :-
+	A =.. [attr|ArgsA],
+	delete_ith(I,ArgsF,Var,ArgsA),
+	C =.. [F|ArgsF],
+	atts2store_2_m_1(As,Var,F,I,Cs).
+
+
+all_ground([]).
+all_ground([g|L]) :-
+	all_ground(L).
+
+
+
+
+reconstruct_dynamic_store([],_,[]).
+reconstruct_dynamic_store([Attr|Atts],Var,Store) :-
+	reconstruct_constr_pos(Attr,Var,AttrStore),
+	reconstruct_dynamic_store(Atts,Var,AttsStore),
+	append(AttrStore,AttsStore,Store).
+
+reconstruct_constr_pos(_-_-[],_,[]).
+reconstruct_constr_pos(Constr-Pos-[ArgTerm|ArgTerms],Var,[C|Cs]) :-
+	ArgTerm =.. [attr|ArgList],
+	delete_ith(Pos,Args,Var,ArgList),
+	C =.. [Constr|Args],
+	reconstruct_constr_pos(Constr-Pos-ArgTerms,Var,Cs).
+
+
+
+% formatting
+list_show_atts([],_).
+list_show_atts([X|Xs],Mod) :-
+	show_atts(X,Mod),
+	list_show_atts(Xs,Mod).
+
+show_atts(L,Mod) :-
+	is_list(L), !,
+	list_show_atts(L,Mod).
+show_atts(X,_) :-
+	X == no,
+	nl, writeln(no_answers), nl.
+show_atts(X,_) :-
+	atomic(X),
+	nl, writeln(value_of(X)), nl.
+show_atts(X,Mod) :-
+	var(X),
+	(get_attr(X,Mod,Atts) -> true; Atts = []),
+	nl, writeln(attributes(X,Atts)), nl.
+
+write_store(X) :-
+	is_attv(X),!,
+	reconstruct_store(X,Atts),
+	write(atts(X)), write(' = '),writeln(Atts).
+write_store(X) :-
+	var(X), !.
+write_store([X|Xs]) :-
+	!,
+	write_store(X),
+	write_store(Xs).
+write_store(_).
+	

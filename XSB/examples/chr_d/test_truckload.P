@@ -1,0 +1,69 @@
+
+%%
+%% test.P -- truckload program testing predicates
+%
+%
+% ?- [test].
+%
+%% call truckload(Packs, Load, Dest, T), where:
+%%    - Packs is the number (labels from 1 to Packs) of packs
+%%      we look at (30 for chicago, 2 for detroit),
+%%    - Load is truck capacity,
+%%    - Dest is truck destination (chicago or detroit),
+%%    - T is time when load must be delivered - this is where constraints go
+%% e.g.
+% ?- truckload(30,100,chicago,T).
+%
+%% or one of the test predicates, e.g. 
+% ?- test_all(30,100)
+%% to list all possible values of T
+%
+%% test5 and test5_all use truckload/5 which, in addition to time,
+%% shows the label of packs that match the constraints
+%%
+
+
+:- [leq,truckload].
+
+:- import length/2 from basics.
+
+test(Packs,Load) :-
+	statistics(0),
+	(truckload(Packs,Load,chicago,T); T = no),
+	statistics,
+	show_atts(T),
+	halt.
+
+test_all(Packs,Load) :-
+	statistics(0),
+	findall(T,
+		truckload(Packs,Load,chicago,T),
+		Ts),
+	statistics,
+	length(Ts,Length),
+	nl,writeln(answers_found(Length)),
+	show_atts(Ts),
+	halt.
+
+
+% truckload/5 with listed pack numbers
+% finds more answers as we look at two variables (time,packs)
+% instead of just one (time) in truckload/4
+test5(Packs,Load) :-
+	(truckload(Packs,Load,chicago,T,P); T = no),
+	show_atts(T),
+	writeln(packs_loaded(P)),
+	halt.
+
+test5_all(Packs,Load) :-
+	findall((T,P),
+		(
+		 truckload(Packs,Load,chicago,T,P),
+		 write(packs(P)),show_atts(T),
+		 writeln('---------------------------'),nl
+		),
+		Answers),
+	length(Answers,Length),
+	nl,writeln(answers_found(Length)),
+	halt.
+

@@ -1,0 +1,24 @@
+<!DOCTYPE doc [
+<!ELEMENT doc (foo*,a)>
+<!ELEMENT foo (#PCDATA)>
+<!ELEMENT a (b,c,d)>
+<!ELEMENT b EMPTY>
+<!ELEMENT c EMPTY>
+<!ELEMENT d (f)>
+<!ELEMENT f (#PCDATA)>
+<!ENTITY e SYSTEM "001.ent">
+<!ENTITY ee "adsdd">
+]>
+<doc>
+  <foo att1="123" att2="ppp">
+  Test1  Test2 &ee;
+  </foo>
+  <a>
+  aaaaaaaaaaa
+  <b att="1"/>
+  <c att="2"/>
+  <d>dddddddd
+  <f>kkkkkkk</f>
+  </h>
+  </a>
+</doc>

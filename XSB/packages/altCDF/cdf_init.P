@@ -1,0 +1,8 @@
+%- import addCheckToContext/2 from cdf_checks.
+%:- import check_types/2, classify_if_necessary/2 from cdf_checks.
+
+%:- addCheckToContext(check_types/2,query).
+%:- addCheckToContext(classify_if_necessary/2,componentUpdate).
+
+:- addCheckToContext(check_identity/2,newExtTermSingle).
+:- addCheckToContext(check_identity/2,newExtTermBatch).

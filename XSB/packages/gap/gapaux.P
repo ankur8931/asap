@@ -1,0 +1,28 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Code for Sample Lattices
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+lub(max,A,B,Max):-	max(A,B,Max).
+bottom(max,0).
+gt1(max,A,B):- max(A,B,A).
+
+max(One,Two,Max):- One > Two -> Max = One ; Max = Two.
+
+
+lub(min,A,B,Min):-	min(A,B,Min).
+bottom(min,infinity).
+gt1(min,A,B):- min(A,B,A).
+
+min(One,infinity,One):-!.
+min(infinity,Two,Two):-!.
+min(One,Two,Min):- One > Two -> Min = Two ; Min = One.
+
+lub(set,A,B,Union):-	append(A,B,App),sort(App,Union).
+bottom(set,[]).
+gt1(set,A,B):- subset(B,A).
+
+subset([],_).
+subset([H|T],List):-
+	memberchk(H,List),
+	subset(T,List).
+

@@ -1,0 +1,115 @@
+/* File:      makemode.P
+** Author(s): The XSB Group
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: makemode.P,v 1.7 2010-08-19 15:03:35 spyrosh Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,optimize,spec_repr,xpp_on]).
+#include "extensions_xsb.h"
+
+
+:- import standard_symbol/3 from std_xsb.
+
+:- import trie_assert/1, trie_retract_all/1 from tables.
+:- import str_cat/3 from string.
+:- import member/2 from basics.
+:- import libpath/1 from loader.
+
+standard_sym((P/A), M) :- standard_symbol(P,A,M).
+
+imports_from_module(Mod, List) :-
+	bagof(Sym, standard_sym(Sym, ModVar), List), Mod = ModVar.
+
+decl_imported(Imports, FromMod) :-
+	str_cat(FromMod, XSB_DCL_EXTENSION_ATOM, File),
+	(expand_incl_file_name(File, FileName)
+	  ->	seeing(OldFile),
+		see(FileName),
+		load_imported_preds(Imports),
+		see(OldFile)
+	  ;	true
+	),
+	ensure_included(Imports).
+
+load_imported_preds(Imports) :-
+	repeat,
+	read(Term),
+	(Term == end_of_file
+	  ->	seen, !
+	  ;	Term = ':-'('_$mode_pattern'(Pat)),
+		functor(Pat, Pred, Arity),
+		(member((Pred/Arity), Imports)
+		  ->	trie_assert('_$predprop'((import), (Pred/Arity))),
+			include(Pat)
+		  ; 	true),
+		fail
+	).
+
+
+ensure_included([]).
+ensure_included([(Pred/Arity)|Rest]) :-
+	('_$predprop'((import), (Pred/Arity)) 
+		-> true
+		% otherwise, we dont know the modes of this predicate
+		% Assume the worst: inp groundness == out groundness
+		; functor(NewOne, Pred, Arity), include(NewOne),
+		trie_assert('_$predprop'((import), (Pred/Arity)))
+	),
+	ensure_included(Rest).
+
+expand_incl_file_name(Name, ExpName) :-
+	(is_in_library(Name, ExpName) -> true;
+		(file_exists(Name) -> ExpName = Name
+			% .M file not found anywhere;
+			; fail)).
+
+is_in_library(Name, ExpName) :- 
+	libpath(LibName), 
+	str_cat(LibName, Name, ExpName),
+	file_exists(ExpName).
+	
+include(Pat) :-
+	write(':- '), write_canonical('_$mode_pattern'(Pat)),
+	write('.'), nl.
+
+
+make_modes(StdFile) :-
+	telling(OldFile),
+	tell(StdFile),
+	trie_assert('_$predprop'((import), none)),
+	make_modes,
+	trie_retract_all('_$predprop'(_,_)),
+	told,
+	tell(OldFile).
+
+make_modes :-
+	imports_from_module(Mod, Imp),
+	decl_imported(Imp, Mod),
+	fail; true.
+	
+
+make_stdmodes :-
+	standard_file_base(StdFileBase),
+	str_cat(StdFileBase,XSB_DCL_EXTENSION_ATOM,StdFile),
+	make_modes(StdFile).
+
+standard_file_base('stdmodes.D').

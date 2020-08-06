@@ -1,0 +1,62 @@
+:- ensure_loaded(xasp).
+
+:- import smrInit/1, smrAddBasicRule/3, smrCommitProgram/0 from sm_int.
+:- import smComputeModel/0, smrExamineModel/2, smEnd/0 from sm_int.
+:- import smrSetPosCompute/1, smrSetNegCompute/1 from sm_int.
+:- import smodelsPrintProgram/0 from xasppkg.
+
+
+test:- rawex_all, rawex_4, rawex_not4.
+
+rawex_all :-
+	smrInit(8),
+	smrAddBasicRule(1,[],[]),
+	smrAddBasicRule(2,[],[]),
+	smrAddBasicRule(3,[],[]),
+	smrAddBasicRule(4,[1],[5]),
+	smrAddBasicRule(5,[1],[4]),
+	smrCommitProgram,
+	write('All Solutions: '),
+	(   smComputeModel,
+	    smrExamineModel(8,Model),
+	    write(Model),
+	    fail
+	;
+	    smEnd,nl  ).
+
+rawex_4 :-
+	smrInit(8),
+	smrAddBasicRule(1,[],[]),
+	smrAddBasicRule(2,[],[]),
+	smrAddBasicRule(3,[],[]),
+	smrAddBasicRule(4,[1],[5]),
+	smrAddBasicRule(5,[1],[4]),
+	smrSetPosCompute(4),
+	smrCommitProgram,
+	write('All Solutions with 4: '),
+	(   smComputeModel,
+	    smrExamineModel(8,Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd  ).
+
+rawex_not4 :-
+	smrInit(8),
+	smrAddBasicRule(1,[],[]),
+	smrAddBasicRule(2,[],[]),
+	smrAddBasicRule(3,[],[]),
+	smrAddBasicRule(4,[1],[5]),
+	smrAddBasicRule(5,[1],[4]),
+	smrSetNegCompute(4),
+	smrCommitProgram,
+	write('All Solutions without 4: '),
+	(   smComputeModel,
+	    smrExamineModel(8,Model),
+	    write(Model),
+	    fail
+	;
+	    smEnd,nl  ).
+
+end_of_file.
+

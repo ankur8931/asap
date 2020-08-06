@@ -1,0 +1,842 @@
+/* File:      typecheck.P	-- XL typechecker
+** Author(s): 
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: typecheck.P,v 1.5 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+/* Polymorphic typechecker for XL
+ * The type checking is done by building type information of the form
+ *     (variable, type, position)
+ * and later making sure that each instance of variable has the same type
+ * if it is a variable within the process, or
+ * if it is an argument in a caller, then it has a type that is a 
+ * subtype of the corresponding argument in the definition of that process.
+ * To get debugging information (at the moment most of the debugging
+ * information is removed for efficiency reasons),
+ * do 'assert(debug_typecheck(1))' before calling xlc.
+ * To get types of arguments in process definitions,
+ *    do 'assert(print_types(1))'.
+ * To get types of arguments in process uses also,
+ *    do 'assert(print_types(2))'.
+ * To get types of variables also,
+ *    do 'assert(print_types(3))'.
+ * By default, types of arguments in process definitions are printed.
+ * To disable printing of process arguments and variables entirely,
+ *    do 'assert(print_types(0))'.
+ */
+
+typecheck(File) :-
+    load_dyn(stdtype),
+    load_dyn(File),
+    findall((Proc, Pos, Expr, Vars), pdef([Proc, Pos], Expr, Vars), Pdefs),
+    /* we need a new copy of pdefs, as the variables in the Pdefs will be
+     * bound to their types in get_types
+     */
+    copy_term(Pdefs, NPdefs),
+    make_proc_defs(Pdefs),
+    get_types(Pdefs, Types),
+    (check_types(Types)
+     ->
+	tc_cleanup, make_npdefs(Pdefs, NPdefs)
+     ;
+	tc_cleanup, !, fail).
+
+/*
+ * Make sure that a process is defined exactly once: Here for each process
+ * a proc clause is asserted as a definition and later when a process is
+ * called, we make sure that the arity for both are same
+ */
+make_proc_defs([(Proc, Pos, _, _) | Pdefs]) :-
+    functor(Proc, Name, Arity),
+    (clause(proc(Name, _, Pos1), _)
+     ->
+	/* process is already defined */
+	pretty_pos(Pos, PPos),
+	pretty_pos(Pos1, PPos1),
+	Proc =.. [Name | _],
+	assert(type_error(['Process ', Name, ' is defined at ',
+			   PPos, ' and also at ', PPos1]))
+     ;
+	assert(proc(Name, Arity, Pos))),
+    make_proc_defs(Pdefs).
+make_proc_defs([]).
+
+/*
+ * Get types for the list of pdefs
+ */
+get_types([Pdef | Pdefs], Types) :-
+    once(get_types_proc(Pdef, Types1)),
+    get_types(Pdefs, Types2),
+    append(Types1, Types2, Types).
+get_types([], []).
+
+/*
+ * Get types in a given process
+ */
+get_types_proc((Proc, Pos, Expr, Vars), Types) :-
+    Proc =.. [Name | Args],
+    /* first get the types of arguments */
+    add_arg_types(Args, Name, 'F', 1, Pos, [], Types1, Vars),
+    /* add the types of variables in Expr to them */
+    xl_typeinfer(Expr, Types1, Types2, Vars),
+    reverse(Types2, Types).
+
+/*
+ * Store npdefs for the compiler
+ * Pdefs have all variables replaced by their types, whereas NPdefs have
+ * original process expressions, but are copies of Pdefs, so variables
+ * in Pdefs and NPdefs are different. But the order of variables in Pdefs
+ * and NPdefs are same. So we get the process expressions and variables
+ * from NPdefs, but the types from Pdefs. 
+ */
+make_npdefs([(_, _, _, Vars) | Pdefs],
+	    [(NProc, NPos, NExpr, NVars) | NPdefs]) :-
+    NProc =.. [Name | ArgTypes],
+    strip_types(ArgTypes, Args),
+    get_channel_vars(Vars, NVars, ChanTypes, VarTypes),
+    ProcA =.. [Name | Args],
+    strip_types(NExpr, SExpr),
+%    dbg_tc([nl, writel(['npdef : ', ProcA, ',', NPos, ', ', SExpr,
+%			',', ChanTypes,	',', VarTypes]), nl]),
+    assert(npdef([ProcA, NPos], SExpr, ChanTypes, VarTypes)),
+    make_npdefs(Pdefs, NPdefs).
+make_npdefs([], []).
+
+/*
+ * Add type tuple for the arguments of a function.
+ */
+add_arg_types([A | As], Proc, AF, I, Pos, TypesIn, TypesOut, Vars) :-
+    var_type(A, V, T),
+    (AF == 'F'
+     ->
+	add_var_type(V, T, Pos, ['$formal'(Proc, I, T, Pos) | TypesIn],
+		     TypesOut1, Vars)
+     ;
+	add_var_type(V, T, Pos, ['$actual'(Proc, I, T, Pos) | TypesIn],
+		     TypesOut1, Vars)),
+    I1 is I+1,
+    add_arg_types(As, Proc, AF, I1, Pos, TypesOut1, TypesOut, Vars).
+add_arg_types([], _,_, _, _, TypesIn, TypesIn,  _).
+
+/*
+ * Add type tuple for a variable : the format is
+ * '$var'(Name of the variable, Variable, its type, its position)
+ */
+add_var_type(V, T, Pos, TypesIn, TypesOut, Vars) :-
+    /* no need to include types of constants and redundant types */
+    (var(V), V \== T
+     ->
+	var_name(Vars, V, Name),
+	TypesOut = ['$var'(Name, V, T, Pos) | TypesIn]
+    ;
+	TypesOut = TypesIn).
+
+/*
+ * Separate channel variables and non-channel variables
+ * The first argument is list of variable types and their names where variables
+ * and the second argument is list of variables and their names (which is
+ * copy of the variables in the first argument before they are unified with
+ * their types. So to make the list as required by the npdef (which is
+ * list of (variable, name, type), we can pick up the variable from the
+ * second list, name can be from either of the arguments and the type can be
+ * picked up from the second list
+ */
+get_channel_vars([(V, VName) | Vs], [(NV, _) | NVs],
+		  [(NV, VName, V) | Channels], Vars) :-
+     nonvar(V), V = '$type'(chan(_)),
+     get_channel_vars(Vs, NVs, Channels, Vars).
+get_channel_vars([(V, VName) | Vs], [(NV, _) | NVs],
+		 Channels, [(NV, VName, V) | Vars]) :-
+    get_channel_vars(Vs, NVs, Channels, Vars).
+get_channel_vars([], [], [], []).
+
+/*
+ * Given variable, get its name
+ */
+var_name([(V1, Name) | _], V, Name) :-
+    V == V1.
+var_name([_ | Vars], V, Name) :-
+    var_name(Vars, V, Name).
+
+/*
+ * Check list of type tuples
+ */
+check_types(Types) :-
+%    dbg_tc([write('merge_equals starts'), nl]),
+    merge_equals(Types, VarTypes, (FArgTypes, AArgTypes)),
+%    dbg_tc([write('merge_equals is done'), nl]),
+%    dbg_tc([show_types(VarTypes, [])]),
+%    dbg_tc([append(ArgTypes0, ArgTypes1, DA), show_types([], DA)]),
+    unify_proc_args(AArgTypes, FArgTypes, AArgTypes),
+%    dbg_tc([append(ArgTypes0, ArgTypes1, DA2), show_types([], DA2)]),
+%    dbg_tc([write('unify_proc_args is done'), nl]),
+    check_var_types(VarTypes),
+%    dbg_tc([write('check_var_types is done'), nl]),
+    check_arg_types(AArgTypes, FArgTypes),
+%    dbg_tc([write('check_arg_types is done'), nl]),
+    append(FArgTypes, AArgTypes, ArgTypes),
+    show_types(VarTypes, ArgTypes),
+    /* we need cut here because there is no point
+    * backtracking just because there are errors */
+    (exist_errors
+     ->	    
+	!, fail
+     ;
+	true).
+
+/*
+ * Check that call to a process has the same arity as in the
+ * definition of a process
+ */
+check_arity(Proc, Arity, Pos) :-
+    (clause(proc(Proc, Arity0, Pos0), _),
+	(Arity = Arity0
+	 ->	
+	    true
+	 ;
+	    pretty_pos(Pos, PPos), pretty_pos(Pos0, PPos0),
+	    assert(type_error(['At ', PPos0, ' process ', Proc,
+			       ' is defined with arity ', Arity0, 
+			       ' but at ', PPos,
+			       ' it is called with arity ', Arity])),
+	    fail)
+     ;
+	/* this will not happen currently, as in such a case, we assume
+	 * that it is a Prolog predicate, but in case that changes ...
+         */
+	pretty_pos(Pos, PPos),
+	assert(type_error(['At ', PPos, ' process ', Proc,
+			   ' is used but it is not defined'])),
+	fail).
+
+/*
+ * Propagate 'equals' types. We take advantage of unification to assign
+ * the variable and its type (in each tuple) to each other. This way we
+ * need to make only one pass through all the tuples to get two attributes
+ * one corresponding to the variable (indicated as V) and the other
+ * corresponding to the type (indicated as Type). Later on we just want
+ * to make sure that both of them are compatible; if they are not, then
+ * a variable has two incompatible types.
+ * Also, separate variable type tuples from argument tuples. This is so that
+ * while doing unification of process arguments later in a fix-point,
+ * we don't need to look at variables.
+ */
+merge_equals(['$var'(Name, V, Type, Pos) | VarArgTypes],
+	     ['$var'(Name, V, Type, Pos) | VarTypes], ArgTypes) :-
+    check_unify(V, Type),
+    V = Type,
+    merge_equals(VarArgTypes, VarTypes, ArgTypes).
+merge_equals(['$var'(Name, V, Type, Pos) | VarArgTypes],
+	     VarTypes, ArgTypes) :-
+    pretty_pos(Pos, PPos),
+    strip_dollar_type(V, PV), strip_dollar_type(Type, PType),
+    assert(type_error(['At ', PPos, ' variable ', Name,
+		       ' is type inconsistent',
+		       ' <', PV, ' =/=  ', PType, '>'])),
+    merge_equals(VarArgTypes, VarTypes, ArgTypes).
+merge_equals(['$formal'(Proc, I, T, Pos) | VarArgTypes], VarTypes,
+	     (['$formal'(Proc, I, T, Pos) | FArgTypes], AArgTypes)) :-
+    merge_equals(VarArgTypes, VarTypes, (FArgTypes, AArgTypes)).
+merge_equals(['$actual'(Proc, I, T, Pos) | VarArgTypes], VarTypes,
+	     (FArgTypes, ['$actual'(Proc, I, T, Pos) | AArgTypes])) :-
+    merge_equals(VarArgTypes, VarTypes, (FArgTypes, AArgTypes)).
+merge_equals([], [], ([], [])).
+
+/*
+ * Unifying process arguments can't be done in one pass since processes may
+ * be used before they are defined. Moreover, mutually recursive processes
+ * don't have any ordering in which we can treat one process before we can
+ * proceed to the next one.
+ * So we keep unifying them in many passes until a fix-point is reached. The
+ * fix-point is when no more unifications can be done. While unifying, we
+ * separate the unified process arguments and not-yet-unified arguments so that
+ * we only need to look at not-yet-unified arguments only in each pass.
+ * The flag 'Change' indicates if any changes have been made (i.e., any
+ * unifications have been made) in a pass.
+ */
+unify_proc_args(AATNotDone, FArgTypes, AArgTypes) :-
+    unify_proc_args1(AATNotDone, FArgTypes, AArgTypes, AATNotDone1, Change),
+    (Change == 0
+     ->
+	true
+     ;
+	unify_proc_args(AATNotDone1, FArgTypes, AArgTypes)).
+
+/*
+ * For each use of a process, if the type of any argument is not bound to
+ * any type, then assign a type to it that corresponds to that in the
+ * definition.
+*/
+unify_proc_args1(['$actual'(P, I, T, Pos) | AAT], FArgTypes, AArgTypes,
+		 AATNotDone, Change) :-
+    var(T),
+    /* replace variables in the type of formal argument
+    * with corresponding types in the caller
+    */
+    arg_index_type(FArgTypes, '$formal'(P, I, T0, _)),
+    nonvar(T0),
+    replace_args(P, Pos, T0, T, (FArgTypes, AArgTypes)),
+    nonvar(T),
+    Change = 1,
+    unify_proc_args1(AAT, FArgTypes, AArgTypes, AATNotDone, Change).
+unify_proc_args1(['$actual'(_, _, T, _) | AAT], FArgTypes, AArgTypes,
+		 AATNotDone, Change) :-
+    nonvar(T),
+    unify_proc_args1(AAT, FArgTypes, AArgTypes, AATNotDone, Change).
+unify_proc_args1(['$actual'(P, I, T, Pos) | AAT], FArgTypes, AArgTypes,
+		 ['$actual'(P, I, T, Pos) | AATNotDone], Change) :-
+    var(T),
+    unify_proc_args1(AAT, FArgTypes, AArgTypes, AATNotDone, Change).
+/*
+ * If no changes have been made so far (Change hasn't been assigned any value),
+ * assign 0 to Change to indicate so.
+ */
+unify_proc_args1([], _, _, [], Change) :-
+    (ground(Change)
+     ->
+	true
+     ;
+	Change = 0).
+
+/*
+ * It is possible that the arguments in a function are related; e.g., in
+ * f(A, chan(A)); in such a case, all invocations of that process should
+ * also maintain that relation.
+ * First get the index of the type in process definition, then for each
+ * occurance of the type that is an argument, replace the occurance in the call
+ */
+replace_args(_, _, T0, T1, _) :-
+    ground(T0), T1 = T0.
+replace_args(P, Pos, T0, T1, (FArgTypes, AArgTypes)) :-
+    var(T0),
+    % get the index of argument whose type is in the definition
+    (arg_index_type(FArgTypes, '$formal'(P, I, T0, _))
+     ->
+	% get the argument correponding to that index in the call at that Pos
+	arg_index_type(AArgTypes, '$actual'(P, I, T1, Pos))
+     ;
+	/* This type doesn't occur in the arguments; it is independent
+	 * e.g., p(X) ::= X ! Y, in which case argument 0 of p is of the
+         * type $type(chan(Y)), where Y doesn't occur in the arguments of p
+         */
+	T1 = _).
+replace_args(P, Pos, [HdT0 | TlT0], [HdT1 | TlT1], ArgTypes) :-
+    replace_args(P, Pos, HdT0, HdT1, ArgTypes),
+    replace_args(P, Pos, TlT0, TlT1, ArgTypes).
+replace_args(_, _, [], [], _).
+replace_args(P, Pos, T0, T1, ArgTypes) :-
+    compound(T0), not is_list(T0),
+    T0 =.. T0s,
+    replace_args(P, Pos, T0s, T1s, ArgTypes),
+    T2 =.. T1s,
+    (check_unify(T2, T1)
+     ->
+	T1 = T2
+     ;
+	pretty_pos(Pos, PPos),
+	strip_dollar_type(T1, PT1), strip_dollar_type(T2, PT2),
+	assert(type_error(['Type of argument of process ', P, ' at ', PPos,
+			   ' conflicts with that in the definition',
+			   ' <', PT1, ' =/= ', PT2, '>'])),
+	!, fail).
+	
+/*
+ * Get the index of argument with the given type in the argument list
+ */
+arg_index_type(['$actual'(P, I1, T1, Pos) | _],
+	       '$actual'(P, I, T1, Pos)) :-
+    I == I1.
+arg_index_type(['$actual'(P, I, T1, Pos) | _],
+	       '$actual'(P, I, T, Pos)) :-
+    T == T1.
+arg_index_type([_ | Types], '$actual'(P, I, Type, Pos)) :-
+    arg_index_type(Types, '$actual'(P, I, Type, Pos)).
+arg_index_type(['$formal'(P, I1, T1, Pos) | _],
+	       '$formal'(P, I, T1, Pos)) :-
+    I == I1.
+arg_index_type(['$formal'(P, I, T1, Pos) | _],
+	       '$formal'(P, I, T, Pos)) :-
+    T == T1.
+arg_index_type([_ | Types], '$formal'(P, I, Type, Pos)) :-
+    arg_index_type(Types, '$formal'(P, I, Type, Pos)).
+
+
+/*
+ * Check types of arguments - each argument in a process call must be subsumed
+ * by the corresponding argument in the definition of that process
+ */
+check_arg_types(['$actual'(P, I, T1, Pos) | AArgTypes], FArgTypes) :-
+    % get the type of argument in that index in the definition
+    (arg_index_type(FArgTypes, '$formal'(P, I, T0, Pos0))
+     ->
+	(check_unify(T1, T0)
+	 ->	
+	    true
+	 ;
+	    pretty_pos(Pos, PPos), pretty_pos(Pos0, PPos0),
+	    strip_dollar_type(T1, PT1), strip_dollar_type(T0, PT0),
+	    assert(type_error(['At ', PPos, ' argument ', I, ' of process ',
+			       P, ' is type inconsistent with that in the',
+			       ' definition at ', PPos0,
+			       ' <', PT1, ' =/= ', PT0, '>'])))
+     ;
+	true),
+    check_arg_types(AArgTypes, FArgTypes).
+check_arg_types([], _).
+
+/*
+ * Check the types of variables; this is easy since all instances of a variable
+ * have been made 'equal' in merge_equals, we just have to check that V and T
+ * are unifyable.
+ */
+check_var_types(['$var'(Name, V, Type, Pos) | VarTypes]) :-
+    (check_unify(V, Type)
+     ->
+	true
+     ;
+	pretty_pos(Pos, PPos),
+	strip_dollar_type(V, PV), strip_dollar_type(Type, PType),
+	assert(type_error(['At ', PPos, ' variable ', Name,
+			   ' is type inconsistent',
+			   ' <', PV, ' =/= ', PType, '>']))),
+    check_var_types(VarTypes).
+check_var_types([]).
+
+/*
+ * Check if T is channel of channel; this happens e.g., X ! 1 ; Y ! X, which
+ * is not valid
+ */
+is_chan_chan(T) :-
+    nonvar(T), T = '$type'(chan(X)),
+    nonvar(X), X = '$type'(chan(_)).
+
+/*
+ * check if two types can be unified
+ */
+check_unify(T1, T2) :-
+    (nonvar(T1)
+     ->
+	not is_chan_chan(T1)
+     ;
+	true),
+    (nonvar(T2)
+     ->
+	not is_chan_chan(T2)
+     ;
+	true),
+    check_unify1(T1, T2).
+
+check_unify1(T1, T2) :-
+    ground(T1), ground(T2), !, T1 = T2.
+check_unify1(T1, T2) :-
+    var(T1), var(T2).
+check_unify1(T1, T2) :-
+    var(T1), nonvar(T2), !,
+    not occ_search(T2, T1).
+check_unify1(T1, T2) :-
+    nonvar(T1), var(T2), !,
+    not occ_search(T1, T2).
+check_unify1([T1 | T1s], [T2 | T2s]) :-
+    check_unify1(T1, T2),
+    check_unify1(T1s, T2s).
+check_unify1([], []).
+check_unify1(T1, T2) :-
+    not is_list(T1), not is_list(T2),
+    T1 =.. T1s,
+    T2 =.. T2s,
+    check_unify1(T1s, T2s).
+
+/*
+ * Show the types - if print_types is 2, then show variables, if it is 1
+ * show only process arguments, if it is 0, show neither. Default is to
+ * show process arguments.
+ */
+show_types(VarTypes, ArgTypes) :-
+    (clause(print_types(X), _)
+     ->
+	retract(print_types(_))
+     ;
+	X = 0),
+    (X >= 1
+     ->	    
+	nl, writeln('Types of arguments in process definitions :'),
+	print_def_args(ArgTypes), nl
+     ;
+	true),
+    (X >= 2
+     ->	    
+	nl, writeln('Types of arguments in process uses :'),
+	print_use_args(ArgTypes), nl
+     ;
+	true),
+    (X >= 3
+     ->	    
+	nl, writeln('Types of variables :'),
+	print_vars(VarTypes), nl
+     ;
+	true).
+
+/*
+ * Print position in a more readable form
+ */
+pretty_pos([L1, C1, L2, C2], PPos) :-
+    fmt_write_string(PPos, "%d:%d-%d:%d", args(L1, C1, L2, C2)).
+
+/*
+ * Print type tuples of variables
+ */
+print_vars(['$var'(Name, _, Type, Pos) | Types]) :-
+    pretty_pos(Pos, PPos), strip_dollar_type(Type, PType),
+    fmt_write_string(PPos1, "%-13s", PPos),
+    writel(['   At ', PPos1, ' ', Name, ' = ', PType]),
+    nl, print_vars(Types).
+print_vars([]).
+
+/*
+ * Print type tuples of arguments
+ */
+print_use_args(['$actual'(P, I, Type, Pos) | Types]) :-
+    pretty_pos(Pos, PPos),
+    fmt_write_string(PPos1, "%-13s", PPos),
+    writel(['   At ', PPos1, ' ', P, '(', I, ') use = ']),
+    strip_dollar_type(Type, PType),
+    write(PType), nl, print_use_args(Types).
+print_use_args([_ | Types]) :-
+    print_use_args(Types).
+print_use_args([]).
+print_def_args(['$formal'(P, I, Type, Pos) | Types]) :-
+    pretty_pos(Pos, PPos),
+    fmt_write_string(PPos1, "%-13s", PPos),
+    writel(['   At ', PPos1, ' ', P, '(', I, ') def = ']),
+    strip_dollar_type(Type, PType),
+    write(PType), nl, print_def_args(Types).
+print_def_args([_ | Types]) :-
+    print_def_args(Types).
+print_def_args([]).
+
+/*
+ * Remove '$type' from the given type
+ */
+strip_dollar_type(T, PT) :-
+    var(T), PT = T.
+strip_dollar_type('$type'(T), PT) :-
+    strip_dollar_type(T, PT).
+strip_dollar_type([T | Ts], [PT | PTs]) :-
+    strip_dollar_type(T, PT),
+    strip_dollar_type(Ts, PTs).
+strip_dollar_type([], []).
+strip_dollar_type(Type, PType) :-
+    compound(Type), not is_list(Type),
+    Type =.. Types,
+    strip_dollar_type(Types, PTypes),
+    PType =.. PTypes.
+strip_dollar_type(Type, Type).
+
+/*
+ * Typing rules for the constructs in the language
+ */
+:- op(700, xfx, ':=').
+:- op(600, xfx, ':').
+
+xl_typeinfer([true, _], TypesIn, TypesIn, _).
+xl_typeinfer([action(_), _], TypesIn, TypesIn, _).
+xl_typeinfer([end, _], TypesIn, TypesIn, _).
+
+xl_typeinfer([par(Expr1, Expr2), _], TypesIn, TypesOut, Vars) :-
+    xl_typeinfer(Expr1, TypesIn, TypesOut1, Vars),
+    xl_typeinfer(Expr2, TypesOut1, TypesOut, Vars).
+
+xl_typeinfer([pref(Expr1, Expr2), _], TypesIn, TypesOut, Vars) :-
+    xl_typeinfer(Expr1, TypesIn, TypesOut1, Vars),
+    xl_typeinfer(Expr2, TypesOut1, TypesOut, Vars).
+
+xl_typeinfer([choice(Expr1, Expr2), _], TypesIn, TypesOut, Vars) :-
+    xl_typeinfer(Expr1, TypesIn, TypesOut1, Vars),
+    xl_typeinfer(Expr2, TypesOut1, TypesOut, Vars).
+
+xl_typeinfer([in(Link, Mesg), Pos], TypesIn, TypesOut, Vars)  :-
+    var_type(Mesg, MV, MT),
+    add_var_type(MV, MT, Pos, TypesIn, TypesOut1, Vars),
+    var_type(Link, LV, LT),
+    add_var_type(LV, LT, Pos, TypesOut1, TypesOut2, Vars),
+    add_var_type(LV, '$type'(chan(MT)), Pos, TypesOut2, TypesOut, Vars).
+
+xl_typeinfer([out(Link, Mesg), Pos], TypesIn, TypesOut, Vars) :-
+    var_type(Mesg, MV, MT),
+    add_var_type(MV, MT, Pos, TypesIn, TypesOut1, Vars),
+    var_type(Link, LV, LT),
+    add_var_type(LV, LT, Pos, TypesOut1, TypesOut2, Vars),
+    add_var_type(LV, '$type'(chan(MT)), Pos, TypesOut2, TypesOut, Vars).
+
+xl_typeinfer([if(Cond, Expr1, Expr2), _], TypesIn, TypesOut, Vars) :-
+    prolog_operation(Cond, TypesIn, TypesOut1, Vars),
+    xl_typeinfer(Expr1, TypesOut1, TypesOut2, Vars),
+    xl_typeinfer(Expr2, TypesOut2, TypesOut, Vars).
+
+xl_typeinfer([if(Cond, Expr1), _], TypesIn, TypesOut, Vars) :-
+    prolog_operation(Cond, TypesIn, TypesOut1, Vars),
+    xl_typeinfer(Expr1, TypesOut1, TypesOut, Vars).
+
+xl_typeinfer([Op, Pos], TypesIn, TypesOut, Vars) :-
+    functor(Op, Name, Arity),
+    (clause(proc(Name, _, _), _)
+     ->	    
+	Op =.. [ Name | Args ],
+	(check_arity(Name, Arity, Pos)
+	 ->	
+	    /* genenrate argument types for the call */
+	    add_arg_types(Args, Name, 'A', 1, Pos, TypesIn, TypesOut, Vars)
+	 ;
+	    true)
+     ;
+	prolog_operation([Op, Pos], TypesIn, TypesOut, Vars)).
+
+prolog_operation([Opn, Pos], TypesIn, TypesOut, Vars) :-
+    (abstract_operation(Opn, _, TypesIn, TypesOut, Pos, Vars)
+     ->	    
+	true
+     ;
+	pretty_pos(Pos, PPos),
+	assert(type_error(['Error in prolog operation at ', PPos]))).
+
+abstract_operation(X, Type, TypesIn, TypesOut, Pos, Vars) :-
+    var(X), !, var_type(X, V, Type),
+    add_var_type(V, Type, Pos, TypesIn, TypesOut, Vars).
+
+abstract_operation(X, Type, TypesIn, TypesIn, _, _) :-
+    is_list(X), var_type(X, _, Type).
+
+abstract_operation(X, '$type'(integer), TypesIn, TypesIn, _, _) :-
+    integer(X).
+
+abstract_operation(X, '$type'(boolean), TypesIn, TypesIn, _, _) :-
+    (X == true ; X == false).
+
+match_operation(X, Y, YType, TypesIn, TypesOut, Pos, Vars) :-
+    abstract_operation(Y, YType, TypesIn, TypesOut1, Pos, Vars),
+    add_var_type(X, YType, Pos, TypesOut1, TypesOut, Vars).
+
+abstract_operation((X is Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    match_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X := Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    match_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X == Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    match_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation(X == Y, Type, TypesIn, TypesOut, Pos, Vars) :-
+    match_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X \== Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    match_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation(X \== Y, Type, TypesIn, TypesOut, Pos, Vars) :-
+    match_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X = Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    match_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+
+abstract_operation((X , Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    independent_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X ; Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    independent_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+
+independent_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars) :-
+    abstract_operation(X, _, TypesIn, TypesOut1, Pos, Vars),
+    abstract_operation(Y, Type, TypesOut1, TypesOut, Pos, Vars).
+
+compare_operation(X, Y, '$type'(integer), TypesIn, TypesOut, Pos, Vars) :-
+    abstract_operation(X, XType, TypesIn, TypesOut1, Pos, Vars),
+    abstract_operation(Y, YType, TypesOut1, TypesOut, Pos, Vars), !,
+    XType = '$type'(integer),
+    YType = '$type'(integer).
+
+/*
+ * Cut is needed here so that when compare_operation fails, no backtracking
+ * is done (which will then match with prolog operation, which is not correct)
+ */
+abstract_operation((X > Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, compare_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X < Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, compare_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X >= Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, compare_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X =< Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, compare_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+
+integer_operation(X, Y, '$type'(integer), TypesIn, TypesOut, Pos, Vars) :-
+    abstract_operation(X, XType, TypesIn, TypesOut1, Pos, Vars),
+    abstract_operation(Y, YType, TypesOut1, TypesOut, Pos, Vars), !,
+    XType = '$type'(integer),
+    YType = '$type'(integer).
+
+/*
+ * Cut is needed here, as described above
+ */
+abstract_operation((X + Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, integer_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X - Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, integer_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X * Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, integer_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X / Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, integer_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X // Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, integer_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((X mod Y), Type, TypesIn, TypesOut, Pos, Vars) :-
+    !, integer_operation(X, Y, Type, TypesIn, TypesOut, Pos, Vars).
+abstract_operation((not X), Type, TypesIn, TypesOut, Pos, Vars) :-
+    abstract_operation(X, Type, TypesIn, TypesOut, Pos, Vars).
+
+abstract_operation(X, Type, TypesIn, TypesIn, _, _) :-
+    compound(X), callable(X), functor(X, F, _), ground(F),
+    var_type(X, _, Type).
+abstract_operation(X, Type, TypesIn, TypesOut, Pos, Vars) :-
+    nonvar(X), var_type(X, V, Type),
+    add_var_type(V, Type, Pos, TypesIn, TypesOut, Vars).
+
+/*
+ * For user supplied types, we need to add '$type' so that it is in the
+ * same form that is used for types inferred
+ */
+add_dollar_type([H | T], ['$type'(H) | DT]) :-
+    ground(H),
+    add_dollar_type(T, DT).
+add_dollar_type(T, DT) :-
+    compound(T),
+    functor(T, F, 1), ground(F),
+    T =.. [F, Ts],
+    add_dollar_type(Ts, DTs),
+    DT1 =.. [F, DTs],
+    DT =.. ['$type', DT1].
+add_dollar_type(T, '$type'(T)) :-
+    ground(T).
+add_dollar_type([], []).
+    
+/* For types of the form V : T, where T is explicit type */
+var_type(X, V, Y) :-
+    compound(X), X =.. [F, V, T], F == :, !, ground(T), add_dollar_type(T, Y).
+var_type(X, X, Y) :-
+    type(X, Y).
+
+/*
+ * For types of the form (A, B), e.g., in Chan!(A, B); they are converted
+ * to [typeof(A), typeof(B)]
+ */
+type(X, Y) :-
+    compound(X), X =.. [F, A, B], F == ',', !,
+    type(A, AT), type(B, BT),
+    (is_list(BT)
+    ->
+	Y = [AT | BT]
+     ;
+	Y = [AT, BT]).
+type(X, Y) :- var(X), var(Y), !, X = Y.
+type(X, Y) :- var(Y), nonvar(X), !, btype(X, Y).
+type(X, Y) :- var(X), nonvar(Y), !, btype(Y, X).
+type(_, _) :- !, fail.
+
+btype(X, Y) :-
+    (atype(X, Y)
+     ->
+	true
+     ;
+	/* it is a prolog term; just make sure it is and leave Y unbound */
+	compound(X), callable(X), functor(X, F, _), ground(F)).
+
+/*
+ * Check if X occurs in T
+ */
+occ_search(T, _) :- ground(T), !, fail.
+occ_search(T, X) :- var(T), !, T == X.
+occ_search(T, X) :- is_list(T), !, occ_search_list(T, X).
+occ_search(T, X) :- compound(T), T =.. [_ | L], !, occ_search_list(L, X).
+occ_search_list([H | T], X) :- 
+    occ_search(H, X);
+    occ_search_list(T, X).
+
+tc_cleanup :-
+    %% remove temporary clauses added
+    retractall(pdef([_, _], _, _)),
+    retractall(proc(_, _, _)),
+    retractall(atype(_,_)),
+    (clause(print_types(_), _)
+     ->
+	retract(print_types(_))
+     ;
+	true),
+    (clause(debug_typecheck(_), _)
+     ->
+	retract(debug_typecheck(_))
+     ;
+	true).
+
+/*
+ * Strip type information from process expression; since all type information
+ * and nothing else is separated by ':', we just look for it and ignore
+ * what occurs after it.
+ */
+strip_types(X, X) :- var(X).
+strip_types(X : _, X).
+strip_types([HX | TX], [HY | TY]) :-
+    strip_types(HX, HY),
+    strip_types(TX, TY).
+strip_types([], []).
+strip_types(X, Y) :-
+    compound(X),
+    X =.. LX,
+    strip_types(LX, LY),
+    Y =.. LY.
+strip_types(X, X).
+
+/*
+ * Error reporting
+ */
+report_type_errors :-
+    retract(type_error(X)),
+    write('   '),
+    writel(X), nl,
+    report_type_errors.
+report_type_errors.
+
+/*
+ * check if errors are present and if so, print them; otherwise fail
+ */
+exist_errors :-
+    (clause(type_error(_), _)
+     ->
+	nl, writeln('Errors :'),
+	report_type_errors,
+	nl, writeln('There are errors in the program.')
+     ;
+	fail).
+
+/*
+ * Debugging hook; to get the debugging information,
+ * do 'assert(debug_typecheck(1))' before calling xlc.
+ */
+
+dbg_tc(X) :-
+    clause(debug_typecheck(_), _),
+    dbg_tc1(X).
+dbg_tc(_).
+dbg_tc1([F | T]) :-
+    call(F), dbg_tc1(T).
+dbg_tc1([]).
+
+writel([X | Xs]) :-
+    write(X), writel(Xs).
+writel([]).

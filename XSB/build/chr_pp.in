@@ -1,0 +1,66 @@
+#!/bin/sh
+
+## File:      chr_pp
+## Author(s): Tom Schrijvers, Giridhar Pemmasani
+## Contact:   xsb-contact@cs.sunysb.edu
+## 
+## Copyright (C) The Research Foundation of SUNY, 1998
+## 
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+## 
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+## 
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: chr_pp.in,v 1.5 2010-08-19 15:03:35 spyrosh Exp $
+## 
+##
+
+suffix=@config_tag@
+
+invocation_name=$0
+
+# if we've a symbolic link, then extract the full path of the target
+if test -h $invocation_name ; then
+    invocation_name=`dirname $invocation_name`"/"`stat -f %Y $invocation_name`
+fi
+
+case $invocation_name in
+/*) thisfile=$invocation_name
+    ;;
+*)  thisfile=`pwd`/$invocation_name
+    ;;
+esac
+
+# rectify .. in path names - 7 times should suffice for the most weird 
+# invocations with multiple ..'s
+thisfile=`echo $thisfile | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo $thisfile | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo $thisfile | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo $thisfile | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo $thisfile | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo $thisfile | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo $thisfile | sed 's,[^/][^/]*//*\.\.//*,,'`
+#rectify . in path names
+thisfile=`echo $thisfile | sed 's,//*\.//*,/,g'`
+
+scriptdir=`dirname $thisfile`
+topdir=`dirname $scriptdir`
+
+chrname=`basename ${1} .chr`
+XSB=$scriptdir/xsb${suffix}
+# XSB=${2:-xsb}
+
+$XSB <<EOF
+['chr_pp'].
+main('${chrname}.chr','${chrname}.P').
+halt.
+EOF

@@ -1,0 +1,380 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+
+  <head>
+
+   
+
+    <title>PHP Web Application Server - PHP Developer tools - PHP Training & Certification - Zend.com</title>    
+
+                        <meta name="keywords" content="php programming, PHP tutorials, php training, php development, learn php,  php certification, zend engine, zend, zend.com" lang="en"/>
+
+                <meta name="http-host" content="web04" />
+
+    <meta name="revisit-after" content="15 days" />
+
+    <meta name="Language" content="en" />
+
+    <meta name="copyright" content="" />
+
+    <link rel="shortcut icon" href="http://static.zend.com/img/favicon.ico" type="image/x-icon"/>
+
+    <link rel="alternate" type="application/atom+xml" title="Zend Press Releases" href="/en/company/news/press/feed" />
+
+    <link rel="alternate" type="application/atom+xml" title="Zend Newsletters" href="/en/company/news/newsletter/feed" />
+
+    <link rel="alternate" type="application/atom+xml" title="Zend Events" href="/en/company/news/event/feed" />
+
+    <link rel="stylesheet" href="http://static.zend.com/topics/all6331110-en.css" type="text/css" media="all" />
+
+    <!--[if IE]><link rel="stylesheet" href="http://static.zend.com/styles/iestyles.css" type="text/css" media="all" /><![endif]-->
+
+    <!--[if lt IE 7]><link rel="stylesheet" href="http://static.zend.com/styles/non_ie7.css" type="text/css" media="all" /><![endif]-->
+
+    <!--[if lt IE 7]><script type="text/javascript" src="/js/ds-sleight.js"></script><![endif]-->
+
+<link rel="stylesheet" href="http://static.zend.com/styles/print.css" type="text/css" media="print" />
+
+    <!--Fireclick implementation--><script type="text/javascript">var fc_segment="www.zend.com/en";var fc_content = "www.zend.com/en/-/-/-/-/-/-/-";</script>
+
+    
+
+  <meta name="generator" content="Zend.com CMS 6.0" />
+
+    <meta name="vendor" content="Zend Technologies, Inc." />
+
+    <meta name="robots" content="index,follow" />
+
+ 
+
+  </head>
+
+  <body class="en-lang">
+
+  <p class="behind-the-site"><a href="/en/behind-the-site"><span>Behind the Site &raquo;</span></a></p>
+
+<div class="container" style="position:relative;z-index:1;">
+
+    <div class="header">
+
+        <h1 id="logo"><a href="/en/"><span>Zend - The PHP Company</span></a></h1>
+
+<div class="social-icons"><a alt="Visit us on Twitter!" href="http://twitter.com/zend"><img src="http://static.zend.com/img/twitter_icon.gif"/> </a><a href="http://www.facebook.com/home.php#/pages/Zend-Technologies/190917412139" alt="Visit us on Facebook!"><img src="http://static.zend.com/img/facebook_icon.gif"/></a></div>
+
+        <div class="nav-bar">
+
+            <ul id="nav" class="dropdown"><li><a href="http://www.zend.com/en/solutions/"><strong>Solutions</strong></a><ul><li><a href="http://www.zend.com/en/solutions/">Solutions Overview</a></li><li><a href="http://www.zend.com/en/solutions/get-started-php/">Get Started with PHP</a></li><li><a href="http://www.zend.com/en/solutions/build-quality-php/">Develop & Test</a></li><li><a href="http://www.zend.com/en/solutions/performance-availability/">Deploy & Run</a></li><li><a href="http://www.zend.com/en/solutions/packaged-php-applications/">Run Packaged Apps</a></li><li><a href="http://www.zend.com/en/solutions/modernize-ibm-i/">IBM i Solutions</a></li><li><a href="http://www.zend.com/en/solutions/linux-windows-mac/">Linux, Windows, Mac</a></li><li><a href="http://www.zend.com/en/solutions/cut-it-costs/">Increase Efficiency</a></li><li><a href="http://www.zend.com/en/solutions/meet-compliance/">Achieve Compliance</a></li><li><a href="http://www.zend.com/en/solutions/php-cloud/">PHP in the Cloud</a></li></ul></li><li><a href="http://www.zend.com/en/products/"><strong>Products</strong></a><ul><li><a href="http://www.zend.com/en/products/">Products Overview</a></li><li><a href="http://www.zend.com/en/products/server/">Zend Server</a></li><li><a href="http://www.zend.com/en/products/platform/">Zend Platform</a></li><li><a href="http://www.zend.com/en/products/core/">Zend Core</a></li><li><a href="http://www.zend.com/en/products/studio/">Zend Studio</a></li><li><a href="http://www.zend.com/en/products/guard/">Zend Guard</a></li></ul></li><li><a href="http://www.zend.com/en/services/"><strong>Services</strong></a><ul><li><a href="http://www.zend.com/en/services/">Global Services</a></li><li><a href="http://www.zend.com/en/services/consulting/">PHP Consulting</a></li><li><a href="http://www.zend.com/en/services/certification/">PHP Certification</a></li><li><a href="http://www.zend.com/en/services/training/">PHP Training</a></li><li><a href="http://www.zend.com/en/services/support/">PHP Support</a></li></ul></li><li><a href="http://www.zend.com/en/downloads/"><strong>Downloads</strong></a><ul><li><a href="http://www.zend.com/en/downloads/">Downloads</a></li></ul></li><li><a href="http://www.zend.com/en/community/"><strong>Community</strong></a><ul><li><a href="http://www.zend.com/en/community/">Community Overview</a></li><li><a href="http://www.zend.com/en/community/php">PHP & Zend Engine</a></li><li><a href="http://www.zend.com/en/community/framework">Zend Framework</a></li><li><a href="/en/products/server-ce/">Zend Server Community Edition</a></li><li><a href="http://www.zend.com/en/community/pdt">Eclipse PHP Development Tools</a></li><li><a href="http://www.zend.com/en/community/local-php-groups">Local PHP Groups</a></li><li><a href="http://devzone.zend.com/">Zend Developer Zone</a></li></ul></li><li><a href="http://www.zend.com/en/resources/"><strong>Resources</strong></a><ul><li><a href="http://www.zend.com/en/resources/">Resources</a></li><li><a href="http://www.zend.com/en/resources/zend-documentation/">Online Documentation</a></li><li><a href="http://www.zend.com/en/resources/white-papers/">White Papers</a></li><li><a href="http://www.zend.com/en/resources/case-studies/">Case Studies</a></li><li><a href="http://www.zend.com/en/resources/webinars/">Recorded Webinars</a></li><li><a href="/en/company/events/">Upcoming Webinars</a></li></ul></li><li><a href="http://www.zend.com/en/company/"><strong>Company</strong></a><ul><li><a href="http://www.zend.com/en/company/">Company</a></li><li><a href="http://www.zend.com/en/company/partners/">Partners</a></li><li><a href="http://www.zend.com/en/company/news/">News</a></li><li><a href="http://www.zend.com/en/company/events/">Webinars & Events</a></li><li><a href="http://devzone.zend.com/">Devzone</a></li><li><a href="http://www.zend.com/en/company/customers/">Customers</a></li><li><a href="http://www.zend.com/en/company/management/">Management</a></li><li><a href="http://www.zend.com/en/company/investors/">Investors</a></li><li><a href="http://www.zend.com/en/company/jobs-at-zend/">Jobs at Zend</a></li><li><a href="http://www.zend.com/en/company/contact-us/">Contact Us</a></li></ul></li><li><a href="http://www.zend.com/en/store/"><strong>Store</strong></a><ul><li><a href="http://www.zend.com/en/store/">Store Lobby</a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=zend-developer-solutions.html">Developer Solutions</a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=production-solutions.html">Production Solutions </a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=ibm-i-solutions.html">Solutions for IBM i</a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=php-training.html">Online Training</a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=php-certification.html">PHP Certifications</a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=special-offers.html"> Special Offers</a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=software.html">All Software</a></li><li><a href="http://www.zend.com/storeapi/index/redirect/?uri=php-products.html">All Store Products</a></li></ul></li><li><a href="http://www.zend.com/en/support-center/"><strong>Support</strong></a><ul><li><a href="http://www.zend.com/en/support-center/">Support Center</a></li><li><a href="http://forums.zend.com/">Zend Forums</a></li><li><a href="http://www.zend.com/en/support-center/knowledge-base">Knowledge Base</a></li><li><a href="/resources/online-documentation">Online Documentation</a></li></ul></li></ul>
+
+            <div class="corner">&nbsp;</div>
+
+            <form method="get" action="/en/search">
+
+                <fieldset>
+
+                    <legend>Search Site</legend>
+
+                    <input type="text" name="query" class="input-text"/>
+
+                    <input type="image" src="http://static.zend.com/img/btn_search-en.gif" alt="Search"/>
+
+                </fieldset>
+
+            </form>
+
+        </div>
+
+        <ul id="super" class="dropdown">
+
+            <li class="view-cart"><a href="/en/store/cart.php"><img src="http://static.zend.com/img/icon_cart.gif" alt="Your Cart"/></a><span class="separator">|</span></li>
+
+            <li><a href="/en/support-center/">Support Center</a><span class="separator">|</span></li>
+
+            <li><a href="/en/company/contact-us">Contact Us</a><span class="separator">|</span></li>
+
+                    <li class="last">Worldwide ( <a href="#" class="open-action">change</a> )<span class="separator">|</span>
+
+    <ul>
+
+                <li><a href="/de/" >Deutschland</a></li>        <li><a href="/fr/" >France</a></li>        <li><a href="/it/" >Italia</a></li>    </ul>
+
+</li>
+
+
+
+                                    
+
+                        <li class="account"><a href="/en/user/myzend"><img src="http://static.zend.com/img/icon_account.gif" alt=""/></a>&nbsp;&nbsp;<a href="/en/user/myzend">My Account</a></li>
+
+        </ul>
+
+    </div>
+
+
+
+                  
+
+                <div class="main">
+
+        
+
+                    
+
+<style type="text/css">
+
+.new-home-spot {
+
+border-left: none;
+
+padding-left: 0;
+
+}
+
+.new-home-spot #home-spot-graphic {
+
+width: 980px;
+
+}
+
+</style>
+
+<div id="home-spot-div" class="new-home-spot">
+
+<img id="home-spot-graphic" src="http://static.zend.com/topics/zend-studio-7-1-n-zend-server-hp-main-grn.jpg" alt="" usemap="#homepage-spot-1" />
+
+<map name="homepage-spot-1" id="homepage-spot-1">
+
+<area shape="rect" coords="0,0,702,250" alt="Download Zend Server" href="/en/products/server/?hpb=SingleBanner" >
+
+<area shape="rect" coords="702,0,980,250" alt="Do more with Zend Studio 7.1" href="/products/studio?hpb=mainBanner" >
+
+</map>
+
+</div>
+
+
+
+<div class="main home-main">
+
+<div class="col3-set">
+
+<div class="col-1">
+
+<ul>
+
+<li id="mid_page_callouts_image_1">
+
+<a href="http://www.zend.com/storeapi/index/redirect/?uri=php-training.html?hpb=leftBanner">
+
+<img src="http://static.zend.com/topics/hp-mid-learn-php-from-experts.gif" alt=""/>
+
+</a>
+
+</li>
+
+<li id="mid_page_callouts_image_2">
+
+<a href="/en/resources/webinars/">
+
+<img src="http://static.zend.com/topics/hp-mid-webinar-n.jpg" alt=""/>
+
+</a>
+
+</li>
+
+</ul>
+
+</div>
+
+<div class="col-2">
+
+<h2>Zend Server 5.0 is in Beta<br /></h2>
+
+Zend Server 5.0 Beta includes code tracing for faster problem resolution, job queue for better application performance, and support for PHP 5.3. <a href="/en/products/server/zend-server-5-new">Learn more &raquo; </a><br/>
+
+<h2>Zend Studio 7.1 is Generally Available!<br /></h2>
+
+The new release of Zend Studio includes task-focused programming for better productivity, remote server support, PHAR integration and more. <a href="/en/products/studio/downloads">Download now &raquo;</a><br />
+
+<h2>PHP from Pilot to Production</h2>
+
+Whether you&rsquo;re a professional PHP developer, a system administrator, an IT executive or a newbie, you can rely on Zend for the right tools, services and know-how to ensure you unlock the true value of PHP. <br /><br />Over 27,000 companies worldwide have deployed Zend&rsquo;s products to date. Fortune 100 companies, Web 2.0 startups, software vendors, hosting providers, system integrators and freelance consultants, have all turned to Zend for enhancing their development, testing, deployment and production.   <br /><br /><a href="/solutions">Zend solutions overview</a><br /><a href="/services">Zend services overview</a><br /><a href="/products/server">Zend Server: Web application server</a><br /><a href="/products/studio">Zend Studio: integrated development environment</a><br /><a href="/community">Open-source projects and community products</a><br/>
+
+<ul>                          </ul></div>
+
+<div class="col-3">
+
+<div class="news-box">
+
+<h2><img src="http://static.zend.com/topics/icon-news.png" alt=""/>News</h2>
+
+<ul class="news combined"><li><h3><a href="http://www.h-online.com/open/news/item/Zend-Studio-7-1-supports-PHAR-884068.html" rel="external">Zend Studio 7.1 Supports PHAR</a></h3><span>December 11, 2009</span><li><h3><a href="http://ibmsystemsmag.blogs.com/you_and_i/2009/12/from-zend-to-copenhagen-to-moscow-to-south-africa-to-rochester.html" rel="external">From Zend to Copenhagen</a></h3><span>December 07, 2009</span><li><h3><a href="/en/company/news/Press/zend-issues-significant-update-to-zend-studio-enterprise-php-ide">Zend Issues Significant Update to Zend Studio 7 Enterprise PHP IDE</a></h3><span>December 04, 2009</span><li><h3><a href="http://blogs.gartner.com/mark_driver/2009/12/03/php-past-present-and-future/" rel="external">Gartner - PHP: Past, Present, and Future</a></h3><span>December 03, 2009</span></ul>
+
+<p class="more"><a href="/en/company/news">View More News</a></p>
+
+</div>
+
+<div class="news-box">
+
+<h2><img src="http://static.zend.com/topics/icon-events.png" alt=""/>Webinars and Events</h2>
+
+<ul class="news event"><li><h3><a href="/en/company/news/event/webinar-php-development-best-practices-the-untold-story-of-geekville">Webinar - PHP Development Best Practices: The Untold Story of Geekville </a></h3><span>January 19, 2010</span></li><li><h3><a href="/en/company/news/event/webinar-zend-framework-i-n-translation">Webinar - Zend Framework I18n Translation</a></h3><span>January 20, 2010</span></li><li><h3><a href="/en/company/news/event/webinar-introducing-zend-server-for-ibm-i">Webinar - Introducing Zend Server for IBM i </a></h3><span>January 27, 2010</span></li><li><h3><a href="/en/company/news/event/webinar-troubleshooting-php-issues-best-and-worst-techniques">Webinar - Troubleshooting PHP Issues: Best (and Worst) Techniques</a></h3><span>January 28, 2010</span></li></ul>
+
+<p class="more"><a href="/en/company/events">View More Events</a></p>
+
+</div>
+
+</div>
+
+<div class="clear"></div>
+
+</div>
+
+</div>                 </div>
+
+        
+
+                      <div class="footer">
+
+	<div class="newsletter-holder">
+
+	    <div class="block-subscribe" id="newsletter-box">
+
+	        <div class="block-title"><h2>Sign Up for Zend PHP Email Updates</h2></div>
+
+	        <form action="http://now.eloqua.com/e/f2.aspx" method="post" id="newsletter-validate-detail">
+
+	            <fieldset class="block-content">
+
+	                <legend>Newsletter</legend>
+
+	                <label for="newsletter">Enter your email address to receive tips & tricks, best practices, product news, promotions and more</label>
+
+	                <input name="Email" id="newsletter" class="input-text required-entry validate-email" type="text">
+
+	                <input class="btn" src="http://static.zend.com/img/buttons/subscribe.png" alt="Sign Up" type="image">
+
+	                <input name="elqFormName" value="NewsletterSignup" type="hidden">
+
+	                <input name="elqSiteID" value="714" type="hidden">
+
+	            </fieldset>
+
+	        </form>
+
+	    </div>
+
+	</div>
+
+	
+
+	<div class="footer-nav-holder">
+
+		<div class="footer-top-nav">
+
+			<ul>
+
+				<li><a href="/en/solutions/">Zend Solutions</a></li>
+
+				<li><span class="separator">|</span><a href="/en/solutions/i5-solutions/">PHP Solutions for IBM i</a></li>
+
+				<li><span class="separator">|</span><a href="/en/products/server/">PHP Application Server</a></li>
+
+				<li><span class="separator">|</span><a href="/en/products/studio/">PHP Development Tools</a></li>
+
+				<li><span class="separator">|</span><a href="/en/services/consulting/">PHP Consulting Services</a></li>
+
+			</ul>
+
+			<ul>
+
+                               <li><a href="/en/services/training/">PHP Training</a></li>
+
+				<li><span class="separator">|</span><a href="/en/services/certification/">PHP Certification</a></li>
+
+				<li><span class="separator">|</span><a href="/en/downloads/">PHP Software Downloads</a></li>
+
+				<li><span class="separator">|</span><a href="/en/community/pdt">Open-Source PHP Projects</a></li>
+
+				<li><span class="separator">|</span><a href="/en/resources/case-studies/">Zend PHP Implementation</a></li>
+
+			</ul>
+
+			<ul>
+
+                                <li><a href="/en/company/">About Zend</a></li>
+
+				<li><span class="separator">|</span><a href="/en/store/">Zend Online Store</a></li>
+
+				<li><span class="separator">|</span><a href="/en/resources/webinars/">Zend PHP Webinars</a></li>
+
+				<li><span class="separator">|</span><a href="/en/products/platform/">Zend Platform</a></li>
+
+			</ul>
+
+		</div>
+
+		<div class="legal">
+
+			© 2009 Zend Technologies Ltd. All rights reserved.&nbsp;
+
+			<a href="/en/terms-and-conditions#privacy">Privacy Policy</a><span class="separator">|</span><a href="/en/terms-and-conditions">Terms and Conditions</a>
+
+		</div>
+
+		<ul class="footer-bottom-nav">
+
+			<li><a href="/en/contact"><img src="http://static.zend.com/img/icon_feedback.gif" alt=""/></a> <a href="/en/contact">Feedback</a></li>
+
+			<li><span class="separator">|</span><a href="/en/company/contact-us"><img src="http://static.zend.com/img/icon_contact.gif" alt=""/></a> <a href="/en/company/contact-us">Contact Us</a></li>
+
+			<li><span class="separator">|</span><a href="/en/rss-feeds"><img src="http://static.zend.com/img/icon_rss.gif" alt=""/></a> <a href="/en/rss-feeds">RSS</a></li>
+
+			<li><span class="separator">|</span><a href="/en/sitemap"><img src="http://static.zend.com/img/icon_sitemap.gif" alt=""/></a> <a href="/en/sitemap">Site Map</a></li>
+
+			<li><span class="separator">|</span><a href="/en/behind-the-site"><img src="http://static.zend.com/img/icon_behind_site.gif" alt=""/></a> <a href="/en/behind-the-site">Behind the Site</a></li>
+
+		</ul>
+
+	</div>
+
+</div>
+
+<script type="text/javascript">
+
+<!--
+
+function handle(){return true;}
+
+window.onerror=handle;
+
+var fc_host='www.zend.com';
+
+document.write('<scr'+'ipt '
+
++'src="'+((location.protocol=='http:')?'http:':'https:')
+
++'//a248.e.akamai.net/f/248/5462/3h/hints.netflame.cc/service/sc'+'ript/'+fc_host+'"></scr'+'ipt>');
+
+function fcce(){if (typeof(fcnf)!="undefined") fcnf();}
+
+var fcfn=window.onload;
+
+function fcco(){window.setTimeout("fcce();", 100);fcfn();}
+
+window.onload= null==fcfn ? fcce:fcco;
+
+// -->
+
+</script>
+
+<!-- Fireclick, Inc - COPYRIGHT 1999-2007 - Please do not modify this code-->
+
+<script type="text/javascript" language="javascript" src="http://static.zend.com/topics/all6331110-en.js"></script>
+
+</body>
+
+</html>
+
+
+

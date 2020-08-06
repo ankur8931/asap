@@ -1,0 +1,211 @@
+/* Utilities for use with CDF's */
+:- export
+	  build_taxonomy/4,
+	  call_assert/1,clause_assert/2,
+	  cdf_fix_dir/2,
+	  file_latest_version/3,
+	  odbc_sql_local/4,
+	  get_conn_quote_char/2,
+	  cdf_ascii_scan/0,
+	  cdf_clean/0,
+	  cdf_clean/2,
+	  get_component_intensional_bind/2.
+
+:- import cdf_warning/2 from cdf_exceptions.
+:- import newExtTerm/1, classHasAttr/3, immed_isa/2, retractallExtTerm/1,
+	hasAttr/3, cdf_id_fields/4
+	from cdf_init_cdf.
+:- import component_table_int/3
+	from usermod.
+:- import arg/3
+	from standard.
+:- import append/3, member/2 from basics.
+:- import short_directory/2 from directry.
+:- import call0/1 from machine.
+
+%------
+get_component_intensional_bind(Term,Component):-
+	component_table_int(Term,Arg,_Deps),
+	arg(Arg,Term,CID),
+	cdf_id_fields(CID,_,_,Component).
+
+call_assert(Term):- (call0(Term) -> true ; asserta(Term)).
+
+clause_assert(Head,Body):- 
+	(clause(Head,Body) -> true ; asserta((:-(Head,Body)))).
+
+cdf_fix_dir(Dir,DirS) :-
+	(Dir == ''
+	 ->	DirS = Dir
+	 ;	friendly_atom_codes(Dir,DirC),
+		(append(_,[0'/],DirC)
+		 ->	DirS = Dir
+		 ;	append(DirC,[0'/],DirSC),
+			friendly_atom_codes(DirS,DirSC)
+		)
+	).
+
+friendly_atom_codes(A,Codes):-
+	(atom(A) ; var(A)) -> atom_codes(A,Codes)
+	   ; writeln(non_atomic(A)),
+	     atom_codes(A,Codes) . 	% and so abort.
+
+%------
+cdf_ascii_scan:- cdf_warning(obsolete,
+	['cdf_ascii_scan/0 is not implemented in CDF.']).
+
+%------
+cdf_clean :-  cdf_warning(obsolete,
+	['cdf_clean/0 is obsolete in CDF as it checked ',
+	  'for dangling classes and objects']).
+
+%------
+/* check for functionality of an attribute. */
+
+cdf_clean(attribute_function(RelCid),Fix) :-
+	(hasAttr(Oid,RelCid,Val),
+	 findall(Val1,(hasAttr(Oid,RelCid,Val1),Val1 \== Val),Vals),
+	 (Vals \== []
+	  ->	 write('Nonfunctional: Oid='),
+		 write(Oid),write(', Rel Cid='),
+		 write(RelCid),
+		 write(', Values='),write(Val),write(','),writeln(Vals),
+		 Fix == 1,
+		 member(Val1,Vals),
+		 retractallExtTerm(hasAttr_ext(Oid,RelCid,Val1)),
+		 fail
+	  ;	 fail
+	 )
+	 ;
+	 true
+	).
+
+
+:- import apply_lambda_fast/3 from stdutils.
+:- dynamic(bc_node(_,_)).
+:- index(bc_node(_,_),trie).
+
+build_taxonomy(DataAccessor,_HookCid,_RootID,_Source) :-
+	retractall(bc_node(_,_)),
+	apply_lambda_fast(DataAccessor,ID,Label),
+	atom_codes(ID,IDC),
+	assert(bc_node(IDC,Label)),
+	fail.
+build_taxonomy(_DataAccessor,HookCid,RootID,Source) :-
+	bc_node(IDC,Label),
+	find_parent(IDC,HookCid,RootID,Source,PCid),
+	atom_codes(ID,IDC),
+	Cid = cid(ID,Source),
+	newExtTerm(isa_ext(Cid,PCid)),
+	NameSou = crid('Name',Source),
+	newNameCrid(NameSou),
+	(classHasAttr(Cid,NameSou,cid(OldLabel,cdfpt))
+	 ->	OldLabel \== Label,
+		retractallExtTerm(classHasAttr_ext(Cid,NameSou,cid(OldLabel,cdfpt)))
+	 ;	true
+	),
+	newExtTerm(classHasAttr_ext(Cid,NameSou,cid(Label,cdfpt))),
+	fail.
+build_taxonomy(_,_,_,_) :-
+	retractall(bc_node(_,_)).
+
+newNameCrid(NameSou) :-
+	NameCDF = crid('Name',cdf),
+	(immed_isa(NameSou,NameCDF)
+	 ->	true
+	 ;	newExtTerm(isa_ext(NameSou,NameCDF))
+	).
+
+
+find_parent(IDC,HookCid,RootID,Source,PCid) :-
+	lappend(PIDC,Tl,IDC),	% find longest prefix
+	Tl \== [],		% that is proper
+	bc_node(PIDC,_PLabel),	% and is id of another node
+	!,
+	atom_codes(PID,PIDC),
+	PCid = cid(PID,Source),
+	(immed_isa(PCid,_)
+	 ->	true
+	 ;	find_parent(PIDC,HookCid,RootID,Source,GPCid),
+		newExtTerm(isa_ext(PCid,GPCid))
+	).
+find_parent(_IDC,HookCid,RootID,Source,PCid) :-	% has no parent, return root
+	PCid = cid(RootID,Source),
+	newExtTerm(isa_ext(PCid,HookCid)).
+
+lappend([X|L1],L2,[X|L3]) :- lappend(L1,L2,L3).
+lappend([],L,L).
+
+
+/*
+odbc_sql_local(_DataAccessor,_HookCid,_RootID,_Source) :-
+	cdf_warning(unimplemented,['odbc_sql_local/4 has not ',
+	  ' yet been updated to CDF.']).
+*/
+
+:- import odbc_sql/4 from odbc_call.
+:- import conset/2, conget/2 from gensym.
+:- resetdbctr.
+resetdbctr :- conset('_dbctr',0),conset('_duplctr',0).
+
+odbc_sql_local(Connection,Input,Statement,Output):-
+	conget('_dbctr',DbCtr),DbCtr1 is DbCtr + 1,conset('_dbctr',DbCtr1),
+	(DbCtr1 mod 100 =:= 0 -> display(',') ; true),
+%%	writeq(sQL(Statement,Input)),nl,
+	findall(Output,odbc_sql(Connection,Input,Statement,Output),Outputs),
+
+	%sorting here will break expected sql output if ORDER BY was used and
+	%since we can use DISTINCT to remove duplicates sort should not be used - hs.
+	%sort(Outputs1,Outputs),
+
+	member(Output,Outputs).
+
+:- dynamic '_$conn_quote_char'/2.
+:- index('_$conn_quote_char'/2,[1]).
+:- import odbc_get_info/3 from odbc_call.
+:- import warning/1 from standard.
+get_conn_quote_char(Connection, Char) :-
+	('_$conn_quote_char'(Connection, Char)
+	->	true
+	%problems including sql.h so hard coded 29=SQL_IDENTIFIER_QUOTE_CHAR =29
+	;	(odbc_get_info(Connection, 29, Ch)
+		->	(atom(Ch)
+			->	Char = Ch
+			;	Char = '"',
+				warning('Unable to retrieve quote char using default.'))
+		;	Char = '"',
+			warning('Unable to retrieve quote char using default.')
+		),
+		asserta('_$conn_quote_char'(Connection, Char))
+	).
+
+
+%------
+
+file_latest_version(Dir,Name,Version):-
+	findall(File,short_directory(Dir,File),Files),
+	atom_codes(Name,NameL),
+	file_latest_version_1(Files,NameL,-1,Version).
+
+file_latest_version_1([],_NameL,V,V1):- V1 is V + 1.
+file_latest_version_1([File|Rest],NameL,V,V1):-
+	atom_codes(File,FileL),
+	(get_v_from_filelist(NameL,FileL,NumL) ->
+	    number_codes(N,NumL),
+	    (N > V ->
+	        file_latest_version_1(Rest,NameL,N,V1)
+	      ;
+		file_latest_version_1(Rest,NameL,V,V1))
+	  ;
+	    file_latest_version_1(Rest,NameL,V,V1)).
+
+get_v_from_filelist([],[0'_|Rest],Rest):-
+	all_numbers(Rest).
+get_v_from_filelist([H|T],[H|T1],Rest):-
+	get_v_from_filelist(T,T1,Rest).
+
+all_numbers([]).
+all_numbers([H|T]):-
+	0'0 =< H,
+	H =< 0'9,
+	all_numbers(T).

@@ -1,0 +1,16 @@
+
+For Windows: the dlls and .lib are downloaded from
+http://curl.haxx.se/download.html
+The .h files for curl are in the curl/ subdirectory,
+also downloaded from http://curl.haxx.se/download.html
+The subdirectory curl/ is used only foor Windows.
+
+For Linux, the libcurl and libcurl-dev packages need to be installed using
+the distribution's package manager.
+The files curl/*.h then comes from the installation 
+directory of libcurl.
+In some Linux distributions, libcurl-dev might be called libcurl-gnutls-dev or
+libcurl-openssl-dev. In addition, the release number might be attached as,
+for instance, in libcurl4 and libcurl4-openssl-dev.
+
+For other systems: see the instructions at http://curl.haxx.se/download.html

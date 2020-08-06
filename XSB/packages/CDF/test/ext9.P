@@ -1,0 +1,52 @@
+
+class_ext(manufacturers,manufacturers,query).
+subclass_ext(manufacturers,query,'OMS Root','OMS').
+
+class_ext(parts,parts,query).
+subclass_ext(parts,query,'OMS Root','OMS').
+
+class_ext(material,material,query).
+subclass_ext(material,query,'OMS Root','OMS').
+class_ext(aluminum,aluminum,query).
+subclass_ext(aluminum,query,material,query).
+
+class_ext(platform,platform,query).
+subclass_ext(platform,query,'OMS Root','OMS').
+class_ext('F-14','F-14',query).
+subclass_ext('F-14',query,platform,query).
+
+class_ext(has_manufactured,has_manufactured,query).
+subclass_ext(has_manufactured,query,'OMS Inheritable Relationships','OMS').
+
+class_ext(has_material,has_material,query).
+subclass_ext(has_material,query,'OMS Inheritable Relationships','OMS').
+
+class_ext(used_on_platform,used_on_platform,query).
+subclass_ext(used_on_platform,query,'OMS Inheritable Relationships','OMS').
+
+schrel_ext(manufacturers,query,has_manufactured,query,parts,query).
+relationship_ext(parts,query,has_material,query,material,query).
+schrel_ext(parts,query,used_on_platform,query,platform,query).
+
+object_ext(manf1,manf1,query).
+memberof_ext(manf1,query,manufacturers,query).
+
+attribute_object_ext(manf1,query,has_manufactured,query,part1,query).
+attribute_object_ext(manf1,query,has_manufactured,query,part2,query).
+attribute_object_ext(manf1,query,has_manufactured,query,part3,query).
+
+object_ext(part1,part1,query).
+memberof_ext(part1,query,parts,query).
+attribute_ext(part1,query,has_material,query,aluminum,query).
+attribute_ext(part1,query,used_on_platform,query,'F-14',query).
+
+object_ext(part2,part2,query).
+memberof_ext(part2,query,parts,query).
+attribute_ext(part2,query,has_material,query,aluminum,query).
+attribute_ext(part2,query,used_on_platform,query,'F-14',query).
+
+object_ext(part3,part3,query).
+memberof_ext(part3,query,parts,query).
+attribute_ext(part3,query,used_on_platform,query,'F-14',query).
+
+end_of_file.

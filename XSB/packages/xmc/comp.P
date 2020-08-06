@@ -1,0 +1,818 @@
+/* File:      comp.P	-- XL Optimizing Compiler
+** Author(s): Yifei Dong
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: comp.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+%% ------------------------------------------------------------------
+:- table ifcalls_t/2.
+:- table calls_t/2.
+
+xlcomp :- 
+	reset_labels,
+	load_dyn(runlib),
+	compile_all,
+	% cleanup
+%	retractall(npdef(_,_,_,_)),
+	retractall(processlabel(_,_)),
+	retractall(directcall(_,_)),
+%	retractall(quad(_,_,_,_,_)),
+	retractall(compiled(_)),
+%	abolish_table_pred(ifcalls_t(_,_)),
+%	abolish_table_pred(calls_t(_,_)),
+%	abolish_all_tables,
+	writeln('compilation ends.').
+
+compile_all :-
+	findall(Proc, clause(npdef([Proc,_], _, _, _),_), L),
+	compile_proc_list(L).
+
+compile_proc_list([]).
+compile_proc_list([Proc|L]) :-
+	compile_proc(Proc),
+	compile_proc_list(L).
+
+%:- dynamic startstate/2.
+
+compile_proc(Proc) :-
+	%% this process has been compiled
+	clause(compiled(Proc),_)
+	;
+	%% this process has not been compiled
+	functor(Proc,P,A),			% same functor name
+	functor(PName,P,A),			%   with free variables
+	clause(npdef([PName,_], PBody, ChanNames, VarNames),_),
+	comp_proc([PName,_], PBody, ChanNames, VarNames),
+	test_assert(compiled(PName)).
+
+is_process(P) :-
+	copy_term(P,Q),				% preserve variables
+	clause(npdef([Q,_],_,_,_),_).
+
+%% ------------------------------------------------------------------
+%% comp_proc(+ProcName, +ProcBody, +Variables)
+%%
+%% Goal: 1. transition rules	(Entry, Action, Exit, Cond/Comp)
+%%	 2. symbol table	(State, Position, ArgumentList)
+
+comp_proc([PHead,_PLoc], PBody, ChanNames, VarNames) :-
+	writeln('compiling '(PHead)),
+	new_start_state(PHead, PBody, VarNames, StartState),
+	PHead =.. [PName | _],
+	new_pending(StartState, _, _, _, [], FirstPending),
+	comp_stmt(PBody, PHead, PName, ChanNames, VarNames, StartState, end([]), 
+			FirstPending, LastPending),
+	close_pending_final(end([]), LastPending, ChanNames, VarNames),
+	writeln('..... end '(PHead)).
+
+%% ------------------------------------------------------------------
+%% comp_stmt
+
+:- index comp_stmt/9-1.
+
+% parallel
+comp_stmt(
+	[par(S1,S2), _Pos],
+	Proc,
+	ProcName,	ChanNames, VarNames,
+	Entry,		Exit,
+	Pending,	[])
+    :-
+	!,
+	(
+	    comp_par_static(S1,S2,Proc,ProcName,ChanNames, VarNames,Entry,Exit,Pending)
+	;
+	    comp_par_dynamic(S1,S2,Proc,ProcName,ChanNames, VarNames,Entry,Exit,Pending)
+	).
+
+
+comp_par_dynamic(S1,S2,Proc,ProcName,ChanNames, VarNames,Entry,Exit,Pending) :-
+	!,
+	test_assert(dynamicpar(Proc)),
+	% create the start states for two parallel components
+	get_state_var(Entry, EVars),
+
+	% get global channel list
+	get_channel(EVars, VarNames, GChan),
+
+	% get local variables
+	get_expr_var(S1, Vars1),
+	get_expr_var(S2, Vars2),
+
+	% get local channel between the components
+	abs_intersect(Vars1, Vars2, CommonVars),
+	abs_exclude(CommonVars, EVars, LocalCommonVars),
+	get_channel(LocalCommonVars, VarNames, LChan),
+	absmerge(EVars, LChan, EVars_C),
+
+	new_state(Proc, ProcName, VarNames, S1, EVars_C, Vars1, Proc1),
+	new_state(Proc, ProcName, VarNames, S2, EVars_C, Vars2, Proc2),
+
+	% create the end states for two parallel components
+	get_state_var(Exit, XVars),
+
+	% compile the two parallel components
+	new_pending(Proc1, _,_,_, [], PQ1),
+	comp_stmt(S1, Proc, ProcName, ChanNames, VarNames, Proc1, end(XVars), PQ1, NPQ1),
+	close_pending_final(end(XVars), NPQ1, ChanNames, VarNames),
+
+	new_pending(Proc2, _,_,_, [], PQ2),
+	comp_stmt(S2, Proc, ProcName, ChanNames, VarNames, Proc2, end(XVars), PQ2, NPQ2),
+	close_pending_final(end(XVars), NPQ2, ChanNames, VarNames),
+
+	% compose the parallel transition
+	get_nop_start(Proc1, Start1, Code1),
+	get_nop_start(Proc2, Start2, Code2),
+	ParState = par(R, Start1, Start2),
+
+	% 1. spawn
+	% compute the restriction level 
+	% and assign number to lcoal channels
+	seq_list_term([handlechan(GChan,LChan,R),Code1,Code2], StartCode),
+	append_pending_code(StartCode, Entry, Pending, PQ, ChanNames, VarNames),
+	close_pending_final(ParState, PQ, ChanNames, VarNames),
+
+	% 2. parallel
+	% 3. collapse
+	% rules are in runtime library.
+	rec_par_quad(ProcName).
+
+rec_par_quad(_).
+
+%!!! why add more general rules???
+%rec_par_quad(ProcName) :-
+%	rec_quad(ProcName, par(_,end,end,X), nop, X, true),
+%	rec_quad(ProcName, par(R,P1,Q1,X), A, par(R,P2,Q2,X),
+%		 (partrans(R,A,P1,Q1,P2,Q2);partrans(R,A,Q1,P1,Q2,P2))).
+
+
+get_nop_start(Proc, Start, Code) :-
+	gen_state_name(Proc,end,First),
+	findall((S,C), clause(quad(_,First,nop,S,C),_), L),
+	(L = [_] ->
+	    %% if there is only one nop trans
+	     clause(quad(_,First,nop,Start,Code),_)
+         ;   Start = First,
+	     Code = true
+	).
+
+%% ------------------------------------------------------------------
+comp_par_static(S1,S2,Proc,ProcName,ChanNames, VarNames,Entry,Exit,Pending) :-
+
+	%% flatten par() expression to canonical subprocess list
+	flat_par_list([par(S1,S2),_],PL,Proc,ProcName,ChanNames, VarNames,Entry,ChanCode),
+	%% get the rules for each subprocess
+	comp_quad_list(PL, QL, StartList, CodeList),
+
+	get_new_label(ProcName, Label),
+	gen_par_name(ProcName, Label, ParName),
+
+	%% end pending transitions
+	close_pending_final(Entry, Pending, ChanNames, VarNames),
+
+	%% local variables
+	get_expr_var(par(S1,S2), V),
+	get_channel(V, VarNames, C),
+	get_state_var(Entry, EV),
+	abs_exclude(C, EV, LC),
+	%% precomputed transition rules
+	autonomous_all(Proc, ParName, QL, LC, ChanNames, VarNames),
+	synchronous_all(Proc, ParName, QL, ChanNames, VarNames),
+	%% lookup predicate
+	gen_static_par_lookup(ParName, QL),
+	gen_static_par_start(Proc, Entry, Exit, ParName, StartList,
+			     [ChanCode|CodeList], ChanNames, VarNames),
+	gen_static_par_end(Proc, ParName, StartList, ChanNames, VarNames).
+
+%% convert parallel expression to subprocess list
+flat_par_list([par(S1,S2),_], L, Proc, ProcName, ChanNames, VarNames, Entry, Code) :-
+	!,
+	% get global and local channels
+	get_state_var(Entry, EVars),
+	get_channel(EVars, VarNames, GChan),
+	get_expr_var(S1, Vars1),
+	get_expr_var(S2, Vars2),
+	abs_intersect(Vars1, Vars2, CommonVars),
+	abs_exclude(CommonVars, EVars, LocalCommonVars),
+	get_channel(LocalCommonVars, VarNames, LChan),
+	absmerge(EVars, LChan, EVars_C),
+	new_state(Proc, ProcName, VarNames, S1, EVars_C, Vars1, Proc1),
+	new_state(Proc, ProcName, VarNames, S2, EVars_C, Vars2, Proc2),
+	!,
+	flat_par_list(S1, L1, Proc,ProcName,ChanNames, VarNames, Proc1, Code1),
+	flat_par_list(S2, L2, Proc,ProcName,ChanNames, VarNames, Proc2, Code2),
+
+	seq_list_term([handlechan(GChan,LChan,_),Code1,Code2], Code),
+	append(L1, L2, L).
+
+
+flat_par_list([P,_], [P], Proc, _, _ChanNames, VarNames, Entry, Code) :-
+	is_process(P),
+	sk_not(ifcalls_t(P, Proc)),
+	%% test whether there are channels yet to be instantiated
+	get_state_var(Entry, EVars),
+	get_channel(EVars, VarNames, GChan),	% global channel
+	get_expr_var(P, V),
+	get_channel(V, VarNames, Chan),		% channels used by P
+	abs_exclude(Chan, GChan, LChan),	% local channel
+	(LChan == [] ->
+	    Code = true
+	 ;  Code = handlechan(GChan,LChan,_)
+	).	
+
+
+ifcalls_s(par(	[S1,_],[S2,_]), P)	:- ifcalls_s(S1,P); ifcalls_s(S2,P).
+ifcalls_s(pref(	[S1,_],[S2,_]), P)	:- ifcalls_s(S1,P); ifcalls_s(S2,P).
+ifcalls_s(choice([S1,_],[S2,_]), P)	:- ifcalls_s(S1,P); ifcalls_s(S2,P).
+ifcalls_s(if(_,[S,_]),	P)		:- ifcalls_s(S,P).
+ifcalls_s(if(_,[S1,_],[S2,_]), P)	:- ifcalls_s(S1,P); ifcalls_s(S2,P).
+ifcalls_s(S, P)		:-			% process call
+	is_process(S),
+	functor(S,F,A), functor(S1,F,A),
+	ifcalls_t(S1, P).
+
+ifcalls_t(S, P) :-
+	( (functor(S,F,A), functor(P,F,A)) ->	% same name and arity
+	     true
+	; clause(npdef([S,_],[B,_],_,_),_),	% expand process definition
+	  ifcalls_s(B, P)
+	).
+
+%% get quadruple list of all subprocesses
+%% comp_quad_list(ProcessList, QuadList, StartList)
+comp_quad_list([], [], [], []).
+comp_quad_list([P|Ps], [Q|Qs], [S|Ss], [C|Cs]) :-
+	comp_quad(P, Q, S, C),
+	comp_quad_list(Ps, Qs, Ss, Cs).
+
+comp_quad(P, Q, S, Code) :-
+	%% compile all processes called by P
+	tfindall(Call, calls_t(P,Call), CL),
+	compile_proc_list(CL),
+	%% no dynamic parallel in called process
+	!,
+	not((member(Call,CL),clause(dynamicpar(Call),_))),
+	%% get quads for called processes
+	tfindall((P,Called), calls_t(P,Called), PL),
+	findall((OP, quad(S1,A,S2,C)),
+		(member((OP, Proc), PL), clause(quad(Proc,S1,A,S2,C),_)),
+		OQ),
+	unify_all(P, OQ, Q),
+	% get start state
+	(get_nop_start(proc(P), S, Code) ->
+	    true
+	;   clause(startstate(P, S),_), Code = true
+	).
+
+calls(pref([S1,_],[S2,_]), P)	:- calls(S1,P); calls(S2,P).
+calls(choice([S1,_],[S2,_]), P)	:- calls(S1,P); calls(S2,P).
+calls(if(_,[S,_]), P)		:- calls(S,P).
+calls(if(_,[S1,_],[S2,_]), P)	:- calls(S1,P); calls(S2,P).
+calls(S, P) :-
+        is_process(S),				% process call
+        make_all_variable(S,S1),
+	calls_t(S1, P).
+
+calls_t(S, P) :-
+        ( P = S
+        ; clause(npdef([S,_],[B,_],_,_),_),	% expand process definition
+          calls(B, P)
+        ).
+
+%% replace term parameters with variables
+%% to keep channel, but disregard data in process argument
+make_all_variable(E, VE) :-
+	E =.. [F|L],
+	makevar_list(L,VL),
+	VE =.. [F|VL].
+
+makevar_list([],[]).
+makevar_list([V|L], [V|VL]) :- var(V), !, makevar_list(L,VL).
+makevar_list([_|L], [_|VL]) :- makevar_list(L,VL).
+
+unify_all(_, [], []).
+unify_all(P, [(P,Q)|OQs], [Q|Qs]) :- unify_all(P, OQs, Qs).
+
+
+%% name for parallel process
+gen_par_name(ProcName, Label, ParName) :-
+	gen_label_name(ProcName, Label, ParName).
+
+%% generate autonomous transitions
+autonomous_all(Proc, ParName, QuadList, LocalChan, ChanNames, VarNames) :-
+	(autonomous(Proc, ParName, QuadList, LocalChan, ChanNames, VarNames), fail ; true).
+
+% Par = list of (process name @ relabel function)
+autonomous(Proc, ParName, QuadList, LocalChan, ChanNames, VarNames) :-
+	% pick up a process
+	sandwich(L1, QL, L2, QuadList),
+	member(quad(S,A,T,C), QL),
+	get_expr_var(A, Chan),			% action doesn't contain
+	abs_intersect(Chan, LocalChan, []),	% local channel
+	same_length(L1, R1),
+	same_length(L2, R2),
+	sandwich(R1, S, R2, P),
+	sandwich(R1, T, R2, Q),
+	translate_quad(quad(state(Proc, ParName, 0, P), A,
+				[state(Proc, ParName, 0, Q)], C), ChanNames, VarNames).
+
+%% generate synchronous transitions
+synchronous_all(Proc, ParName, QuadList, ChanNames, VarNames) :-
+	(synchronous(Proc, ParName, QuadList, ChanNames, VarNames), fail ; true).
+
+% Par = list of (process name @ relabel function)
+synchronous(Proc, ParName, QuadList, ChanNames, VarNames) :-
+	% pick up a process
+	sandwich(L1, QL1, L, QuadList),
+	member(quad(S1,A1,T1,C1), QL1),
+	% pickup another process
+	sandwich(L2, QL2, L3, L),
+	member(quad(S2,A2,T2,C2), QL2),
+	% check whether the actions are complement
+	complement(A1, A2),
+	% generate code
+	same_length(L1, R1),
+	same_length(L2, R2),
+	same_length(L3, R3),
+	sandwich(R1, S1, R2, S2, R3, P),
+	sandwich(R1, T1, R2, T2, R3, Q),
+	% put code in the right order: data provider first
+	(is_out_action(A1) ->
+		seq_term(C1, C2, C)
+	;
+		seq_term(C2, C1, C)
+	),
+	translate_quad(quad(state(Proc, ParName, 0, P), tau,
+				[state(Proc, ParName, 0, Q)], C), ChanNames, VarNames).
+
+
+complement(out(C1,D), in(C2,D)) :- C1 == C2.
+complement(in(C1,D), out(C2,D)) :- C1 == C2.
+
+is_out_action(out(_,_)).
+
+gen_static_par_lookup(ParName, QL) :-
+	same_length(QL, PL),
+	gen_state_name(state(_, ParName,0,PL),_,State),
+	(member(P, PL),
+	    assert((symlookup(State,Name,(L,C),Var) :-
+			 symlookup(P, Name, (L,C), Var))),
+	    fail
+	;   true
+	).
+
+gen_static_par_start(Proc, Entry, Exit, ParName, StartList, CodeList, ChanNames, VarNames) :-
+	seq_list_term(CodeList, Code),
+	translate_quad(quad(Entry, nop, [state(Proc, ParName, 0, StartList), Exit], Code), ChanNames, VarNames).
+
+gen_static_par_end(Proc, ParName, StartList, ChanNames, VarNames) :-
+	same_length(StartList, PL),
+	fill_all_end(PL),
+	translate_quad(quad(state(Proc, ParName, 0, PL), nop, [], true), ChanNames, VarNames).
+
+fill_all_end([]).
+fill_all_end([end|L]) :- fill_all_end(L).
+
+%% ------------------------------------------------------------------
+% prefix
+comp_stmt(
+	[pref(S1,S2), _Pos],
+	  Proc,
+	ProcName,	ChanNames, VarNames,
+	Entry,		Exit,
+	Pending,	NewPending)
+    :-
+	!,
+
+	% get the before and after variable list for the internal state
+	get_state_var(Entry, BeforeVars),
+	get_state_var(Exit,  AfterVars),
+	append_var_list(BeforeVars, S1, BV),
+	append_var_list(AfterVars,  S2, AV),
+	new_state(Proc, ProcName, VarNames, S2, BV, AV, Middle),
+
+	comp_stmt(S1, Proc, ProcName, ChanNames, VarNames, Entry, Middle, Pending, PQ1),
+	comp_stmt(S2, Proc, ProcName, ChanNames, VarNames, Middle, Exit, PQ1, NewPending).
+
+% choice
+comp_stmt(
+	[choice(S1, S2), _Pos],
+	  Proc,
+	ProcName,	ChanNames, VarNames,
+	Entry,		Exit,
+	Pending,	NewPending)
+    :-
+	!,
+	% close preceeding quadruple
+	close_pending(Entry, Pending, PQ0, ChanNames, VarNames),
+
+	% compile each choice
+	comp_stmt(S1, Proc, ProcName, ChanNames, VarNames, Entry, Exit, PQ0, PQ1),
+	comp_stmt(S2, Proc, ProcName, ChanNames, VarNames, Entry, Exit, PQ0, PQ2),
+	merge_pending(PQ1, PQ2, NewPending).
+
+% condition
+comp_stmt(
+	[if(Cond, S1), [L1,C1,L2,C2]],
+	  Proc,
+	ProcName,	ChanNames, VarNames,
+	Entry,		Exit,
+	Pending,	NewPending)
+    :-
+	!,
+	comp_stmt([if(Cond, S1, [true,[L2,C2,L2,C2]]), [L1,C1,L2,C2]],
+		  Proc,
+		ProcName, ChanNames, VarNames,
+		Entry, Exit,
+		Pending, NewPending).
+
+comp_stmt(
+	[if([Cond, _], S1, S2), _Pos],
+	  Proc,
+	ProcName,	ChanNames, VarNames,
+	Entry,		Exit,
+	Pending,	NewPending)
+    :-
+	!,
+	% continues the old pendinging since the 2 braches
+	% can't be true at the same time, so this doesn't
+	% affect bisimulation
+	append_pending_code(Cond,      Entry, Pending, PQ1, ChanNames, VarNames),
+	append_pending_code(not(Cond), Entry, Pending, PQ2, ChanNames, VarNames),
+
+	% get the before and after variable list for the new nodes
+	get_state_var(Entry, BeforeVars),
+	get_state_var(Exit, AfterVars),
+	append_var_list(BeforeVars, Cond, BV),
+	append_var_list(AfterVars, S1, AV1),
+	append_var_list(AfterVars, S2, AV2),
+	new_state(Proc, ProcName, VarNames, S1, BV, AV1, Branch1),
+	new_state(Proc, ProcName, VarNames, S2, BV, AV2, Branch2),
+
+	% compile each branch
+	comp_stmt(S1, Proc, ProcName, ChanNames, VarNames, Branch1, Exit, PQ1, NPQ1),
+	comp_stmt(S2, Proc, ProcName, ChanNames, VarNames, Branch2, Exit, PQ2, NPQ2),
+	merge_pending(NPQ1, NPQ2, NewPending).
+
+% Basic statements
+comp_stmt(
+	[in(Chan, Data), _Pos],
+	  _Proc,
+	_ProcName,	ChanNames, VarNames,
+	Entry,		_Exit,
+	Pending,	NewPending)
+    :-
+	!,
+	fill_pending_action(in(Chan, Data), Entry,
+		Pending, NewPending, ChanNames, VarNames).
+
+comp_stmt(
+	[out(Chan, Data), _Pos],
+	  _Proc,
+	_ProcName,	ChanNames, VarNames,
+	Entry,		_Exit,
+	Pending,	NewPending)
+    :-
+	!,
+	fill_pending_action(out(Chan, Data), Entry,
+		Pending, NewPending, ChanNames, VarNames).
+
+comp_stmt(
+	[action(Action), _Pos],
+	  _Proc,
+	_ProcName,	ChanNames, VarNames,
+	Entry,		_Exit,
+	Pending,	NewPending)
+    :-
+	!,
+	fill_pending_action(action(Action), Entry,
+		Pending, NewPending, ChanNames, VarNames).
+
+% termination of process = return
+comp_stmt(
+	[end, _Pos],
+	  _Proc,
+	_ProcName,	ChanNames, VarNames,
+	_Entry,		_Exit,
+	Pending,	[])
+    :-
+	!,
+	close_pending_final(end([]), Pending, ChanNames, VarNames).
+
+% termination of all in this process = local deadlock
+comp_stmt(
+	[zero, _Pos],
+	  _Proc,
+	_ProcName,	ChanNames, VarNames,
+	Entry,		_Exit,
+	Pending,	[])
+    :-
+	!,
+	% assume zero+P = P
+	close_pending_final(Entry, Pending, ChanNames, VarNames).
+
+% process
+comp_stmt(
+	[P, _Pos],
+	  _Proc,
+	ProcName,	ChanNames, VarNames,
+	Entry,		_Exit,
+	Pending,	NewPending)
+    :-
+	is_process(P),
+	!,
+	functor(P, CallName, _),
+	test_assert(directcall(ProcName, CallName)),
+
+	%% test whether there are channels yet to be instantiated
+	get_state_var(Entry, EVars),
+	get_channel(EVars, VarNames, GChan),	% global channel
+	get_expr_var(P, V),
+	get_channel(V, VarNames, Chan),		% channels used by P
+	abs_exclude(Chan, GChan, LChan),	% local channel
+	(LChan == [] ->
+	    NP = Pending
+	 ;  append_pending_code(handlechan(GChan,LChan,_),
+				Entry, Pending, NP, ChanNames, VarNames)
+	),
+	
+	%% close process call quadruple
+	append_pending_exit(proc(P), NP, NewPending).
+
+% Prolog
+comp_stmt(
+	[P, _Pos],
+	  _Proc,
+	_ProcName,	ChanNames, VarNames,
+	Entry,		_Exit,
+	Pending,	NewPending)
+    :-
+	!,
+	append_pending_code(P, Entry, Pending, NewPending, ChanNames, VarNames).
+
+
+comp_stmt(X, _, _, _, _, _, _, _, _) :-
+	!,
+	write('Bug report: illegal input to compiler: '),
+	write(X),
+	writeln(' .').
+
+
+%% ------------------------------------------------------------------
+%%	new_pending
+%%	generate a new quadruple and record it in the list
+new_pending(Entry, Action, Exit, CodeList, Pending, NewPending)
+    :-
+	(is_end_state(Entry) ->
+		% don't start with end state
+		NewPending = Pending
+	;
+		% eliminate variables
+		(Action = nop; true),
+		closetail(Exit),
+		closetail(CodeList),
+		Quad = quad(Entry, Action, Exit, CodeList),
+		append(Pending, [Quad], NewPending)
+	).
+
+% close the pending quadruple list by the exit state
+close_pending(Exit, Pending, NewPending, ChanNames, VarNames) :-
+	close_pending_1(Exit, Pending, NP1, Move, ChanNames, VarNames),
+	(Move == 1 ->
+		% a quadruple has been moved to the final list
+		% must generate a new pending quadruple to link it
+		new_pending(Exit, _,_,_, NP1, NewPending)
+	;
+		NewPending = NP1
+	).
+
+close_pending_1(_, [], [], _, _, _).
+
+close_pending_1(Exit, [Quad|List], NewPending, Move, ChanNames, VarNames) :-
+	Quad = quad(_Entry, Action, _, _CodeList),
+	(Action == nop ->
+		% action not decided, leave it pending
+		NewPending = [Quad|NP1],
+		close_pending_1(Exit, List, NP1, Move, ChanNames, VarNames)
+	;
+		% action decided, move it to quadruple list
+		Move = 1,
+		close_pending_quad(Quad, Exit, ChanNames, VarNames),
+		close_pending_1(Exit, List, NewPending, Move, ChanNames, VarNames)
+	).
+
+% close the pending quadruples no matter whether the action is nop
+close_pending_final(_, [], _, _).
+close_pending_final(Exit, [Quad|List], ChanNames, VarNames) :-
+	Quad = quad(Entry, Action, X, CodeList),
+	((Entry == Exit, X == [], Action == nop, CodeList == []) ->
+		% throw away useless quadruple
+		close_pending_final(Exit, List, ChanNames, VarNames)
+	;
+		close_pending_quad(Quad, Exit, ChanNames, VarNames),
+		close_pending_final(Exit, List, ChanNames, VarNames)
+	).
+
+close_pending_quad(Quad, Exit, ChanNames, VarNames) :-
+	Quad = quad(Entry, Action, X, CodeList),
+	(is_end_state(Exit) ->
+		ExitStack = X
+	;
+		append(X, [Exit], ExitStack)
+	),
+	seq_list_term(CodeList, Code),
+	translate_quad(quad(Entry, Action, ExitStack, Code), ChanNames, VarNames).
+
+
+% fill the action into the pending quadruple list
+%   if the quadruple has already had an action, move it to the quad list
+fill_pending_action(Action, State, Pending, NewPending, ChanNames, VarNames)
+    :-
+	fill_pending_action_1(Action, State, Pending, NP1, Close, ChanNames, VarNames),
+	(Close == 1 ->
+		% some quadruple has been close
+		% must generate a new quadruple from this state
+		new_pending(State, Action, _, _, NP1, NewPending)
+	;
+		NewPending = NP1
+	).
+
+fill_pending_action_1(_, _, [], [], _, _, _).
+fill_pending_action_1(Action, State, [Quad|List], NewPending, Close, ChanNames, VarNames)
+    :-
+	Quad = quad(E, A, X, C),
+	((A == nop, X == []) ->
+		% action not filled & there is not process call
+		NewPending = [quad(E,Action,X,C)|NP1],
+		fill_pending_action_1(Action, State, List, NP1, Close, ChanNames, VarNames)
+	;
+		% already an action or there is a process call
+		Close = 1,
+		close_pending_quad(Quad, State, ChanNames, VarNames),
+		fill_pending_action_1(Action,State,List,NewPending,Close,ChanNames, VarNames)
+	).
+
+%% Add code to the pending quadruple's code list tail
+append_pending_code(Code, State, Pending, NewPending, ChanNames, VarNames) :-
+	append_pending_code_1(Code, State, Pending, NP1, Close, ChanNames, VarNames),
+	(Close == 1 ->
+		new_pending(State, _, _, [Code], NP1, NewPending)
+	;
+		NewPending = NP1
+	).
+
+append_pending_code_1(_, _, [], [], _,_,_).
+append_pending_code_1(Code, State, [Quad|List], NewPending, Close, ChanNames, VarNames)
+    :-
+	Quad = quad(E, A, X, CodeList),
+	(X == [] ->
+		append(CodeList, [Code], NewCodeList),
+		NewQuad = quad(E, A, X, NewCodeList),
+		NewPending = [NewQuad|NewList],
+		append_pending_code_1(Code, State, List, NewList, Close, ChanNames, VarNames)
+	;
+		% quadruple has process call, close it first
+		Close = 1,
+		close_pending_quad(Quad, State, ChanNames, VarNames),
+		append_pending_code_1(Code,State,List,NewPending,Close,ChanNames, VarNames)
+	).
+
+%% Add process call into the exit stack
+append_pending_exit(_, [], []).
+append_pending_exit(CallProc, [Quad|List], [NewQuad|NewList]) :-
+	Quad = quad(E, A, Exit, C),
+	append(Exit, [CallProc], NewExit),
+	NewQuad = quad(E, A, NewExit, C),
+	append_pending_exit(CallProc, List, NewList).
+
+%% Merge two pending quadruple list
+merge_pending(P1, P2, Pending) :-
+	absmerge(P1, P2, Pending).
+
+%% ------------------------------------------------------------------
+
+translate_quad(quad(Entry, Action, Exit, Code), ChanNames, VarNames) :-
+	gen_state_name(Entry, S, State1),
+	gen_exit_stack(Exit, S, Stack2),
+	Entry = state(Proc, _ProcName, _,_),
+	absmerge(ChanNames, VarNames, Names),
+	get_data_vars(Names, Vs),
+	get_var_name_list(Vs, Names, NameList),
+	rec_quad(Proc, State1, Action, Stack2, Code, NameList).
+
+
+%% ------------------------------------------------------------------
+%% State management
+%%
+%% A state contains:
+%%	control state
+%%	data 
+%%	continuation
+
+reset_labels :-
+	retractall(processlabel(_,_)).
+
+get_new_label(ProcName, Label) :-
+	(retract(processlabel(ProcName, L)); L = 0), !,
+	Label is L+1,
+	assert(processlabel(ProcName, Label)).
+
+new_start_state(Proc, Body, Vars, State) :-
+	Proc =.. [Name | Args],
+	Body = [_Exp, [L,C|_]],
+	State = state(Proc, Name, 0, Args),
+	gen_symbol_table(State, (L,C), Vars),
+	gen_state_name(State, end, StateExpr),
+	assert(startstate(Proc, StateExpr)).
+
+new_state(Proc, ProcName, VarNames, [_,[L,C|_]], BeforeVars,AfterVars, State) :-
+	get_new_label(ProcName, Label),
+	abs_intersect(BeforeVars, AfterVars, LiveVars),
+	State = state(Proc, ProcName, Label, LiveVars),
+	/* write symbol table */
+	gen_symbol_table(State, (L,C), VarNames).
+
+get_state_var(end(Var), Var).
+get_state_var(state(_, _, _, Var), Var).
+
+is_end_state(end(_)).
+
+% generate state name for transition
+gen_state_name(state(_, ProcName,PC,LiveVars), S, State) :-
+	gen_label_name(ProcName, PC, PCName),
+	append(LiveVars, [S], Args),
+	State =.. [PCName | Args].
+
+gen_state_name(end(_), S, S).
+
+gen_label_name(ProcName, PC, PCName) :-
+	number_chars(PC, PCList),
+	atom_chars(PCStr, PCList),
+	str_cat(ProcName, '_', PCName1),
+	str_cat(PCName1, PCStr, PCName).
+
+gen_state_name(proc(P), S, State) :-
+	P =.. [CallName | CallArgs],
+	gen_state_name(state(_, CallName,0,CallArgs), S, State).
+
+gen_state_name(par(R,P1,P2), S, par(R,P1,P2,S)).
+
+gen_exit_stack([],S,S).
+gen_exit_stack([State|StateT], S, Stack) :-
+	gen_exit_stack(StateT, S, StackT),
+	gen_state_name(State, StackT, Stack).
+
+
+%% ------------------------------------------------------------------
+%% Symbol table generation
+						% stupid!!! double scan
+get_var_name(V, [(X,Xname,_Xtype)|T], Vname) :-
+	V == X ->
+		Vname = Xname
+	;	get_var_name(V, T, Vname).
+
+get_var_name_list([], _, []).
+get_var_name_list([H|T], VarNames, [(Hname=H)|Tnames]) :-
+	get_var_name(H, VarNames, Hname), !,
+	get_var_name_list(T, VarNames, Tnames).
+get_var_name_list([_|T], VarNames, Tnames) :-
+	% do not list channel variable
+	get_var_name_list(T, VarNames, Tnames).
+
+gen_symbol_table(state(_, ProcName, Label, LiveVars), (L,C), VarNames) :-
+	get_var_name_list(LiveVars, VarNames, StateVarNames),
+	gen_state_name(state(_, ProcName, Label, LiveVars), _, State),
+	assert(symlookup(State, ProcName, (L,C), StateVarNames)).
+
+append_var_list(Vars, Expr, NewVars) :-
+	get_expr_var(Expr, OV),
+	absmerge(Vars, OV, NewVars).
+
+%% ------------------------------------------------------------------
+%% channel
+
+get_data_vars([],[]).
+get_data_vars([(H,_,_)|T], [H|TVars]) :- get_data_vars(T,TVars).
+	
+% get channel variables from all variable list
+get_channel(Vars, VarNames, Chan) :-
+	get_data_vars(VarNames, DataVars),
+	abs_exclude(Vars, DataVars, Chan).

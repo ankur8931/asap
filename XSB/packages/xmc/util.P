@@ -1,0 +1,155 @@
+/* File:      util.P -- general-purpose utilities
+** Author(s): Yifei Dong
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: util.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+%% get the intersection of two lists according to identity
+abs_intersect([], _, []) :- !.
+abs_intersect(_, [], []) :- !.
+abs_intersect([H|T1], S2, D) :-
+	absmember(H, S2) ->
+		D = [H|DT],
+		abs_intersect(T1, S2, DT)
+	;
+		abs_intersect(T1, S2, D).
+
+
+%% Set - Exclude = Remain
+abs_exclude([], _, []).
+
+abs_exclude([H|T], Exclude, Remain) :-
+	absmember(H, Exclude), !,
+	abs_exclude(T, Exclude, Remain).
+
+abs_exclude([H|T], Exclude, [H|Remain]) :-
+	abs_exclude(T, Exclude, Remain).
+	
+
+%% Assert a predicate if it isn't in the database
+test_assert(':-'(H,B))	:- !, (clause(H,B), ! ; assert(':-'(H,B))).
+test_assert(X)		:- clause(X, true), ! ; assert(X).
+
+%% ------------------------------------------------------------------
+%% Variable management
+%%
+
+get_expr_var(Expr, Vars) :-
+	var(Expr), !,
+	Vars = [Expr].
+
+get_expr_var([], []) :- !.
+get_expr_var([H|T], Vars) :-
+	!,
+	get_expr_var(H, Vh),
+	get_expr_var(T, Vt),
+	absmerge(Vh, Vt, Vars).
+
+get_expr_var(Expr, Vars) :-
+	!,
+	Expr =.. [_ | Args],
+	get_expr_var(Args, Vars).
+
+
+%% Compose sequential terms
+seq_term(true, C, C) :- !.
+seq_term(C, true, C) :- !.
+seq_term(fail, _, fail) :- !.
+seq_term(_, fail, fail) :- !.
+seq_term(C1, C2, (C1,C2)).
+
+%% Negate term
+not_term(true, fail) :- !.
+not_term(fail, true) :- !.
+%not_term((not(C1),not(C2)), (C1;C2)) :- !.
+%not_term((not(C1);not(C2)), (C1,C2)) :- !.
+%not_term(not(C), C) :- !.
+not_term(C, not(C)).
+
+%% translate term list into one compositional term
+seq_list_term([], true).
+seq_list_term([P|Pt], T) :- seq_list_term(Pt, Tt), seq_term(P,Tt,T).
+
+%% two lists have the same length
+same_length(L1, L2) :- nonvar(L1), !, length(L1, N), length(L2, N).
+same_length(L1, L2) :- nonvar(L2), !, length(L2, N), length(L1, N).
+
+%% List+Term+List[+Term+List]
+sandwich(R1, S, R2, List) :-
+	append(R1, [S|R2], List).
+
+sandwich(R1, S, R2, T, R3, List) :-
+	append(R1, [S|R2], R),
+	append(R, [T|R3], List).
+
+%%-----------------------------------------------------------------------------
+%% Partial evaluate Prolog predicate
+pe_term((C1,C2), P) :-
+	!,
+	pe_term(C1,P1),
+	(P1 == fail ->
+		P = fail
+	;
+		pe_term(C2,P2),
+		seq_term(P1,P2,P)
+	).
+
+pe_term(not(C), P) :- !,
+	% pe_term(C, P1), not_term(P1, P).
+	not_term(C, P).
+
+pe_term((A < B),   P) :- !, pe_compare('<', A, B, P).
+pe_term((A > B),   P) :- !, pe_compare('>', A, B, P).
+pe_term((A =< B),  P) :- !, pe_compare('=<', A, B, P).
+pe_term((A >= B),  P) :- !, pe_compare('>=', A, B, P).
+pe_term((A =:= B), P) :- !, pe_compare('=:=', A, B, P).
+pe_term((A =\= B), P) :- !, pe_compare('=\=', A, B, P).
+
+pe_term((A == B),  P) :- !, pe_compare('==', A, B, P).
+pe_term((A \== B), P) :- !, pe_compare('\==', A, B, P).
+
+% calculation
+pe_term((A is B), P) :- !,
+	(ground(B) ->
+		(call((A is B)) -> P = true ; P = fail)
+	;
+		P = (A is B)
+	).
+
+% evaluate unification
+pe_term((A = B), P) :- !, (A=B -> P = true ; P = fail).
+
+% Terms of any other pattern remain the unchanged
+pe_term(P, P).
+
+% implement T =.. [F,A,B]
+univ3(F,A,B, T) :-
+	functor(T, F, 2),
+	arg(1, T, A),
+	arg(2, T, B).
+
+pe_compare(Compare, A, B, P) :-
+	univ3(Compare,A,B, C),
+	( (ground(A), ground(B)) ->
+		( call(C) -> P = true ; P = fail )
+	;
+		P = C
+	).

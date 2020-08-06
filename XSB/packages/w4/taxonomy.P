@@ -1,0 +1,32 @@
+:- op( 900, fy, neg ).
+
+:- module(animals).
+animal(A) :- mammal(A).
+animal(A) :- bird(A).
+animal(A) :- 'dead animal'(A).
+mammal(A) :- bat(A).
+bird(A) :- penguin(A).
+bird('Tweety').
+mammal('Pluto').
+penguin('Joe').
+bat('Dracula').
+'dead animal'('Dracula').
+neg flies(A) :- animal(A),neg 'flying animal'(A),not(flies(A)).
+neg 'flying animal'(A) :- not('flying animal'(A)).
+flies(A) :- bat(A),'flying bat'(A),not(neg flies(A)).
+'flying bat'(A) :- not(neg 'flying bat'(A)).
+flies(A) :- bird(A),'flying bird'(A),not(neg flies(A)).
+'flying bird'(A) :- not(neg 'flying bird'(A)).
+neg flies(A) :- penguin(A),neg 'flying penguin'(A),not(flies(A)).
+neg 'flying penguin'(A) :- not('flying penguin'(A)).
+neg flies(A) :- 'dead animal'(A),neg 'flying dead'(A),not(flies(A)).
+neg 'flying dead'(A) :- not('flying dead'(A)).
+neg 'flying bat'(A) :- 'dead animal'(A),bat(A),neg 'flying dead bat'(A).
+neg 'flying dead bat'(A) :- not('flying dead bat'(A)).
+neg 'flying bird'(A) :- 'dead animal'(A),bird(A),neg 'flying dead bird'(A).
+neg 'flying dead bird'(A) :- not('flying dead bird'(A)).
+'flying dead bat'('Dracula').
+'flying animal'(A) :- bat(A),'flying bat'(A).
+'flying animal'(A) :- bird(A),'flying bird'(A).
+'flying dead'(A) :- bat(A),'flying dead bat'(A).
+neg 'flying bird'(A) :- penguin(A),neg 'flying penguin'(A).

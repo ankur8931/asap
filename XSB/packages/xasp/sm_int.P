@@ -1,0 +1,781 @@
+/* File:      sm_int.P
+** Author(s): Castro, Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: sm_int.P,v 1.6 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+:- compiler_options([ciao_directives]).
+
+:- comment(module,"This interface allows efficient access from XSB to
+the C-level Smodels API.  When using the interface, Smodels can be
+linked to XSB so that it can be used to evaluate combinatorial or
+satisfiability problems that may be difficult or inefficient to do
+directly in XSB.   
+
+This interface contains two levels: the @em{cooked} level and the
+@em{raw} level.  The cooked level interns rules in an XSB @em{clause
+store}, and translates general weight constraint rules @cite{SiNS02}
+into a @em{normal form} that the Smodels engine can evaluate.  When
+the programmer has determined that enough clauses have been added to
+the store to form a semantically complete sub-program, the program is
+@em{committed}.  This means that information in the clauses is copied
+to Smodels and interned using Smodels data structures so that stable
+models of the clauses can be computed and examined.  By convention,
+the cooked interface ensures that the atom @tt{true} is present in all
+stable models, and the atom @tt{false} is false in all stable models.
+The raw level models closely the Smodels API, and demands, among other
+things, that each atom in a stable sub-program has been translated
+into a unique integer.  The raw level also does not provide
+translation of arbitrary weight constraint rules into the normal form
+requried by the SModels engine.  As a result, the raw level is
+significantly more difficult to directly use than the cooked level.
+While we make public the APIs for both the raw and cooked level, we
+provide support only for users of the cooked interface.
+
+As mentioned above Smodels extends normal programs to allow weight
+constraints, which can be useful for combinatorial problems.  However,
+the syntax used by Smodels for weight constraints does not follow ISO
+Prolog syntax so that the XSB syntax for weight constraints differs in
+some respects from that of SModels.  Our syntax is defined as follows,
+where @em{A} is a Prolog atom,  @em{N} a non-negative integer,
+and @em{I} an arbitrary integer.
+
+@begin{itemize}
+
+@item @em{GeneralLiteral ::= WeightConstraint | Literal }
+
+@item @em{WeightConstraint ::= weightConst(Bound,WeightList,Bound)}
+
+@item @em{WeightList ::= ""List of WeightLiterals""}
+
+@item @em{WeightLiteral ::= Literal | weight(Literal,N)}
+
+@item @em{Literal ::= A | not(A)}
+
+@item @em{Bound ::== I | undef}
+
+@end{itemize}
+
+Thus an example of a weight constraint might be: 
+@begin{itemize}
+weightConst(1,[weight(a,1),weight(not(b),1)],2)
+@end{itemize}
+We note that if a user does not wish to put an upper or lower bound on
+a weight constraint, she may simply set the bound to @tt{undef} or to
+an integer less than @tt{0}.  
+ 
+The intuitive semantics of a weight constraint
+@tt{weightConst(Lower,WeightList,Upper)}, in which @tt{List} is is
+list of @em{WeightLiterals} that it is true in a model @em{M} whenever
+the sum of the weights of the literals in the constraint that are true
+in @em{M} is between the lower @tt{Lower} and @tt{Upper}.  Any literal
+in a @em{WeightList} that does not have a weight explicitly attached
+to it is taken to have a weight of @em{1}.
+
+In a typical session, a user will initialize the Smodels interface,
+add rules to the clause store until it contains a semantically
+meaningful sub-problem.  He can then specify a compute statement if
+needed, commit the rules, and compute and examine stable models via
+backtracking.  If desired, the user can then re-initialize the
+interface, and add rules to or retract rules from the clause store
+until another semantically meaningful sub-program is defined; and then
+commit, compute and examine another stable model @footnote{Currently,
+only normal rules can be retracted.}.
+
+Neither the raw nor the cooked interface currently supports explicit
+negation.
+
+The process of adding information to a store and periodically
+evaluating it is vaguely reminiscent of the Constraint Logic
+Programming (CLP) paradigm, but there are important differences.  In
+CLP, constraints are part of the object language of a Prolog program:
+constraints are added to or projected out of a constraint store upon
+forward execution, removed upon backwards execution, and iteratively
+checked.  When using this interface, on the other hand, an XSB program
+essentially acts as a compiler for the clause store, which is treated
+as a target language.  Clauses must be explicitly added or removed
+from the store, and stable model computation cannot occur
+incrementally -- it must wait until all clauses have been added to the
+store.  We note in passing that the @tt{xnmr} module provides an
+elegant but specialized alternative.  @tt{xnmr} integrates stable
+models into the object language of XSB, by computing ""relevant""
+stable models from the the residual answers produced by query
+evaluation.  It does not however, support the weighted constriant
+rules, compute statements and so on that this module supports.
+
+ ").
+
+%------------------
+
+retract_clause_store:- 
+	retractall('$sm_pos_compute'(_)),
+	retractall('$sm_neg_compute'(_)),
+	reset_tries.
+%	retractall('$sm_weightrule'(_,_,_,_))
+%	retractall('$sm_atomnum'(_,_)),
+%	retractall('$sm_basicrule'(_,_,_)),
+%	retractall('$sm_fact'(_)),
+%	retractall('$sm_choicerule'(_,_,_)),
+%	retractall('$sm_constraintrule'(_,_,_,_)).
+
+:- comment(smcInit/0,"Initializes the XSB clause store and the Smodels
+API.  This predicate must be executed before building up a clause
+store for the first time.  The corresponding raw predicate,
+@pred{smrInit(Num)}, initializes the Smodels API assuming that it will
+require at most @tt{Num} atoms.").
+
+smcInit:- 
+	smodelsInit,
+	retract_clause_store,
+	private_conset('$sm_atomctr', 0),  	
+	private_conset(sm_gennum_val, 0),       
+	smcAddRule(true,[]),
+	translate_atom(false,_Num),
+	smcSetCompute([not(false)]).
+
+:- comment(smcReInit/0,"Reinitializes the Smodels API, but does
+@em{not} affect the XSB clause store.  This predicate is provided so
+that a user can reuse rules in a clause store in the context of more
+than one sub-program.").
+
+smcReInit:- 
+	smodelsInit.
+
+:- comment(hide,smrInit/1).
+
+smrInit(NumAtoms):- 
+	smodelsInit,
+	smodelsNumAtoms(NumAtoms).
+
+%-----------------------------------------------------------
+% Adding Rules
+%-----------------------------------------------------------
+
+:- comment(smcAddRule/2,"@tt{smcAddRule(Head,Body)} interns a ground
+rule into the XSB clause store.  @tt{Head} must be a
+@em{GeneralLiteral} as defined at the beginning of this section, and
+@tt{Body} must be a list of @em{GeneralLiterals}.  Upon interning, the
+rule is translated into a normal form, if necessary, and atoms are
+translated to unique integers.  The corresponding raw predicates,
+@pred{smrAddBasicRule/3}, @pred{smrAddChoiceRule/3},
+@pred{smrAddConstraintRule/4}, and @pred{smrAddWeightRule/3} can be
+used to add raw predicates immediately into the SModels API. ").
+
+smcAddRule(Head,Body):- 
+%	writeln(smcAddRule(Head,Body)),
+	(member(weightConst(_,_,_),[Head|Body]) -> 
+	    smcAddGeneralRule(Head,Body)
+	  ; smcAddBasicRule(Head,Body) ).
+	
+%----------------
+
+smcAddSemiDefiniteRule(Head,Body):- 
+	translateWCBody(Body,NBdy),
+	smcAddBasicRule(Head,NBdy).
+
+%----------------
+
+smcAddGeneralRule(Head,Body):- 
+	translateWCHead(Head,NewHead,LowH,UpH),
+	translateWCBody(Body,NBdy),
+	(is_list(NewHead) -> 
+	    smcAddChoiceRule(NewHead,NBdy),
+	    (LowH \== undef -> 
+	        smcAddBasicRule(false,[not(LowH)|NBdy])
+	      ; true),
+	    (UpH \== undef -> 
+	        smcAddBasicRule(false,[UpH|NBdy])
+	      ; true)
+	  ; smcAddBasicRule(NewHead,NBdy) ).
+
+translateWCHead(weightConst(Lower,Literals,Upper), LitsOut, LowH, UpH):- !,
+	translateWC(weightConst(Lower,Literals,Upper), LitsOut, LowH, UpH).
+translateWCHead(Head,Head,undef,undef):- atomic(Head).	
+
+translateWCBody([],[]).
+translateWCBody([weightConst(Lower,Literals,Upper)|R],Lits):- !,
+	translateWC(weightConst(Lower,Literals,Upper),_,LowH,UpH),
+	(UpH \== undef -> Lits = [not(UpH)|Lits1] ; Lits = Lits1),
+	(LowH \== undef -> Lits1 = [LowH|Lits2] ; Lits1 = Lits2),
+	translateWCBody(R,Lits2).
+translateWCBody([H|R],[H|R1]):- 
+	translateWCBody(R,R1).
+
+translateWC(weightConst(Lower,Literals,Upper),Litsout,LowHead,UpHead):- 
+	extract_literals(Literals,Litsout,Has_weights),
+	(is_undef(Lower) -> 
+	    LowHead = undef
+          ; 
+  	    sm_gensym(lower, LowHead),	
+	    (nonvar(Has_weights) -> 
+	         smcAddWeightRule(LowHead,Literals,Lower)
+	      ;
+	         smcAddConstraintRule(LowHead,Literals,Lower) ) ),
+	(is_undef(Upper) -> 
+	    UpHead = undef
+          ; 
+	    sm_gensym(upper, UpHead),
+	    Upper1 is Upper + 1,
+	    (nonvar(Has_weights) -> 
+     	        smcAddWeightRule(UpHead,Literals,Upper1) 
+	      ; 
+     	        smcAddConstraintRule(UpHead,Literals,Upper1) ) ).
+
+is_undef(undef):-!.
+is_undef(N):- number(N),N < 0.
+
+extract_literals([],[],_).
+extract_literals([weight(not(_L),_W)|R],R1,1):- !,
+	extract_literals(R,R1,1).
+extract_literals([weight(L,_W)|R],[L|R1],1):- !,
+	extract_literals(R,R1,1).
+extract_literals([not(_L)|R],R1,Has_weights):- !,
+	extract_literals(R,R1,Has_weights).
+extract_literals([L|R],[L|R1],Has_weights):- 
+	extract_literals(R,R1,Has_weights).
+	
+sm_gensym(Root, Sym) :-
+	(atom(Root),var(Sym)
+	->  sm_gennum(N),
+	    number_codes(N,NLst), atom_codes(NAtm, NLst),
+	    str_cat(Root, NAtm, Sym)
+	;   abort('Wrong type argument in gensym/2')
+	).
+
+sm_gennum(N) :- 
+	private_conget(sm_gennum_val, O), 
+	N is O + 1, 
+	private_conset(sm_gennum_val, N).
+
+%----------------
+smcAddChoiceRule(Head,Body):- 
+	translate_choice_head(Head,A),
+	translate_body(Body,Pos,Neg),
+	'assert_$sm_choicerule'(A,Pos,Neg).
+
+translate_choice_head([],[]).
+translate_choice_head([H|T],[Num|NT]):- 
+	(H = not(_) -> 
+	    abort(('negative literal in head of choice rule'(H))) ; true),
+	translate_atom(H,Num),
+	translate_choice_head(T,NT).
+
+%----------------
+smcAddConstraintRule(Head,Body,Bound):- 
+	translate_atom(Head,A),
+	translate_body(Body,Pos,Neg),
+	'assert_$sm_constraintrule'(A,Pos,Neg,Bound).
+
+%----------------
+smcAddWeightRule(Head,Body,Bound):- 
+	translate_atom(Head,A),
+	translate_weight_body(Body,Pos,Neg),
+	'assert_$sm_weightrule'(A,Pos,Neg,Bound).
+
+translate_weight_body([],[],[]).
+translate_weight_body([weight(not(A),W)|R],PR,[weight(N,W)|NR]):- !,
+	translate_atom(A,N),
+	translate_weight_body(R,PR,NR).
+translate_weight_body([weight(A,W)|R],[weight(N,W)|PR],NR):- !,
+	translate_atom(A,N),
+	translate_weight_body(R,PR,NR).
+translate_weight_body([not(A)|R],PR,[weight(N,1)|NR]):- !,
+	translate_atom(A,N),
+	translate_weight_body(R,PR,NR).
+translate_weight_body([A|R],[weight(N,1)|PR],NR):- !,
+	translate_atom(A,N),
+	translate_weight_body(R,PR,NR).
+
+%----------------
+
+smcAddBasicRule(Head,Body):- 
+	translate_atom(Head,A),
+	translate_body(Body,Pos,Neg),
+	'assert_$sm_basicrule'(A,Pos,Neg).
+
+translate_atom(Atom,Num):- 
+	('$sm_atomnum'(Atom,Num) -> 
+	    true
+          ; smNewAtomNum(Num),
+	    assert_atomnum(Atom,Num) ).
+
+translate_body([],[],[]).
+translate_body([not(A)|R],PR,[N|NR]):- !,
+	translate_atom(A,N),
+	translate_body(R,PR,NR).
+translate_body([A|R],[N|PR],NR):- 
+	translate_atom(A,N),
+	translate_body(R,PR,NR).
+
+%----------------
+:- comment(hide,smrAddBasicRule/3).
+
+smrAddBasicRule(Head,Pos,Neg) :-
+	smodelsBeginBasicRule,
+	smodelsAddHead(Head),
+	smAddPositives(Pos),
+	smAddNegatives(Neg),
+	smodelsEndRule.
+
+smAddPositives([]).
+smAddPositives([Pos|LPos]) :-
+	smodelsAddPosBody(Pos),
+	smAddPositives(LPos).
+
+smAddNegatives([]).
+smAddNegatives([Neg|LNeg]) :-
+	smodelsAddNegBody(Neg),
+	smAddNegatives(LNeg).
+
+%----------------
+smcAddFact(Head):- 
+	translate_atom(Head,A),
+	'assert_$sm_fact'(A).
+
+%----------------
+
+:- comment(hide,smrAddChoiceRule/3).
+
+smrAddChoiceRule(HeadList,Pos,Neg) :-
+	smodelsBeginChoiceRule,
+	smrAddHeadList(HeadList),
+	smAddPositives(Pos),
+	smAddNegatives(Neg),
+	smodelsEndRule.
+
+smrAddHeadList([]).
+smrAddHeadList([H|T]):- 
+	smodelsAddHead(H),
+	smrAddHeadList(T).
+
+%----------------
+
+:- comment(hide,smrAddConstraintRule/4).
+
+smrAddConstraintRule(Head,Pos,Neg,Weight) :-
+	smodelsBeginConstraintRule,
+	smodelsAddHead(Head),
+	smAddPositives(Pos),
+	smAddNegatives(Neg),
+        smodelsSetBody(Weight),
+	smodelsEndRule.
+
+%------------------
+
+:- comment(hide,smrAddWeightRule/4).
+
+smrAddWeightRule(Head,Pos,Neg,Weight) :-
+	smodelsBeginWeightRule,
+	smodelsAddHead(Head),
+	smAddWPositives(Pos),
+	smAddWNegatives(Neg),
+        smodelsSetWeight(Weight),
+	smodelsEndRule.
+
+smAddWPositives([]).
+smAddWPositives([weight(Pos,W)|LPos]) :-
+	smodelsAddWPosBody(Pos,W),
+	smAddWPositives(LPos).
+smAddWPositives([Pos|LPos]) :-
+	smodelsAddWPosBody(Pos,1),
+	smAddWPositives(LPos).
+
+smAddWNegatives([]).
+smAddWNegatives([weight(Pos,W)|LPos]) :-
+	smodelsAddWNegBody(Pos,W),
+	smAddWNegatives(LPos).
+smAddWNegatives([Pos|LPos]) :-
+	smodelsAddWNegBody(Pos,1),
+	smAddWNegatives(LPos).
+
+%-----------------------------------------------------------
+% Retracting Rules
+%-----------------------------------------------------------
+
+:- comment(smcRetractRule/2,"@tt{smcRetractBasicRule(Head,Body)}
+retracts a ground (basic) rule from the XSB clause store.  Currently,
+this predicate cannot retract rules with weight constraints: @tt{Head}
+must be a @em{Literal} as defined at the beginning of this section,
+and @tt{Body} must be a list of @em{GeneralLiterals}.  ").
+
+/*
+smcRetractRule(Head,Body):- 
+	'$sm_atomnum'(Head,A),
+	retranslate_body(Body,Pos,Neg),
+	retractall( '$sm_basicrule'(A,Pos,Neg) ).
+
+retranslate_body([],[],[]).
+retranslate_body([not(A)|R],PR,[N|NR]):- !,
+	'$sm_atomnum'(A,N),
+	retranslate_body(R,PR,NR).
+retranslate_body([A|R],[N|PR],NR):- !,
+	'$sm_atomnum'(A,N),
+	retranslate_body(R,PR,NR).
+
+*/
+%-----------------------------------------------------------
+% Compute statements
+%-----------------------------------------------------------
+
+:- comment(smcSetCompute/1,"@pred{smcSetCompute(+List)} requires that
+@tt{List} be a list of literals -- i.e. atoms or the default negation
+of atoms).  This predicate ensures that each literal in @tt{List} is
+present in the stable models returned by Smodels.  By convention the
+cooked interface ensures that @tt{true} is present and @tt{false}
+absent in all stable models.  After translating a literal it calls the
+raw interface predicates @pred{smrSetPosCompute/1} and
+@pred{smrSetNegCompute/1}").
+
+smcSetCompute([]).
+smcSetCompute([L|T]):- 
+	smcSetCompute_1(L),
+	smcSetCompute(T).
+
+smcSetCompute_1(not(A)):- 
+	'$sm_atomnum'(A,N),
+	assert('$sm_neg_compute'(N)),!.
+smcSetCompute_1(A):- 
+	'$sm_atomnum'(A,N),
+	assert('$sm_pos_compute'(N)),!.
+
+:- comment(hide,smrSetPosCompute/1).
+
+smrSetPosCompute(N):- 
+	smodelsSetPosCompute(N).	
+
+:- comment(hide,smrSetNegCompute/1).
+
+smrSetNegCompute(N):- 
+	smodelsSetNegCompute(N).	
+
+%-----------------------------------------------------------
+% Computing Models
+%-----------------------------------------------------------
+
+:- comment(smcCommitProgram/0,"This predicate translates all of the
+clauses from the XSB clause store into the data structures of the
+Smodels API.  It then signals to the API that all clauses have been
+added, and initializes the Smodels computation.  The corresponding raw
+predicate, @pred{smrCommitProgram}, performs only the last two of
+these features.").
+
+smcCommitProgram :-
+	private_conget('$sm_atomctr', N),  
+%        '$sm_atomctr'(N),
+	smodelsNumAtoms(N),
+	translate_rules_to_smodels,
+	translate_compute_statements,
+	smodelsCommitRules.
+
+/*
+Data structures: 
+  '$sm_basicrule'(Head,Poslist,Neglist).
+  '$sm_choicerule'(Headlist,Poslist,Neglist).
+  '$sm_constraintrule'(Head,Lower,Poslist,Neglist).
+  '$sm_generaterule'(Headlist,Poslist,Neglist).
+*/
+
+translate_rules_to_smodels:- 
+  	'$sm_fact'(Head),
+	smrAddBasicRule(Head,[],[]),
+	fail.
+translate_rules_to_smodels:- 
+  	'$sm_basicrule'(Head,Pos,Neg),
+	smrAddBasicRule(Head,Pos,Neg),
+	fail.
+translate_rules_to_smodels:- 
+	'$sm_choicerule'(HeadList,Pos,Neg),
+	smrAddChoiceRule(HeadList,Pos,Neg),
+  	fail.
+translate_rules_to_smodels:- 
+	'$sm_constraintrule'(Head,Pos,Neg,Bound),
+	smrAddConstraintRule(Head,Pos,Neg,Bound),
+  	fail.
+translate_rules_to_smodels:- 
+	'$sm_weightrule'(Head,Pos,Neg,Bound),
+	smrAddWeightRule(Head,Pos,Neg,Bound),
+  	fail.
+translate_rules_to_smodels.
+
+translate_compute_statements:- 
+	'$sm_pos_compute'(N),
+	smodelsSetPosCompute(N),
+	fail.
+translate_compute_statements:- 
+	'$sm_neg_compute'(N),
+	smodelsSetNegCompute(N),
+	fail.
+translate_compute_statements.
+	
+:- comment(hide,smrCommitProgram/0).
+
+smrCommitProgram :-
+	smodelsCommitRules.
+
+%------------------
+
+:- comment(smComputeModel/0,"This predicate calls Smodels to compute a
+stable model, and succeeds if a stable model can be computed.  Upon
+backtracking, the predicate will continue to succeed until all stable
+models for a given program cache have been computed.
+@pred{smComputeModel/0} is used by both the raw and the cooked
+levels.").
+
+smComputeModel:- 
+	smodelsExistsModel(Var),Var =\= 0,
+	smComputeModel1.
+
+smComputeModel1.
+smComputeModel1:- smComputeModel.
+
+:- comment(smcExamineModel/1,"@pred{smcExamineModel/(-Atoms)} returns
+the list of atoms that are true in the most recently computed stable
+model.  To examine the truth values of particular literals, use
+@pred{smcExamineModel/2}.").
+
+smcExamineModel(Pos):- 
+	private_conget('$sm_atomctr', N), 
+%        '$sm_atomctr'(N),
+	raw_literals_in_model(N,PosNums),
+	translate_atomlist(PosNums,Pos).	
+
+translate_atomlist([],[]).
+translate_atomlist([N|NR],[A|AR]):- 
+	'$sm_atomnum'(A,N),
+	translate_atomlist(NR,AR).
+
+:- comment(smcExamineModel/2,"@pred{smcExamineModel/(+List,-Atoms)}
+filters the literals in @tt{List} to determine which are true in the
+most recently computed stable model.  These true literals are returned
+in the list @tt{Atoms}.  @pred{smrExamineModel(+N,-Atoms)} provides
+the corresponding raw interface in which integers from @tt{0} to
+@tt{N}, true in the most recently computed stable model, are input and
+output.").
+
+smcExamineModel(List,Pos):- 
+	literals_in_model(List,Pos).
+
+literals_in_model([],[]).
+literals_in_model([not(A)|R],Pos):- !,
+	('$sm_atomnum'(A,Num) -> 
+	    true 
+	  ; abort(('smcExamineModel/2: ',A,
+		   ' is not a valid literal in the smodels cache'))),
+	smodelsCheckAtom(Num,Var),
+	(Var == 0 -> Pos = [not(A)|P] ; Pos = P),
+	literals_in_model(R,P).
+literals_in_model([A|R],Pos):- 
+	('$sm_atomnum'(A,Num) -> 
+	    true 
+	  ; abort(('smcExamineModel/2: ',A,
+		   ' is not a valid literal in the smodels cache'))),
+	smodelsCheckAtom(Num,Var),
+	(Var \== 0 -> Pos = [A|P] ; Pos = P),
+	literals_in_model(R,P).
+
+:- comment(hide,smrExamineModel/2).
+smrExamineModel(N,Pos):- 
+	raw_literals_in_model(N,Pos).
+
+raw_literals_in_model(0,[]):-!.
+raw_literals_in_model(N,Pos):- 
+	smodelsCheckAtom(N,Var),
+	(Var \== 0 -> Pos = [N|P] ; Pos = P),
+	N1 is N - 1,
+	raw_literals_in_model(N1,P).
+
+:- comment(smEnd/0,"Reclaims all resources consumed by Smodels and
+the various APIs.  This predicate is used by both the cooked and the
+raw interfaces.").
+
+smEnd :-
+	retract_clause_store,
+	private_conset('$sm_atomctr', 1),
+	smodelsClose.
+
+%-----------------------------------------------------------
+
+smNewAtomNum(N1) :- 
+	private_conget('$sm_atomctr', N), 
+	N1 is N + 1,
+	private_conset('$sm_atomctr', N1).
+
+:- comment(print_cache/0,"This predicate can be used to examine the
+XSB clause store, and may be useful for debugging.").
+
+:- import thread_self/1 from thread.
+
+print_cache:- 
+%	writeln('-----------------------------'),
+	thread_self(N),
+%       writeln(thread(N)),
+	fail.
+print_cache:- 
+	'$sm_fact'(N),
+	'$sm_atomnum'(A,N),
+	writeln(fact(A)),
+	fail.
+print_cache:- 
+	'$sm_basicrule'(N,Pos,Neg),
+	'$sm_atomnum'(A,N),
+	translate_poslitlist(Pos,Posatom),
+	translate_neglitlist(Neg,Negatom),
+	writeln(basicrule(A,[Posatom,Negatom])),
+	fail.
+print_cache:- 
+	'$sm_constraintrule'(N,Pos,Neg,Bound),
+	'$sm_atomnum'(A,N),
+	translate_poslitlist(Pos,Posatom),
+	translate_neglitlist(Neg,Negatom),
+	writeln(constrrule(A,weightConst(Bound,[Posatom,Negatom]),undef)),
+	fail.
+print_cache:- 
+	'$sm_choicerule'(Nlist,Pos,Neg),
+	translate_poslitlist(Nlist,Hlist),
+	translate_poslitlist(Pos,Posatom),
+	translate_neglitlist(Neg,Negatom),
+	writeln(choicerule(Hlist,[Posatom,Negatom])),
+	fail.
+print_cache:- 
+	'$sm_weightrule'(N,Pos,Neg,Bound),
+	'$sm_atomnum'(A,N),
+	translate_poslitlist(Pos,Posatom),
+	translate_neglitlist(Neg,Negatom),
+	writeln(weightrule(A,weightConst(Bound,[Posatom,Negatom]),undef)),
+	fail.
+print_cache.
+
+	
+translate_neglitlist([],[]).
+translate_neglitlist([weight(N,W)|NR],[not(A)=W|AR]):- !,
+	'$sm_atomnum'(A,N),
+	translate_neglitlist(NR,AR).
+translate_neglitlist([N|NR],[not(A)|AR]):- 
+	'$sm_atomnum'(A,N),
+	translate_neglitlist(NR,AR).
+
+translate_poslitlist([],[]).
+translate_poslitlist([weight(N,W)|NR],[A=W|AR]):- !,
+	'$sm_atomnum'(A,N),
+	translate_poslitlist(NR,AR).
+translate_poslitlist([N|NR],[A|AR]):- 
+	'$sm_atomnum'(A,N),
+	translate_poslitlist(NR,AR).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- dynamic atomnum_trie/1.
+
+reset_tries:- 
+	(atomnum_trie(F) -> delete_trie(F),
+		            retractall(atomnum_trie(_)) ; true),
+	(conset_trie(F) -> delete_trie(F),
+		            retractall(conset_trie(_)) ; true),
+	new_trie(A),
+	assert(atomnum_trie(A)),
+	new_trie(C),
+	assert(conset_trie(C)).
+
+assert_atomnum(One,Two):- 
+	atomnum_trie(F),
+	trie_intern(atomnum(One,Two),F,_,_,_).
+
+'$sm_atomnum'(One,Two):- 
+	atomnum_trie(F),
+	trie_interned(atomnum(One,Two),F,_,_).
+
+%-----
+'assert_$sm_fact'(A):- 
+	atomnum_trie(F),
+	trie_intern(sm_fact(A),F,_,_,_).
+
+'$sm_fact'(A):- 
+	atomnum_trie(F),
+	trie_interned(sm_fact(A),F,_,_).
+
+%-----
+'assert_$sm_basicrule'(A,B,C):- 
+	atomnum_trie(F),
+	trie_intern(sm_basicrule(A,B,C),F,_,_,_).
+
+'$sm_basicrule'(A,B,C):- 
+	atomnum_trie(F),
+	trie_interned(sm_basicrule(A,B,C),F,_,_).
+
+%-----
+'assert_$sm_choicerule'(A,B,C):- 
+	atomnum_trie(F),
+	trie_intern(sm_choicerule(A,B,C),F,_,_,_).
+
+'$sm_choicerule'(A,B,C):- 
+	atomnum_trie(F),
+	trie_interned(sm_choicerule(A,B,C),F,_,_).
+
+%-----
+'assert_$sm_constraintrule'(A,B,C,D):- 
+	atomnum_trie(F),
+	trie_intern(sm_constraintrule(A,B,C,D),F,_,_,_).
+
+'$sm_constraintrule'(A,B,C,D):- 
+	atomnum_trie(F),
+	trie_interned(sm_constraintrule(A,B,C,D),F,_,_).
+
+%-----
+'assert_$sm_weightrule'(A,B,C,D):- 
+	atomnum_trie(F),
+	trie_intern(sm_weightrule(A,B,C,D),F,_,_,_).
+
+'$sm_weightrule'(A,B,C,D):- 
+	atomnum_trie(F),
+	trie_interned(sm_weightrule(A,B,C,D),F,_,_).
+
+:- dynamic conset_trie/1.
+
+/*
+private_conget(Tag,Value):- conget(Tag,Value).
+private_conset(Tag,Value):- conset(Tag,Value).
+*/
+:- import trie_pras_unify/2,trie_pras_insert/2,trie_pras_delete/2 from intern.
+
+private_conget(Tag,Value):-
+	conset_trie(Root),
+	trie_pras_unify(Root,pair(Tag,Value)).
+
+private_conset(Tag,Value):-
+	conset_trie(Root),
+	(trie_pras_unify(Root,pair(Tag,V)) -> 
+	  trie_pras_delete(Root,pair(Tag,V)) ; true),
+	trie_pras_insert(Root,pair(Tag,Value)),!.
+
+/*
+private_conget(Tag,Value):-
+	conset_trie(Root),
+	trie_interned(tagged(Tag,Value),Root).
+
+private_conset(Tag,Value):-
+	conset_trie(Root),
+	(trie_interned(tagged(Tag,V),Root) -> 
+	  deterministic_trie_unintern(tagged(Tag,V),Root) ; true),
+	deterministic_trie_intern(tagged(Tag,Value),Root),!.
+*/
+
+end_of_file.

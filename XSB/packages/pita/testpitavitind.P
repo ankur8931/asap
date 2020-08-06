@@ -1,0 +1,100 @@
+/* File:      tetpitaprismvit.P
+** Author(s): Fabrizio Riguzzi and Terrance Swift
+** Contact:   fabrizio.riguzzi@unife.it, xsb-contact@cs.sunysb.edu
+**
+** Copyright (C) Copyright: Fabrizio Riguzzi and Terrance Swift
+**                          ENDIF - University of Ferrara
+**                          Centro de Inteligencia Artificial,
+**                          Universidade Nova de Lisboa, Portugal
+**
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+**
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+**
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+
+/*
+
+Use
+:-main.
+to execute the tests
+
+*/
+:-[pitavitind].
+
+epsilon(0.0001).
+
+
+close_to(V,T):-
+	epsilon(E),
+	TLow is T-E,
+	THigh is T+E,
+	TLow<V,
+	V<THigh.
+
+main:-
+	files(F),
+	test_files(F),
+	write('Test successful\n').
+main:-
+	write('Test unsuccessful.\n').
+
+test_files([]).
+
+test_files([H|T]) :-
+	atom_concat('examples/',H,NH),
+	load(NH),
+	findall(f(Q,P),test(H,Q,P),L),
+	test_all(H,L),
+	test_files(T).
+
+test_all(_F,[]).
+
+test_all(F, [ f(Q,P) | T ]) :-
+	fmt_write("File: %S, qeury: %S, expected probability: %f\n",f(F,Q,P)),
+	prob(Q,e(E,Prob),TC,TW),!,
+	fmt_write("Actual probability: %fl\nCPU time: %f Wall time: %f\n",f(Prob,TC,TW)),
+	write('Explanation '),
+	write(E),nl,nl,
+	close_to(Prob,P),
+	test_all(F,T).
+
+
+files([coin,coin2,alarm,light,mendel,hmm]).
+
+test(alarm,alarm(t),0.144).
+
+test(light,light,0.5).
+test(light,replace,0.5).
+
+test(hmm,hmm([a]),0.083333333).
+test(hmm,hmm([a,a]),0.006944444).
+test(hmm,hmm([a,a,a]),0.000578704).
+
+test(mendel,cg(s,1,p),0.125).
+test(mendel,cg(s,1,w),0.125).
+test(mendel,cg(s,2,p),0.125).
+test(mendel,cg(s,2,w),0.125).
+test(mendel,cg(f,2,w),0.5).
+test(mendel,cg(s,2,w),0.125).
+
+test(coin,heads(coin),0.45).
+
+test(coin2,heads(coin1),0.45).
+test(coin2,heads(coin2),0.45).
+test(coin2,tails(coin1),0.45).
+test(coin2,tails(coin2),0.45).
+
+
+

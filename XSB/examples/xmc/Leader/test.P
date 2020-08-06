@@ -1,0 +1,7 @@
+:- ['../test'].
+:- xlc(leader).
+
+test(Instance, Formula) :-
+	write('Leader'(Instance)), write(' '), writeln(Formula), 
+	check_all(systemLeader(Instance),Formula).
+

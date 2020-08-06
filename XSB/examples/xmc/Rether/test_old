@@ -1,0 +1,4 @@
+rether(ns(0))
+Modelcheck from TEXT MODE gives 	mck(rether,ns(0)) is true.
+Modelcheck from GUI gives true
+Justification tree has 53 nodes.

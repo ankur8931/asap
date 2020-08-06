@@ -1,0 +1,181 @@
+
+    This directory contains the XSB compiler code.
+
+Type  `make' to recompile.
+
+If some of the .O files get messed up as a result of a bug you
+introduced, try to type `make restore'. The previously saved .O files
+will be restored, so you might get a chance to fix the bug and
+recompile XSB.
+
+
+PLEASE NOTE:
+
+If you change any of the files here (such as adding a new in-lined 
+built-in), you must follow this procedure: 
+ 
+          1. Recompile with the old, working XSB compiler. 
+          2. ***Important*** Recompile again with a new compiler 
+             obtained in Step 1. 
+ 
+If you are adding a built-in to be used in the loader at an early stage, the 
+procedure is more cumbersome. 
+ 
+First, compile the ./cmp/*.P files with an old, working compiler. 
+Then get a version of the loader (loader.O) that doesn't use the new built-in 
+(pity you if you haven't saved the old one ;-). 
+ 
+Now, compile ./cmp/*.P with the new compiler and the old loader.O. 
+Finally, put the new loader.O in place and recompile ./syslib/*.P and 
+./lib/*.P with the new compiler.  Easy, eh? 
+ 
+mk 
+
+******************************************************************************
+Files: and a brief comment on what they do...  (dsw)
+******************************************************************************
+
+asm.P: generates the byte code from the PIL code of a predicate block.
+       (calling routines in asmpass2)
+
+asm_inst.P: asm_inst facts that describe the instructions (codes and
+formats.)
+
+
+asm_opt.P: a couple of simple optimizations: introduces direct calls
+and executes.
+
+
+asmpass2.P: outputs symbol table info to byte-code file; outputs
+byte-code for PIL instructions.
+
+
+auxlry.P: 
+
+
+builtin.P: inline predicate tables, describing operations and instructions.
+
+
+ciao_directives.P: compatibility with Ciao Prolog directives and operators.
+
+
+compile.P: Does the compilation from Prolog source terms to PIL code;
+Uses other predicates.
+
+
+config.P: Defcon(s)
+
+
+cp_opt.P: does simple transformation to effect choice-point
+optimizations: having to do with tabling.
+
+
+cutcheck.P: (Obsolete, and not used any more) Tried to determine
+whether there might be a cut over a tabled call.
+
+
+flatten.P: flattens nested structures in heads and bodies to be only
+one level deep.  Also handles double floats, which also need
+flattening.
+
+
+inprog.P: transforms flattened internal source form of a clause into
+its intermediate form by adding pragma info, indicating
+and/or/if_then_else and goal/inlinegoal and varocc structures.  Also
+adds varocc (variable occurrence) pragmas.
+
+
+listutil.P: general list utilities used in the compiler.
+
+
+makemode.P: deals with modes (?)
+
+
+modeinf.P: infers modes (?)
+
+
+modes.P: infers modes (how/why different from modeinf?)
+
+
+parse.P: reads input, expands terms, and constructs initial internal
+form; handles directives; dynamic code; multifile; transformational
+indexing; etc.
+
+
+peephole.P: does peephole optimizations on PIL code.
+
+
+pre_cond.P: handle conditional statements (if-then-else and clauses
+with complementary inline tests...)
+
+
+preproc.P: initial source-to-source translation (on internal format).
+Handles cut transformation.
+
+
+printres.P: print symbol table (?)
+
+
+prof_sbp.P: (Obsolete...)
+
+
+sanity.P: routines to print out stuff, controlled by compiler flags.
+
+
+singlton.P: check for singleton variables in a clause and print
+warnings for those whose names do not start with '_'.
+
+
+spec.P: do clause specialization.
+
+
+suppltab.P: handle supplementary tabling transformation.  (To clauses
+with at most 2 body literals.)
+
+
+symtab.P: Routines to manipulate the compiler symbol table.
+
+
+tabdef.P: Defines table declarations; for auto_table declaration.
+
+
+ti_mod.P: Transformational indexing (may not work?)
+
+
+tp_comp.P: table for comparison PIL instructions
+
+
+tp_cond.P: compiles conditionals to PIL instructions
+
+
+tp_eval.P: compiles relational operators, and is/2 atoms.
+
+
+tp_goal.P: compiles calls to subgoals; loading registers, and
+calling/executing.
+
+
+tp_index.P: generates indexing PIL code.
+
+
+tp_var.P: manage variables, and process appropriate PIL code
+generation based on the variable occurrence properties.
+
+
+tpinline.P: generate PIL code for inline predicates.
+
+
+tprog.P: Manages general PIL code compilation for a clause.
+
+
+useinfer.P: infers predicate usage for modules; generating warnings.
+
+
+varproc.P: traverses clause and generates the variable occurrence
+pragmas.
+
+
+writeasm.P: generate the assembler program listing (for asm_dump).
+
+
+

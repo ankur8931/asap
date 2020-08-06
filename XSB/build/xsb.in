@@ -1,0 +1,124 @@
+#! /bin/sh
+
+# @configure_input@
+
+## File:      xsb.in
+## Author(s): kifer
+## Contact:   xsb-contact@cs.sunysb.edu
+## 
+## Copyright (C) The Research Foundation of SUNY, 1998
+## 
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+## 
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+## 
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: xsb.in,v 1.18 2012-10-18 19:06:57 kifer Exp $
+## 
+##
+
+
+# This is a smart XSB invocation script. It senses 
+# the current architecture and finds the right executable for it.
+# Invoke as 'xsb${suffix} args'
+
+# Don't move this script (except if you move it along with the 
+# whole XSB source tree) and/or invoke it via links.
+# This script assumes that it resides one level above the root
+# of the XSB source tree. 
+# If you need to invoke this (bin/xsb) script from some other location,
+# put a simple shell script in that other location, which would simply
+# call the bin/xsb script.
+
+
+
+suffix=@config_tag@
+
+invocation_name="$0"
+
+# if we have a symbolic link, then extract the full path of the target
+if test -h "$invocation_name" ; then
+    # NOT using readlink, for portability
+    invocation_name=`dirname "$invocation_name"`"/"`stat -f %Y "$invocation_name"`
+fi
+
+case $invocation_name in
+/*) thisfile="$invocation_name"
+    ;;
+*)  thisfile="`pwd`/$invocation_name"
+    ;;
+esac
+
+# rectify .. in path names - 7 times should suffice for the most weird 
+# invocations with multiple ..'s
+thisfile=`echo "$thisfile" | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo "$thisfile" | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo "$thisfile" | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo "$thisfile" | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo "$thisfile" | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo "$thisfile" | sed 's,[^/][^/]*//*\.\.//*,,'`
+thisfile=`echo "$thisfile" | sed 's,[^/][^/]*//*\.\.//*,,'`
+#rectify . in path names
+thisfile=`echo "$thisfile" | sed 's,//*\.//*,/,g'`
+
+# could use just scriptdir=`dirname \`readlink -f $0\`` but unfortunately
+# readlink is not standard (is in GNU core utils)
+scriptdir=`dirname "$thisfile"`
+topdir=`dirname "$scriptdir"`
+
+# NOT using @full_config_name@ so that the same physical install
+# would work for different architectures
+config=`"$topdir/build/config.guess"`
+canonical=`"$topdir/build/config.sub" $config`
+exec_dir="$topdir/config/${canonical}${suffix}"
+executable="${exec_dir}/bin/xsb"
+
+
+# The purpose of this complex thing is to make sure that arguments
+# with spaces in them get passed as one to the XSB executable, e.g., 
+# bin/xsb -e "write('Hello World'), nl." should pass this goal to
+# XSB as a single string. Here we build a quoted argument list, 
+# skipping empty argument strings.
+xsb_cmd=""
+for arg
+do
+    if test -n "$arg"; then
+      xsb_cmd="$xsb_cmd \"$arg\""
+    fi
+done
+
+if test "@CROSS_SIMULATOR@none" != "none" ; then
+    mkdir -p "$HOME/.xsb/config/${config}${suffix}" 2>/dev/null
+fi
+
+if test -x "$executable" ; then
+   eval "exec @CROSS_SIMULATOR@ '$executable' $xsb_cmd"
+else
+   echo "${executable}: "
+   echo "       file doesn't exist or is not executable"
+   echo ""
+   echo "XSB might not have have been compiled for the following machine configuration:"
+   echo "             " ${canonical}${suffix}
+   echo "***This installation seems to have the following configurations available:"
+   # First drop files that don't have "-".
+   # Then drop the configuration that we just said doesn't exist.
+   ls -1  "$topdir/config" | egrep "-" \
+    	    	    	    | egrep -v "^${canonical}${suffix}\$" 2> /dev/null
+   echo "***configuration list end"
+   echo ""
+   echo "One other frequent problem: you might be over your disk quota,"
+   echo "and your XSB executable might have been deleted by the system"
+   echo "immediately after it was created."
+   echo ""
+   echo "Please contact your system administrator, if you can't rebuild XSB."
+   exit 1
+fi

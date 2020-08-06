@@ -1,0 +1,347 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en">
+<meta name="GENERATOR" content="Microsoft FrontPage 5.0">
+<meta name="ProgId" content="FrontPage.Editor.Document">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>W4 Project</title>
+</head>
+
+<body>
+
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber1">
+    <tr>
+      <td><img border="0" src="../images/w4small.GIF" width="50" height="50"></td>
+      <td>
+      <p align="center"><span lang="en-us"><font size="7" face="Arial">W<sup>4</sup> XML Parser</font></span></td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center">&nbsp;</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center"><font face="Arial">(c)
+      <a href="http://centria.di.fct.unl.pt/~cd">Carlos Viegas Damásio</a>, 
+      <span lang="pt">July</span> 2003</font></td>
+    </tr>
+  </table>
+  </center>
+</div>
+<p align="left">&nbsp;</p>
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="5" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber2">
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF">Description</font></td>
+    </tr>
+    <tr>
+      <td width="100%"><span lang="en-us">This software package implements a 
+      non-validating parser entirely written in Prolog, almost conformant with 
+      the W3C recommendations (we deviate from XML 1.0 by  </span>
+      <span lang="pt">failing in non-standalone documents making use of of 
+      non-declared entities)</span><span lang="en-us">. It completely supports 
+      XML Namespaces and the internal representation produced respects the 
+      guidelines of XML Info Sets. The parser treats XML Base </span>
+      <span lang="pt">and resolves relative references. </span><p>
+      <span lang="pt">The main goal of this library is to provide a robust, 
+      portable, and fully conformant tool for the development of advanced 
+      Semantic Web applications. In can be one order of magnitude slower than 
+      other existing Prolog parsers, whcih are not conformant to W3C 
+      recommendations (for instance, do not recognize Unicode neither do treat 
+      XML Base attributes). It is in our long term objectives to provide 
+      low-level implementation of this tool. If efficiency is desired, we give 
+      some hints in order to obtain better behaviour.</span><p><span lang="en-us">Internal DTDs are parsed and a 
+      Prolog representation is also produced. Default attributes declared in the 
+      DTD are automatically </span><span lang="en">placed</span><span lang="en-us"> 
+      in the XML term representation. Furthermore, internal entities are 
+      expanded as well as parameter entities. Normalization of attribute values 
+      and&nbsp; whitespace elimination is also properly done. <br>
+      The following encodings are currently recognized: US-ASCII, UTF-8, UTF-16, 
+      UTF-16LE, UTF-16BE, and ISO-8859-1.</span><p><span lang="en-us">The 
+      package was developed for XSB Prolog</span><span lang="pt"> 2.5</span><span lang="en-us">, but porting  </span><span lang="pt">
+      to</span><span lang="en-us"> other Prolog systems 
+      is </span><span lang="pt">foreseen</span><span lang="en-us">.</span><p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="en-us">
+      <font face="Arial Black" size="5" color="#0000FF">Download and 
+      Installation</font></span><p><span lang="en">Th</span><span lang="en-us">e</span><span lang="en"> </span> 
+      <span lang="pt"><a href="w4xmlparser-1.0-beta.zip">W4 XML Parser Library</a>
+      </span>
+      <span lang="en-us">distribution contains the following XSB Prolog source 
+      files:</span><ul>
+        <li><span lang="en-us">The file containing the main </span>
+        <span lang="pt">XML </span><span lang="en-us">p</span><span lang="pt">arser
+        </span><span lang="en-us">predicates (<b>xml.P</b>)</span> </li>
+        <li><span lang="en-us">The XML parser (</span><b><span lang="pt">xmlparser.H 
+        and </span><span lang="en-us">xmlparser.P</span></b><span lang="en-us">), 
+        automaticaly produced by our  </span><span lang="pt">Lookup Definite 
+        Clause Grammar g</span><span lang="en-us">enerator</span><span lang="pt">, 
+        with lookahead information</span><span lang="en-us">.</span> </li>
+        <li><span lang="en-us">The Document Object Model (</span><b><span lang="pt">xmldom.H 
+        and </span><span lang="en-us">xmldom.P</span></b><span lang="en-us">) 
+        with the predicates for constructing the Prolog representation</span><span lang="pt"> 
+        of XML documents</span><span lang="en-us">.</span> </li>
+        <li><span lang="pt">A translator to the compact representation of XML in 
+        Prolog (<b>xml2termns.P</b>), with Namespace support.</span></li>
+        <li><span lang="en-us">The I/O stream support predicates (<b>iostream.P</b> 
+        and <b>utf.P</b>).</span> </li>
+        <li><span lang="en-us">Several utility predicates (<b>utilities.P</b>)</span><span lang="pt"> 
+        and specific XSB Prolog builtins (<b>builtins.P</b>) which might be 
+        changed to port to other Prolog systems.</span></li>
+        <li><span lang="pt">Support of IRIs (<b>iri.P </b>and <b>iriparse.P</b>).
+        </span></li>
+      </ul>
+        <p><span lang="pt">You can also find some files with extension <b>.G</b>, 
+        whcih are the original source files to generate the XML Parser.</span></p>
+        <p><span lang="en-us">To start using the W4 XML Parser library, unpack 
+        the .zip file and compile the file <b>xml.P</b> within XSB Prolog.</span><p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF">Utilization</font><p>
+      <span lang="pt">The main predicate is </span><b>parse_xml_document( +Name, 
+      +DocURI, ?Encoding, -Document, -Timing )</b><span lang="pt">, where:</span></p>
+      <ul>
+        <li><span lang="pt"><b>Name</b> is </span>a character <span lang="pt">
+        code's </span>list, an atom (converted to a character <span lang="pt">
+        code's </span>list), or a term of the form stream(StreamName)<span lang="pt">. 
+        For the latter, the stream is opened, read and closed by the predicate.</span></li>
+        <li><span lang="pt"><b>DocURI</b> is the </span>character
+        <span lang="pt">code's </span>list with the Document Base URI (see 
+        RFC-2396 for details)<span lang="pt">. If you don't require XML Base 
+        support, you can use simply []; the absolute file path is used instead.</span></li>
+        <li><span lang="pt"><b>Encoding </b>can be used to indicate the encoding 
+        information of the document. If the argument is not given (a variable) 
+        then the parser tries to extract the encoding from the document, either 
+        by using Byte-Order-Marks or using the encoding information specified in 
+        the XML declaration. It can take the following values: <br>
+        </span>'US-ASCII',<span lang="pt"> </span>'ISO-8859-1, 'UTF-8', 
+        'UTF-16', 'UTF-16LE', 'UTF-16BE'<span lang="pt">.</span></li>
+        <li><span lang="pt"><b>Document</b> returns the Prolog representation, 
+        according to XML INFOSET, which is described below in the XML DOM Module 
+        Documentation.</span></li>
+        <li><span lang="pt"><b>Timing</b> is a term of the form <b>
+        time(LoadTime,ParseTime)</b> providing the reading and parsing timings 
+        (in msecs).</span></li>
+      </ul>
+      <p align="left"><span lang="pt">The following two simpler versions of the 
+      parse_xml_document are provided:</span></p>
+      <ul>
+        <li><b>parse_xml_document( +Name, ?Encoding, -Document )</b></li>
+        <li><b>parse_xml_document( +Name, +DocURI, ?Encoding, -Document ) </b>
+        </li>
+      </ul>
+      <p><span lang="pt">In some situations, it might be desirable to skip the 
+      reading phase. In this case </span>the <b>xml_document<span lang="pt">(
+      </span>&nbsp;</b><span lang="pt"><b>+UnicodeList, +BaseURI, ?Encoding, -Document)</b>
+      </span>predicate<span lang="pt"> can be used directly. Notice that the 
+      first argument is a Unicode List (i.e. a list of integers) terminated with
+      <b>-1</b>. The other arguments are as before. </span></p>
+      <p><b><font color="#FF0000"><span lang="pt">Example 1:</span></font></b></p>
+      <p><font face="Courier New" size="2">| ?- xml_document( 
+      [0'&lt;,0'h,0'e,0'l,0'l,0'o,0'/,0'&gt;,-1], [], T ).<br>
+      <br>
+      T = document([element([],hello,[],[],[],[],[[] = [],xml =
+      <a href="http://www.w3.org/XML/1998/namespace">
+      http://www.w3.org/XML/1998/namespace</a>],[],[])],<br>
+      <span lang="pt">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      </span>element([],hello,[],[],[],[],[[] = [],xml =
+      <a href="http://www.w3.org/XML/1998/namespace">
+      http://www.w3.org/XML/1998/namespace</a>],[],[]),<br>
+      <span lang="pt">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      </span>[],[],[],1.0,UTF-8,[],[]<br>
+      <span lang="pt">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      </span>);</font></p>
+      <p><span lang="pt">If the documents are not well-formed then all the 
+      previous predicates fail.</span></td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF">Representation of XML 
+      documents</font><p><span lang="pt">The Prolog representation of the XML 
+      documents follows closely the <a href="http://www.w3.org/TR/xml-infoset">
+      XML Information Set</a> (<a href="http://www.w3.org/TR/xml-infoset">XML 
+      INFOSET</a>), whenever defined, with the exception of the <b>parent</b> 
+      and <b>references</b> properties. In this way, the creation of cyclic 
+      terms is avoided since these are difficult to handle and correctly use in 
+      most Prolog implementations. </span></p>
+      <p><span lang="pt">We illustrate here the features of our parser with, 
+      resorting to a simple example, and refer the reader to an auxiliary 
+      document containing the full description of the <a href="w4xmldom.htm">
+      Prolog representation</a> adopted.Consider the following
+      <a href="example.xml">example</a> XML document:</span></p>
+      <blockquote>
+        <pre>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;!-- A comment --&gt;
+&lt;?log    this  file  ?&gt;
+
+&lt;tag1 a='abc &amp;lt;' xmlns=&quot;http://xpto.org&quot; n1:b='1234' xmlns:n1=&quot;http://abc.com&quot;&gt;
+A very simple text
+	&lt;n1:tag2 xml:space=&quot;preserve&quot;&gt;
+		&lt;!-- whitespace between markup should appear --&gt;
+		&lt;tag3 xml:space=&quot;default&quot;&gt;
+		&lt;/tag3&gt;
+		&lt;tag3/&gt;
+	&lt;/n1:tag2&gt;
+	&lt;tag3 xml:lang=&quot;en&quot; attrib1='This attribute has    spaces    and 
+					     a line feed'&gt;
+		&lt;tag4 xmlns=&quot;&quot;&gt;
+			&lt;tag5&gt;This tag shouldn't have a namespace&lt;/tag5&gt;
+		&lt;/tag4&gt;
+		&lt;tag4&gt;
+			&lt;!-- Whitespace shouldn't appear --&gt;
+		&lt;/tag4&gt;
+	&lt;/tag3&gt;
+&lt;/tag1&gt;
+</pre>
+      </blockquote>
+      <p><span lang="pt">The representation produced is the following (very 
+      complex...) term:</span></p>
+      <pre>document(
+  [ comment([32,65,32,99,111,109,109,101,110,116,32]),
+    pi(log,[116,104,105,115,32,32,102,105,108,101,32,32],file:/example.xml),
+    element(http://xpto.org,tag1,[],
+      [ pcdata([10,65,32,118,101,114,121,32,115,105,109,112,108,101,32,116,101,120,116,10,9]),
+        element(http://abc.com,tag2,n1,
+          [ whitespace([10,9,9]),
+            comment([32,119,104,105,116,101,115,112,97,99,101,32,98,101,116,119,101,101,110,32,
+                     109,97,114,107,117,112,32,115,104,111,117,108,100,32,97,112,112,101,97,114,32]),
+            whitespace([10,9,9]),
+            element(http://xpto.org,tag3,[],
+              [],
+              [ename(http://www.w3.org/XML/1998/namespace,space) = attribute(http://www.w3.org/XML/1998/namespace,space,xml,[100,101,102,97,117,108,116],no,[])],
+              [],
+              [[] = http://xpto.org,n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+              file:/example.xml,[]
+            ),
+            whitespace([10,9,9]),
+            element(http://xpto.org,tag3,[],
+              [],
+              [],
+              [],
+              [[] = http://xpto.org,n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+              file:/example.xml,
+              []
+            ),
+            whitespace([10,9])
+          ],
+          [ename(http://www.w3.org/XML/1998/namespace,space) = attribute(http://www.w3.org/XML/1998/namespace,space,xml,[112,114,101,115,101,114,118,101],no,[])],
+          [],
+          [[] = http://xpto.org,n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+          file:/example.xml,
+          []
+        ),
+        element(http://xpto.org,tag3,[],
+          [ element([],tag4,[],
+              [ element([],tag5,[],
+                  [ pcdata([84,104,105,115,32,116,97,103,32,115,104,111,117,108,100,110,39,116,32,104,97,118,101,32,97,32,110,97,109,101,115,112,97,99,101])
+                  ],
+                  [],
+                  [],
+                  [[] = [],n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+                  file:/example.xml,
+                  [101,110]
+                )
+              ],
+              [],
+              [ename(http://www.w3.org/2000/xmlns/,[]) = attribute(http://www.w3.org/2000/xmlns/,xmlns,[],[],no,[])],
+              [[] = [],n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+              file:/example.xml,
+              [101,110]
+            ),
+            element(http://xpto.org,tag4,[],
+              [ comment([32,87,104,105,116,101,115,112,97,99,101,32,115,104,111,117,108,100,110,39,116,32,97,112,112,101,97,114,32])
+              ],
+              [],
+              [],
+              [[] = http://xpto.org,n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+              file:/example.xml,
+              [101,110]
+            )
+          ],
+          [ ename([],attrib1) = attribute([],attrib1,[],[84,104,105,115,32,97,116,116,114,105,98,117,116,101,32,104,97,115,32,32,32,32,115,112,97,99,101,115,
+                                                         32,32,32,32,97,110,100,32,32,32,32,32,32,32,32,32,32,32,32,97,32,108,105,110,101,32,102,101,101,100],no,[]),
+            ename(http://www.w3.org/XML/1998/namespace,lang) = attribute(http://www.w3.org/XML/1998/namespace,lang,xml,[101,110],no,[]) 
+          ],
+          [],
+          [[] = http://xpto.org,n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+          file:/example.xml,
+          [101,110]
+        )
+      ],
+      [ ename([],a) = attribute([],a,[],[97,98,99,32,60],no,[]),
+        ename(http://abc.com,b) = attribute(http://abc.com,b,n1,[49,50,51,52],no,[])],
+      [ ename(http://www.w3.org/2000/xmlns/,[]) = attribute(http://www.w3.org/2000/xmlns/,xmlns,[],[104,116,116,112,58,47,47,120,112,116,111,46,111,114,103],no,[]),
+        ename(http://www.w3.org/2000/xmlns/,n1) = attribute(http://www.w3.org/2000/xmlns/,n1,xmlns,[104,116,116,112,58,47,47,97,98,99,46,99,111,109],no,[])],
+      [[] = http://xpto.org,n1 = http://abc.com,xml = http://www.w3.org/XML/1998/namespace],
+      file:/example.xml,
+      []
+    )
+  ], 
+  ... The representation of the document element again ...,
+  [],
+  [],
+  file:/example.xml,
+  1.0,
+  UTF-8,
+  yes,
+  []
+)
+</pre>
+      <p>&nbsp;</p>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF">Current Limitations</font><ul>
+        <li>The reading of documents is rather inefficient, due to the necessity 
+        of supporting several encodin<span lang="pt">gs</span>.<span lang="pt"> 
+        If you have a more efficient way of obtaining terminated Unicode Lists 
+        then do use it, and then <b>resort to xml_document/4</b>.</span></li>
+        <li><span lang="pt">Does not expand External Parsed Entities</span></li>
+      </ul>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF">Future developments</font><ul>
+        <li><span lang="pt">Complete the documentation</span></li>
+        <li><span lang="pt">Improve the generation of the tree representation</span></li>
+      </ul>
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">
+      Disclaimer</font></span><p><span lang="pt">
+      <font face="Arial Black" size="5" color="#FF0000">THIS IS AN EXPERIMENTAL 
+      TOOL. I DO NOT GIVE ANY GUARANTEE.</font></span></td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      Last update: <span lang="pt">July</span> <span lang="pt">30th</span>, 2003</td>
+    </tr>
+  </table>
+  </center>
+</div>
+
+</body>
+
+</html>

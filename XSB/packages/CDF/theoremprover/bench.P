@@ -1,0 +1,309 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% (exists(r, exists(r, ...  (c1,not(c1)) ...)))
+
+%----------------------
+
+bench_chain1(N):-
+	chain1(N,F),
+	benchval(F,false).
+
+chain1(0,(c1,not(c1))):- !.
+chain1(N,(exists(r,X))):- 
+	N1 is N-1,
+	chain1(N1,X).
+
+%----------------------
+dlp_bench_chain1(F,N):- 
+	tell(F),
+	dlp_bench_chain1_1(N),
+	told.
+
+dlp_bench_chain1_1(N):-
+	writeln('(define-primitive-concept c1 TOP)'),
+	writeln('(define-primitive-role r)'),
+	write('(concept-subsumes? '),
+	write_chain1(N),
+	write(' BOTTOM)').
+
+write_chain1(0):- !,
+	write('(AND c1 (NOT c1))').
+write_chain1(N):- 
+	write('(SOME r '),
+	N1 is N-1,
+	write_chain1(N1),
+	write(')').
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% (exists(r, exists(r, ...  (c1) ...)))
+
+%----------------------
+
+bench_chain2(N):-
+	chain2(N,F),
+	benchval(F,true).
+
+chain2(0,c1):- !.
+chain2(N,(exists(r,X))):- 
+	N1 is N-1,
+	chain2(N1,X).
+
+%----------------------
+
+dlp_bench_chain2(F,N):- 
+	tell(F),
+	dlp_bench_chain2_1(N),
+	told.
+
+dlp_bench_chain2_1(N):-
+	writeln('(define-primitive-concept c1 TOP)'),
+	writeln('(define-primitive-role r)'),
+	write('(concept-subsumes? '),
+	write_chain2(N),
+	write(' BOTTOM)').
+
+write_chain2(0):- !,
+	write(c1).
+write_chain2(N):- 
+	write('(SOME r '),
+	N1 is N-1,
+	write_chain2(N1),
+	write(')').
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% (exists((c1,not(c1) ; exists((c1,not(c1) ;  ...  (c1,not(c1)) ...)))
+
+%----------------------
+
+bench_abdchain1(N):-
+	abdchain1(N,F),
+	benchval(F,false).
+
+abdchain1(0,(c1,not(c1))):- !.
+abdchain1(N,((c1,not(c1)) ; exists(r,X))):- 
+	N1 is N-1,
+	abdchain1(N1,X).
+
+%----------------------
+dlp_bench_abdchain1(F,N):- 
+	tell(F),
+	dlp_bench_abdchain1_1(N),
+	told.
+
+dlp_bench_abdchain1_1(N):-
+	writeln('(define-primitive-concept c1 TOP)'),
+	writeln('(define-primitive-role r)'),
+	write('(concept-subsumes? '),
+	write_abdchain1(N),
+	write(' BOTTOM)').
+
+write_abdchain1(0):- !,
+	write('(AND c1 (NOT c1))').
+write_abdchain1(N):- 
+	write('(OR (AND c1 (NOT c1)) (SOME r '),
+	N1 is N-1,
+	write_abdchain1(N1),
+	write('))').
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% (exists((c1,not(c1) ; exists((c1,not(c1) ;  ...  c1) ...)))
+
+%----------------------
+
+bench_abdchain2(N):-
+	abdchain2(N,F),
+	benchval(F,true).
+
+abdchain2(0,c1):- !.
+abdchain2(N,((c1,not(c1)) ; exists(r,X))):- 
+	N1 is N-1,
+	abdchain2(N1,X).
+
+%----------------------
+dlp_bench_abdchain2(F,N):- 
+	tell(F),
+	dlp_bench_abdchain2_1(N),
+	told.
+
+dlp_bench_abdchain2_1(N):-
+	writeln('(define-primitive-concept c1 TOP)'),
+	writeln('(define-primitive-role r)'),
+	write('(concept-subsumes? '),
+	write_abdchain2(N),
+	write(' BOTTOM)').
+
+write_abdchain2(0):- !,
+	write(c1).
+write_abdchain2(N):- 
+	write('(OR (AND c1 (NOT c1)) (SOME r '),
+	N1 is N-1,
+	write_abdchain2(N1),
+	write('))').
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% (exists(c1 ; exists(c1 ;  ...  c1) ...)))
+
+%----------------------
+
+bench_abdchain3(N):-
+	abdchain3(N,F),
+	benchval(F,true).
+
+abdchain3(0,c1):- !.
+abdchain3(N,(c1 ; exists(r,X))):- 
+	N1 is N-1,
+	abdchain3(N1,X).
+
+%----------------------
+dlp_bench_abdchain3(F,N):- 
+	tell(F),
+	dlp_bench_abdchain3_1(N),
+	told.
+
+dlp_bench_abdchain3_1(N):-
+	writeln('(define-primitive-concept c1 TOP)'),
+	writeln('(define-primitive-role r)'),
+	write('(concept-subsumes? '),
+	write_abdchain3(N),
+	write(' BOTTOM)').
+
+write_abdchain3(0):- !,
+	write(c1).
+write_abdchain3(N):- 
+	write('(OR (AND c1 (NOT c1)) (SOME r '),
+	N1 is N-1,
+	write_abdchain3(N1),
+	write('))').
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% (exists(c1 ; exists(c1 ;  ...  (c1) ...)) 
+%  	, all(c1 ; all(c1 ;  ...  (not(c1)) ...)) 
+
+%----------------------
+
+bench_confchain1(N):-
+	confchain1(N,F),
+	benchval(F,false).
+
+confchain1(N,(E,A)):- 
+	chain2(N,E),
+	allchain2(N,A).
+
+allchain2(0,not(c1)):- !.
+allchain2(N,all(r,X)):- 
+	N1 is N-1,
+	allchain2(N1,X).
+
+%----------------------
+
+dlp_bench_confchain1(F,N):- 
+	tell(F),
+	dlp_bench_confchain1_1(N),
+	told.
+
+dlp_bench_confchain1_1(N):-
+	writeln('(define-primitive-concept c1 TOP)'),
+	writeln('(define-primitive-role r)'),
+	write('(concept-subsumes? '),
+	write_confchain1(N),
+	write(' BOTTOM)').
+
+write_confchain1(N):- 
+	write('(AND '),
+	write_chain2(N),
+	write_allchain1(N),
+	write(' )').
+
+write_allchain1(0):- !,
+	write('(NOT c1)').
+write_allchain1(N):- 
+	write('(ALL r '),
+	N1 is N-1,
+	write_allchain1(N1),
+	write(')').
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% (exists(c1 ; exists(c1 ;  ...  (c1) ...)) 
+%  	, all(c1 ; all(c1 ;  ...  (not(c1)) ...)) 
+
+%----------------------
+
+bench_confchain2(N):-
+	confchain2(N,F),
+	benchval(F,true).
+
+confchain2(N,(E,A)):- 
+	chain2(N,E),
+	allchain3(N,A).
+
+allchain3(0,c2):- !.
+allchain3(N,all(r,X)):- 
+	N1 is N-1,
+	allchain3(N1,X).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+bench_invchain(N):-
+	invchain1(N,F,Diff),
+	invchain2(N,Diff),
+	benchval(lambda(x,(c1,F)),false).
+
+invchain1(0,X,X):- !.
+invchain1(N,exists(r,X),Fin):- 
+	N1 is N-1,
+	invchain1(N1,X,Fin).
+
+invchain2(0,not(c1)):- !.
+invchain2(N,all(inv(r),X)):- 
+	N1 is N-1,
+	invchain2(N1,X).
+
+/* 
+c1,(exists(r, exists(r, ... all(inv(r), all(inv(r) ... not(c1) )) ... )))
+
+(parenthesized times are w.o. partial eval)
+bench_invchain
+1000: 2 + 2 b
+2000: 6 + 2   (smodels time is .17)
+3000: 8 + 3  (8 + 30)
+4000: 19 + 5 	 (smodels time is .3) (write time is insig.)
+
+DLV 
+3000: detects inconsistency in about 1/3 seconds
+6000: detects inconsistency in about 1 second
+
+*/
+
+%----------------------
+
+bench_invscchain(N):-
+	invscchain1(N,F,Diff),
+	invscchain2(N,Diff),
+	benchval(lambda(x,(c1,F)),false).
+
+invscchain1(0,X,X):- !.
+invscchain1(N,exists(rr1,X),Fin):- 
+	N1 is N-1,
+	invscchain1(N1,X,Fin).
+
+invscchain2(0,not(c1)):- !.
+invscchain2(N,all(inv(rr2),X)):- 
+	N1 is N-1,
+	invscchain2(N1,X).
+
+/*
+c1,(exists(rr1, exists(rr1, ... all(inv(rr2), all(inv(rr2) ... not(c1) )) ... )))
+
+1000: 3 + 1
+2000: 7 + 3
+4000: 20 + 20 (smodels .56)
+
+*/
+
+

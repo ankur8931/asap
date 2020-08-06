@@ -1,0 +1,11 @@
+
+To make the documentation for the sModels interface, invoke XSB and
+execute the following commands:
+
+?- [xsbdoc].
+
+?- xsbdoc(xasp_format,<format-type>)
+
+where format-type is desired format for the documentation: 'ps',
+'pdf', 'ascii', or 'html'
+

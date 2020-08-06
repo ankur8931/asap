@@ -1,0 +1,494 @@
+/* File:      x_interp.P
+** Author(s): David S. Warren, Terrance Swift,
+**    	      Ernie Johnson, Jiyang Xu, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: x_interp.P,v 1.65 2008/11/12 21:56:52 dwarren Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+#include "heap_defs_xsb.h"
+#include "standard.h"
+#include "char_defs.h"
+
+/*======================================================================*/
+/*  This file contains the main program of the interpreter.		*/
+/*======================================================================*/
+
+:- interpreter.
+
+interpreter :-
+        set_inthandler('_$keyboard_int'(_,_), MYSIG_KEYB),
+	set_inthandler('_$attv_int'(_,_), MYSIG_ATTV),
+	set_thread_interrupt,
+%	set_inthandler('_$thread_int'(_,_), THREADSIG_CANCEL),
+	set_inthandler('_$timer_int'(_,_), TIMER_INTERRUPT),
+	set_inthandler('_$lazy_reeval_int'(_,_), LAZY_REEVAL_INTERRUPT),
+	( banner_control(nobanner)
+	->  true		% don't print banner
+	;   version_message
+	),
+        prompt('| ?- ',[]),
+        prompt('',[],'_$more_prompt'(_)),
+        prompt(' ? ',[],'_$debug_prompt'(_)),
+        fail.
+interpreter :-
+	xsb_thread_self(T),
+	retractall('$$exception_ball'(T,_)),
+	catch(interpreter_cmd_goal([]),Ball,default_error_handler(Ball)),
+	fail.
+interpreter :-
+	xsb_thread_self(T),
+	retractall('$$exception_ball'(T,_)),
+	get_base_io(Str),
+	x_interp_repeat,
+	catch(interpreter_readloop([]),Ball,(see(Str), %%file_write(STDMSG,'Caught it'),
+	                                     default_error_handler(Ball))),
+	fail.
+
+:- import get_stdin/2 from push_io.
+
+set_thread_interrupt:- 
+	xsb_configuration(engine_mode,'slg-wam'),!,
+	set_inthandler('_$goal_int'(_,_), THREADSIG_CANCEL).
+set_thread_interrupt:- 
+	set_inthandler('_$thread_int'(_,_), THREADSIG_CANCEL).
+
+% TLS: if cmd_line_argument, then get whatever stream had been there
+% before.  Otherwise, just get current input.
+get_base_io(Str):- 
+	(get_stdin(cmd_line_argument,Stream) -> 
+%	  file_write(STDMSG,input_streams(cmd_line_argument,Stream)),
+          Stream = [Str|_]
+        ; stat_flag(CURRENT_INPUT,Str)).
+
+%% dummy arg to circumvent string flaw with module system, for catch
+interpreter_cmd_goal(_) :-
+        %% Execute command line goal passed to XSB with the -e option
+        xsb_flag(goal, CmdGoal),
+        (CmdGoal == '' ->
+            true
+        ;
+	    ( banner_control(quietload)
+	    -> true
+	    ;  file_nl(STDMSG),
+	       file_write(STDMSG, 'Evaluating command line goal:  '),
+	       file_nl(STDMSG)
+	    ),
+	    %% Don't print prompt, if --noprompt specified on cmd line
+	    %% Useful when spawning xsb subprocesses, 
+	    %% so they won't send junk back to the parent.
+	    (	banner_control(noprompt)
+	    ->	true
+	    ;	file_write(STDFDBK, '| ?- ')
+	    ),
+	    (  banner_control(quietload)
+	    -> true
+	    ;  file_write(STDMSG, CmdGoal), file_nl(STDMSG)
+	    ),
+            file_open(CmdGoal, sr, CmdGoalStream),
+	    %% make CmdGoalStream the current input stream;
+	    %% push the old stream on cmd_line_argument stack
+	    push_stdin(cmd_line_argument, CmdGoalStream),
+	    (	banner_control(noprompt)
+	    ->	true
+            ; file_nl(STDMSG)
+	    )
+        ),
+        fail.
+
+%% dummy arg to circumvent string flaw with module system, for catch
+interpreter_readloop(_) :-
+	%% don't set MYSIG_PSC earlier, because XSB will start calling 
+	%% the handler when it starts up, which will cause a lot of grief
+	x_interp_repeat,
+	trimcore,
+	gc_tables(_),gc_dynamic(_),
+	stat_set_flag(HIDE_STATE, 1), %% hide call interceptions.
+	stat_set_flag(INVOKE_NUM, 0),
+	conset('_$break_level', 0),
+	print_debug_state,
+	prompt(Prompt,Prompt),
+	%% Hide prompt, if --noprompt
+	(   banner_control(noprompt)
+	->  true
+	;   file_write(STDFDBK, Prompt), file_flush(STDFDBK, _)
+	),
+	stat_flag(CURRENT_INPUT, FileIn),
+	file_read(FileIn, X, Vars),
+	(nonvar(X), read_in_stop(X)
+	 ->	halt		% end of top loop; halt
+	 ;	file_get(FileIn,WS), % ignore ws after fullstop
+		(WS =:= CH_PERCENT
+		 ->	scan_thru_nl(FileIn)
+		 ;	true
+		),
+		process_query(X, Vars)
+	).
+
+read_in_stop(halt) :-          %% quit XSB, regardless of break level
+	call_xsb_hook(xsb_exit_hook(_),all),
+	halt.
+read_in_stop(end_of_file) :-   %% pop a break level, out if at top
+	%% if we previously pushed an input stream onto cmd_line_argument stack
+	%% then pop it back and make this stream current
+	(pop_stdin(cmd_line_argument) ->  fail
+	; call_xsb_hook(xsb_exit_hook(_),all)
+	).
+
+
+process_query(end_of_file,_) :- !, file_nl(STDFDBK), fail.
+process_query(X, Vars) :-
+	exclude__(Vars,PrintableVars), process_query1(X,PrintableVars).
+
+process_query1(X, []) :-	%% no printable variables appeared in the input
+	!,
+	call_query(X),
+%	close_open_tables(non_memory_error),
+	!,
+	xwam_state(2,DelayReg),
+	(DelayReg =:= 0
+	 ->	Ans = yes
+	 ;	Ans = undefined
+	),
+	print_final_truth_value(Ans),
+	fail.
+process_query1(X, Vars) :- 
+	prompt(MorePrompt,MorePrompt,'_$more_prompt'(_)),
+	call_query(X),
+	xwam_state(2,DelayReg),
+	stat_flag(LETTER_VARS, LetterVars),
+	maybe_print_constraints(Vars),
+	( LetterVars =:= 0 -> print_answer(Vars)
+	; ( numbervars(Vars), print_answer(Vars), fail ; true )
+	),
+	(DelayReg =:= 0
+	 ->	true
+	 ;	file_write(STDFDBK, ' undefined')
+	),
+	file_write(STDFDBK, MorePrompt),
+	file_flush(STDFDBK, _),
+	no_more,
+	conget('_$break_level', N),
+	(N == 0 -> close_open_tables(non_memory_error) ; true),
+%	close_open_tables(non_memory_error),
+	!,
+	print_final_truth_value(yes),
+	fail.
+
+no_more :-
+	file_get(0, X),
+	( X =:= CH_EOF_P ; X =:= CH_NEWLINE ), !.
+no_more :- no_more, fail.
+
+scan_thru_nl(FileIn) :-
+	file_get(FileIn,C),
+	(C =:= CH_NEWLINE
+	 ->	true
+	 ; C =:= CH_EOF_P
+	 ->	true
+	 ;	scan_thru_nl(FileIn)
+	).
+
+
+call_query(X) :- 
+%%	'_$savecp'(C),			%% moved into call/1, affect trace?
+	( stat_set_flag(HIDE_STATE, 0)         %% expos`e tracing
+	; stat_set_flag(HIDE_STATE, 1), fail   %% hide again when backtrack
+	),
+	'_$call'(X), 
+	( stat_set_flag(HIDE_STATE, 1)	       %% hide tracing when succeed
+	; stat_set_flag(HIDE_STATE, 0), fail   %% expose when backtrack to user
+	).
+call_query(_) :- 
+	print_final_truth_value(no),
+	fail.
+
+%% hidden version of call
+'_$call'(Y) :- 
+	'_$savecp'(C), 
+	call_goal_cut_trans(Y,X,C),
+	call_expose(X).
+
+%% first argument is an open ended list
+exclude__([], []) :- !.
+exclude__([V|Vs], PVs) :-
+	V = vv(Name,_),
+	atom_codes(Name, [Code|_]),
+	( Code =:= CH_UNDERSCORE -> PVs = NPVs ; PVs = [V|NPVs] ),
+	exclude__(Vs, NPVs).
+
+print_answer([]) :- !.
+print_answer([vv(Name,Val)|Tail]) :-
+	file_nl(STDFDBK), file_write(STDFDBK, Name), 
+	file_write(STDFDBK, ' = '), 
+	file_write(STDFDBK, Val),
+%	(is_attv(Val) -> portray_attributes(Val) ; true),
+	print_answer(Tail).
+
+
+/*********************
+% moved to xsb_writ.P
+
+:- import get_attributes/2 from machine.
+portray_attributes(Var):- 
+	get_attributes(Var,Atts),
+	portray_attributes_1(Atts).
+
+:- import attribute_portray_hook/3 from machine.
+portray_attributes_1([]).
+portray_attributes_1([Mod,Attr|T]):- 
+	(attribute_portray_hook(Mod,Attr,Handler) -> 
+	    file_write(STDFDBK,' { '),
+	    file_write(STDFDBK,Mod),
+	    file_write(STDFDBK,' : '),
+	    call(Handler),
+	    file_write(STDFDBK,' } ')
+	 ; true),
+	 portray_attributes_1(T).
+***********************/
+
+:- import constraint_portray_hook/4 from machine.
+maybe_print_constraints(VarList):- 
+	constraint_portray_hook(_Mod,ValList,NameList,Hook),
+	split_lists(VarList,ValList,NameList),
+	call(Hook),
+	fail.
+maybe_print_constraints(_VarList).
+
+split_lists([],[],[]).
+split_lists([vv(Name,Val)|R],[Val|R1],[Name|R2]):- 
+	split_lists(R,R1,R2).
+
+/* === break =========================================================== */
+
+break :-
+	seeing(InpFile), telling(OutFile),
+	see(userin), tell(userout),
+	handle_timed_calls,
+	conget('_$break_level', Blevel),
+	Nblevel is Blevel+1, conset('_$break_level', Nblevel),
+	file_write(STDMSG, '[ Break (level '), file_write(STDMSG, Nblevel),
+	file_write(STDMSG, ') ]'), file_nl(STDMSG),
+	readl_brklp1,
+	conset('_$break_level', Blevel),
+	file_write(STDMSG, '[ End break (level '), file_write(STDMSG, Nblevel),
+	file_write(STDMSG, ') ]'), file_nl(STDMSG),
+	seen, told,
+	see(InpFile), tell(OutFile),
+        reinvoke_timed_calls.
+
+:- export break_for_tripwires/1.
+break_for_tripwires(Initializers) :-
+	seeing(InpFile), telling(OutFile),
+	see(userin), tell(userout),
+	handle_timed_calls,
+	conget('_$break_level', Blevel),
+	Nblevel is Blevel+1, conset('_$break_level', Nblevel),
+	call_initializers(Initializers),
+	readl_brklp1,
+	conset('_$break_level', Blevel),
+	file_write(STDMSG, '[ End break (level '), file_write(STDMSG, Nblevel),
+	file_write(STDMSG, ') ]'), file_nl(STDMSG),
+	seen, told,
+	see(InpFile), tell(OutFile),
+        reinvoke_timed_calls.
+
+call_initializers([]).
+call_initializers([Initializer|Rest]):- 
+	call(Initializer),
+	call_initializers(Rest).
+
+:- import cancel_sleeper_thread/0,start_sleeper_thread/1 from machine.
+handle_timed_calls:- 
+      cancel_sleeper_thread,
+      machine:stat_walltime(NewWalltime),
+      get_interpreter_index(Index),
+%      writeln(index_is(Index)),
+      ('_$timed_call_rep_max_handler'(Index,_Rep_handler,_Rep_interval,_Max_handler,_Remaining,_Walltime,_Orig) -> 
+         handle_timed_calls_rep_max(Index,NewWalltime)
+	 ; ( '_$timed_call_max_handler'(Index,_Max_handler,_Remaining,_Walltime,_Orig_int) -> 
+	       handle_timed_calls_max(Index,NewWalltime)
+	     ; true  ) ), % nothing to do for rep
+      !.
+handle_timed_calls.
+
+handle_timed_calls_max(Index,NewWalltime):- 
+      retract('_$timed_call_max_handler'(Index,Max_handler,Remaining,Walltime,Orig_int)),
+      NewRemaining is Remaining - (NewWalltime - Walltime),
+      assert('_$timed_call_max_handler'(Index,Max_handler,NewRemaining,Walltime,Orig_int)).
+
+handle_timed_calls_rep_max(Index,NewWalltime):- 
+      retract('_$timed_call_rep_max_handler'(Index,Rep_handler,Rep_interval,Max_handler,Remaining,Walltime,Orig)),
+      NewRemaining is Remaining - (NewWalltime - Walltime),
+%      writeln(stopping_sleeper_thread_rep_max(Remaining,Walltime,NewWalltime,NewRemaining)),
+      assert('_$timed_call_rep_max_handler'(Index,Rep_handler,Rep_interval,Max_handler,NewRemaining,Walltime,Orig)).
+% nothing to do for timed_call_rep_handler
+
+reinvoke_timed_calls:- 
+      get_interpreter_index(Index),
+      ( '_$timed_call_rep_max_handler'(Index,_Rep_handler,_Rep_interval,_Max_handler,_Max_int,_Walltime,_Orig) -> 
+            reinvoke_timed_calls_rep_max(Index)
+        ; '_$timed_call_max_handler'(Index,_Max_handler,_Remaining,_Walltime,_Orig_int) -> 
+            reinvoke_timed_calls_max(Index)
+	; '_$timed_call_rep_handler'(_Index,_Rep_handler,Rep_interval) ->
+%	    writeln(restarting_sleeper_thread_rep(Rep_interval)),
+            start_sleeper_thread(Rep_interval)
+	; true ).
+  
+reinvoke_timed_calls_max(Index):- 
+      retract('_$timed_call_max_handler'(Index,Max_handler,Remaining,_Walltime,Orig_int)),
+      machine:stat_walltime(NewWalltime),
+      assert('_$timed_call_max_handler'(Index,Max_handler,Remaining,NewWalltime,Orig_int)),
+%      writeln(restarting_sleeper_thread_max(Remaining)),
+      start_sleeper_thread(Remaining),!.
+reinvoke_timed_calls_rep_max(Index):- 
+      retract('_$timed_call_rep_max_handler'(Index,Rep_handler,Rep_interval,Max_handler,Max_interval,_Walltime,Orig)),
+      machine:stat_walltime(NewWalltime),
+      assert('_$timed_call_rep_max_handler'(Index,Rep_handler,Rep_interval,Max_handler,Max_interval,NewWalltime,Orig)),
+%      writeln(restarting_sleeper_thread_max_rep(Rep_interval)),
+      start_sleeper_thread(Rep_interval),!.
+
+readl_brklp1 :-
+	x_interp_repeat,
+	catch(readl_brklp1([]),Ball,(default_error_handler(Ball),fail)),
+	!.
+
+readl_brklp1(_) :- 
+	x_interp_repeat, 
+	conget('_$break_level', Blevel),
+	file_write(STDFDBK, Blevel),
+	file_write(STDFDBK, ': ?- '), file_flush(STDFDBK, _),
+	stat_flag(CURRENT_INPUT, FileIn),
+	file_read(FileIn, X, Vars),
+	(   nonvar(X), read_in_stop(X), !
+	%% end read loop; pop a break level, out if X=halt.
+	;   process_query(X, Vars)
+	).
+
+/* === interrupt handlers ============================================== */
+
+'_$keyboard_int'(Call,_Code) :- 
+	is_xwammode(Flag),
+	( Flag =:= 1 -> abort ; break, call_c(Call) ).
+
+:- import thread_get_signal/1 from mutex_xsb.
+:- import thread_peek_signal/1 from mutex_xsb.
+:- import repeat/0 from standard.
+
+% Continuation is in first arg as opposed to second in attv_int 
+'_$thread_int'(One,_Two) :- 
+	execute_messages_on_signal_queue,
+%	writeln(One),
+	call_c(One).
+
+execute_messages_on_signal_queue:- 
+	repeat,
+	(thread_peek_signal(Message) -> 
+	    thread_get_signal(Message),
+	    call(Message),
+	    fail
+	 ;  true),!.
+
+%:- import writeln/1 from standard.
+'_$goal_int'(One,_Two) :- 
+	handle_goal_interrupt(Message),
+%	writeln(call(Message)),
+	call(Message),
+	call_c(One).
+
+
+:- import lazy_reeval_trap/1 from increval.
+'_$lazy_reeval_int'(One,_Two):- 
+	lazy_reeval_trap(One).
+
+:- import timer_interrupt_trap/2 from standard.
+'_$timer_int'(One,Two):- 
+	timer_interrupt_trap(One,Two).
+
+'_$attv_int'(Intlist, Call) :-
+% 	file_write(1, '.... in _$attv_int/2'), file_nl(1),
+% 	file_write(1, '.... interrupt chain is : '),
+% 	file_write(1, Intlist), file_nl(1),
+	handle_interrupts(Intlist),
+%	file_write(1, '.... leaving _$attv_int/2'), file_nl(1),
+	call_c(Call).
+
+/* === version message ================================================= */
+
+version_message :-
+	file_nl(STDMSG),
+	slash(Slash),
+	%% Print the copyright notice
+	%%
+	%% xsb_configuration(etcdir, EtcDir),
+	%% fmt_write_string(CopyingMsg, '%s%scopying.msg', f(EtcDir,Slash)),
+	%% print_file_contents(CopyingMsg, STDMSG),
+	%% file_nl(STDMSG),
+	%%
+	%% Do the banner
+	xsb_configuration(config_dir, ConfigDir),
+	fmt_write_string(ConfMsg, '%s%sbanner.msg', f(ConfigDir,Slash)),
+	stat_flag(GARBAGE_COLLECT, GarbageType),
+	( GarbageType == COPYING_GC
+	->  GC_string = 'copy'
+	; GarbageType == SLIDING_GC
+	->  GC_string = 'slide'
+	; GarbageType == INDIRECTION_SLIDE_GC
+	->  GC_string = 'indirection'
+	; GC_string = 'none'
+	),
+	%% Read the banner file
+	file_open(ConfMsg, r, Handle),
+	file_getbuf_atom(Handle, 500, Str, _),
+	file_close(Handle),
+	%% Print the banner
+%	fmt_write(STDMSG, Str, GC_string),
+%	fmt_write(STDMSG, Str,[]),
+	file_write(STDMSG,Str),
+	file_nl(STDMSG).
+
+/* === utilities ======================================================= */
+
+%% The interpreter NEEDS this repeat: do not use the one in standard.
+x_interp_repeat :- true ; x_interp_repeat.
+
+print_debug_state :-
+	stat_flag(TRACE,Trace),
+	stat_flag(DEBUG_ON,Debug),
+	stat_flag(QUASI_SKIPPING,QuasiSkip),
+	( (Trace > 0, QuasiSkip =:= 0)
+	  ->	file_write(STDFDBK,[trace]), file_nl(STDFDBK)
+	  ; (Debug > 0; (Trace > 0, QuasiSkip > 0))
+	  ->	file_write(STDFDBK,[debug]), file_nl(STDFDBK)
+	; true
+	).
+
+
+%% prints yes, no, undefined at the very end
+print_final_truth_value(_Message) :-
+	banner_control(nofeedback),
+	!.
+print_final_truth_value(Message) :-
+	file_nl(STDMSG), file_write(STDFDBK, Message), file_nl(STDFDBK).

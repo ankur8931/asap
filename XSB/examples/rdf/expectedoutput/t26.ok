@@ -1,0 +1,18 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns = http://www.w3.org/1999/02/22-rdf-syntax-ns#],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Seq,[ID = JSPapersByDate],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://www.dogworld.com/Aug96.doc],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://www.webnuts.net/Jan97.html],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://www.carchat.com/Sept97.html],[])]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Seq,[ID = JSPapersBySubj],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://www.carchat.com/Sept97.html],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://www.dogworld.com/Aug96.doc],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://www.webnuts.net/Jan97.html],[])])])
+
+----------RDF----------
+
+[description(http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq,id(#JSPapersByDate),[rdf : li = description(description,about(http://www.dogworld.com/Aug96.doc),[]),rdf : li = description(description,about(http://www.webnuts.net/Jan97.html),[]),rdf : li = description(description,about(http://www.carchat.com/Sept97.html),[])]),description(http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq,id(#JSPapersBySubj),[rdf : li = description(description,about(http://www.carchat.com/Sept97.html),[]),rdf : li = description(description,about(http://www.dogworld.com/Aug96.doc),[]),rdf : li = description(description,about(http://www.webnuts.net/Jan97.html),[])])]
+
+--------Triples--------
+
+{#JSPapersByDate, http://www.w3.org/1999/02/22-rdf-syntax-ns#type, http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq}
+{#JSPapersByDate, http://www.w3.org/1999/02/22-rdf-syntax-ns#_1, http://www.dogworld.com/Aug96.doc}
+{#JSPapersByDate, http://www.w3.org/1999/02/22-rdf-syntax-ns#_2, http://www.webnuts.net/Jan97.html}
+{#JSPapersByDate, http://www.w3.org/1999/02/22-rdf-syntax-ns#_3, http://www.carchat.com/Sept97.html}
+{#JSPapersBySubj, http://www.w3.org/1999/02/22-rdf-syntax-ns#type, http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq}
+{#JSPapersBySubj, http://www.w3.org/1999/02/22-rdf-syntax-ns#_1, http://www.carchat.com/Sept97.html}
+{#JSPapersBySubj, http://www.w3.org/1999/02/22-rdf-syntax-ns#_2, http://www.dogworld.com/Aug96.doc}
+{#JSPapersBySubj, http://www.w3.org/1999/02/22-rdf-syntax-ns#_3, http://www.webnuts.net/Jan97.html}

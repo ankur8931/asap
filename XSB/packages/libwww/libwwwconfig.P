@@ -1,0 +1,171 @@
+/* File:      libwwwconfig.P -- loader for the libwww foreign module
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: libwwwconfig.P,v 1.26 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on]).
+#include "extensions_xsb.h"
+
+
+:- import slash/1, str_cat/3, machine_file_exists/1 from machine.
+:- import fmt_write_string/3, file_time/2 from file_io.
+:- import search_module/6 from consult.
+:- import libwww_info/2 from libwww_init.
+:- import compile_so/3, runtime_loader_flag/3 from foreign.
+:- import path_sysop/3, path_sysop/2 from file_io.
+
+%% Construct the file cc/xsb_libwww.H on the fly
+make_libwwwH(CC, CC_opts, LoaderFlags) :-
+    slash(Slash),
+    xsb_configuration(configuration, XSBconfiguration),
+    package_configuration(dir(libwww), LibwwwDir),
+    fmt_write_string(LD_directives_file,
+		     '%s%scc%slibwww_request%s',
+		     f(LibwwwDir, Slash, Slash,XSB_HDR_EXTENSION_ATOM)),
+    telling(OldTell),
+    tell(LD_directives_file),
+    writeln('%% This file is generated on-the-fly by libwwwconfig.P'),
+    writeln('%% Do not edit--any changes will be written over.'),
+    write('%% XSB config:            '), writeln(XSBconfiguration),
+    write('%% XSB CC:                '), writeln(CC),
+    write('%% Libwww compiler flags: '), writeln(CC_opts),
+    writeln(':- import slash/1 from machine.'),
+    writeln(':- export do_libwww_request___/1.'),
+    fmt_write(':- ldoption('' %s'').', arg(LoaderFlags)), nl,
+    told,
+    tell(OldTell).
+    
+
+:-  package_configuration(dir(libwww), LibwwwDir),
+    slash(Slash),
+    Basename = libwww_request,
+    Basename_xml = libwww_parse_xml,
+    Basename_rdf = libwww_parse_rdf,
+    Basename_html = libwww_parse_html,
+    fmt_write_string(Module, '%s%scc%s%s', f(LibwwwDir,Slash,Slash,Basename)),
+    fmt_write_string(Module_xml,
+		     '%s%scc%s%s', f(LibwwwDir,Slash,Slash,Basename_xml)),
+    fmt_write_string(Module_rdf,
+		     '%s%scc%s%s', f(LibwwwDir,Slash,Slash,Basename_rdf)),
+    fmt_write_string(Module_html,
+		     '%s%scc%s%s', f(LibwwwDir,Slash,Slash,Basename_html)),
+    (  %% avoid recompilation: check if xsb_libwww object file exists and 
+       %% is newer than xsb_libwww.c.
+       search_module(Basename,Dir,_Mod,_Ext,_Base,ModuleO),
+       str_cat(Module, '.c', ModuleSourceFile),
+       str_cat(Module, XSB_HDR_EXTENSION_ATOM, ModuleH),
+       machine_file_exists(ModuleH),
+       file_time(ModuleO, time(CT1,CT2)),
+       file_time(ModuleSourceFile, time(ST1,ST2)),
+       time(ST1,ST2) @< time(CT1,CT2)
+    %% module compiled and is current, so just load
+    -> [Basename]
+
+    %% If Module isn't compiled or is old --- recompile
+    ;   xsb_configuration(compiler, CC),
+	libwww_info(ldflags, LoaderFlags0),
+	libwww_info(ccflags, CC_opts),
+	libwww_info(libdir, LibwwwLibdir),
+	xsb_configuration(config_libdir, ConfigLibdir),
+
+	runtime_loader_flag(CC, LibwwwLibdir, RunpathFlag),
+	%% Add something like -Wl,-rpath,<libdir> to the loader flags
+	
+	%% Compute the arch-dependent library name
+	(
+	(xsb_configuration(architecture,A),str_sub(darwin,A))
+	->
+	fmt_write_string(LibMod_xml,
+			 '%s%s%s.dylib', a(ConfigLibdir,Slash,Basename_xml)),
+	fmt_write_string(LibMod_rdf,
+			 '%s%s%s.dylib', a(ConfigLibdir,Slash,Basename_rdf)),
+	fmt_write_string(LibMod_html,
+			 '%s%s%s.dylib', a(ConfigLibdir,Slash,Basename_html)),
+	str_cat(Module_xml, '.dylib', SharedLib_xml),
+	str_cat(Module_rdf, '.dylib', SharedLib_rdf),
+	str_cat(Module_html, '.dylib', SharedLib_html)
+	;
+	fmt_write_string(LibMod_xml,
+			 '%s%s%s.so', a(ConfigLibdir,Slash,Basename_xml)),
+	fmt_write_string(LibMod_rdf,
+			 '%s%s%s.so', a(ConfigLibdir,Slash,Basename_rdf)),
+	fmt_write_string(LibMod_html,
+			 '%s%s%s.so', a(ConfigLibdir,Slash,Basename_html)),
+	str_cat(Module_xml, '.so', SharedLib_xml),
+	str_cat(Module_rdf, '.so', SharedLib_rdf),
+	str_cat(Module_html, '.so', SharedLib_html)
+	),
+
+	(
+	(xsb_configuration(architecture,A),str_sub(darwin,A))
+	->
+	fmt_write_string(LoaderFlags1, '%s %s -install_name %s', arg(RunpathFlag,LoaderFlags0,LibMod_xml)),
+	compile_so(Module_xml, [cc(CC), cc_opts(CC_opts)], LoaderFlags1),
+	fmt_write_string(LoaderFlagsMac2, '%s %s -install_name %s', arg(RunpathFlag,LoaderFlags0,LibMod_rdf)),
+	compile_so(Module_rdf, [cc(CC), cc_opts(CC_opts)], LoaderFlagsMac2),
+	fmt_write_string(LoaderFlagsMac3, '%s %s -install_name %s', arg(RunpathFlag,LoaderFlags0,LibMod_html)),
+	compile_so(Module_html, [cc(CC), cc_opts(CC_opts)], LoaderFlagsMac3)
+	;
+	fmt_write_string(LoaderFlags1, '%s %s', arg(RunpathFlag,LoaderFlags0)),
+	%% Compile the _util.c file into a shared object
+	compile_so(Module_xml, [cc(CC), cc_opts(CC_opts)], LoaderFlags1),
+	compile_so(Module_rdf, [cc(CC), cc_opts(CC_opts)], LoaderFlags1),
+	compile_so(Module_html, [cc(CC), cc_opts(CC_opts)], LoaderFlags1)
+	),
+
+	%% Move Module_util to the arch-dependent library
+	force_rename(SharedLib_xml,LibMod_xml),
+	force_rename(SharedLib_rdf,LibMod_rdf),
+	force_rename(SharedLib_html,LibMod_html),
+
+	(
+	(xsb_configuration(architecture,A),str_sub(darwin,A))
+	->
+	str_cat(Module, '.dylib', SharedLib),
+	fmt_write_string(LibMod, '%s%s%s.dylib', a(ConfigLibdir,Slash,Basename)),
+	%% Make options for the main foreign module (libwww_request.c)
+	fmt_write_string(LoaderFlags2, '%s %s %s %s -install_name %s',
+			 a(LoaderFlags0,LibMod_xml,LibMod_rdf,LibMod_html,LibMod))
+	;
+	str_cat(Module, '.so', SharedLib),
+	fmt_write_string(LibMod, '%s%s%s.so', a(ConfigLibdir,Slash,Basename)),
+	%% Make options for the main foreign module (libwww_request.c)
+	fmt_write_string(LoaderFlags2, '%s %s %s %s',
+			 a(LoaderFlags1,LibMod_xml,LibMod_rdf,LibMod_html))
+	),
+
+	make_libwwwH(CC, CC_opts, LoaderFlags2),
+	str_cat(Module, XSB_OBJ_EXTENSION_ATOM, Objfile),
+	consult(Module, [cc(CC), cc_opts(CC_opts)]),
+	fmt_write_string(LibObjFile,
+			 '%s%s%s%s',
+			 args(ConfigLibdir,Slash,Basename,XSB_OBJ_EXTENSION_ATOM)),
+	force_rename(Objfile, LibObjFile),
+	force_rename(SharedLib,LibMod)
+     ).
+
+%% Windows semantics for renaming is such that the op fails, 
+%% if the target exists
+force_rename(Orig,Target) :-
+	(path_sysop(unlink,Target), !; true),
+	path_sysop(rename,Orig,Target).

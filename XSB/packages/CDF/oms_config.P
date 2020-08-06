@@ -1,0 +1,28 @@
+component_table_ext(oms_cn(_,_,_,_),arg(1,class),[]).
+component_table_ext(oms_obj(_,_,_,_),arg(1,obj),[]).
+component_table_ext(oms_sc(_,_),arg(1,class),[arg(2,class)]).
+component_table_ext(oms_mo(_,_),arg(1,obj),[arg(2,class)]).
+component_table_ext(oms_rln(_,_,_),arg(2,class),[arg(1,class),arg(3,class)]).
+component_table_ext(oms_schrel(_,_,_),arg(2,class),
+					[arg(1,class),arg(3,class)]).
+component_table_ext(oms_strel(_,_,_),arg(2,class),[arg(1,class),arg(3,class)]).
+component_table_ext(oms_at(_,_,_),arg(2,class),[arg(1,obj),arg(3,class)]).
+component_table_ext(oms_ao(_,_,_),arg(2,class),[arg(1,obj),arg(3,obj)]).
+
+component_table_int(class_int(_,_,_),3,[]).
+component_table_int(object_int(_,_,_),3,[]).
+component_table_int(immediate_subclass_int(_,_,_,_),2,[arg(4,warn)]).
+component_table_int(immediate_memberof_int(_,_,_,_),2,[arg(4,warn)]).
+component_table_int(immediate_relationship_int(_,_,_,_,_,_),4,
+				[arg(2,warn),arg(6,no_warn)]).
+component_table_int(immediate_schrel_int(_,_,_,_,_,_),4,
+				[arg(2,warn),arg(6,no_warn)]).
+component_table_int(immediate_strel_int(_,_,_,_,_,_),4,
+				[arg(2,warn),arg(6,no_warn)]).
+component_table_int(immediate_attribute_int(_,_,_,_,_,_),4,
+				[arg(2,warn),arg(6,no_warn)]).
+component_table_int(attribute_object_int(_,_,_,_,_,_),4,
+				[arg(2,warn),arg(6,no_warn)]).
+component_table_int(assert_oms_int(_),null,[]).
+component_table_int(retractall_oms_int(_),null,[]).
+

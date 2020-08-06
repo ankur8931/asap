@@ -1,0 +1,477 @@
+/* File:      storage.P  -- Primitives for backtrackable updates
+** Author(s): Prasad Rao, Hasan Davulcu, kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998-2000
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: storage.P,v 1.20 2010-09-08 19:38:47 kifer Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+
+
+#include "storage_xsb_defs.h"
+#include "builtin.h"
+#include "trie_defs.h"
+
+
+storage_builtin(_BuiltinNum,_StorageNam,_TrieType,_Handle,_Snapshot,_Changed) :-
+	'_$builtin'(STORAGE_BUILTIN).
+
+%% Local version of trie_intern
+%%find_in_trie(Fact,TrieRoot,Leaf) :- intern:trie_interned(Fact,TrieRoot,Leaf,_).
+find_in_trie(Fact,TrieRoot,Leaf) :-
+	intern:fast_trie_interned(TrieRoot,Fact,Leaf).
+put_in_trie(Fact,Handle,Leaf,Flag) :- 
+	intern:trie_intern(Fact,Handle,Leaf,Flag,_).
+delete_from_trie(Handle,Leaf) :-
+	intern:trie_unintern_nr(Handle,Leaf).
+incr_put_in_trie(Fact,Handle,Leaf,Flag) :- 
+	intern:incr_trie_intern(Handle,Fact,Leaf,Flag).
+incr_delete_from_trie(Handle,Leaf) :-
+	intern:incr_trie_unintern_nr(Handle,Leaf).
+incr_unmark_uninterned_from_trie(H, Leaf) :-
+	intern:incr_unmark_uninterned_nr(H,Leaf).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Insertion %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Inserts facts. On backtracking, the fact is deleted.
+storage_insert_fact_bt(StorageName,Fact,Inserted) :-	
+	storage_insert_fact_bt(StorageName,Fact,Inserted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+storage_insert_fact_bt(StorageName,Fact,Inserted,ForwAction,BackAction) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,Snapshot),
+	put_in_trie(Fact, H, Leaf, New),
+	(New == 0
+	->  Inserted=1,  % new fact inserted
+	    mark_storage_changed_bt(StorageName),
+	    (  call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,NON_INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		->
+		    delete_from_trie(H, Leaf),
+		    call(BackAction),
+		    fail 
+		)
+	    )
+	; Inserted=0	 % fact was already there: no action
+	).
+
+
+%% Nonbacktrackable insert
+storage_insert_fact(StorageName,Fact,Inserted) :-	
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	put_in_trie(Fact, H, _Leaf, New),
+	!,
+	(New == 0
+	->  Inserted=1   % new fact inserted
+	; Inserted=0	 % fact was already there: no action
+	).
+
+
+%% Inserts facts. On backtracking, the fact is deleted.
+incr_storage_insert_fact_bt(StorageName,Fact,Inserted) :-	
+	incr_storage_insert_fact_bt(StorageName,Fact,Inserted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+incr_storage_insert_fact_bt(StorageName,Fact,Inserted,ForwAction,BackAction) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,Snapshot),
+	incr_put_in_trie(Fact, H, Leaf, New),
+	(New == 0
+	->  Inserted=1,  % new fact inserted
+	    mark_storage_changed_bt(StorageName),
+	    (  call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		->
+		    incr_delete_from_trie(H, Leaf),
+		    call(BackAction),
+		    fail 
+		)
+	    )
+	; Inserted=0	 % fact was already there: no action
+	).
+
+
+%% Nonbacktrackable insert
+incr_storage_insert_fact(StorageName,Fact,Inserted) :-	
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	incr_put_in_trie(Fact, H, _Leaf, New),
+	!,
+	(New == 0
+	->  Inserted=1   % new fact inserted
+	; Inserted=0	 % fact was already there: no action
+	).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Deletion %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Backtrackable delete.
+%% Doesn't remove anything, but instead "marks" for deletion.
+%% On backtracking: unmarks facts that are marked for deletion
+storage_delete_fact_bt(StorageName,Fact,Deleted) :-
+	storage_delete_fact_bt(StorageName,Fact,Deleted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+storage_delete_fact_bt(StorageName,Fact,Deleted,ForwAction,BackAction) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,Snapshot),
+	(find_in_trie(Fact, H, Leaf)
+	->  Deleted=1,   % existing fact deleted
+	    mark_storage_changed_bt(StorageName),
+	    ( delete_from_trie(H, Leaf),
+		call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,NON_INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		->
+		    unmark_uninterned_nr(H, Leaf),
+		    call(BackAction),
+		    fail
+		)
+	    )
+	;   Deleted=0    % non-existing fact: no action
+	).
+
+%% Nonbacktrackable delete
+storage_delete_fact(StorageName,Fact,Deleted) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	!,
+	(find_in_trie(Fact, H, Leaf)
+	->  Deleted=1,   % existing fact deleted
+	    delete_from_trie(H, Leaf)
+	;   Deleted=0    % non-existing fact: no action
+	).
+
+%% deletes the whole trie
+storage_delete_all(StorageName) :- 
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	!,
+	storage_builtin(DESTROY_STORAGE_HANDLE,StorageName,_,_,_,_),
+	delete_trie(H).
+
+%% Backtrackable delete.
+%% Doesn't remove anything, but instead "marks" for deletion.
+%% On backtracking: unmarks facts that are marked for deletion
+incr_storage_delete_fact_bt(StorageName,Fact,Deleted) :-
+	incr_storage_delete_fact_bt(StorageName,Fact,Deleted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+incr_storage_delete_fact_bt(StorageName,Fact,Deleted,ForwAction,BackAction) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,Snapshot),
+	(find_in_trie(Fact, H, Leaf)
+	->  Deleted=1,   % existing fact deleted
+	    mark_storage_changed_bt(StorageName),
+	    ( incr_delete_from_trie(H, Leaf),
+		call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		->
+		    incr_unmark_uninterned_from_trie(H, Leaf),
+		    call(BackAction),
+		    fail
+		)
+	    )
+	;   Deleted=0    % non-existing fact: no action
+	).
+
+%% Nonbacktrackable delete
+incr_storage_delete_fact(StorageName,Fact,Deleted) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	!,
+	(find_in_trie(Fact, H, Leaf)
+	->  Deleted=1,   % existing fact deleted
+	    incr_delete_from_trie(H, Leaf)
+	;   Deleted=0    % non-existing fact: no action
+	).
+
+%% deletes the whole trie
+incr_storage_delete_all(StorageName) :- 
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	!,
+	storage_builtin(DESTROY_STORAGE_HANDLE,StorageName,_,_,_,_),
+	delete_trie(H).
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Insert keypair %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% The folowing two functions insert key-value pairs
+%% If inserting an already existing keypair, then return 0
+%% If inserting a non-existing keypair with an existing key, then return -1.
+%% In both cases don't insert anything.
+%% If keypair is new, return 1 and insert pair(Key,Val)
+storage_insert_keypair_bt(StorageName,Key,Value,Inserted):-
+	storage_insert_keypair_bt(StorageName,Key,Value,Inserted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+storage_insert_keypair_bt(StorageName,Key,Value,Inserted,ForwAction,BackAction) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,Snapshot),
+	%% If this key already exists, then don't insert and return -1
+	(find_in_trie(pair(Key,Val), H, _Leaf)
+	-> (Val==Value -> Inserted=0 ; Inserted = -1)
+	;
+	    %% Key doesn't exist
+	    put_in_trie(pair(Key,Value), H, Leaf_Pair, _New),
+	    Inserted = 1,	% new fact: insert it
+	    mark_storage_changed_bt(StorageName),
+	    ( call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,NON_INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		-> 
+		    delete_from_trie(H, Leaf_Pair),
+		    call(BackAction),
+		    fail
+		)
+	    )
+	).
+
+
+%% Like keypair_insert_bt
+%% but these are not backtrackable.
+storage_insert_keypair(StorageName,Key, Value, Inserted):-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	%% If this key already exists, then don't insert and return -1
+	( find_in_trie(pair(Key,Val), H, _Leaf)
+	-> (Val==Value -> Inserted=0 ; Inserted = -1)
+	;
+	    %% Key doesn't exist
+	    put_in_trie(pair(Key,Value), H, _Leaf_Pair, _New),
+	    Inserted = 1	% new fact: insert it
+	).
+
+
+
+%% Like keypair_insert_bt, keypair_delete_bt, 
+%% but these are not backtrackable.
+incr_storage_insert_keypair(StorageName,Key, Value, Inserted):-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	%% If this key already exists, then don't insert and return -1
+	( find_in_trie(pair(Key,Val), H, _Leaf)
+	-> (Val==Value -> Inserted=0 ; Inserted = -1)
+	;
+	    %% Key doesn't exist
+	    incr_put_in_trie(pair(Key,Value), H, _Leaf_Pair, _New),
+	    Inserted = 1	% new fact: insert it
+	).
+
+%% The folowing two functions insert key-value pairs
+%% If inserting an already existing keypair, then return 0
+%% If inserting a non-existing keypair with an existing key, then return -1.
+%% In both cases don't insert anything.
+%% If keypair is new, return 1 and insert pair(Key,Val)
+incr_storage_insert_keypair_bt(StorageName,Key,Value,Inserted):-
+	incr_storage_insert_keypair_bt(StorageName,Key,Value,Inserted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+incr_storage_insert_keypair_bt(StorageName,Key,Value,Inserted,ForwAction,BackAction) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,Snapshot),
+	%% If this key already exists, then don't insert and return -1
+	(find_in_trie(pair(Key,Val), H, _Leaf)
+	-> (Val==Value -> Inserted=0 ; Inserted = -1)
+	;
+	    %% Key doesn't exist
+	    incr_put_in_trie(pair(Key,Value), H, Leaf_Pair, _New),
+	    Inserted = 1,	% new fact: insert it
+	    mark_storage_changed_bt(StorageName),
+	    ( call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		-> 
+		    incr_delete_from_trie(H, Leaf_Pair),
+		    call(BackAction),
+		    fail
+		)
+	    )
+	).
+
+
+
+%% If key exists, then delete the pair and return 1; otherwise, return 0
+storage_delete_keypair_bt(StorageName,Key,Deleted) :-
+	storage_delete_keypair_bt(StorageName,Key,Deleted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+storage_delete_keypair_bt(StorageName,Key,Deleted,ForwAction,BackAction) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,Snapshot),
+	(find_in_trie(pair(Key,_Value), H, Leaf)
+	->  Deleted = 1,  % this is an existing fact: delete it
+	    mark_storage_changed_bt(StorageName),
+	    ( delete_from_trie(H, Leaf),
+		call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,NON_INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		->
+		    unmark_uninterned_nr(H, Leaf),
+		    call(BackAction),
+		    fail 
+		)
+	    )
+	;   Deleted = 0   % no such fact -- no action
+	).
+
+
+%% If key exists, then delete the pair and return 1; otherwise, return 0
+storage_delete_keypair(StorageName,Key, Deleted):-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	(find_in_trie(pair(Key,_Value), H, Leaf)
+	->  Deleted = 1,  % this is an existing fact: delete it
+	    delete_from_trie(H, Leaf) 
+	;   Deleted = 0   % no such fact -- no action
+	).
+
+
+%% If key exists, then delete the pair and return 1; otherwise, return 0
+incr_storage_delete_keypair_bt(StorageName,Key,Deleted) :-
+	incr_storage_delete_keypair_bt(StorageName,Key,Deleted,true,true).
+
+%% ForwAction - hook to call on forward execution
+%% BackAction - hook to call on backward execution
+incr_storage_delete_keypair_bt(StorageName,Key,Deleted,ForwAction,BackAction) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,Snapshot),
+	(find_in_trie(pair(Key,_Value), H, Leaf)
+	->  Deleted = 1,  % this is an existing fact: delete it
+	    mark_storage_changed_bt(StorageName),
+	    ( incr_delete_from_trie(H, Leaf),
+		call(ForwAction)
+	    ; %% On backtracking
+		storage_handle(StorageName,INCREMENTAL_TRIE,_,NewSnapshot),
+		(NewSnapshot =< Snapshot
+		->
+		    incr_unmark_uninterned_from_trie(H, Leaf),
+		    call(BackAction),
+		    fail 
+		)
+	    )
+	;   Deleted = 0   % no such fact -- no action
+	).
+
+
+%% If key exists, then delete the pair and return 1; otherwise, return 0
+incr_storage_delete_keypair(StorageName,Key, Deleted):-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	(find_in_trie(pair(Key,_Value), H, Leaf)
+	->  Deleted = 1,  % this is an existing fact: delete it
+	    incr_delete_from_trie(H, Leaf) 
+	;   Deleted = 0   % no such fact -- no action
+	).
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Retrieval %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Find fact in storage
+storage_find_fact(StorageName,Fact) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	!,
+	find_in_trie(Fact,H,_).
+
+%% The StredFact is the fact as it is stored in the trie
+%% In contrast, Fact may unify with what is in the trie,
+%% so it may be different from StredFact
+storage_find_fact(StorageName,Fact,StoredFact) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	!,
+	find_in_trie(Fact,H,Leaf),
+	intern:trie_interned(StoredFact,H,Leaf,_).
+
+storage_find_keypair(StorageName,Key,Value) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	find_in_trie(pair(Key,Value),H,_).
+
+%% Find fact in INCREMENTAL storage
+%% Since storage_handle creates tries, if they don't exist, there is a danger
+%% that storage_find_fact may create a non-incremental trie when an incremental
+%% trie is intended. To avoid this danger, use the three incr_* versions below
+incr_storage_find_fact(StorageName,Fact) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	!,
+	find_in_trie(Fact,H,_).
+
+%% The StredFact is the fact as it is stored in the trie
+%% In contrast, Fact may unify with what is in the trie,
+%% so it may be different from StredFact
+incr_storage_find_fact(StorageName,Fact,StoredFact) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	!,
+	find_in_trie(Fact,H,Leaf),
+	intern:trie_interned(StoredFact,H,Leaf,_).
+
+incr_storage_find_keypair(StorageName,Key,Value) :-
+	storage_handle(StorageName,INCREMENTAL_TRIE,H,_),
+	find_in_trie(pair(Key,Value),H,_).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Commit  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Commit changes to the storage trie associated with StorageName
+%% (only if storage has been changed)
+storage_commit(StorageName) :-
+	( storage_builtin(INCREMENT_STORAGE_SNAPSHOT,StorageName,_,_,_,_),
+	    !
+	%% don't backtrack over it
+	; fail
+	).
+
+
+%% Update tables for incremental tabling
+incr_storage_update(StorageName) :-
+	( storage_builtin(INCREMENT_STORAGE_SNAPSHOT,StorageName,_,_,_,_),
+	    increval:incr_table_update,
+	    !
+	%% don't backtrack over it
+	; fail
+	).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Reclaim, handle %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Reclaims space by removing nodes from the backtrackable insert/keypair trie
+%% which were marked for deletion. This should be done only at the top 
+%% level of a query.
+storage_reclaim_space(StorageName) :-
+	storage_handle(StorageName,NON_INCREMENTAL_TRIE,H,_),
+	!,
+	trie_reclaim_uninterned_nr(H).
+
+
+%% Create a new trie or use an existing one 
+%% that is already saved as a property of StorageName
+storage_handle(StorageName,TrieType,Handle,Snapshot) :-
+	(atom(StorageName), !
+	; throw(error(storage('Invalid storage name', StorageName)))),
+	storage_builtin(GET_STORAGE_HANDLE,StorageName,TrieType,Handle,Snapshot,_).
+
+mark_storage_changed_bt(StorageName) :-
+	storage_builtin(MARK_STORAGE_CHANGED,StorageName,_,_,_,_).
+
+storage_show_table_state :-
+	storage_builtin(SHOW_TABLE_STATE,_StoreName,_,_Handle,_Snapshot,_Change).

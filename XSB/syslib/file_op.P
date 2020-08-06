@@ -1,0 +1,360 @@
+/* File:      file_op.P 
+** Author(s): Sagonas, Warren, Xu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: file_op.P,v 1.43 2010/04/21 19:27:49 tswift Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+#include "psc_defs.h"
+#include "biassert_defs.h"
+#include "incr_xsb_defs.h"
+
+		/************************************/
+		/*  Querying the Operator Database  */
+		/************************************/
+
+:- local dyn_op/3.	% make it local
+:- thread_shared 'dyn_op'(_,_,_).
+
+'_$op'(P, T, S) :- 
+	dyn_op(P, T, S),
+	P =\= 0.		% operator S has not been de-activated
+'_$op'(P, T, S) :- 
+	'_$op1'(P, T, S),
+	\+ dyn_op(0, T, S).
+
+
+		/*************************************/
+		/*  Modifying the Operator Database  */
+		/*************************************/
+
+%   add_ops(+Precedence, +Operator_Specifier, +OPList)
+%   Is used by op/3 to add a list of operators with a given Precedence and
+%   Operator_Specifier, when it is already known that no error can occur.
+%   (This must be ensured by op/3). Predicate op/3 always calls this
+%   procedure to add the given operators, (even when only one operator is
+%   to be added), so this is the exported predicate in contrast to add_op/3
+%   which is local to this module.
+ 
+add_ops(_P,_T, []).
+add_ops( P, T, [OP|OPs]) :- add_op(P, T, OP), add_ops(P, T, OPs).
+
+add_op(0, T, S) :- 
+	dyn_op(0, T, S),	% An already deleted op doesn't 
+	!.			% need to be deleted again.
+add_op(0, T, S) :-
+	'_$op'(_, T, S),	% op S is a current op
+	!,
+	deactivate_op(T, S).
+add_op(0, _, _) :-		% If S is not a current op it doesn't matter!
+	!.
+add_op(P, T, S) :- 
+	'_$op'(P, T, S), 	% The same op declaration already exists
+	!.			% in the database (don't insert it again)
+add_op(_, T, S) :-
+	same_type_op(T, T0, S),
+	deactivate_op(T0, S),
+	fail.
+add_op(P, T, S) :-
+	assertai(dyn_op(P,T,S), 3).
+
+same_type_op(T, T0, S) :-
+	'_$op'(_, T0, S),	% op S is a current op
+	op_type(T0, Ty),
+	op_type(T, Ty),
+	!.
+
+deactivate_op(T, S) :-
+	retract(dyn_op(_,T,S)),		% op S was dynamically created;
+	!.				% remove it!
+deactivate_op(T, S) :-
+	assertai(dyn_op(0,T,S), 3).	% op S is a compiled op; 
+					% deactivate it!
+
+
+		/**************************************/
+		/*  Database of Predefined Operators  */
+		/**************************************/
+
+% NOTE: From the Prolog standard we are missing the following operators:
+%		op(1150, fx, [(discontiguous)]).
+%		op(400, yfx, rem).
+%		op(200, xfx, **).
+
+:- dynamic dyn_op(_,_,_).	% need this form so get right psc record.
+
+'_$op1'(1200,xfx,(':-')).
+'_$op1'(1200,xfx,('-->')).	% Not in the Prolog standard
+'_$op1'(1200,fx,(':-')).
+'_$op1'(1200,fx,('?-')).
+'_$op1'(1198,xfx,('::-')).
+'_$op1'(1150,fx,(hilog)).	% Added for HiLog
+'_$op1'(1150,fx,(dynamic)).
+'_$op1'(1150,fx,(multifile)).
+'_$op1'(1150,fx,meta_predicate).
+'_$op1'(1100,xfy,';').
+'_$op1'(1100,fx,(table)).	% Added for tabling
+'_$op1'(1100,fx,(use_variant_tabling)).		% Added for tabling
+'_$op1'(1100,fx,(use_subsumptive_tabling)).	% Added for tabling
+'_$op1'(1100,fx,(use_incremental_tabling)).	% Added for incremental evaluation
+'_$op1'(1100,fx,(use_incremental_dynamic)).	% Added for incremental evaluation
+'_$op1'(1100,fx,(use_opaque_tabling)).	% Added for incremental evaluation
+'_$op1'(1100,fx,(thread_shared)).	% Added for threads
+'_$op1'(1100,fx,(thread_private)).	% Added for threads
+'_$op1'(1100,fx,(edb)).		% Added for tabling
+'_$op1'(1100,fy,(index)).	% Not in the Prolog standard
+'_$op1'(1100,fy,(ti)).		% Added for transformational indexing
+'_$op1'(1100,fy,(ti_off)).	% Added for transformational indexing
+'_$op1'(1100,fx,(mode)).	% Not in the Prolog standard
+'_$op1'(1100,fx,(annotation)).	% Not in the Prolog standard
+'_$op1'(1100,fx,(document_export)).	% Not in the Prolog standard
+'_$op1'(1100,fx,(export)).	% Not in the Prolog standard
+'_$op1'(1100,fx,(parallel)).	% Not in the Prolog standard
+'_$op1'(1100,fx,(local)).	% Not in the Prolog standard
+'_$op1'(1100,fx,(foreign_pred)). % Not in the Prolog standard 
+'_$op1'(1100,fx,(private_foreign_pred)). % Not in the Prolog standard 
+'_$op1'(1100,fx,(compile_command)). % Not in the Prolog standard
+'_$op1'(1100,fx,(attribute)).	% Not in the Prolog standard
+'_$op1'(1050,fy,(import)).	% Not in the Prolog standard
+'_$op1'(1050,fy,(document_import)).	% Not in the Prolog standard
+'_$op1'(1040,xfx,(from)).	% Not in the Prolog standard
+'_$op1'(1045,xfx,(as)).		% Not in the Prolog standard
+'_$op1'(1050,xfy,'->').
+'_$op1'(1000,xfy,',').
+'_$op1'(900,fy,not).		% Not in the Prolog standard
+'_$op1'(900,fy,tnot).		% Not in the Prolog standard
+'_$op1'(900,fy,\+).		% Not in the Prolog standard
+'_$op1'(900,fy,spy).		% Not in the Prolog standard
+'_$op1'(900,fy,nospy).		% Not in the Prolog standard
+'_$op1'(700,xfx,=).
+'_$op1'(700,xfx,\=).
+'_$op1'(700,xfx,==).
+'_$op1'(700,xfx,@=).
+'_$op1'(700,xfx,\==).
+'_$op1'(700,xfx,@<).
+'_$op1'(700,xfx,@=<).
+'_$op1'(700,xfx,@>).
+'_$op1'(700,xfx,@>=).
+'_$op1'(700,xfx,=..).
+'_$op1'(700,xfx,^=..).	% HiLog univ
+'_$op1'(700,xfx,is).
+'_$op1'(700,xfx,=:=).
+'_$op1'(700,xfx,=\=).
+'_$op1'(700,xfx,<).
+'_$op1'(700,xfx,=<).
+'_$op1'(700,xfx,>).
+'_$op1'(700,xfx,>=).
+%'_$op1'(700,xfx,in).		% Not in the Prolog standard (used for domains)
+%'_$op1'(700,xfx,/=).		% Not in the Prolog standard (used for domains)
+'_$op1'(700,xfx,?=).
+'_$op1'(661,xfy,.).		% Not in the Prolog standard /* !! */
+'_$op1'(600,xfy,:).		% As Quintus (Not as in the Prolog standard)
+'_$op1'(500,yfx,+).
+'_$op1'(500,yfx,-).
+'_$op1'(500,yfx,/\).
+'_$op1'(500,yfx,\/).
+'_$op1'(500,yfx,><).
+'_$op1'(500,yfx,xor).
+%%'_$op1'(500,fx,+).		% Not in the Prolog standard (200 in Ciao)
+'_$op1'(200,fy,+).
+%%'_$op1'(500,fx,-).		% Not in the Prolog standard (200 in Ciao)
+%'_$op1'(200,fx,-).
+'_$op1'(200,fy,-).
+%%'_$op1'(500,fx,\).		% Not in the Prolog standard (200 in Ciao)
+'_$op1'(200,fy,\).
+'_$op1'(400,yfx,*).
+'_$op1'(400,yfx,/).
+'_$op1'(400,yfx,//).
+'_$op1'(400,yfx,mod).
+'_$op1'(400,yfx,rem).
+'_$op1'(400,yfx,div).
+'_$op1'(400,yfx,<<).
+'_$op1'(400,yfx,>>).
+'_$op1'(400,yfx,\).
+'_$op1'(200,xfx,**).
+'_$op1'(200,xfy,^).
+
+
+			/************************/
+			/*  Auxiliary routines  */
+			/************************/
+
+%  op_priority(+Priority)
+%  true iff Priority is an integer representing a valid operator priority
+
+op_priority(Priority) :-
+	integer(Priority),
+	Priority >= 0, Priority =< 1200.
+
+
+%  op_specifier(+Op_Specifier)
+%  true iff Op_Specifier is a valid operator specifier
+
+op_specifier(Op_Specifier) :-
+	nonvar(Op_Specifier),
+	op_type(Op_Specifier, _).
+
+
+%  op_type(?Op_Specifier, ?Op_Type)
+%  classify operator types, within type must be exclusive
+
+op_type(xfx,inf).
+op_type(xfy,inf).
+op_type(yfx,inf).
+op_type(fx,pre).
+op_type(fy,pre).
+op_type(xf,pos).
+op_type(yf,pos).
+
+
+/* add_index allows declaration of indexing for dynamic (and static) code.
+Information is kept in a table '_$index1'/3 which stores a most-general
+call to a predicate, the argument to index on, and the size of the hash
+table to use. */
+
+
+'_$index'(A,B,C) :-
+	conpsc('_$index1'(_,_,_),Psc),
+	psc_type(Psc, Type),
+	(Type =:= 1				% DYNA so exists 
+	 ->     '_$index1'(A,B,C)
+         ;      fail     % index1 doesn't exist yet, so it is empty
+        ).
+
+:- thread_shared('_$index1'(_,_,_)).
+:- dynamic '_$index1'(_,_,_).
+:- assert('_$index1'(dyn_op(_,_,_),3,17)),
+   assert('_$index1'('_$index'(_,_,_),1,29)).
+
+:- thread_shared('_$trie_asserted1'(_)).
+:- dynamic '_$trie_asserted1'(_).
+'_$trie_asserted'(Term) :- 
+	conpsc('_$trie_asserted1'(_),Psc),
+	psc_type(Psc, Type),
+	Type =:= 1,		% DYNA so exists 
+	'_$trie_asserted1'(Term).
+
+add_trie_index(Spec) :-
+	mpa_to_skel(Spec,Pcall),
+	assert_trie_index(Pcall).
+
+
+assert_trie_index(Pcall) :-
+	retract_index(Pcall),
+	assert('_$trie_asserted1'(Pcall)).
+
+:- import system_retractall/1 from assert.
+retract_trie_index(Pcall) :-
+	system_retractall('_$trie_asserted1'(Pcall)).
+
+add_index(Pred,Arg,Size) :-
+	mpa_to_skel(Pred,Pcall),
+	functor(Pcall,_P,Arity),
+	(Size =< 0 -> default_assert_size(Hsize) ; Hsize = Size),
+	(Arg == []
+	 ->	Narg = 0, Targ = Arg
+	 ;	fix_arg(Arg,Arity,Targ),
+		Narg = 1
+	),
+	retract_trie_index(Pcall),
+	(Narg =< 0
+	 ->	retractall('_$index1'(Pcall,_,_))
+	 ; '_$index'(Pcall,Oarg,Osize)
+	 ->	(Targ==Oarg, Hsize=:=Osize
+		 ->	true
+		 ;	retractall('_$index1'(Pcall,_,_)),
+			assertai('_$index1'(Pcall,Targ,Hsize),1)
+		)
+	 ;	assertai('_$index1'(Pcall,Targ,Hsize),1)
+	).			
+
+retract_index(Pred) :-
+	(Pred = P/Arity
+	 ->	functor(Pcall,P,Arity)
+	;	Pcall = Pred
+	),
+	system_retractall('_$index1'(Pcall,_,_)).
+
+
+fix_arg([],_,[]) :- !.
+fix_arg([Arg|Args],Arity,[Narg|Nargs]) :- !,
+	(integer(Arg),Arg>256
+	 ->	Narg = Arg
+	 ;	conv_joint(Arg,Arity,Narg)
+	),
+	fix_arg(Args,Arity,Nargs).
+fix_arg(Arg,Arity,Narg) :-
+	(integer(Arg), Arg >= 256
+	 ->	Narg = Arg
+	 ; Arg == 0
+	 ->	Narg = Arg
+	 ;	conv_joint(Arg,Arity,Narg)
+	).
+
+conv_joint(Arg,Arity,Narg) :-
+	(Arg = *(Arg1)
+	 ->	integer(Arg1), Arg1 > 0, Arg1 =< Arity,
+		Arg1 < 128,
+		Narg is (Arg1+128) << 8
+	 ;	conv_joint(Arg,0,Arity,Narg)
+	).
+
+conv_joint(B+A,Na,Arity,Narg) :- !, 
+	conv_one_indx(A,Arity,Aint),
+	Naa is Aint + (Na << 8),
+	conv_joint(B,Naa,Arity,Narg).
+conv_joint(A,Na,Arity,Narg) :- 
+	conv_one_indx(A,Arity,Aint),
+	Narg is Aint + (Na << 8).
+
+conv_one_indx(A,Arity,Aout) :-
+	(integer(A)
+	 ->	A > 0, A =< Arity,
+		Aout = A
+	 ; A = *(A1)
+	 ->	integer(A1), A1 > 0, A1 =< Arity, A1 < 128,
+		Aout is A1+128
+	).
+
+/*======================================================================*/
+/* mpa_to_skel(+MPAorSkel,-Skel) converts M:P/A or P/A to Skel 		*/
+/*======================================================================*/
+
+% TLS: added some checking here, as I think silently failing can be dangerous.
+mpa_to_skel(Mod:P/A,Skel) :-
+	atom(Mod),atom(P),integer(A),!,
+	psc_insert(P,A,PSC,Mod),
+	term_new(PSC,Skel).
+mpa_to_skel(P/A,Skel) :- 
+	atom(P),integer(A),!,
+	functor(Skel,P,A).
+mpa_to_skel(Skel,Skel) :- nonvar(Skel),!.
+mpa_to_skel(_,_):- 
+	instantiation_error(mpa_to_skel/1,1).
+
+/*======================================================================*/
+/* The purpose of the following is explained in file: interpreter.P     */
+/*======================================================================*/
+
+force_file_op_loaded.
+
+/* --------------------- end of file file_op.P ------------------------ */

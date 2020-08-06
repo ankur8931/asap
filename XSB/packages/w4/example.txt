@@ -1,0 +1,481 @@
+document([comment(" A comment "),
+          pi(log, "this  file  ", 
+             iriref(scheme("file"), 
+                    [], 
+                    path(abs, [segment("example.xml")
+                         ]
+                        ), 
+                    [], 
+                    []
+                   )
+            ),
+          element('http://xpto.org', tag1, '', 
+                  [ename('',a)
+                   = attribute('', a, '', 
+                               "abc <", 
+                               no, []
+                              ),
+                   ename('http://abc.com',b)
+                   = attribute('http://abc.com', b, n1, 
+                               "1234", 
+                               no, []
+                              )
+                  ], 
+                  [ename('http://www.w3.org/2000/xmlns/','')
+                   = attribute('http://www.w3.org/2000/xmlns/', xmlns, '', 
+                               "http://xpto.org", 
+                               no, []
+                              ),
+                   ename('http://www.w3.org/2000/xmlns/',n1)
+                   = attribute('http://www.w3.org/2000/xmlns/', n1, xmlns, 
+                               "http://abc.com", 
+                               no, []
+                              )
+                  ], 
+                  [pcdata("
+A very simple text
+	"),
+                   element('http://abc.com', tag2, n1, 
+                           [ename('http://www.w3.org/XML/1998/namespace',base)
+                            = attribute('http://www.w3.org/XML/1998/namespace', base, xml, 
+                                        "b", 
+                                        no, []
+                                       ),
+                            ename('http://www.w3.org/XML/1998/namespace',space)
+                            = attribute('http://www.w3.org/XML/1998/namespace', space, xml, 
+                                        "preserve", 
+                                        no, []
+                                       )
+                           ], 
+                           [], 
+                           [whitespace("
+		"),
+                            comment(" whitespace between markup should appear "),
+                            whitespace("
+		"),
+                            element('http://xpto.org', tag3, '', 
+                                    [ename('http://www.w3.org/XML/1998/namespace',space)
+                                     = attribute('http://www.w3.org/XML/1998/namespace', space, xml, 
+                                                 "default", 
+                                                 no, []
+                                                )
+                                    ], 
+                                    [], 
+                                    [comment(" Whitespace shouldn't appear ")
+                                    ], 
+                                    ['' = 'http://xpto.org',
+                                     n1 = 'http://abc.com',
+                                     xml = 'http://www.w3.org/XML/1998/namespace'
+                                    ], 
+                                    iriref(scheme("file"), 
+                                           [], 
+                                           path(abs, [segment("b")
+                                                ]
+                                               ), 
+                                           [], 
+                                           []
+                                          ), 
+                                    ""
+                                   ),
+                            whitespace("
+		"),
+                            element('http://xpto.org', tag3, '', 
+                                    [], 
+                                    [], 
+                                    [], 
+                                    ['' = 'http://xpto.org',
+                                     n1 = 'http://abc.com',
+                                     xml = 'http://www.w3.org/XML/1998/namespace'
+                                    ], 
+                                    iriref(scheme("file"), 
+                                           [], 
+                                           path(abs, [segment("b")
+                                                ]
+                                               ), 
+                                           [], 
+                                           []
+                                          ), 
+                                    ""
+                                   ),
+                            whitespace("
+	")
+                           ], 
+                           ['' = 'http://xpto.org',
+                            n1 = 'http://abc.com',
+                            xml = 'http://www.w3.org/XML/1998/namespace'
+                           ], 
+                           iriref(scheme("file"), 
+                                  [], 
+                                  path(abs, [segment("b")
+                                       ]
+                                      ), 
+                                  [], 
+                                  []
+                                 ), 
+                           ""
+                          ),
+                   whitespace("
+	"),
+                   element('http://xpto.org', tag3, '', 
+                           [ename('',attrib1)
+                            = attribute('', attrib1, '', 
+                                        "This attribute has    spaces    and            a line feed", 
+                                        no, []
+                                       ),
+                            ename('http://www.w3.org/XML/1998/namespace',lang)
+                            = attribute('http://www.w3.org/XML/1998/namespace', lang, xml, 
+                                        "en", 
+                                        no, []
+                                       )
+                           ], 
+                           [], 
+                           [whitespace("
+		"),
+                            element('', tag4, '', 
+                                    [], 
+                                    [ename('http://www.w3.org/2000/xmlns/','')
+                                     = attribute('http://www.w3.org/2000/xmlns/', xmlns, '', 
+                                                 "", 
+                                                 no, []
+                                                )
+                                    ], 
+                                    [whitespace("
+			"),
+                                     element('', tag5, '', 
+                                             [], 
+                                             [], 
+                                             [pcdata("This tag shouldn't have a namespace")
+                                             ], 
+                                             ['' = '',
+                                              n1 = 'http://abc.com',
+                                              xml = 'http://www.w3.org/XML/1998/namespace'
+                                             ], 
+                                             iriref(scheme("file"), 
+                                                    [], 
+                                                    path(abs, [segment("example.xml")
+                                                         ]
+                                                        ), 
+                                                    [], 
+                                                    []
+                                                   ), 
+                                             "en"
+                                            ),
+                                     whitespace("
+		")
+                                    ], 
+                                    ['' = '',
+                                     n1 = 'http://abc.com',
+                                     xml = 'http://www.w3.org/XML/1998/namespace'
+                                    ], 
+                                    iriref(scheme("file"), 
+                                           [], 
+                                           path(abs, [segment("example.xml")
+                                                ]
+                                               ), 
+                                           [], 
+                                           []
+                                          ), 
+                                    "en"
+                                   ),
+                            whitespace("
+		"),
+                            element('http://xpto.org', tag4, '', 
+                                    [ename('http://www.w3.org/XML/1998/namespace',space)
+                                     = attribute('http://www.w3.org/XML/1998/namespace', space, xml, 
+                                                 "default", 
+                                                 no, []
+                                                )
+                                    ], 
+                                    [], 
+                                    [comment(" Whitespace shouldn't appear ")
+                                    ], 
+                                    ['' = 'http://xpto.org',
+                                     n1 = 'http://abc.com',
+                                     xml = 'http://www.w3.org/XML/1998/namespace'
+                                    ], 
+                                    iriref(scheme("file"), 
+                                           [], 
+                                           path(abs, [segment("example.xml")
+                                                ]
+                                               ), 
+                                           [], 
+                                           []
+                                          ), 
+                                    "en"
+                                   ),
+                            whitespace("
+	")
+                           ], 
+                           ['' = 'http://xpto.org',
+                            n1 = 'http://abc.com',
+                            xml = 'http://www.w3.org/XML/1998/namespace'
+                           ], 
+                           iriref(scheme("file"), 
+                                  [], 
+                                  path(abs, [segment("example.xml")
+                                       ]
+                                      ), 
+                                  [], 
+                                  []
+                                 ), 
+                           "en"
+                          ),
+                   whitespace("
+")
+                  ], 
+                  ['' = 'http://xpto.org',
+                   n1 = 'http://abc.com',
+                   xml = 'http://www.w3.org/XML/1998/namespace'
+                  ], 
+                  iriref(scheme("file"), 
+                         [], 
+                         path(abs, [segment("example.xml")
+                              ]
+                             ), 
+                         [], 
+                         []
+                        ), 
+                  ""
+                 )
+         ], 
+         element('http://xpto.org', tag1, '', 
+                 [ename('',a)
+                  = attribute('', a, '', 
+                              "abc <", 
+                              no, []
+                             ),
+                  ename('http://abc.com',b)
+                  = attribute('http://abc.com', b, n1, 
+                              "1234", 
+                              no, []
+                             )
+                 ], 
+                 [ename('http://www.w3.org/2000/xmlns/','')
+                  = attribute('http://www.w3.org/2000/xmlns/', xmlns, '', 
+                              "http://xpto.org", 
+                              no, []
+                             ),
+                  ename('http://www.w3.org/2000/xmlns/',n1)
+                  = attribute('http://www.w3.org/2000/xmlns/', n1, xmlns, 
+                              "http://abc.com", 
+                              no, []
+                             )
+                 ], 
+                 [pcdata("
+A very simple text
+	"),
+                  element('http://abc.com', tag2, n1, 
+                          [ename('http://www.w3.org/XML/1998/namespace',base)
+                           = attribute('http://www.w3.org/XML/1998/namespace', base, xml, 
+                                       "b", 
+                                       no, []
+                                      ),
+                           ename('http://www.w3.org/XML/1998/namespace',space)
+                           = attribute('http://www.w3.org/XML/1998/namespace', space, xml, 
+                                       "preserve", 
+                                       no, []
+                                      )
+                          ], 
+                          [], 
+                          [whitespace("
+		"),
+                           comment(" whitespace between markup should appear "),
+                           whitespace("
+		"),
+                           element('http://xpto.org', tag3, '', 
+                                   [ename('http://www.w3.org/XML/1998/namespace',space)
+                                    = attribute('http://www.w3.org/XML/1998/namespace', space, xml, 
+                                                "default", 
+                                                no, []
+                                               )
+                                   ], 
+                                   [], 
+                                   [comment(" Whitespace shouldn't appear ")
+                                   ], 
+                                   ['' = 'http://xpto.org',
+                                    n1 = 'http://abc.com',
+                                    xml = 'http://www.w3.org/XML/1998/namespace'
+                                   ], 
+                                   iriref(scheme("file"), 
+                                          [], 
+                                          path(abs, [segment("b")
+                                               ]
+                                              ), 
+                                          [], 
+                                          []
+                                         ), 
+                                   ""
+                                  ),
+                           whitespace("
+		"),
+                           element('http://xpto.org', tag3, '', 
+                                   [], 
+                                   [], 
+                                   [], 
+                                   ['' = 'http://xpto.org',
+                                    n1 = 'http://abc.com',
+                                    xml = 'http://www.w3.org/XML/1998/namespace'
+                                   ], 
+                                   iriref(scheme("file"), 
+                                          [], 
+                                          path(abs, [segment("b")
+                                               ]
+                                              ), 
+                                          [], 
+                                          []
+                                         ), 
+                                   ""
+                                  ),
+                           whitespace("
+	")
+                          ], 
+                          ['' = 'http://xpto.org',
+                           n1 = 'http://abc.com',
+                           xml = 'http://www.w3.org/XML/1998/namespace'
+                          ], 
+                          iriref(scheme("file"), 
+                                 [], 
+                                 path(abs, [segment("b")
+                                      ]
+                                     ), 
+                                 [], 
+                                 []
+                                ), 
+                          ""
+                         ),
+                  whitespace("
+	"),
+                  element('http://xpto.org', tag3, '', 
+                          [ename('',attrib1)
+                           = attribute('', attrib1, '', 
+                                       "This attribute has    spaces    and            a line feed", 
+                                       no, []
+                                      ),
+                           ename('http://www.w3.org/XML/1998/namespace',lang)
+                           = attribute('http://www.w3.org/XML/1998/namespace', lang, xml, 
+                                       "en", 
+                                       no, []
+                                      )
+                          ], 
+                          [], 
+                          [whitespace("
+		"),
+                           element('', tag4, '', 
+                                   [], 
+                                   [ename('http://www.w3.org/2000/xmlns/','')
+                                    = attribute('http://www.w3.org/2000/xmlns/', xmlns, '', 
+                                                "", 
+                                                no, []
+                                               )
+                                   ], 
+                                   [whitespace("
+			"),
+                                    element('', tag5, '', 
+                                            [], 
+                                            [], 
+                                            [pcdata("This tag shouldn't have a namespace")
+                                            ], 
+                                            ['' = '',
+                                             n1 = 'http://abc.com',
+                                             xml = 'http://www.w3.org/XML/1998/namespace'
+                                            ], 
+                                            iriref(scheme("file"), 
+                                                   [], 
+                                                   path(abs, [segment("example.xml")
+                                                        ]
+                                                       ), 
+                                                   [], 
+                                                   []
+                                                  ), 
+                                            "en"
+                                           ),
+                                    whitespace("
+		")
+                                   ], 
+                                   ['' = '',
+                                    n1 = 'http://abc.com',
+                                    xml = 'http://www.w3.org/XML/1998/namespace'
+                                   ], 
+                                   iriref(scheme("file"), 
+                                          [], 
+                                          path(abs, [segment("example.xml")
+                                               ]
+                                              ), 
+                                          [], 
+                                          []
+                                         ), 
+                                   "en"
+                                  ),
+                           whitespace("
+		"),
+                           element('http://xpto.org', tag4, '', 
+                                   [ename('http://www.w3.org/XML/1998/namespace',space)
+                                    = attribute('http://www.w3.org/XML/1998/namespace', space, xml, 
+                                                "default", 
+                                                no, []
+                                               )
+                                   ], 
+                                   [], 
+                                   [comment(" Whitespace shouldn't appear ")
+                                   ], 
+                                   ['' = 'http://xpto.org',
+                                    n1 = 'http://abc.com',
+                                    xml = 'http://www.w3.org/XML/1998/namespace'
+                                   ], 
+                                   iriref(scheme("file"), 
+                                          [], 
+                                          path(abs, [segment("example.xml")
+                                               ]
+                                              ), 
+                                          [], 
+                                          []
+                                         ), 
+                                   "en"
+                                  ),
+                           whitespace("
+	")
+                          ], 
+                          ['' = 'http://xpto.org',
+                           n1 = 'http://abc.com',
+                           xml = 'http://www.w3.org/XML/1998/namespace'
+                          ], 
+                          iriref(scheme("file"), 
+                                 [], 
+                                 path(abs, [segment("example.xml")
+                                      ]
+                                     ), 
+                                 [], 
+                                 []
+                                ), 
+                          "en"
+                         ),
+                  whitespace("
+")
+                 ], 
+                 ['' = 'http://xpto.org',
+                  n1 = 'http://abc.com',
+                  xml = 'http://www.w3.org/XML/1998/namespace'
+                 ], 
+                 iriref(scheme("file"), 
+                        [], 
+                        path(abs, [segment("example.xml")
+                             ]
+                            ), 
+                        [], 
+                        []
+                       ), 
+                 ""
+                ), 
+         [], 
+         [], 
+         iriref(scheme("file"), 
+                [], 
+                path(abs, [segment("example.xml")
+                     ]
+                    ), 
+                [], 
+                []
+               ), 
+         'UTF-8', [], '1.0', [], 
+         []
+        )

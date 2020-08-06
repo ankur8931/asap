@@ -1,0 +1,35 @@
+
+
+:- [gui, navigate, justify].
+:- import checkit/1, count/2 from count.
+:- import close_open_tables/0 from machine.
+
+xlc_silent(F) :- 
+	telling(OF), tell('/dev/null'), xlc(F), told, tell(OF).
+
+solve(P,F,V) :- xmc_modelcheck(P,F,V).
+
+root(P,F,I,V) :- 
+	begin_justification,
+	get_models(P, F, M), 
+	getroot(M, I, _, V).
+
+:- table explain/2.
+explain(I,I) :- (get_process_list(I,_,_,_,_), fail; true).
+explain(I,J) :- explain(I,K), getchild(K,J,_,_),
+			(get_process_list(J,_,_,_,_), fail; true).
+
+check_text(P, F) :- 
+	write('Modelcheck from TEXT MODE gives '), 
+	checkit(mck(P,F)), close_open_tables, !.
+check_gui(P, F) :-
+	solve(P, F, V),
+	write('Modelcheck from GUI gives '), writeln(V),
+	root(P,F,I,V), count(explain(I,_), N),
+	write('Justification tree has '), write(N), writeln(' nodes.').
+
+check_all(P, F) :-
+	check_text(P, F), fail.
+check_all(P, F) :-
+	abolish_all_tables,
+	check_gui(P, F).

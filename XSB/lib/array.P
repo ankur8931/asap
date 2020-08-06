@@ -1,0 +1,123 @@
+/* File:      array.P
+** Author(s): Jiyang Xu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: array.P,v 1.5 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/* Array implementation with the full power:				*/
+/*    --  backtrackable 		   				*/
+/*    --  old version no longer valid			                */
+/*======================================================================*/
+
+/* TLS: not much need for this now that we have setarg/3.  Actually,
+   the old test didnt even work any more, so I dont have much
+   hesitation about changing it.  Using setarg/3 makes the interface
+   easier to use and avoids copying.  Im keeping the library around
+   for backward compatability. */
+
+:- import functor/3, arg/3 from standard.
+:- import setarg/3 from constraintLib.
+
+:- export array_new/2, array_elt/3, array_update/3, array_update/4.
+
+array_new(A, Size) :- functor(A, array, Size).
+
+array_elt(A, I, V) :- arg(I,A,V).
+
+array_update(N,Array,V) :-setarg(N,Array,V).
+
+/* backward compatability */
+array_update(N,Array,V,N) :-setarg(N,Array,V).
+
+/* 
+test:-
+	array_new(A,3), array_update(A,1,1), array_update(A,2,2),
+	( array_update(A,3,3), writeln(first(A))
+	; array_update(A,3,6), writeln(second(A))
+	; array_update(A,3,7), writeln(third(A))
+	),fail.
+*/
+end_of_file.
+
+:- export array_new/2, array_elt/3, array_update/4.
+
+:- import term_set_arg/4 from machine.
+
+/* create a new array of size Size */
+array_new(add(_I, _V, A), Size) :- functor(A, array, Size).
+
+/* get the I'th element of the array */
+array_elt(add(I1, V1, A), I, V) :-
+	( var(I1), !, arg(I, A, V)		% get from real array
+	; I1 = I, V = V1, !			% match the node
+	; array_elt(A, I, V)			% search next node
+	).
+
+/* update the I'th element of the array */
+array_update(Old, I, V, New) :-
+	copy(Old, New, OldLast, I),		% make another chain
+	OldLast = add(I, VL, A),		% add a node in old chain
+	arg(I, A, VL0), 
+	( var(VL0) ; nonvar(VL0), VL = VL0),	% not quite correct here!!
+	term_set_arg(OldLast, 3, New, 0),	% append new to old chain
+	term_set_arg(A, I, V, 0).
+
+/* implementation of array_update without value trail --
+array_update(Old, I, V, New) :-
+	copy(Old, New, OldLast, I),		% make another chain
+	OldLast = add(IL, VL, A),		% add a node in old chain
+	IL = I,
+	arg(I, A, VL0), 
+	( var(VL0) ; nonvar(VL0), VL = VL0),	% not quite correct here!!
+	( term_set_arg(OldLast, 3, New, 1)	% append new to old chain
+	; term_set_arg(OldLast, 3, A, 1), fail	% for backtracking
+	),
+	( term_set_arg(A, I, V, 1)		% set real array
+	; term_set_arg(A, I, VL, 1), fail	% for backtracking
+	).
+*/
+
+copy(Old, New, OldLast, I) :-
+	Old = add(OI, OV, Next),
+	( var(OI), !, 			% the end of the old list
+	  New = add(_, _, Next), OldLast = Old
+	; OI = I, !, copy(Next, New, OldLast, I)	% same index, ignore
+	; New = add(OI, OV, NNext),			% copy it
+	  copy(Next, NNext, OldLast, I)
+	).
+
+
+/* TEST
+
+import array_new/2 from array.
+import array_elt/3 from array.
+import array_update/4 from array.
+array_new(A, 4), array_update(A,1,1,B), array_update(B,2,2,C),
+	( array_update(C,3,3,D), array_elt(D,3,E4)
+	; array_update(C,3,6,E), array_elt(E,3,E5)
+	; array_update(C,3,7,F), array_elt(F,3,E6)
+	),
+	array_elt(A,3,E1),array_elt(B,3,E2),array_elt(C,3,E3).
+
+*/

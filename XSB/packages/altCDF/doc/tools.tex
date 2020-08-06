@@ -1,0 +1,44 @@
+\section{Graphical System Software for XSB}
+
+Graphical system software for XSB is based on two systems: the
+open-source InterProlog \cite{Cale01}~\footnote{InterProlog is
+available through \url{www.declarativa.com}.}, and the XJ system,
+which is proprietary to XSB, Inc.  While a full description of these
+systems is beyond the scope of this paper, we overview some of their
+important features here.
+
+\subsection{InterProlog}
+
+The InterProlog system provides a mechanism for XSB and Java to
+intercommunicate at a finely-grained level.  Using InterProlog, a Java
+message can be invoked via the predicate {\tt javaMessage} (of various
+arities); and an XSB goal can be invoked via various Java messages.
+From Java's point of view, Prolog is modeled by the Java class {\tt
+PrologEngine}.  The extension {\tt SubprocessEngine} provides
+mechanisms for XSB and Java to communicate through sockets; the
+extension {\tt NativeEngine} allows XSB and Java to communicate
+through Java's native interface, and it is this latter communication
+that the CDF editor uses.  In either case InterProlog maps a Java
+object to a Prolog term.  When a Java object is sent to Prolog {\sc
+through ???}, Java's object serialization protocol is used to
+translate the object to a stream of bytes.  This stream is read by
+Prolog and parsed using a definite clause grammar.  When a Prolog term
+is sent to Java, a definite clause grammar is again used to generate a
+stream of bytes that will be read by Java.
+
+\subsection{XJ}
+
+InterProlog gives a powerful mechanism to write graphical front ends
+for XSB, and systems such as \cite{LMC} have written sophisticated
+front ends using XSB and InterProlog alone.  However, InterProlog is
+not intended to address architectural questions of how Java and Prolog
+should communicate within a given system.  Indeed, using InterProlog a
+user could write a Java system that uses Prolog to, say 
+queries
+
+Editor Prolog 3463; XJ 12,000
+
+\subsection{CDF Caching}
+
+\subsection{The CDF Editor}
+

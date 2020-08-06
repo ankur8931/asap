@@ -1,0 +1,91 @@
+
+:- compiler_options([sysmod,optimize]).
+
+:- export atomic_concat/3, nb_delete/1, nb_getval/2, nb_setval/2, 
+	print_message/2, get_single_char/1,
+	  setarg/3, maplist/2, maplist/3, term_variables/2, ignore/1,
+	  strip_module/3,
+	  unifiable/2, freeze/2.
+
+/* Should now take out setarg/3 and use one in constraintlib */
+
+:- import call/1,call/2,write/2,get/1,'=..'/2 from standard.
+:- import sort/2 from setof.
+
+:- import trie_delete/2,trie_create/2, trie_unify/2, trie_insert/2 from intern.
+:- import when/2 from constraintLib.
+:- import concat_atom/3 from string.
+
+print_message(Str,Term):- write(Str,Term).
+
+get_single_char(Char):- get(Char).
+
+atomic_concat(A,B,C):- concat_atom(A,B,C).
+
+% emulating non-backtrackable "global" variables using private tries.
+
+nb_delete(Key):- (trie_delete(swi_global,pair(Key,_)) ; true),!.
+
+nb_getval(Key,Val):- trie_unify(swi_global,pair(Key,Val)).
+
+nb_setval(Key,Val):- (trie_delete(swi_global,pair(Key,_)) ; true),
+	             trie_insert(swi_global,pair(Key,Val)),!.
+
+?- trie_create(Tid,[alias(swi_global),type(pras)]).
+
+:- import set_arg/3 from machine.
+setarg(N,T,A):-  set_arg(T, N, A).
+
+maplist(Goal, List1,List2) :-
+	maplist_3_2(List1, List2, Goal).
+
+maplist_3_2([],[], _).
+maplist_3_2([Elem1|T1], [Elem2|T2], Goal) :-
+	call(Goal, Elem1, Elem2), 
+	maplist_3_2(T1, T2, Goal).
+
+%	maplist(:Goal, +List)
+%
+%	True if Goal can succesfully be applied on all elements of List.
+%	Arguments are reordered to gain performance as well as to make
+%	the predicate deterministic under normal circumstances.
+
+maplist(Goal, List) :-
+	maplist2(List, Goal).
+
+maplist2([], _).
+maplist2([Elem|Tail], Goal) :-
+	call(Goal, Elem), 
+	maplist2(Tail, Goal).
+
+term_variables(Term, Vars) :-
+	listofvars(Term, Vs, []),
+	sort(Vs, Vars).	
+
+listofvars(Term, Vh, Vt) :-
+	(var(Term)
+	 ->	Vh = [Term | Vt]
+	 ;	Term =.. [_|Args],
+		listofvars1(Args, Vh, Vt)
+	).
+
+listofvars1([], V, V).
+listofvars1([T|Ts], Vh, Vt) :-
+	listofvars(T, Vh, Vm),
+	listofvars1(Ts, Vm, Vt).
+
+ignore(G):- G,!.
+ignore(_).
+
+% SWI returns current module for second clause -- usermod is a guess,
+% as XSB does not have a "current" module.
+strip_module(QClause, Module, Clause):- 
+	ground(QClause),
+	QClause = Module:Clause,
+	!.
+strip_module(Clause, usermod, Clause).
+
+unifiable(T1,T2):-
+	\+ \+(T1 = T2).
+
+freeze(X,G):- when(nonvar(X),G).

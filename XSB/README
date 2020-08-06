@@ -1,0 +1,72 @@
+		  XSB Prolog Distribution Directory
+
+** Last update: February 5, 2015 (3.5.1 Maotai)
+
+WEB-HOME
+========
+
+Up-to-date information on XSB can be found via the XSB homepage below.
+You will find the latest sources (also accessible through CVS), a
+mailing-list archive, various additional packages, etc.
+
+	http://xsb.sourceforge.net
+
+
+DOCUMENTATION
+=============
+
+A 2-volume manual in pdf format is distributed with XSB binaries or
+source files.  
+
+DIRECTORIES
+===========
+
+The XSB source tree consists of a number of directories including:
+
+./emu		    C source files for XSB's emulator and certain packages
+./cmplib	    Prolog source files for XSB's compiler
+./syslib	    Prolog source files for XSB system predicates
+./lib		    Prolog source files for useful, but non-essential XSB predicates
+./prolog-commons    Prolog-commons files included with XSB (v. 3.3 and forward)
+./examples	    A small set of examples of XSB programs.
+./gpp		    Source files for the GNU pre-processor used by XSB's compiler
+./packages	    Additional packages, including:
+	altcdf	    XSB's ontology management package
+	chr/chr_d   XSB's CHR implementations
+	clpr	    XSB's CLP(R) implementation
+	dbdrivers   Various interfaces for ODBC and mysql
+	justify	    A justification-based debugger for tabled programs
+	perlmatch   Perl-style string matching routines
+	pita	    Probabilistic Logic Programming in XSB
+	regmatch    Regular-expression matching routines
+	sgml	    parses html, xml, and sgml documents
+	xasp	    XSB Answer Set Programming package
+	xpath	    xpath queries on XML documents
+	xsbdoc	    Documentation generator for XSB code
+
+The InterProlog package, used to communicate between XSB and Java must
+be downloaded separately from www.declarativa.com
+
+Flora-2 may be downloaded from http://flora.sourceforge.net
+
+Silk may be downloaded from http://silk.semwebcentral.org/
+
+BUILDING XSB
+===================
+
+See the XSB manual for details on building XSB under UNIX or Windows.
+
+
+MODIFYING XSB
+====================
+
+You are free to modify XSB code the LGPL with the exception of
+Prolog-commons code, most of whose code is also under LGPL (see
+specific Prolog-commons files).
+
+
+CONTRIBUTING TO XSB
+========================
+
+Again, please see the XSB manual for details.
+

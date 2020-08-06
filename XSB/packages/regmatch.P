@@ -1,0 +1,59 @@
+/* File:      regmatch.P
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: regmatch.P,v 1.10 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- import xsb_configuration/2 from xsb_configuration.
+:- import bootstrap_package/2 from packaging.
+:- import abort/1 from standard.
+
+
+%% bootstrap(package-dirname-as-string, package-name-as-symbol).
+%% This also asserts 
+%% package_configuration(dir(PackageName), FullPackageDirname)
+%% some packages use it.
+
+:- export re_match/5, re_bulkmatch/5, re_substring/4,
+	re_substitute/4, re_charlist_to_string/2.
+:- import 
+      do_regmatch__/5, do_bulkmatch__/5,
+      do_regsubstitute__/4,
+      do_regcharlist_to_string__/2,
+      do_regsubstring__/4
+   from xsb_re_match.
+
+:- bootstrap_package('regmatch', regmatch),
+   (xsb_configuration(regmatch_support, 'yes') -> [regmtchconfig]
+     ;
+     abort('Your system does not seem to have the POSIX pattern matching library installed.')
+     ).
+
+re_match(Regexp, Str, Offset, IgnoreCase, MatchList) :-
+	do_regmatch__(Regexp, Str, Offset, IgnoreCase, MatchList).
+re_bulkmatch(Regexp, Str, Offset, IgnoreCase, MatchList) :-
+	do_bulkmatch__(Regexp, Str, Offset, IgnoreCase, MatchList).
+re_substitute(String, RegionList, SubstStrList, OutStr) :-
+	do_regsubstitute__(String, RegionList, SubstStrList, OutStr).
+re_substring(String, BegOffset, EndOffset, OutStr) :-
+	do_regsubstring__(String, BegOffset, EndOffset, OutStr).
+re_charlist_to_string(List, String) :-
+	do_regcharlist_to_string__(List, String).

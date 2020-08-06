@@ -1,0 +1,480 @@
+ 
+\chapter{The Meaning of Type-1 CDF Instances} \label{chap:type1}
+
+Type-1 CDF instances differ from Type-0 CDF instances simply in that
+they allow a new kind of fact: {\tt necessCond/2}.  To explain the
+power and usefulness of this kind of fact, we first describe class
+expressions, which arise from the field of description logic.
+
+\section{Class Expressions and CDF Facts}
+
+While Type-0 CDF Instances are useful in practice, they lack
+expressiveness in certain situations, as the following example shows.
+
+%--------------------------------------------------
+\begin{example} \rm \label{ex:ce1}
+Consider the following CDF fragment which defines conflicting
+materials for the thread of a suture object, named {\tt
+\oid{inconSuture}}, using the schema of Example~\ref{ex:maxAttr}.
+%
+{\small
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> {\tt isa(\oid{inconSuture},\cid{absorbableSuture}) }\\
+\> {\tt isa(\oid{inconNeedle},\cid{absSutNeedle}) }\\
+\> {\tt isa(\oid{inconThread},\cid{absSutThread}) }\\
+\\
+\> {\tt hasAttr(\oid{inconSuture},\rid{hasImmedPart},\oid{inconThread}) }\\
+\> {\tt hasAttr(\oid{inconThread},\rid{hasMaterial},\cid{gut}) }\\
+\> {\tt hasAttr(\oid{inconThread},\rid{hasMaterial},\cid{polyglyconate})}
+\end{tabbing}
+}
+%
+\noindent
+It is easy to show that when the schema of Example~\ref{ex:maxAttr} is
+extended with this fragment, it has a model.  Because the schema
+contains the fact:
+%
+{\small
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> {\tt maxAttr(\cid{absSutPart},\rid{hasMaterial},\cid{absSutMaterial},1) } 
+\end{tabbing}
+} 
+%
+\noindent
+the model contains an element that is in the class {\tt
+\cid{polyglyconate}} as well as in the class {\tt \cid{gut}}.  However,
+such a model is unintended, as gut and polyglyconate are separate
+materials.
+\end{example}
+%--------------------------------------------------
+
+In order to address such situations, classes and objects may be
+defined in terms of {\em class expressions}.
+
+\begin{definition} \label{def:ce} \index{class expressions}
+\index{class expressions!inclusion statement}
+Let $\cL$ be an ontology language.  A {\em CDF class expression} $C$
+over $\cL$ is formed by one of the following constructions in which
+$A$ is a class or object identifier $C_1$ and $C_2$ class expressions,
+$R$ a relation identifier, and $n$ a natural number.
+\begin{tabbing}
+fo\=foo\=foo\=foo\=foooooooooooooooooooooooooooo\=ooooooooooooo\=\kill
+\> $C \leftarrow A | not\ C_1 | C_1 , C_2 | C_1 ; C_2 |
+			| all(R,C_1) | exists(R,C_1)
+ 			  | atLeast(n,R,C_1) | atMost(n,R,C_1)  $ 
+\end{tabbing}
+If $C_1$ and $C_2$ are class expressions, then $C_1 \subseteq C_2$ is
+an {\em inclusion statement},  
+\end{definition}
+Note that in the definition above, $A$ can be either an atomic or
+product identifier. Also note that Prolog-style syntax is used: {\em
+and} is represented as {\em ``,''} and {\em or}\  as {\em ``;''}.  
+
+The meaning of class expressions in terms of ontology theories will be
+defined in \refsec{sec:cesemantics}.  For now, we informally
+illustrate their meaning through a series of examples.
+
+As their name implies, class expressions provide a means for
+describing classes.  Intuitively, the $all$ constructor may seem to
+have some correspondance to {\tt allAttr/3}, $exists$ to {\tt
+hasAttr/3}, $atLeast$ to {\tt minAttr/4} and $atMost$ to {\tt
+maxAttr/4}.  More precisely if the sorting predicates are ignored,
+then
+\begin{center}
+{\tt allAttr(cid(source),rid(r),cid(target))} 
+\end{center}
+\noindent
+translates to an {\em inclusion statement} 
+ between class expressions.
+\[ 
+cid(source) \subseteq all(rid(r),cid(target))
+\]
+where the inclusion statement $C_1 \subseteq C_2$ is true in an
+ontology structure if the set of elements denoted by $C_1$ is a subset
+of the set of elements denoted by $C_2$.  The other Type-0 predicates
+translate to inclusion statements in a similar manner.
+
+%------------------------------------------
+\begin{example} \label{ex:firstce} \rm
+Let $C_1$ be the class expression: 
+%-------------
+{\em {\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> \cid{absorbableSutures}, \\
+\> all(\rid{hasNeedleDesign},\cid{needleDesign}), \\
+\> all(\rid{hasPointStyle},\cid{pointStyle}), \\
+\> \> 	exists(\rid{hasPointStyle},\cid{pointStyle}, \\
+\> all(\rid{hasImmedPart},\cid{absSutPart}),  \\
+\> \> 	exists(\rid{hasImmedPart},\cid{absSutNeedle}),  \\
+\> \> 	exists(\rid{hasImmedPart},\cid{absSutThread})  
+\end{tabbing}
+} }
+%-------------
+This class expression can be read in English as 
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> ``The class of all
+elements that are in {\tt \cid{absorbableSutures}} and \\
+\> all of whose {\tt \rid{hasNeedleDesign}} relations are to elements in
+the class {\tt \cid{needleDesign}} and \\
+\> all of whose {\tt \rid{hasPointStyle}} relations are to elements in
+the class {\tt \cid{pointStyle}} and \\
+\> that has a {\tt \rid{hasPointStyle}} relation to an element in
+the class {\tt \cid{pointStyle}} and \\
+\> all of whose {\tt \rid{hasImmedPart}} relations are to elements in
+the class {\tt \cid{absSutPart}} and \\
+\> that has a {\tt \rid{hasPointStyle}} relation to an element in
+the class {\tt \cid{absSutNeedle}} and \\
+\> that has a {\tt \rid{hasPointStyle}} relation to an element in
+the class {\tt \cid{absSutThread}}''.
+\end{tabbing}
+\noindent
+Note that from our running example, the CDF facts that pertain to {\tt
+absorbableSutures)} are: 
+%-------------
+{\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> {\tt isa(\cid{absorbableSutures},\cid{sutures})}  \\
+\> {\tt allAttr(\cid{absorbableSutures},\rid{hasNeedleDesign},\cid{needleDesign})} \\
+\> {\tt allAttr(\cid{absorbableSutures},\rid{hasPointStyle},\cid{pointStyle}) } \\
+\> \> {\tt hasAttr(\cid{absorbableSutures},\rid{hasPointStyle},\cid{pointStyle}) } \\
+\> {\tt allAttr(\cid{absorbableSutures},\rid{hasImmedPart},\cid{absSutPart}) } \\
+\> \> {\tt hasAttr(\cid{absorbableSutures},\rid{hasImmedPart},\cid{absSutNeedle}) } \\
+\> \> {\tt hasAttr(\cid{absorbableSutures},\rid{hasImmedPart},\cid{absSutThread}) } 
+\end{tabbing}
+} 
+\noindent
+Other facts hold, but they are redundant
+(Definition~\ref{def:redund}).  From these facts along with the
+semantics given in Section~\ref{chap:type0}, it is not hard to see
+that if an element $O$ is in the class {\tt \cid{absorbableSutures}}
+then it must also be in $C$.
+\end{example}
+%------------------------------------------
+From Definitions~\ref{def:ontolang} and~\ref{def:IdSort}, a CDF object
+identifier denotes a class with a uniqueness constraint.  Because of
+this, object identifiers and class identifiers can be intermingled
+withing class expressions.
+
+\begin{example} \rm \label{ex:type1cc}
+Consider the object identifier {\tt \oid{inconSuture}}, introduced in
+Example~\ref{ex:ce1}.  As {\tt \oid{inconSuture}} is a subclass of
+{\tt \cid{absorbableSuture}}, the facts
+%-------------
+{\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> (1) \> {\tt isa(\oid{inconSuture},\cid{absorbableSuture}} \\
+\> (2) \> {\tt allAttr(\oid{inconSuture},\rid{needleDesign},\cid{needleDesignType})} 
+\end{tabbing}
+}
+%-------------
+\noindent
+hold (cf. Example~\ref{ex:suture2}).  as does
+%-------------
+{\small
+\begin{tabbing}
+fooo\=fooo\=foo\=foo\=fooooooooooooooooooooooooooooooo\=oooooooo\=\kill
+\> (3) \> {\tt allAttr(\oid{inconSuture},\rid{hasPointStyle},\cid{pointStyle}) } \\
+\> (4) \>{\tt hasAttr(\oid{inconSuture},\rid{hasPointStyle},\cid{pointStyle}) }
+\end{tabbing}
+}
+%-------------
+\noindent
+(cf. Example~\ref{ex:hasAttr}).  Furthermore, from Example~\ref{ex:maxAttr}
+%-------------
+{\small
+\begin{tabbing}
+foo\=fooo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> (5) \>{\tt allAttr(\oid{inconSuture},\rid{hasImmedPart},\cid{absSutPart}) } \\
+\> (6) \>{\tt hasAttr(\oid{inconSuture},\rid{hasImmedPart},\cid{absSutNeedle}) } 
+\end{tabbing}
+}
+%-------------
+\noindent
+all hold, along with 
+%-------------
+{\small
+\begin{tabbing}
+foo\=fooo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> (7) \> {\tt hasAttr(\oid{inconSuture},\rid{hasImmedPart},\oid{inconThread}) }
+\end{tabbing}
+} 
+\noindent
+It is not hard to convince yourself that these facts imply that the
+{\tt \oid{inconSuture}} belongs to the class $C_2$ described by
+%-------------
+{\em {\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> \oid{inconSuture}, \cid{absorbableSutures}, \\
+\> all(\rid{hasneedleDesign},\cid{needleDesign}),  \\
+\> all(\rid{hasPointStyle},\cid{pointStyle}), \\
+	exists(\rid{hasPointStyle},\cid{pointStyle}), \\
+\> all(\rid{hasImmedPart},\cid{absSutPart}),  \\
+\> \> 	exists(\rid{hasImmedPart},\cid{absSutNeedle}),  \\
+\> \> 	exists(\rid{hasImmedPart},\oid{inconThread})
+\end{tabbing}
+} }
+%--------------
+\noindent
+Note that $C_2$ is similar to $C_1$, except that the object
+identifiers imply that {\tt \cid{inconNeedle}} and {\tt
+\cid{inconThread}} contain one and only one element.
+\end{example}
+
+%---------------------------------------------------------------------
+\subsection{Class Expressions and Ontology Theories} \label{sec:cesemantics}
+%---------------------------------------------------------------------
+
+Class expressions can be formally translated into the ontology
+languages of Definition~\ref{def:ontolang} using the following
+definition from~\cite{Swif04} (see, e.g. \cite{CGLN02} for a general
+exposition of class expressions).
+
+%--------------------------------------
+\begin{definition} \label{def:fot}
+Let $C$ a CDF class expression, over an ontology language $\cL$ in
+which the variables are denoted as $X_i$, for positive integers $i$.
+Then the translation of $C$, $C[X_0]^{\cI}$, is a first-order formula
+defined by the following rules, which use a global variable number,
+$vnum$ that is initialized to 1 at the start of the transformation.
+
+\begin{itemize}
+\item if $C = A$ and  $A$ is an object identifier, then  $C[X_N]^{\cI} =
+  elt(X_N,A) \wedge \forall X_{vnum} [elt(X_{vnum},A) \Ra X_N = X_{vnum}]$, 
+	where $vnum$ is incremented before the next step of the translation.
+%
+\item if $C = A$ and  $A$ is a class identifier, then  $C[X_N]^{\cI} =
+		elt(X_N,A)$.
+%
+%
+\item if $C = (C_1 , C_2)$, then $C[X_N]^{\cI} =
+		C_1[X_N]^{\cI} \wedge C_2[X_N]^{\cI}$.
+%
+\item if $C = (C_1 ; C_2)$, then $C[X_N]^{\cI} =
+		C_1[X_N]^{\cI} \vee C_2[X_N]^{\cI}$.
+%
+\item if $C = not\ C_1$, then $C[X_N]^{\cI} = \neg C_1[X_N]^{\cI}$.
+%
+\item if $C = exists(R,C_1)$, then $C[X_N]^{\cI} =
+		\exists X_{vnum}. rel(X_N,R,X_{vnum}) \wedge
+		C_1[X_{vnum}]^{\cI}$, where $vnum$ is
+			incremented before the	next step of the translation.
+%
+\item if $C = all(R,C_1)$, then $C[X_N]^{\cI} = 
+	\forall X_{vnum}. rel(X_N,R,X_{vnum}) \Ra C[X_{vnum}]^{\cI}$,
+	where $vnum$ is incremented before the next step of the translation.
+%
+
+\item if $C = atLeast(m,R,C_1)$, then $C[X_N]^{\cI} = 
+\exists^{\geq m} X_{vnum} [rel(X_N,R,X_{vnum}) \wedge C[X_{vnum}]^{\cI}]
+$		
+where $vnum$ is incremented $m$ times before the next steps of the
+translation. 
+%
+\item if $C  = atMost(m,R,C_1)$, then 
+	$C[X_N]^{\cI} = \neg atLeast(m+1,R,C_1)[X_N]^{\cI}$
+
+\end{itemize}
+If $C_1 \subseteq C_2$ is an inclusion statement, its tranlation is 
+$
+(\forall X_0) [ C_1[X_0]^{\cI} \Ra C_2[X_0]^{\cI} ]
+$
+\end{definition}
+
+\begin{example} \rm
+If $C_1$ is the class expression from Example~\ref{ex:type1cc}, then
+$C_1[X_0] = $
+{\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> $elt(X_0,cid(absorbableSutures)) \wedge (\forall X_1)
+	[elt(X_1,oid(absorbableSutures)) \Ra X_0 = X_1]$ \\
+\> $(\forall X_2) [rel(X_0,rid(hasNeedleDesign),X_2) \Ra
+			elt(X_2,cid(needleDesign))] \wedge $ \\
+\> $(\forall X_3) [rel(X_0,rid(hasPointStyle),X_3) \Ra
+			elt(X_3,cid(pointStyle))] \wedge $ \\
+\> \> $(\exists X_4) [rel(X_0,rid(hasPointStyle),X_4) \wedge
+			elt(X_4,cid(pointStyle))] \wedge $ \\
+\> $(\forall X_5) [rel(X_0,rid(hasImmedPart),X_5) \Ra
+			elt(X_5,cid(absSutPart))] \wedge $ \\
+\> \> $(\exists X_6) [rel(X_0,rid(hasImmedPart),X_6) \wedge
+			elt(X_6,cid(absSutNeedle))] \wedge $ \\
+\> \> $(\exists X_7) [rel(X_0,rid(hasImmedPart),X_7) \wedge
+			elt(X_7,oid(inconThread)) \wedge $ \\
+\> \> \> \> $	(\forall X_8) [elt(X_8,oid(inconThread)) \Ra X_7 = X_8]] $
+\end{tabbing}
+}
+\end{example}
+
+To summarize this section, CDF instances have direct translations into
+ontology theories, as presented in Chapter~\ref{chap:type0}.  Class
+expressions can also be translated into ontology theories via
+Definition~\ref{def:fot}, and these two translations induce a unique
+translation from CDF instances to inclusion statements between class
+expressions.  Thus a CDF instance can be seen as a set of sentences in
+an ontology theory, or as a set of inclusion statements between class
+expressions.  At the same time, there are class expresion constructors
+that are not used when Type-0 instances are translated into class
+expressions, namely {\em ``;''} and {\em not}.  Arbitrary class
+expressions are denoted by stating necessary conditions, to which we
+now turn.
+
+%------------------------------------------
+\section{Necessary Conditions} \index{predicates!necessCond/2}
+
+The unintended model of Example~\ref{ex:ce1} can be prevented by
+stating that a necessary condition for an object to be in {\tt
+\cid{gut}} is that the object not be in {\tt \cid{polyglyconate}}.  This
+is handled by a new type of fact {\tt necessCond/2} that is used to
+state necessary conditions.
+
+%--------------------
+\begin{example} \rm  \label{ex:nc1}
+Adding the fact
+
+{\tt necessCond(cid(gut),vid(not(cid(polyglyconate)))). }
+
+denotes that no element of {\tt cid(gut)} can be in {\tt
+cid(polyglyconate)}.
+\end{example}
+%--------------------
+
+\index{identifiers!virtual}
+Type-1 CDF instances thus have a new kind of identifier: a {\em
+virtual identifier}, denoted by the functor {\tt vid/1}.  A virtual
+identifier indicates that rather than denoting a class by its name, it
+is denoted by a class expression whose syntax is given in
+Definition~\ref{def:ce}, and whose meaning is given by the translation
+of Definition~\ref{def:fot}.
+
+\begin{instance} [Translation of {\tt necessCond/2}] \rm 
+For each fact of the form {\tt necessCond(Cid,Vid)} add the axiom
+\ \\
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $ isClass(Cid) \wedge 
+	(\forall X) [elt(X,Cid) \Rightarrow Vid[X]^{\cI}]$ 
+\end{tabbing}
+denoted as {\tt necessCond(Cid,Vid)}$^{\cI}$.
+\end{instance}
+
+\begin{example} \rm 
+The translation of the fact from Example~\ref{ex:nc1} is the axiom
+\[
+isClass(\cid{gut}) \wedge (\forall X_0) [elt(X_0,\cid{gut}) \Ra 
+					\neg elt(X_0,\cid{polyglyconate})]
+\]
+It is easy to see that an instance containing this fact and those of
+Example~\ref{ex:ce1}, combined with the Schema of
+Example~\ref{ex:maxAttr} will not have a model.  Note that
+Axiom~\ref{ax:nonnull} (Non-Empty Classes) is essential to deriving
+this inconsistency.
+\end{example}
+
+The following proposition is straightforward.
+
+\begin{proposition}[First Argument Inheritance Propagation 
+						for {\tt necessCond/2}] 
+\label{prop:necesscondinh}\rm
+Let $\cM$ be an ontology model.
+\begin{enumerate}
+\item If $\cM \models {\tt necessCond(Id_1,Id_2)}^{\cI} \wedge
+						{\tt isa(Id_0,Id_1)}^{\cI}$ 
+	then $\cM \models  {\tt necessCond(Id_0,Id_2)}^{\cI}$
+\end{enumerate}
+\end{proposition}
+
+The {\sc inh} proof system can be extended to use a deduction rule
+based on this proposition, in a straightforward way.
+
+%------------------------------------------------------------------------------
+
+\section{Local Class Expressions} \label{sec:lce}
+
+When translating information in a CDF instance directly to a class
+expression, a difficulty can arise.  In the examples~\ref{ex:firstce}
+and~\ref{ex:type1cc} class identifiers within the {\em all}, {\em
+exists}, {\em atLeast} and {\em atMost} constructors can be considered
+``primitive'' in the sense that these class identifiers do not occur
+as the first argument of any {\tt allAttr/3}, {\tt hasAttr/3}, {\tt
+minAttr/4} or {\tt maxAttr/4} predicates.  However, it is not always
+the case that only primitive classes occur in these positions.
+
+\begin{example} \rm 
+Consider the following schema for family relations, adapted from
+~\cite{BaNu03}.
+%
+{\tt {\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> isa\_ext(cid(gender),cid('CDF Classes')). \\
+\>   isa\_ext(cid(female),cid(gender)). \\
+\>   isa\_ext(cid(male),cid(gender)). \\
+\\
+\> isa\_ext(cid(person),cid('CDF Classes')). \\
+\> \> allAttr\_ext(cid(person),rid(hasBrother),cid(man)). \\
+\> \> allAttr\_ext(cid(person),rid(hasSister),cid(woman)). \\
+\\
+\>   isa\_ext(cid(woman),cid(person)). \\
+\> \>   isa\_ext(cid(woman),cid(female)). \\
+\>   isa\_ext(cid(man),cid(person)). \\
+%
+%  necessCond\_ext(cid(man),vid(not(cid(woman)))).
+\end{tabbing}
+} }
+The class expression for {\tt cid(person)} is
+{\em {\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> cid('CDF Classes'), \\
+\> all(rid(hasBrother),cid(man)), \\
+\> all(rid(hasSister),cid(woman))
+\end{tabbing}
+} }
+while the class expression for {\tt cid(man)} is 
+{\em {\small
+\begin{tabbing}
+fooo\=foooo\=foo\=foo\=foooooooooooooooooooooooooooo\=oooooooooo\=\kill
+\> cid(person), \\
+\> all(rid(hasBrother),cid(man)), \\
+\> all(rid(hasSister),cid(woman))
+\end{tabbing}
+} }
+\end{example}
+In the above example, a class expression for {\tt cid(person)}
+contains subclasses of {\tt cid(person)}, while a class expression for
+{\tt cid(man)} contains the class {\tt cid(man)} itself.  A CDF
+instance can be seen as a type of {\em termonology system}, (sometimes
+called a TBox in the literature).  CDF classes and objects are defined
+in terms of other classes and objects that may themselves be defined
+in terms of classes and objects.  If a terminology system has a class
+identifier that is defined in terms of itself, it is sometimes called
+{\em cyclic}, otherwise the terminology system is {\em acyclic}.  As
+the previous example shows, many of the most natural terminology
+systems are cyclic.
+
+\index{class expressions!local}
+At this point, it is useful to introduce some ``terminology'' of our
+own, at a somewhat informal level.  Given a class or object identifier
+$C$ in a CDF instance $\cO$, a {\em level 1 local class expression}
+for $C$ is formed by cojoining all principle classes for $C$ along
+with translations of non-isa facts for $C$ (i.e. {\tt hasAttr/3} into
+an $exists$ constructor, {\tt allAttr/3} into an $all$ constructor,
+etc.)  A {\em level n local class expression} for $C$ is then defined
+as follows.  We start with an empty {\em ancestorList}, and construct
+a level 1 local class expression, $CE$ for $C$.  Next we add $C$ to
+the {\em ancestor list}, and construct a level $n-1$ class expression
+for each identifier in $CE$ that is not in the ancestor list.
+Intuitively, constructing a level $n$ local class expression
+``unfolds'' or ``expands'' class expressions and identifiers $n$
+times, ignoring cycles.  
+
+The concept of local class expressions is used to explain features of
+the Type-1 CDF interface, as descrined in
+Section~\ref{sec:type1query}.

@@ -1,0 +1,48 @@
+prime(P,I) :- I < sqrt(P),!.
+prime(P,I) :- R is P mod I, R =:= 0, !, fail.
+prime(P,I) :- I1 is I - 1, prime(P,I1).
+
+prime(P) :- I is P - 1, prime(P, I ).
+
+list_primes(I,F,T,T) :- I > F, !.
+list_primes(I,F,[I|L],T) :- 
+	prime(I), !, 
+	I1 is I + 1, list_primes(I1, F, L,T).
+list_primes(I,F,L,T) :- 
+	I1 is I + 1, list_primes(I1,F,L,T).
+
+partition_space(N,H,H1) :-
+	H is N // 2, H1 is H + 1.
+	
+/* Sequential version */
+
+sequential( N ) :-
+	H is floor(N/2), H1 is H + 1,
+	list_primes( 1, H, L, L1 ),
+	list_primes( H1, N, L1, [] ),
+	writeln(L).
+
+/* Dual Thread prime number calculation */
+
+:- import thread_create/1 from thread.
+:- import message_queue_create/1, thread_send_message/2, 
+          thread_get_message/2 from mutex_xsb.
+
+worker( Q, Id, I, F, L, T ) :-
+	list_primes( I, F, L, T ),
+	thread_send_message( Q, primes(Id,L,T) ).
+
+master( N )  :-
+	partition_space( N, H, H1 ),
+
+	message_queue_create(Q),
+
+	thread_create( worker(Q, 1, 1,  H, L,  L1 ) ),
+	thread_create( worker(Q, 2, H1, N, L1, [] ) ),
+
+	thread_get_message( Q, primes(1,L,L1) ),
+	thread_get_message( Q, primes(2,L1,[]) ),
+
+	writeln( L ).
+	
+

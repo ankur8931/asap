@@ -1,0 +1,54 @@
+/* File:      stdtype.P -- Datatype declarations and type inference for terms
+** Author(s): VN Venkatakrishnan
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: stdtype.P,v 1.5 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+:- op(1100, fx, datatype).
+
+:- import type/2 from typecheck.
+
+% assert atype: the type inference rules for user defined types.
+datatype(D) :-
+	D =.. [Name|Params],
+	Test =.. [Name,Term|Params],
+	assert((atype(Term,'$type'(D)) :- nonvar(Term), Test,!)).
+
+atype('$type'(X), '$type'(X)) :- !.
+typeof(X, T) :- var(T) -> type(X, T); type(X, '$type'(T)).
+
+% Standard Datatypes:
+% Primitive types
+:- datatype integer.
+:- datatype float.
+
+% Recursive types: lists */
+
+% Builtin well-typed list
+:- datatype list(_).
+list([],_).
+list([X|Xs],B) :- typeof(X,B),typeof(Xs,list(B)).
+
+% XL types
+:- datatype chan(_).
+chan(A,B) :- A = chan(C), typeof(C,B).
+
+:- datatype signal.
+signal(A)  :- A == * .

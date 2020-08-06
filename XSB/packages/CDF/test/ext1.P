@@ -1,0 +1,57 @@
+
+% testext + properly and improperly typed attrs and attr_objs.
+
+class_ext(c1,c1,test).
+class_ext(c2,c2,test).
+class_ext(c3,c3,test).
+class_ext(c11,c11,test).
+class_ext(c12,c12,test).
+class_ext(c13,c13,test).
+class_ext(r1,r1,test).
+class_ext(r2,r2,test).
+class_ext(r3,r3,test).
+class_ext(r4,r4,test).
+
+subclass_ext(c3,test,'OMS Root','OMS').
+subclass_ext(c13,test,'OMS Root','OMS').
+subclass_ext(c1,test,c2,test).
+subclass_ext(c2,test,c3,test).
+subclass_ext(c11,test,c12,test).
+subclass_ext(c12,test,c13,test).
+
+subclass_ext(r1,test,r2,test).
+subclass_ext(r2,test,r3,test).
+subclass_ext(r3,test,'OMS Inheritable Relationships','OMS').
+subclass_ext(r4,test,'OMS Inheritable Relationships','OMS').
+
+relationship_ext(c2,test,r2,test,c12,test).
+
+strel_ext(c1,test,'Descriptions','OMS',c11,test).
+
+schrel_ext(c1,test,r2,test,c12,test).
+
+attribute_ext(o2,test,r2,test,c12,test).
+attribute_ext(o2,test,r4,test,c12,test).
+
+attribute_object_ext(o2,test,r2,test,o12,test).
+attribute_object_ext(o2,test,r4,test,o12,test).
+
+memberof_ext(o1,test,c1,test).
+memberof_ext(o2,test,c2,test).
+memberof_ext(o3,test,c3,test).
+memberof_ext(o11,test,c11,test).
+memberof_ext(o12,test,c12,test).
+memberof_ext(o13,test,c13,test).
+memberof_ext(or1,test,r1,test).
+memberof_ext(or2,test,r2,test).
+memberof_ext(or3,test,r3,test).
+
+object_ext(o1,o1,test).
+object_ext(o2,o2,test).
+object_ext(o3,o3,test).
+object_ext(o11,o11,test).
+object_ext(o12,o12,test).
+object_ext(o13,o13,test).
+object_ext(or1,or1,test).
+object_ext(or2,or2,test).
+object_ext(or3,or3,test).

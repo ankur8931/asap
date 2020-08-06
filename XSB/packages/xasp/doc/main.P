@@ -1,0 +1,78 @@
+:- compiler_options([ciao_directives]).
+
+:- comment(title,"XASP").
+:- comment(subtitle,"Answer Set Programming with XSB and Smodels").
+
+:- comment(author,"Luis Castro, Terrance Swift, David S. Warren").
+
+:- comment(copyright,"
+@include{LICENSE}
+").
+
+:- comment(module," The @bf{XASP} interface provides various levels of
+interfaces to Smodels (V. 2.26) API.  At the lowest level a @em{raw}
+interface allows a programmer who has translated atoms of a stable
+model into integer values to use the Smodels API directly.
+
+However, most users who want to directly program with Smodels, will
+likely use the @em{cooked} interface, which allows arbitrary weight
+constraint rules, and in which atoms and literals are translated to
+Smodels format in a transparent manner.  Using this interface,
+efficient XSB-based grounders can be written for special purpose
+programming tasks.
+
+The above interfaces allow an XSB programmer to specify a program
+whose stable model is to be obtained by explicitly adding rules to a
+cache.  However it is often useful to @em{implicitly} set up such a
+program, sending the residual program constructed by XSB during query
+evaluation to Smodels.  This level of interaction is supported by the
+interface to the @tt{xnmr} module which also provides a
+specially-written command-line interpreter.
+
+Examples of use of the various interfaces can be found in the
+subdirectory @tt{intf_examples}
+
+@section{Installing the Interface}
+
+In order to use the Smodels interface, several steps must be
+performed.  Note: this interface has not yet been ported to Windows
+Cygwin.
+
+@begin{enumerate}
+@item  Smodels itself must be compiled as a library.  In version 2.26,
+this is done by typing 
+
+@begin{verbatim}
+make lib
+@end{verbatim}
+
+in the Smodels2.26 directory (NOT this directory).  The compilation is
+complete if a .libs subdirectory was created containing various
+archive files.
+
+@item XSB must be configured with the
+@tt{'--with-smodels=<path-to-smodels>'} option.  This will create a
+file @tt{'smoMakefile'} in this directory with a variable @tt{SMODELS}
+set to the proper path.  the proper path.  If this doesn't work on
+your system, the @tt{SMODELS} variable in the @tt{smoMakefile} may
+need to be edited by hand.
+
+@item The Smodels files must be made available to this interface.  One
+way of doing this is by executing the command
+
+@begin{verbatim}
+sh makelinks.sh <path-to-smodels>
+@end{verbatim}
+
+@item Finally, 
+
+@begin{verbatim}
+make -f smoMakefile
+@end{verbatim}
+
+@end{enumerate}
+
+").
+
+main.
+

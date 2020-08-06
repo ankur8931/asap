@@ -1,0 +1,197 @@
+/* File:      odbc_driver_config.P -- loader for the ODBC driver
+** Author:    Saikat Mukherjee
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2002-2016
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+:- compiler_options([xpp_on]).
+#include "extensions_xsb.h"
+
+:- import xsb_running_under/1, force_rename_file/2 from packaging.
+:- import slash/1, str_cat/3 from machine.
+:- import fmt_write_string/3, file_time/2 from file_io.
+:- import search_module/6 from consult.
+:- import xsb_configuration/2 from xsb_configuration.
+:- import odbc_info/2 from odbc_init.
+:- import compile_so/3, runtime_loader_flag/3 from foreign.
+:- import path_sysop/3, path_sysop/2 from file_io.
+
+
+make_odbc_driverH(CC, CC_opts) :-
+        slash(Slash),
+        xsb_configuration(configuration, XSBconfiguration),
+        xsb_configuration(config_libdir, ConfigLibDir),
+        odbc_info(libdir, ODBC_libdir),
+        (ODBC_libdir == '' -> ODBC_libdir_flag = ''
+        ;  str_cat('-L', ODBC_libdir, ODBC_libdir_flag)
+        ),
+        package_configuration(dir(odbc_driver), ODBCDriverDir),
+        %% Creates something like -Wl,-rpath,<libdir>
+        runtime_loader_flag(CC, ODBC_libdir, OdbcRunpathFlag),
+        (xsb_running_under(cygwin) -> %% cygwin specific stuff
+            xsb_configuration(config_bindir, ConfigBinDir),
+            fmt_write_string(LD_flags,
+                             ' %s %s%sdriver_manager.dll -lodbc32 -lodbccp32 ',
+                             f(ODBC_libdir_flag, ConfigBinDir, Slash))
+
+        ; %% windows specific stuff
+            xsb_running_under(windows) -> true
+        ; %% MacOS
+            xsb_running_under(darwin) ->
+            fmt_write_string(LD_flags,
+                             ' %s %s %s%sdriver_manager.dylib %s%sodbc_driver.dylib -lodbc ',
+                             f(OdbcRunpathFlag, ODBC_libdir_flag, 
+                               ConfigLibDir, Slash, ConfigLibDir, Slash))
+        ; %% other unixes
+            fmt_write_string(LD_flags,
+                             ' %s %s %s%sdriver_manager.so %s%sodbc_driver.so -lodbc ',
+                             f(OdbcRunpathFlag, ODBC_libdir_flag, 
+                               ConfigLibDir, Slash, ConfigLibDir, Slash))
+        ),
+        fmt_write_string(LD_directives_file,
+                         '%s%scc%sodbc_driver.H',
+                         f(ODBCDriverDir, Slash, Slash)),
+        telling(OldTell),
+        tell(LD_directives_file),
+        writeln('%% This file is generated on-the-fly by odbc_driver_config.P'),
+        writeln('%% Do not edit--any changes will be written over.'),
+        write('%% XSB config:    '), writeln(XSBconfiguration),
+        write('%% XSB CC:        '), writeln(CC),
+        write('%% CC:       '), writeln(CC),
+        write('%% CC Opts: '), writeln(CC_opts), 
+        writeln(':- export driverODBC_register/0.'),
+        writeln(':- export driverODBC_initialise/0.'),
+        write(':- ldoption('''),
+        write(LD_flags),
+        writeln(''').'),
+        told,
+        tell(OldTell).
+
+
+:-  package_configuration(dir(odbc_driver), ODBCDriverDir),
+        slash(Slash),
+        Basename = odbc_driver,
+        fmt_write_string(Module,
+                         '%s%scc%s%s',
+                         f(ODBCDriverDir, Slash, Slash, Basename)),
+        xsb_configuration(compiler, CC),
+        xsb_configuration(config_dir, ConfigDir),
+        xsb_configuration(config_bindir, ConfigBinDir),
+        xsb_configuration(config_libdir, ConfigLibDir),
+        xsb_configuration(packagesdir, PackagesDir),
+        str_cat(Module, XSB_OBJ_EXTENSION_ATOM, ObjfileX),
+        fmt_write_string(LibObjFileX,
+                         '%s%s%s%s',
+                         args(ConfigLibDir,Slash,Basename,XSB_OBJ_EXTENSION_ATOM)),
+        odbc_info(ccflags, CCflags),
+        odbc_info(ldflags, LDflags),
+
+        (xsb_running_under(windows64) -> PkgDlls = 'cc\windows64'
+        ; PkgDlls = 'cc\windows'
+        ),
+
+        ((xsb_running_under(windows) ; xsb_running_under(cygwin)) ->
+            fmt_write_string(WindSavedDll,
+                             '%s%s%s%s%s.dll',
+                             f(ODBCDriverDir,Slash,PkgDlls,Slash,Basename)),
+            fmt_write_string(WindSavedLib,
+                             '%s%s%s%s%s.lib',
+                             f(ODBCDriverDir,Slash,PkgDlls,Slash,Basename)),
+            fmt_write_string(ConfigSharedMod,
+                             '%s%s%s.dll',
+                             f(ConfigBinDir, Slash, Basename))
+        ; xsb_running_under(darwin) ->
+            fmt_write_string(ConfigSharedMod,
+                             '%s%s%s.dylib',
+                             f(ConfigLibDir, Slash, Basename))
+        ;
+            fmt_write_string(ConfigSharedMod,
+                             '%s%s%s.so',
+                             f(ConfigLibDir, Slash, Basename))
+        ),
+        ( %% avoid recompilation: check if odbc_driver.xwam exists and 
+            %% is newer than odbc_driver.c.
+            search_module(Basename,Dir,_Mod,_Ext,_BaseDir,ModuleO),
+            str_cat(Module, '.c', ModuleSourceFile),
+            path_sysop(newerthan,ModuleO,ModuleSourceFile),
+            path_sysop(newerthan,ConfigSharedMod,ModuleSourceFile)
+        %% module compiled and is current, so just load
+        -> [Basename]
+        ;
+            %% Cygwin isn't supported: XSB's C interface no longer works with it
+            (xsb_running_under(cygwin) -> %% cygwin specific stuff
+                fmt_write_string(DBDriversDir,
+                                 '%s%sdbdrivers%scc', 
+                                 f(PackagesDir, Slash, Slash)),
+                fmt_write_string(CC_opts,
+                                 ' %s -I %s -I %s',
+                                 f(CCflags, ConfigDir, DBDriversDir)),
+                shell(['copy /B /Y ', '"', WindSavedDll, '"', ' ', '"', ConfigBinDir, '"']),
+                shell(['copy /B /Y ', '"', WindSavedLib, '"', ' ', '"', ConfigBinDir, '"']),
+                make_odbc_driverH(CC, CC_opts),
+                consult(Module, [cc(CC), cc_opts(CC_opts)]),
+                force_rename_file(ObjfileX, LibObjFileX),
+                str_cat(Module, '.o', ObjfileO),
+                fmt_write_string(LibObjFileO,
+                                 '%s%s%s.o',
+                                 f(ConfigBinDir, Slash, Basename)),
+                force_rename_file(ObjfileO, LibObjFileO),
+                str_cat(Module, '.a', ObjfileA),
+                fmt_write_string(LibObjFileA,
+                                 '%s%s%s.a',
+                                 f(ConfigBinDir, Slash, Basename)),
+                force_rename_file(ObjfileA, LibObjFileA),
+                str_cat(Module, '.def', ObjfileDef),
+                fmt_write_string(LibObjFileDef,
+                                 '%s%s%s.def',
+                                 f(ConfigBinDir, Slash, Basename)),
+                force_rename_file(ObjfileDef, LibObjFileDef)
+
+        ; %% windows - don't compile; supposed to be compiled already
+                xsb_running_under(windows) ->
+                shell(['copy /B /Y ', '"', WindSavedDll, '"', ' ', '"', ConfigBinDir, '"']),
+                shell(['copy /B /Y ', '"', WindSavedLib, '"', ' ', '"', ConfigBinDir, '"']),
+                make_odbc_driverH(CC, ''),
+                [Basename],
+                (path_sysop(exists,ObjfileX) ->
+                    force_rename_file(ObjfileX, LibObjFileX)
+                ; true
+                )
+        ; %% unix and the module isn't compiled or is old -- recompile
+                fmt_write_string(DBDriversDir,
+                                 '%s%sdbdrivers%scc',
+                                 f(PackagesDir, Slash, Slash)),
+                fmt_write_string(CC_opts,
+                                 ' %s -I %s -I %s',
+                                 f(CCflags, ConfigDir, DBDriversDir)),
+                compile_so(Module, [cc(CC), cc_opts(CC_opts)], LDflags),
+                
+                (xsb_running_under(darwin) -> LibrarySuffix='.dylib'
+                ;  LibrarySuffix='.so'
+                ),
+
+                str_cat(Module, LibrarySuffix, SharedLib),
+                force_rename_file(SharedLib, ConfigSharedMod),
+                make_odbc_driverH(CC, CC_opts),
+                %% this will regenerate SharedLib in cc/ - needed by Mac
+                consult(Module, [cc(CC), cc_opts(CC_opts)]),
+                force_rename_file(ObjfileX, LibObjFileX)
+            )
+        ).
+

@@ -1,0 +1,1337 @@
+
+parse_iri_reference(A,B,iriref(C,D,E,F,G),H,I) :- (absreliri0(A,B,C,D,E,J,K)  ','  iquery0(J,K,F,L,M)  ','  ifragment0(L,M,G,H,I)).
+
+
+absreliri0(-1,A,[],[],[],-1,A) :- !.
+
+absreliri0(35,A,[],[],[],35,A) :- !.
+
+absreliri0(63,A,[],[],[],63,A) :- !.
+
+absreliri0(47,A,[],B,C,D,E) :- (!  ','  ihier_part(47,A,B,C,D,E)).
+
+absreliri0(A,B,C,D,E,F,G) :- (!  ','  sch_rel(A,B,C,D,E,F,G)).
+
+
+ifragment0(35,[A|B],fragment(C),D,E) :- (!  ','  ifragment(A,B,C,D,E)).
+
+ifragment0(-1,A,[],-1,A) :- !.
+
+
+ihier_part(47,[47,A|B],C,D,E,F) :- (!  ','  iauthority0(A,B,C,G,H)  ','  rest_inet_path(G,H,D,E,F)  ','  !).
+
+ihier_part(47,[A|B],[],path(abs,C),D,E) :- (!  ','  ipath_segments(A,B,C,D,E)  ','  !).
+
+
+iquery0(63,[A|B],query(C),D,E) :- (!  ','  iquery(A,B,C,D,E)).
+
+iquery0(-1,A,[],-1,A) :- !.
+
+iquery0(35,A,[],35,A) :- !.
+
+
+sch_rel(A,B,C,D,E,F,G) :- (alpha(A,B,H,I,J)  ','  !  ','  rest_sch_rel(I,J,[H|K],K,C,D,E,F,G)).
+
+sch_rel(A,B,[],[],C,D,E) :- (ipchar(A,B,F,G,H,I)  ','  !  ','  rest_irelpath(H,I,F,G,C,D,E)).
+
+
+rest_sch_rel(58,[A|B],C,[],scheme(C),D,E,F,G) :- (!  ','  rest_absoluteIRI(A,B,D,E,F,G)).
+
+rest_sch_rel(A,B,C,D,E,F,G,H,I) :- (alpha(A,B,J,K,L)  ','  !  ','  D = [J|M]  ','  rest_sch_rel(K,L,C,M,E,F,G,H,I)).
+
+rest_sch_rel(A,B,C,D,E,F,G,H,I) :- (digit(A,B,J,K,L)  ','  !  ','  D = [J|M]  ','  rest_sch_rel(K,L,C,M,E,F,G,H,I)).
+
+rest_sch_rel(43,[A|B],C,D,E,F,G,H,I) :- (!  ','  D = [43|J]  ','  rest_sch_rel(A,B,C,J,E,F,G,H,I)).
+
+rest_sch_rel(45,[A|B],C,D,E,F,G,H,I) :- (!  ','  D = [45|J]  ','  rest_sch_rel(A,B,C,J,E,F,G,H,I)).
+
+rest_sch_rel(46,[A|B],C,D,E,F,G,H,I) :- (!  ','  D = [46|J]  ','  rest_sch_rel(A,B,C,J,E,F,G,H,I)).
+
+rest_sch_rel(A,B,C,D,[],[],E,F,G) :- rest_irelpath(A,B,C,D,E,F,G).
+
+
+rest_irelpath(A,B,C,D,path(rel,[segment(C)|E]),F,G) :- (isegment(A,B,D,H,I)  ','  abs_path0(H,I,E,F,G)).
+
+
+abs_path0(47,[A|B],C,D,E) :- (!  ','  ipath_segments(A,B,C,D,E)).
+
+abs_path0(-1,A,[],-1,A) :- !.
+
+abs_path0(35,A,[],35,A) :- !.
+
+abs_path0(63,A,[],63,A) :- !.
+
+
+rest_absoluteIRI(47,A,B,C,D,E) :- (!  ','  ihier_part(47,A,B,C,D,E)).
+
+rest_absoluteIRI(A,B,[],path(rel,C),D,E) :- (!  ','  ipath_segments(A,B,C,D,E)).
+
+
+rest_inet_path(47,[A|B],path(abs,C),D,E) :- (!  ','  ipath_segments(A,B,C,D,E)).
+
+rest_inet_path(-1,A,[],-1,A) :- !.
+
+rest_inet_path(35,A,[],35,A) :- !.
+
+rest_inet_path(63,A,[],63,A) :- !.
+
+
+iauthority0(-1,A,authority([],[],[]),-1,A) :- !.
+
+iauthority0(35,A,authority([],[],[]),35,A) :- !.
+
+iauthority0(47,A,authority([],[],[]),47,A) :- !.
+
+iauthority0(63,A,authority([],[],[]),63,A) :- !.
+
+iauthority0(A,B,authority(C,D,E),F,G) :- iauthority(A,B,H,H,C,D,E,F,G).
+
+
+iauthority(37,A,B,C,D,E,F,G,H) :- (!  ','  iauthority_with_iuserinfo(37,A,B,C,D,E,F,G,H)).
+
+iauthority(59,A,B,C,D,E,F,G,H) :- (!  ','  iauthority_with_iuserinfo(59,A,B,C,D,E,F,G,H)).
+
+iauthority(38,A,B,C,D,E,F,G,H) :- (!  ','  iauthority_with_iuserinfo(38,A,B,C,D,E,F,G,H)).
+
+iauthority(61,A,B,C,D,E,F,G,H) :- (!  ','  iauthority_with_iuserinfo(61,A,B,C,D,E,F,G,H)).
+
+iauthority(43,A,B,C,D,E,F,G,H) :- (!  ','  iauthority_with_iuserinfo(43,A,B,C,D,E,F,G,H)).
+
+iauthority(36,A,B,C,D,E,F,G,H) :- (!  ','  iauthority_with_iuserinfo(36,A,B,C,D,E,F,G,H)).
+
+iauthority(44,A,B,C,D,E,F,G,H) :- (!  ','  iauthority_with_iuserinfo(44,A,B,C,D,E,F,G,H)).
+
+iauthority(58,[A|B],C,D,E,F,G,H,I) :- (!  ','  iuserinfo_or_port(A,B,C,D,J,J,E,F,G,H,I)).
+
+iauthority(64,[A|B],C,[],C,D,E,F,G) :- (!  ','  ihost0(A,B,D,H,I)  ','  port0(H,I,E,F,G)).
+
+iauthority(A,B,C,[D|E],F,G,H,I,J) :- (iunreserved(A,B,D,K,L)  ','  !  ','  iauthority(K,L,C,E,F,G,H,I,J)).
+
+iauthority(-1,A,B,[],[],B,[],-1,A) :- (!  ','  nonvar(B)).
+
+iauthority(35,A,B,[],[],B,[],35,A) :- (!  ','  nonvar(B)).
+
+iauthority(47,A,B,[],[],B,[],47,A) :- (!  ','  nonvar(B)).
+
+iauthority(63,A,B,[],[],B,[],63,A) :- (!  ','  nonvar(B)).
+
+
+iuserinfo_or_port(-1,A,B,[],C,[],[],B,C,-1,A) :- !.
+
+iuserinfo_or_port(35,A,B,[],C,[],[],B,C,35,A) :- !.
+
+iuserinfo_or_port(47,A,B,[],C,[],[],B,C,47,A) :- !.
+
+iuserinfo_or_port(63,A,B,[],C,[],[],B,C,63,A) :- !.
+
+iuserinfo_or_port(A,B,C,D,E,[F|G],H,I,J,K,L) :- (digit(A,B,F,M,N)  ','  !  ','  iuserinfo_or_port(M,N,C,D,E,G,H,I,J,K,L)).
+
+iuserinfo_or_port(64,[A|B],C,[58|D],D,[],C,E,F,G,H) :- (!  ','  ihost0(A,B,E,I,J)  ','  port0(I,J,F,G,H)).
+
+iuserinfo_or_port(A,B,C,[58|D],D,E,F,G,H,I,J) :- iauthority_with_iuserinfo(A,B,C,E,F,G,H,I,J).
+
+
+iauthority_with_iuserinfo(A,B,C,D,C,E,F,G,H) :- (iuserinfo(A,B,D,64,[I|J])  ','  ihost0(I,J,E,K,L)  ','  port0(K,L,F,G,H)).
+
+
+iuserinfo(59,[A|B],[59|C],D,E) :- (!  ','  iuserinfo(A,B,C,D,E)).
+
+iuserinfo(58,[A|B],[58|C],D,E) :- (!  ','  iuserinfo(A,B,C,D,E)).
+
+iuserinfo(38,[A|B],[38|C],D,E) :- (!  ','  iuserinfo(A,B,C,D,E)).
+
+iuserinfo(61,[A|B],[61|C],D,E) :- (!  ','  iuserinfo(A,B,C,D,E)).
+
+iuserinfo(43,[A|B],[43|C],D,E) :- (!  ','  iuserinfo(A,B,C,D,E)).
+
+iuserinfo(36,[A|B],[36|C],D,E) :- (!  ','  iuserinfo(A,B,C,D,E)).
+
+iuserinfo(44,[A|B],[44|C],D,E) :- (!  ','  iuserinfo(A,B,C,D,E)).
+
+iuserinfo(37,A,B,C,D) :- (escaped(37,A,B,E,F,G)  ','  !  ','  iuserinfo(F,G,E,C,D)).
+
+iuserinfo(A,B,[C|D],E,F) :- (iunreserved(A,B,C,G,H)  ','  !  ','  iuserinfo(G,H,D,E,F)).
+
+iuserinfo(64,A,[],64,A) :- !.
+
+
+port0(-1,A,[],-1,A) :- !.
+
+port0(35,A,[],35,A) :- !.
+
+port0(47,A,[],47,A) :- !.
+
+port0(63,A,[],63,A) :- !.
+
+port0(58,[A|B],C,D,E) :- (!  ','  digits0(A,B,C,D,E)).
+
+
+digits0(48,[A|B],[48|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(49,[A|B],[49|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(50,[A|B],[50|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(51,[A|B],[51|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(52,[A|B],[52|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(53,[A|B],[53|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(54,[A|B],[54|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(55,[A|B],[55|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(56,[A|B],[56|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(57,[A|B],[57|C],D,E) :- (!  ','  !  ','  digits0(A,B,C,D,E)).
+
+digits0(-1,A,[],-1,A) :- !.
+
+digits0(35,A,[],35,A) :- !.
+
+digits0(47,A,[],47,A) :- !.
+
+digits0(63,A,[],63,A) :- !.
+
+
+ihost0(91,[A|B],[91|C],D,E) :- (!  ','  ipv6address(A,B,C,D,E)  ','  !).
+
+ihost0(A,B,C,D,E) :- (idomainlabel(A,B,C,F,G,H)  ','  iqualified(G,H,F,D,E)  ','  !).
+
+ihost0(-1,A,[],-1,A) :- !.
+
+ihost0(35,A,[],35,A) :- !.
+
+ihost0(47,A,[],47,A) :- !.
+
+ihost0(58,A,[],58,A) :- !.
+
+ihost0(63,A,[],63,A) :- !.
+
+
+ipv6address(A,B,[C|D],E,F) :- (v6char(A,B,C,G,H)  ','  restipv6(G,H,D,E,F)).
+
+
+restipv6(58,[A|B],[58|C],D,E) :- (!  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(46,[A|B],[46|C],D,E) :- (!  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(48,[A|B],[48|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(49,[A|B],[49|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(50,[A|B],[50|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(51,[A|B],[51|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(52,[A|B],[52|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(53,[A|B],[53|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(54,[A|B],[54|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(55,[A|B],[55|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(56,[A|B],[56|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(57,[A|B],[57|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(65,[A|B],[65|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(66,[A|B],[66|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(67,[A|B],[67|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(68,[A|B],[68|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(69,[A|B],[69|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(70,[A|B],[70|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(97,[A|B],[97|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(98,[A|B],[98|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(99,[A|B],[99|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(100,[A|B],[100|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(101,[A|B],[101|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(102,[A|B],[102|C],D,E) :- (!  ','  !  ','  !  ','  restipv6(A,B,C,D,E)).
+
+restipv6(93,[A|B],[93],A,B) :- !.
+
+
+v6char(58,[A|B],58,A,B) :- !.
+
+v6char(46,[A|B],46,A,B) :- !.
+
+v6char(48,[A|B],48,A,B) :- (!  ','  !).
+
+v6char(49,[A|B],49,A,B) :- (!  ','  !).
+
+v6char(50,[A|B],50,A,B) :- (!  ','  !).
+
+v6char(51,[A|B],51,A,B) :- (!  ','  !).
+
+v6char(52,[A|B],52,A,B) :- (!  ','  !).
+
+v6char(53,[A|B],53,A,B) :- (!  ','  !).
+
+v6char(54,[A|B],54,A,B) :- (!  ','  !).
+
+v6char(55,[A|B],55,A,B) :- (!  ','  !).
+
+v6char(56,[A|B],56,A,B) :- (!  ','  !).
+
+v6char(57,[A|B],57,A,B) :- (!  ','  !).
+
+v6char(65,[A|B],65,A,B) :- (!  ','  !).
+
+v6char(66,[A|B],66,A,B) :- (!  ','  !).
+
+v6char(67,[A|B],67,A,B) :- (!  ','  !).
+
+v6char(68,[A|B],68,A,B) :- (!  ','  !).
+
+v6char(69,[A|B],69,A,B) :- (!  ','  !).
+
+v6char(70,[A|B],70,A,B) :- (!  ','  !).
+
+v6char(97,[A|B],97,A,B) :- (!  ','  !).
+
+v6char(98,[A|B],98,A,B) :- (!  ','  !).
+
+v6char(99,[A|B],99,A,B) :- (!  ','  !).
+
+v6char(100,[A|B],100,A,B) :- (!  ','  !).
+
+v6char(101,[A|B],101,A,B) :- (!  ','  !).
+
+v6char(102,[A|B],102,A,B) :- (!  ','  !).
+
+
+dec_octet(48,[A|B],[48|C],C,A,B) :- !.
+
+dec_octet(51,[A|B],[51|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet(52,[A|B],[52|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet(53,[A|B],[53|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet(54,[A|B],[54|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet(55,[A|B],[55|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet(56,[A|B],[56|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet(57,[A|B],[57|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet(49,[A|B],[49|C],D,E,F) :- (!  ','  dec_octet1(A,B,C,D,E,F)).
+
+dec_octet(50,[A|B],[50|C],D,E,F) :- (!  ','  dec_octet2(A,B,C,D,E,F)).
+
+
+dec_octet0(48,[A|B],[48|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(49,[A|B],[49|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(50,[A|B],[50|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(51,[A|B],[51|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(52,[A|B],[52|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(53,[A|B],[53|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(54,[A|B],[54|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(55,[A|B],[55|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(56,[A|B],[56|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(57,[A|B],[57|C],C,A,B) :- (!  ','  !).
+
+dec_octet0(46,A,B,B,46,A) :- !.
+
+
+dec_octet1(48,[A|B],[48|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(49,[A|B],[49|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(50,[A|B],[50|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(51,[A|B],[51|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(52,[A|B],[52|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(53,[A|B],[53|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(54,[A|B],[54|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(55,[A|B],[55|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(56,[A|B],[56|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(57,[A|B],[57|C],D,E,F) :- (!  ','  !  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet1(46,A,B,B,46,A) :- !.
+
+
+dec_octet2(48,[A|B],[48|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet2(49,[A|B],[49|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet2(50,[A|B],[50|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet2(51,[A|B],[51|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet2(52,[A|B],[52|C],D,E,F) :- (!  ','  dec_octet0(A,B,C,D,E,F)).
+
+dec_octet2(53,[A|B],[53|C],D,E,F) :- (!  ','  dec_octet25(A,B,C,D,E,F)).
+
+dec_octet2(54,[A|B],[54|C],C,A,B) :- !.
+
+dec_octet2(55,[A|B],[55|C],C,A,B) :- !.
+
+dec_octet2(56,[A|B],[56|C],C,A,B) :- !.
+
+dec_octet2(57,[A|B],[57|C],C,A,B) :- !.
+
+dec_octet2(46,A,B,B,46,A) :- !.
+
+
+dec_octet25(48,[A|B],[48|C],C,A,B) :- !.
+
+dec_octet25(49,[A|B],[49|C],C,A,B) :- !.
+
+dec_octet25(50,[A|B],[50|C],C,A,B) :- !.
+
+dec_octet25(51,[A|B],[51|C],C,A,B) :- !.
+
+dec_octet25(52,[A|B],[52|C],C,A,B) :- !.
+
+dec_octet25(53,[A|B],[53|C],C,A,B) :- !.
+
+dec_octet25(46,A,B,B,46,A) :- !.
+
+
+iqualified(-1,A,[],-1,A) :- !.
+
+iqualified(35,A,[],35,A) :- !.
+
+iqualified(47,A,[],47,A) :- !.
+
+iqualified(58,A,[],58,A) :- !.
+
+iqualified(63,A,[],63,A) :- !.
+
+iqualified(46,[A|B],[46|C],D,E) :- (!  ','  restiqualified(A,B,C,D,E)).
+
+
+restiqualified(A,B,C,D,E) :- (idomainlabel(A,B,C,F,G,H)  ','  !  ','  iqualified(G,H,F,D,E)).
+
+restiqualified(-1,A,[],-1,A) :- !.
+
+restiqualified(35,A,[],35,A) :- !.
+
+restiqualified(47,A,[],47,A) :- !.
+
+restiqualified(58,A,[],58,A) :- !.
+
+restiqualified(63,A,[],63,A) :- !.
+
+
+idomainlabel(A,B,[C|D],E,F,G) :- (iunreserved(A,B,C,H,I)  ','  !  ','  restidomainlabel(H,I,D,E,F,G)).
+
+
+restidomainlabel(A,B,[C|D],E,F,G) :- (iunreserved(A,B,C,H,I)  ','  !  ','  restidomainlabel(H,I,D,E,F,G)).
+
+restidomainlabel(-1,A,B,B,-1,A) :- !.
+
+restidomainlabel(35,A,B,B,35,A) :- !.
+
+restidomainlabel(46,A,B,B,46,A) :- !.
+
+restidomainlabel(47,A,B,B,47,A) :- !.
+
+restidomainlabel(58,A,B,B,58,A) :- !.
+
+restidomainlabel(63,A,B,B,63,A) :- !.
+
+
+ipath_segments(A,B,[segment(C)|D],E,F) :- (isegment(A,B,C,G,H)  ','  rest_isegments(G,H,D,E,F)).
+
+
+rest_isegments(-1,A,[],-1,A) :- !.
+
+rest_isegments(35,A,[],35,A) :- !.
+
+rest_isegments(63,A,[],63,A) :- !.
+
+rest_isegments(47,[A|B],[segment(C)|D],E,F) :- (!  ','  isegment(A,B,C,G,H)  ','  rest_isegments(G,H,D,E,F)).
+
+
+isegment(-1,A,[],-1,A) :- !.
+
+isegment(35,A,[],35,A) :- !.
+
+isegment(47,A,[],47,A) :- !.
+
+isegment(63,A,[],63,A) :- !.
+
+isegment(A,B,C,D,E) :- (ipchar(A,B,C,F,G,H)  ','  !  ','  isegment(G,H,F,D,E)).
+
+
+ipchar(59,[A|B],[59|C],C,A,B) :- !.
+
+ipchar(58,[A|B],[58|C],C,A,B) :- !.
+
+ipchar(64,[A|B],[64|C],C,A,B) :- !.
+
+ipchar(38,[A|B],[38|C],C,A,B) :- !.
+
+ipchar(61,[A|B],[61|C],C,A,B) :- !.
+
+ipchar(43,[A|B],[43|C],C,A,B) :- !.
+
+ipchar(36,[A|B],[36|C],C,A,B) :- !.
+
+ipchar(44,[A|B],[44|C],C,A,B) :- !.
+
+ipchar(37,[A|B],[37,C,D|E],E,F,G) :- (!  ','  hexdig(A,B,C,H,I)  ','  hexdig(H,I,D,F,G)).
+
+ipchar(97,[A|B],[97|C],C,A,B) :- !.
+
+ipchar(98,[A|B],[98|C],C,A,B) :- !.
+
+ipchar(99,[A|B],[99|C],C,A,B) :- !.
+
+ipchar(100,[A|B],[100|C],C,A,B) :- !.
+
+ipchar(101,[A|B],[101|C],C,A,B) :- !.
+
+ipchar(102,[A|B],[102|C],C,A,B) :- !.
+
+ipchar(103,[A|B],[103|C],C,A,B) :- !.
+
+ipchar(104,[A|B],[104|C],C,A,B) :- !.
+
+ipchar(105,[A|B],[105|C],C,A,B) :- !.
+
+ipchar(106,[A|B],[106|C],C,A,B) :- !.
+
+ipchar(107,[A|B],[107|C],C,A,B) :- !.
+
+ipchar(108,[A|B],[108|C],C,A,B) :- !.
+
+ipchar(109,[A|B],[109|C],C,A,B) :- !.
+
+ipchar(110,[A|B],[110|C],C,A,B) :- !.
+
+ipchar(111,[A|B],[111|C],C,A,B) :- !.
+
+ipchar(112,[A|B],[112|C],C,A,B) :- !.
+
+ipchar(113,[A|B],[113|C],C,A,B) :- !.
+
+ipchar(114,[A|B],[114|C],C,A,B) :- !.
+
+ipchar(115,[A|B],[115|C],C,A,B) :- !.
+
+ipchar(116,[A|B],[116|C],C,A,B) :- !.
+
+ipchar(117,[A|B],[117|C],C,A,B) :- !.
+
+ipchar(118,[A|B],[118|C],C,A,B) :- !.
+
+ipchar(119,[A|B],[119|C],C,A,B) :- !.
+
+ipchar(120,[A|B],[120|C],C,A,B) :- !.
+
+ipchar(121,[A|B],[121|C],C,A,B) :- !.
+
+ipchar(122,[A|B],[122|C],C,A,B) :- !.
+
+ipchar(65,[A|B],[65|C],C,A,B) :- !.
+
+ipchar(66,[A|B],[66|C],C,A,B) :- !.
+
+ipchar(67,[A|B],[67|C],C,A,B) :- !.
+
+ipchar(68,[A|B],[68|C],C,A,B) :- !.
+
+ipchar(69,[A|B],[69|C],C,A,B) :- !.
+
+ipchar(70,[A|B],[70|C],C,A,B) :- !.
+
+ipchar(71,[A|B],[71|C],C,A,B) :- !.
+
+ipchar(72,[A|B],[72|C],C,A,B) :- !.
+
+ipchar(73,[A|B],[73|C],C,A,B) :- !.
+
+ipchar(74,[A|B],[74|C],C,A,B) :- !.
+
+ipchar(75,[A|B],[75|C],C,A,B) :- !.
+
+ipchar(76,[A|B],[76|C],C,A,B) :- !.
+
+ipchar(77,[A|B],[77|C],C,A,B) :- !.
+
+ipchar(78,[A|B],[78|C],C,A,B) :- !.
+
+ipchar(79,[A|B],[79|C],C,A,B) :- !.
+
+ipchar(80,[A|B],[80|C],C,A,B) :- !.
+
+ipchar(81,[A|B],[81|C],C,A,B) :- !.
+
+ipchar(82,[A|B],[82|C],C,A,B) :- !.
+
+ipchar(83,[A|B],[83|C],C,A,B) :- !.
+
+ipchar(84,[A|B],[84|C],C,A,B) :- !.
+
+ipchar(85,[A|B],[85|C],C,A,B) :- !.
+
+ipchar(86,[A|B],[86|C],C,A,B) :- !.
+
+ipchar(87,[A|B],[87|C],C,A,B) :- !.
+
+ipchar(88,[A|B],[88|C],C,A,B) :- !.
+
+ipchar(89,[A|B],[89|C],C,A,B) :- !.
+
+ipchar(90,[A|B],[90|C],C,A,B) :- !.
+
+ipchar(48,[A|B],[48|C],C,A,B) :- !.
+
+ipchar(49,[A|B],[49|C],C,A,B) :- !.
+
+ipchar(50,[A|B],[50|C],C,A,B) :- !.
+
+ipchar(51,[A|B],[51|C],C,A,B) :- !.
+
+ipchar(52,[A|B],[52|C],C,A,B) :- !.
+
+ipchar(53,[A|B],[53|C],C,A,B) :- !.
+
+ipchar(54,[A|B],[54|C],C,A,B) :- !.
+
+ipchar(55,[A|B],[55|C],C,A,B) :- !.
+
+ipchar(56,[A|B],[56|C],C,A,B) :- !.
+
+ipchar(57,[A|B],[57|C],C,A,B) :- !.
+
+ipchar(45,[A|B],[45|C],C,A,B) :- !.
+
+ipchar(95,[A|B],[95|C],C,A,B) :- !.
+
+ipchar(46,[A|B],[46|C],C,A,B) :- !.
+
+ipchar(33,[A|B],[33|C],C,A,B) :- !.
+
+ipchar(126,[A|B],[126|C],C,A,B) :- !.
+
+ipchar(42,[A|B],[42|C],C,A,B) :- !.
+
+ipchar(39,[A|B],[39|C],C,A,B) :- !.
+
+ipchar(40,[A|B],[40|C],C,A,B) :- !.
+
+ipchar(41,[A|B],[41|C],C,A,B) :- !.
+
+ipchar(A,[B|C],[A|D],D,B,C) :- (A =< 55295  ','  !  ','  A >= 160).
+
+ipchar(A,[B|C],[A|D],D,B,C) :- (A =< 64975  ','  !  ','  A >= 63744).
+
+ipchar(A,[B|C],[A|D],D,B,C) :- (A =< 65519  ','  !  ','  A >= 65008).
+
+ipchar(A,[B|C],[A|D],D,B,C) :- (A =< 983037  ','  !  ','  A >= 65536  ','  A /\ 65535 =< 65533).
+
+
+iunreserved(97,[A|B],97,A,B) :- !.
+
+iunreserved(98,[A|B],98,A,B) :- !.
+
+iunreserved(99,[A|B],99,A,B) :- !.
+
+iunreserved(100,[A|B],100,A,B) :- !.
+
+iunreserved(101,[A|B],101,A,B) :- !.
+
+iunreserved(102,[A|B],102,A,B) :- !.
+
+iunreserved(103,[A|B],103,A,B) :- !.
+
+iunreserved(104,[A|B],104,A,B) :- !.
+
+iunreserved(105,[A|B],105,A,B) :- !.
+
+iunreserved(106,[A|B],106,A,B) :- !.
+
+iunreserved(107,[A|B],107,A,B) :- !.
+
+iunreserved(108,[A|B],108,A,B) :- !.
+
+iunreserved(109,[A|B],109,A,B) :- !.
+
+iunreserved(110,[A|B],110,A,B) :- !.
+
+iunreserved(111,[A|B],111,A,B) :- !.
+
+iunreserved(112,[A|B],112,A,B) :- !.
+
+iunreserved(113,[A|B],113,A,B) :- !.
+
+iunreserved(114,[A|B],114,A,B) :- !.
+
+iunreserved(115,[A|B],115,A,B) :- !.
+
+iunreserved(116,[A|B],116,A,B) :- !.
+
+iunreserved(117,[A|B],117,A,B) :- !.
+
+iunreserved(118,[A|B],118,A,B) :- !.
+
+iunreserved(119,[A|B],119,A,B) :- !.
+
+iunreserved(120,[A|B],120,A,B) :- !.
+
+iunreserved(121,[A|B],121,A,B) :- !.
+
+iunreserved(122,[A|B],122,A,B) :- !.
+
+iunreserved(65,[A|B],65,A,B) :- !.
+
+iunreserved(66,[A|B],66,A,B) :- !.
+
+iunreserved(67,[A|B],67,A,B) :- !.
+
+iunreserved(68,[A|B],68,A,B) :- !.
+
+iunreserved(69,[A|B],69,A,B) :- !.
+
+iunreserved(70,[A|B],70,A,B) :- !.
+
+iunreserved(71,[A|B],71,A,B) :- !.
+
+iunreserved(72,[A|B],72,A,B) :- !.
+
+iunreserved(73,[A|B],73,A,B) :- !.
+
+iunreserved(74,[A|B],74,A,B) :- !.
+
+iunreserved(75,[A|B],75,A,B) :- !.
+
+iunreserved(76,[A|B],76,A,B) :- !.
+
+iunreserved(77,[A|B],77,A,B) :- !.
+
+iunreserved(78,[A|B],78,A,B) :- !.
+
+iunreserved(79,[A|B],79,A,B) :- !.
+
+iunreserved(80,[A|B],80,A,B) :- !.
+
+iunreserved(81,[A|B],81,A,B) :- !.
+
+iunreserved(82,[A|B],82,A,B) :- !.
+
+iunreserved(83,[A|B],83,A,B) :- !.
+
+iunreserved(84,[A|B],84,A,B) :- !.
+
+iunreserved(85,[A|B],85,A,B) :- !.
+
+iunreserved(86,[A|B],86,A,B) :- !.
+
+iunreserved(87,[A|B],87,A,B) :- !.
+
+iunreserved(88,[A|B],88,A,B) :- !.
+
+iunreserved(89,[A|B],89,A,B) :- !.
+
+iunreserved(90,[A|B],90,A,B) :- !.
+
+iunreserved(48,[A|B],48,A,B) :- !.
+
+iunreserved(49,[A|B],49,A,B) :- !.
+
+iunreserved(50,[A|B],50,A,B) :- !.
+
+iunreserved(51,[A|B],51,A,B) :- !.
+
+iunreserved(52,[A|B],52,A,B) :- !.
+
+iunreserved(53,[A|B],53,A,B) :- !.
+
+iunreserved(54,[A|B],54,A,B) :- !.
+
+iunreserved(55,[A|B],55,A,B) :- !.
+
+iunreserved(56,[A|B],56,A,B) :- !.
+
+iunreserved(57,[A|B],57,A,B) :- !.
+
+iunreserved(45,[A|B],45,A,B) :- !.
+
+iunreserved(95,[A|B],95,A,B) :- !.
+
+iunreserved(46,[A|B],46,A,B) :- !.
+
+iunreserved(33,[A|B],33,A,B) :- !.
+
+iunreserved(126,[A|B],126,A,B) :- !.
+
+iunreserved(42,[A|B],42,A,B) :- !.
+
+iunreserved(39,[A|B],39,A,B) :- !.
+
+iunreserved(40,[A|B],40,A,B) :- !.
+
+iunreserved(41,[A|B],41,A,B) :- !.
+
+iunreserved(A,[B|C],A,B,C) :- (A =< 55295  ','  !  ','  A >= 160).
+
+iunreserved(A,[B|C],A,B,C) :- (A =< 64975  ','  !  ','  A >= 63744).
+
+iunreserved(A,[B|C],A,B,C) :- (A =< 65519  ','  !  ','  A >= 65008).
+
+iunreserved(A,[B|C],A,B,C) :- (A =< 983037  ','  !  ','  A >= 65536  ','  A /\ 65535 =< 65533).
+
+
+iquery(A,B,C,D,E) :- (iqchar(A,B,C,F,G,H)  ','  !  ','  iquery(G,H,F,D,E)).
+
+iquery(-1,A,[],-1,A) :- !.
+
+iquery(35,A,[],35,A) :- !.
+
+
+iqchar(59,[A|B],[59|C],C,A,B) :- !.
+
+iqchar(58,[A|B],[58|C],C,A,B) :- !.
+
+iqchar(64,[A|B],[64|C],C,A,B) :- !.
+
+iqchar(38,[A|B],[38|C],C,A,B) :- !.
+
+iqchar(61,[A|B],[61|C],C,A,B) :- !.
+
+iqchar(43,[A|B],[43|C],C,A,B) :- !.
+
+iqchar(36,[A|B],[36|C],C,A,B) :- !.
+
+iqchar(44,[A|B],[44|C],C,A,B) :- !.
+
+iqchar(47,[A|B],[47|C],C,A,B) :- !.
+
+iqchar(63,[A|B],[63|C],C,A,B) :- !.
+
+iqchar(97,[A|B],[97|C],C,A,B) :- !.
+
+iqchar(98,[A|B],[98|C],C,A,B) :- !.
+
+iqchar(99,[A|B],[99|C],C,A,B) :- !.
+
+iqchar(100,[A|B],[100|C],C,A,B) :- !.
+
+iqchar(101,[A|B],[101|C],C,A,B) :- !.
+
+iqchar(102,[A|B],[102|C],C,A,B) :- !.
+
+iqchar(103,[A|B],[103|C],C,A,B) :- !.
+
+iqchar(104,[A|B],[104|C],C,A,B) :- !.
+
+iqchar(105,[A|B],[105|C],C,A,B) :- !.
+
+iqchar(106,[A|B],[106|C],C,A,B) :- !.
+
+iqchar(107,[A|B],[107|C],C,A,B) :- !.
+
+iqchar(108,[A|B],[108|C],C,A,B) :- !.
+
+iqchar(109,[A|B],[109|C],C,A,B) :- !.
+
+iqchar(110,[A|B],[110|C],C,A,B) :- !.
+
+iqchar(111,[A|B],[111|C],C,A,B) :- !.
+
+iqchar(112,[A|B],[112|C],C,A,B) :- !.
+
+iqchar(113,[A|B],[113|C],C,A,B) :- !.
+
+iqchar(114,[A|B],[114|C],C,A,B) :- !.
+
+iqchar(115,[A|B],[115|C],C,A,B) :- !.
+
+iqchar(116,[A|B],[116|C],C,A,B) :- !.
+
+iqchar(117,[A|B],[117|C],C,A,B) :- !.
+
+iqchar(118,[A|B],[118|C],C,A,B) :- !.
+
+iqchar(119,[A|B],[119|C],C,A,B) :- !.
+
+iqchar(120,[A|B],[120|C],C,A,B) :- !.
+
+iqchar(121,[A|B],[121|C],C,A,B) :- !.
+
+iqchar(122,[A|B],[122|C],C,A,B) :- !.
+
+iqchar(65,[A|B],[65|C],C,A,B) :- !.
+
+iqchar(66,[A|B],[66|C],C,A,B) :- !.
+
+iqchar(67,[A|B],[67|C],C,A,B) :- !.
+
+iqchar(68,[A|B],[68|C],C,A,B) :- !.
+
+iqchar(69,[A|B],[69|C],C,A,B) :- !.
+
+iqchar(70,[A|B],[70|C],C,A,B) :- !.
+
+iqchar(71,[A|B],[71|C],C,A,B) :- !.
+
+iqchar(72,[A|B],[72|C],C,A,B) :- !.
+
+iqchar(73,[A|B],[73|C],C,A,B) :- !.
+
+iqchar(74,[A|B],[74|C],C,A,B) :- !.
+
+iqchar(75,[A|B],[75|C],C,A,B) :- !.
+
+iqchar(76,[A|B],[76|C],C,A,B) :- !.
+
+iqchar(77,[A|B],[77|C],C,A,B) :- !.
+
+iqchar(78,[A|B],[78|C],C,A,B) :- !.
+
+iqchar(79,[A|B],[79|C],C,A,B) :- !.
+
+iqchar(80,[A|B],[80|C],C,A,B) :- !.
+
+iqchar(81,[A|B],[81|C],C,A,B) :- !.
+
+iqchar(82,[A|B],[82|C],C,A,B) :- !.
+
+iqchar(83,[A|B],[83|C],C,A,B) :- !.
+
+iqchar(84,[A|B],[84|C],C,A,B) :- !.
+
+iqchar(85,[A|B],[85|C],C,A,B) :- !.
+
+iqchar(86,[A|B],[86|C],C,A,B) :- !.
+
+iqchar(87,[A|B],[87|C],C,A,B) :- !.
+
+iqchar(88,[A|B],[88|C],C,A,B) :- !.
+
+iqchar(89,[A|B],[89|C],C,A,B) :- !.
+
+iqchar(90,[A|B],[90|C],C,A,B) :- !.
+
+iqchar(48,[A|B],[48|C],C,A,B) :- !.
+
+iqchar(49,[A|B],[49|C],C,A,B) :- !.
+
+iqchar(50,[A|B],[50|C],C,A,B) :- !.
+
+iqchar(51,[A|B],[51|C],C,A,B) :- !.
+
+iqchar(52,[A|B],[52|C],C,A,B) :- !.
+
+iqchar(53,[A|B],[53|C],C,A,B) :- !.
+
+iqchar(54,[A|B],[54|C],C,A,B) :- !.
+
+iqchar(55,[A|B],[55|C],C,A,B) :- !.
+
+iqchar(56,[A|B],[56|C],C,A,B) :- !.
+
+iqchar(57,[A|B],[57|C],C,A,B) :- !.
+
+iqchar(45,[A|B],[45|C],C,A,B) :- !.
+
+iqchar(95,[A|B],[95|C],C,A,B) :- !.
+
+iqchar(46,[A|B],[46|C],C,A,B) :- !.
+
+iqchar(33,[A|B],[33|C],C,A,B) :- !.
+
+iqchar(126,[A|B],[126|C],C,A,B) :- !.
+
+iqchar(42,[A|B],[42|C],C,A,B) :- !.
+
+iqchar(39,[A|B],[39|C],C,A,B) :- !.
+
+iqchar(40,[A|B],[40|C],C,A,B) :- !.
+
+iqchar(41,[A|B],[41|C],C,A,B) :- !.
+
+iqchar(A,[B|C],[A|D],D,B,C) :- (A =< 64975  ','  !  ','  A >= 160).
+
+iqchar(A,[B|C],[A|D],D,B,C) :- (A =< 65519  ','  !  ','  A >= 65008).
+
+iqchar(A,[B|C],[A|D],D,B,C) :- (A =< 1114109  ','  !  ','  A >= 65536  ','  A /\ 65535 =< 65533).
+
+iqchar(37,[A|B],[37,C,D|E],E,F,G) :- (!  ','  hexdig(A,B,C,H,I)  ','  hexdig(H,I,D,F,G)).
+
+
+ifragment(A,B,C,D,E) :- (ifchar(A,B,C,F,G,H)  ','  !  ','  ifragment(G,H,F,D,E)).
+
+ifragment(-1,A,[],-1,A).
+
+
+ifchar(47,[A|B],[47|C],C,A,B) :- !.
+
+ifchar(63,[A|B],[63|C],C,A,B) :- !.
+
+ifchar(59,[A|B],[59|C],C,A,B) :- !.
+
+ifchar(58,[A|B],[58|C],C,A,B) :- !.
+
+ifchar(64,[A|B],[64|C],C,A,B) :- !.
+
+ifchar(38,[A|B],[38|C],C,A,B) :- !.
+
+ifchar(61,[A|B],[61|C],C,A,B) :- !.
+
+ifchar(43,[A|B],[43|C],C,A,B) :- !.
+
+ifchar(36,[A|B],[36|C],C,A,B) :- !.
+
+ifchar(44,[A|B],[44|C],C,A,B) :- !.
+
+ifchar(37,[A|B],[37,C,D|E],E,F,G) :- (!  ','  hexdig(A,B,C,H,I)  ','  hexdig(H,I,D,F,G)).
+
+ifchar(97,[A|B],[97|C],C,A,B) :- !.
+
+ifchar(98,[A|B],[98|C],C,A,B) :- !.
+
+ifchar(99,[A|B],[99|C],C,A,B) :- !.
+
+ifchar(100,[A|B],[100|C],C,A,B) :- !.
+
+ifchar(101,[A|B],[101|C],C,A,B) :- !.
+
+ifchar(102,[A|B],[102|C],C,A,B) :- !.
+
+ifchar(103,[A|B],[103|C],C,A,B) :- !.
+
+ifchar(104,[A|B],[104|C],C,A,B) :- !.
+
+ifchar(105,[A|B],[105|C],C,A,B) :- !.
+
+ifchar(106,[A|B],[106|C],C,A,B) :- !.
+
+ifchar(107,[A|B],[107|C],C,A,B) :- !.
+
+ifchar(108,[A|B],[108|C],C,A,B) :- !.
+
+ifchar(109,[A|B],[109|C],C,A,B) :- !.
+
+ifchar(110,[A|B],[110|C],C,A,B) :- !.
+
+ifchar(111,[A|B],[111|C],C,A,B) :- !.
+
+ifchar(112,[A|B],[112|C],C,A,B) :- !.
+
+ifchar(113,[A|B],[113|C],C,A,B) :- !.
+
+ifchar(114,[A|B],[114|C],C,A,B) :- !.
+
+ifchar(115,[A|B],[115|C],C,A,B) :- !.
+
+ifchar(116,[A|B],[116|C],C,A,B) :- !.
+
+ifchar(117,[A|B],[117|C],C,A,B) :- !.
+
+ifchar(118,[A|B],[118|C],C,A,B) :- !.
+
+ifchar(119,[A|B],[119|C],C,A,B) :- !.
+
+ifchar(120,[A|B],[120|C],C,A,B) :- !.
+
+ifchar(121,[A|B],[121|C],C,A,B) :- !.
+
+ifchar(122,[A|B],[122|C],C,A,B) :- !.
+
+ifchar(65,[A|B],[65|C],C,A,B) :- !.
+
+ifchar(66,[A|B],[66|C],C,A,B) :- !.
+
+ifchar(67,[A|B],[67|C],C,A,B) :- !.
+
+ifchar(68,[A|B],[68|C],C,A,B) :- !.
+
+ifchar(69,[A|B],[69|C],C,A,B) :- !.
+
+ifchar(70,[A|B],[70|C],C,A,B) :- !.
+
+ifchar(71,[A|B],[71|C],C,A,B) :- !.
+
+ifchar(72,[A|B],[72|C],C,A,B) :- !.
+
+ifchar(73,[A|B],[73|C],C,A,B) :- !.
+
+ifchar(74,[A|B],[74|C],C,A,B) :- !.
+
+ifchar(75,[A|B],[75|C],C,A,B) :- !.
+
+ifchar(76,[A|B],[76|C],C,A,B) :- !.
+
+ifchar(77,[A|B],[77|C],C,A,B) :- !.
+
+ifchar(78,[A|B],[78|C],C,A,B) :- !.
+
+ifchar(79,[A|B],[79|C],C,A,B) :- !.
+
+ifchar(80,[A|B],[80|C],C,A,B) :- !.
+
+ifchar(81,[A|B],[81|C],C,A,B) :- !.
+
+ifchar(82,[A|B],[82|C],C,A,B) :- !.
+
+ifchar(83,[A|B],[83|C],C,A,B) :- !.
+
+ifchar(84,[A|B],[84|C],C,A,B) :- !.
+
+ifchar(85,[A|B],[85|C],C,A,B) :- !.
+
+ifchar(86,[A|B],[86|C],C,A,B) :- !.
+
+ifchar(87,[A|B],[87|C],C,A,B) :- !.
+
+ifchar(88,[A|B],[88|C],C,A,B) :- !.
+
+ifchar(89,[A|B],[89|C],C,A,B) :- !.
+
+ifchar(90,[A|B],[90|C],C,A,B) :- !.
+
+ifchar(48,[A|B],[48|C],C,A,B) :- !.
+
+ifchar(49,[A|B],[49|C],C,A,B) :- !.
+
+ifchar(50,[A|B],[50|C],C,A,B) :- !.
+
+ifchar(51,[A|B],[51|C],C,A,B) :- !.
+
+ifchar(52,[A|B],[52|C],C,A,B) :- !.
+
+ifchar(53,[A|B],[53|C],C,A,B) :- !.
+
+ifchar(54,[A|B],[54|C],C,A,B) :- !.
+
+ifchar(55,[A|B],[55|C],C,A,B) :- !.
+
+ifchar(56,[A|B],[56|C],C,A,B) :- !.
+
+ifchar(57,[A|B],[57|C],C,A,B) :- !.
+
+ifchar(45,[A|B],[45|C],C,A,B) :- !.
+
+ifchar(95,[A|B],[95|C],C,A,B) :- !.
+
+ifchar(46,[A|B],[46|C],C,A,B) :- !.
+
+ifchar(33,[A|B],[33|C],C,A,B) :- !.
+
+ifchar(126,[A|B],[126|C],C,A,B) :- !.
+
+ifchar(42,[A|B],[42|C],C,A,B) :- !.
+
+ifchar(39,[A|B],[39|C],C,A,B) :- !.
+
+ifchar(40,[A|B],[40|C],C,A,B) :- !.
+
+ifchar(41,[A|B],[41|C],C,A,B) :- !.
+
+ifchar(A,[B|C],[A|D],D,B,C) :- (A =< 55295  ','  !  ','  A >= 160).
+
+ifchar(A,[B|C],[A|D],D,B,C) :- (A =< 64975  ','  !  ','  A >= 63744).
+
+ifchar(A,[B|C],[A|D],D,B,C) :- (A =< 65519  ','  !  ','  A >= 65008).
+
+ifchar(A,[B|C],[A|D],D,B,C) :- (A =< 983037  ','  !  ','  A >= 65536  ','  A /\ 65535 =< 65533).
+
+
+escaped(37,[A|B],[37,C,D|E],E,F,G) :- (!  ','  hexdig(A,B,C,H,I)  ','  hexdig(H,I,D,F,G)).
+
+
+hexdig(48,[A|B],48,A,B) :- !.
+
+hexdig(49,[A|B],49,A,B) :- !.
+
+hexdig(50,[A|B],50,A,B) :- !.
+
+hexdig(51,[A|B],51,A,B) :- !.
+
+hexdig(52,[A|B],52,A,B) :- !.
+
+hexdig(53,[A|B],53,A,B) :- !.
+
+hexdig(54,[A|B],54,A,B) :- !.
+
+hexdig(55,[A|B],55,A,B) :- !.
+
+hexdig(56,[A|B],56,A,B) :- !.
+
+hexdig(57,[A|B],57,A,B) :- !.
+
+hexdig(65,[A|B],65,A,B) :- !.
+
+hexdig(66,[A|B],66,A,B) :- !.
+
+hexdig(67,[A|B],67,A,B) :- !.
+
+hexdig(68,[A|B],68,A,B) :- !.
+
+hexdig(69,[A|B],69,A,B) :- !.
+
+hexdig(70,[A|B],70,A,B) :- !.
+
+hexdig(97,[A|B],97,A,B) :- !.
+
+hexdig(98,[A|B],98,A,B) :- !.
+
+hexdig(99,[A|B],99,A,B) :- !.
+
+hexdig(100,[A|B],100,A,B) :- !.
+
+hexdig(101,[A|B],101,A,B) :- !.
+
+hexdig(102,[A|B],102,A,B) :- !.
+
+
+alpha(97,[A|B],97,A,B) :- !.
+
+alpha(98,[A|B],98,A,B) :- !.
+
+alpha(99,[A|B],99,A,B) :- !.
+
+alpha(100,[A|B],100,A,B) :- !.
+
+alpha(101,[A|B],101,A,B) :- !.
+
+alpha(102,[A|B],102,A,B) :- !.
+
+alpha(103,[A|B],103,A,B) :- !.
+
+alpha(104,[A|B],104,A,B) :- !.
+
+alpha(105,[A|B],105,A,B) :- !.
+
+alpha(106,[A|B],106,A,B) :- !.
+
+alpha(107,[A|B],107,A,B) :- !.
+
+alpha(108,[A|B],108,A,B) :- !.
+
+alpha(109,[A|B],109,A,B) :- !.
+
+alpha(110,[A|B],110,A,B) :- !.
+
+alpha(111,[A|B],111,A,B) :- !.
+
+alpha(112,[A|B],112,A,B) :- !.
+
+alpha(113,[A|B],113,A,B) :- !.
+
+alpha(114,[A|B],114,A,B) :- !.
+
+alpha(115,[A|B],115,A,B) :- !.
+
+alpha(116,[A|B],116,A,B) :- !.
+
+alpha(117,[A|B],117,A,B) :- !.
+
+alpha(118,[A|B],118,A,B) :- !.
+
+alpha(119,[A|B],119,A,B) :- !.
+
+alpha(120,[A|B],120,A,B) :- !.
+
+alpha(121,[A|B],121,A,B) :- !.
+
+alpha(122,[A|B],122,A,B) :- !.
+
+alpha(65,[A|B],65,A,B) :- !.
+
+alpha(66,[A|B],66,A,B) :- !.
+
+alpha(67,[A|B],67,A,B) :- !.
+
+alpha(68,[A|B],68,A,B) :- !.
+
+alpha(69,[A|B],69,A,B) :- !.
+
+alpha(70,[A|B],70,A,B) :- !.
+
+alpha(71,[A|B],71,A,B) :- !.
+
+alpha(72,[A|B],72,A,B) :- !.
+
+alpha(73,[A|B],73,A,B) :- !.
+
+alpha(74,[A|B],74,A,B) :- !.
+
+alpha(75,[A|B],75,A,B) :- !.
+
+alpha(76,[A|B],76,A,B) :- !.
+
+alpha(77,[A|B],77,A,B) :- !.
+
+alpha(78,[A|B],78,A,B) :- !.
+
+alpha(79,[A|B],79,A,B) :- !.
+
+alpha(80,[A|B],80,A,B) :- !.
+
+alpha(81,[A|B],81,A,B) :- !.
+
+alpha(82,[A|B],82,A,B) :- !.
+
+alpha(83,[A|B],83,A,B) :- !.
+
+alpha(84,[A|B],84,A,B) :- !.
+
+alpha(85,[A|B],85,A,B) :- !.
+
+alpha(86,[A|B],86,A,B) :- !.
+
+alpha(87,[A|B],87,A,B) :- !.
+
+alpha(88,[A|B],88,A,B) :- !.
+
+alpha(89,[A|B],89,A,B) :- !.
+
+alpha(90,[A|B],90,A,B) :- !.
+
+
+digit(48,[A|B],48,A,B) :- !.
+
+digit(49,[A|B],49,A,B) :- !.
+
+digit(50,[A|B],50,A,B) :- !.
+
+digit(51,[A|B],51,A,B) :- !.
+
+digit(52,[A|B],52,A,B) :- !.
+
+digit(53,[A|B],53,A,B) :- !.
+
+digit(54,[A|B],54,A,B) :- !.
+
+digit(55,[A|B],55,A,B) :- !.
+
+digit(56,[A|B],56,A,B) :- !.
+
+digit(57,[A|B],57,A,B) :- !.
+
+(:-export parse_iri_reference / 5).

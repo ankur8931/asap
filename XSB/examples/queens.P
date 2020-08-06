@@ -1,0 +1,78 @@
+/* File:      queens.P
+** Author(s): Jiyang Xu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) ECRC, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: queens.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+
+/************************************************************************/
+% one solution to the queens problem 
+% in order to restrict the search space, a list of possible values is passed
+% through the generation procedure; if a row is selected from this list for
+% a given column, then this row-value will be discarded from the list.
+% thus, it is no more necessary to check the horizontal and vertical
+% constraints.
+/************************************************************************/
+
+go :-	cputime(T1), ( go(8, _), fail; true ), 
+	cputime(T2), T is T2 - T1, 
+	write('Time used: '), write(T), write(' sec'), nl.
+
+demo :- cputime(T1), demo1, cputime(T2), T is T2 - T1,
+	write('Time used: '),  write(T), write(' sec'), nl.
+demo1 :-
+	go(8, Soln), 
+	write(Soln), nl, fail.
+demo1.
+
+go( Size, Solution ):-
+	poss_rows( Size, PossList ), 
+	solve( PossList, 0, [], Solution ).
+
+solve( [Poss1|RestPoss], Col, Current, Final ):-
+	Col1 is Col+1, 
+	delete( [Poss1|RestPoss], Row, NewPossRows ), 
+	safe( Col1, Row, Current ), 
+	solve( NewPossRows, Col1, [s( Col1, Row ) | Current], Final ).
+solve( [], _, Final, Final ).
+
+delete( [Y|L], X, [Y|M] ):-
+	delete( L, X, M ).
+delete( [X|L], X, L ).
+
+threaten( X, Y, I, J ):-
+	U is X+Y, 
+	U is I+J.
+threaten( X, Y, I, J ):-
+	U is X-Y, 
+	U is I-J.
+		
+safe( X, Y, [s( I, J )|Rest] ):-
+	not( threaten( X, Y, I, J ) ), 
+	safe( X, Y, Rest ).
+safe( _, _, [] ).
+
+poss_rows( N, R ) :- poss_rows( N, [], R ).
+
+poss_rows( 0, L, L ).
+poss_rows( N, K, L ) :- N > 0,
+	N1 is N-1, 
+	poss_rows( N1, [N|K], L ).

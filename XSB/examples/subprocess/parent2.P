@@ -1,0 +1,34 @@
+/* This program is similar to parent.P
+   There are two differences: parent process number is sent as an atom 
+   after the process was spawned and the child is terminated by sending 
+   it end-of-file through stdin. When XSB gets such an atom, it thinks
+   that stdin had end of file, and terminates.
+*/
+
+:- import pipe_open/2, fd2ioport/2, fmt_write/3, file_flush/2, file_close/1 from file_io.
+:- import process_control/2 from shell.
+
+%% Create the pipe and pass it to the child process
+?- pipe_open(RP,WP),
+   %% WF is now the XSB file descriptor bound to the write part of the pipe
+   fd2ioport(WP,WF),
+   %% ProcInput becomes the XSB stream leading directly to the child's stdin
+   spawn_process(xsb, ProcInput, block, block, Process),
+   %% Tell the child where the reading part of the pipe is
+   fmt_write(ProcInput, "assert(pipe(%d)).\n", arg(RP)),
+   fmt_write(ProcInput, "[child2].\n", _),
+   %% Send process number as an atom
+   fmt_write(ProcInput, "%d.\n", arg(Process)),
+   file_flush(ProcInput, _),
+   %% Pass a message through the pipe
+   fmt_write(WF, "Hello2!\n", _),
+   file_flush(WF, _),
+   fmt_write(ProcInput, "end_of_file.\n",_), % send end_of_file atom to child
+   file_flush(ProcInput, _),
+   %% wait for child (so as to not leave zombies around; 
+   %% zombies quit when the parent finishes, but they consume resources)
+   process_control(Process, wait),
+   %% Close the ports used to commuicate with the process
+   %% Otherwise, the parent might run out of file descriptors 
+   %% (if many processes were spawned)
+   file_close(ProcInput), file_close(WF).

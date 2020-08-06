@@ -1,0 +1,83 @@
+## File:      packages/sModels/Makefile
+## Author(s): Luis Castro (adapted from packages/flora/Makefile)
+## Contact:   xsb-contact@cs.sunysb.edu
+## 
+## Copyright (C) The Research Foundation of SUNY, 1998
+## 
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+## 
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+## 
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: smoMakefile.in,v 1.21 2010-08-19 15:03:35 spyrosh Exp $
+## 
+##
+
+CXX = @CXX@
+GCC = @CC@
+CFLAGS=@CFLAGS@
+LDFLAGS=@LDFLAGS@ 
+PROLOG = ../../bin/xsb
+DEFFILE=@XASPDEFFILE@
+
+LIBNAME=@XASPLIBNAME@
+
+CFLAGS += @smoCFLAGS@
+LDFLAGS += @smoLDFLAGS@
+SMODELS=@with_smodels@
+SMOLIB=@smoLIB@
+
+ALL = xasppkg.xwam sm_clause_store.xwam sm_int.xwam xnmr.xwam xnmr_int.xwam
+
+Option = [sysmod,optimize]
+
+.IGNORE:
+
+.SUFFIXES: .P .xwam .H .so
+
+all: rest
+
+xasppkg.xwam: xasppkg.H
+	echo 'mc($*, $(Option)).' >> cmd...
+
+.P.xwam:
+	echo 'mc($*,$(Option)).' >> cmd...
+
+rest: $(ALL)
+	../../build/touch.sh cmd... ; \
+	$(PROLOG) < cmd... ; \
+	rm -f cmd...
+
+xsb_wrap_xasppkg.c: xasppkg.H
+	$(PROLOG) -e \
+	"import wrap/2 from wrapping. wrap('xasppkg.H','xsb_wrap_xasppkg.c'). halt." 
+
+clean: 
+	/bin/rm -f *.o *.so *.xwam 
+
+xsb_wrap_xasppkg.o: xsb_wrap_xasppkg.c
+	$(GCC) $(CFLAGS) -c xsb_wrap_xasppkg.c
+
+xasppkg.o: xasppkg.c
+	$(CXX) $(CFLAGS) -c -o xasppkg.o xasppkg.c
+
+
+module: xsb_wrap_xasppkg.o xasppkg.o xasppkg.def
+	$(CXX) $(CFLAGS) $(LDFLAGS) -shared -o $(LIBNAME) \
+		xasppkg.o xsb_wrap_xasppkg.o $(DEFFILE) $(SMOLIB)
+	@cp $(LIBNAME) @arch_config_prefix@/bin
+
+nope:
+
+
+.DONE:
+	echo Done

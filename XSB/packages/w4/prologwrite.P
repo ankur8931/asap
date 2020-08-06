@@ -1,0 +1,79 @@
+%%% Prolog Write (Version 1.0/December 2002)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/projectos/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This module writes a rule base back to Prolog syntax.
+%%%
+%%%
+
+:- export writeProlog/2.
+
+:- import numbervars/1 from num_vars.
+
+writeProlog( rulebase( Label, _, Rules, Queries ), Stream ) :- !,
+	( Label \= [] -> write( Stream, ':- module(' ), write( Stream, Label ), write( Stream, ').' ), nl( Stream ) ; true ),
+	writePrologList( Rules, Stream ),
+	writePrologList( Queries, Stream ).
+writeProlog( rule( Head, Body, Label, Vars ), Stream ) :- !,
+	writePrologRule( rule( Head, Body, Label, Vars ), Stream ),
+	write( Stream, '.' ),
+	nl( Stream ).
+writeProlog( query( Body, Label, Vars ), Stream ) :- !,
+	writePrologQuery( query( Body, Label, Vars ), Stream ),
+	write( Stream, '.' ),
+	nl( Stream ).
+writeProlog( answer( _Label, _Vars ), _Stream ) :- !.
+
+writePrologList( [], _ ) :- !.
+writePrologList( [R|Rest], Stream ) :- 
+	copy_term( R, R1 ),
+	numbervars( R1 ),
+	writeProlog( R1, Stream ), !,
+	writePrologList( Rest, Stream ).
+
+writePrologRule( rule( Head, true, Label, _ ), Stream ) :- !,
+	writePrologFact( Head, Label, Stream ).
+writePrologRule( rule( Head, Body, Label, _ ), Stream ) :-
+	writePrologImp( Head, Body, Label, Stream ).
+
+writePrologFact( Head, _Label, Stream ) :-
+	writePrologLiteral( Head, Stream ).
+writePrologImp( Head, Body, _Label, Stream ) :-
+	writePrologLiteral( Head, Stream ),
+	write( Stream, ' :- ' ),
+	writePrologConjunction( Body, Stream ).
+
+writePrologQuery( query( Body, _Label, _Vars ), Stream ) :-
+	write( Stream, ':- ' ),
+	writePrologConjunction( Body, Stream ).
+
+writePrologConjunction( (First,Rest), Stream ) :- !,
+	writePrologConjunction( First, Stream ), !,
+	write( Stream, ',' ),
+	writePrologConjunction( Rest, Stream ).
+writePrologConjunction( Lit, Stream ) :- !,
+	writePrologLiteral( Lit, Stream ).
+
+writePrologLiteral( not Lit, Stream ) :-  !,
+	write( Stream, 'not(' ),
+	writePrologAtom( Lit, Stream ),
+	write( Stream, ')' ).
+writePrologLiteral( Lit, Stream ) :-  !,
+	writePrologAtom( Lit, Stream ).
+
+writePrologAtom( assert( Rule ), Stream ) :-  !,
+	write( Stream, 'assert( (' ),
+	writePrologRule( Rule, Stream ),
+	write( Stream, ') )' ).
+writePrologAtom( Atom, Stream ) :-  !,
+	writeq( Stream, Atom ).
+
+
+

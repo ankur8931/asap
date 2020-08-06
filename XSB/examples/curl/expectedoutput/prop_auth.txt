@@ -1,0 +1,6 @@
+test_url_properties_auth on http://browserspy.dk/password-ok.php
+Directory = http%3A%2F%2Fbrowserspy%2Edk
+FileBase = password-ok
+Suffix = php
+Size = -1
+Modified Time = -1

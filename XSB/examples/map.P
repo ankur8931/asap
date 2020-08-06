@@ -1,0 +1,66 @@
+/* File:      map.P
+** Author(s): Jiyang Xu, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: map.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+
+go :- cputime(T0), ( map(_), fail; true), cputime(T1),
+	T is T1 - T0, write('Time used: '), write(T), write('  sec'), nl.
+
+demo :- cputime(T0), ( map(Map), write_res(Map), fail; true), cputime(T1),
+	T is T1 - T0, write('Time used: '), write(T), write('  sec'), nl.
+
+
+map( Map ) :-
+        map_outline( Map ),
+        colour_map( Map, [red, green, blue, white] ).
+
+
+map_outline( [ country(a,A,[B,C,D]),     country(b,B,[A,C,E]),
+               country(c,C,[A,B,D,E,F]), country(d,D,[A,C,F]),
+               country(e,E,[B,C,F]),     country(f,F,[C,D,E])
+             ] ).
+
+colour_map( [Country|Map], ColoursList ) :-
+        colour_country( Country, ColoursList ),
+        colour_map( Map, ColoursList ).
+colour_map( [], _ ).
+
+colour_country( country(_,C,AdjacentCountries), ColoursList ) :-
+        delete( C, ColoursList, ColoursList1 ),
+        subset( AdjacentCountries, ColoursList1 ).
+
+subset( [C|Cs], ColoursList ) :-
+        delete( C, ColoursList, _ ),
+        subset( Cs, ColoursList ).
+subset( [], _ ).
+
+delete( Element, [First|List], [First|MoreList] ) :-
+        delete( Element, List, MoreList ).
+delete( Element, [Element|List], List ).
+
+write_res([]) :- nl.
+write_res([country(Country, Color, _)|Rest]) :-
+	write(Country), write('='), write(Color), write(' '),
+	write_res(Rest).
+

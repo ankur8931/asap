@@ -1,0 +1,8 @@
+Iproto; Params: = 1, bug
+Modelcheck from TEXT MODE gives 	mck(iproto(1,bug),livelock) is true.
+Modelcheck from GUI gives true
+Justification tree has 61 nodes.
+Iproto; Params: = 1, fix
+Modelcheck from TEXT MODE gives 	mck(iproto(1,fix),livelock) is false.
+Modelcheck from GUI gives false
+Justification tree has 81855 nodes.

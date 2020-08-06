@@ -1,0 +1,110 @@
+%% This client tried to overwhelm a slow server with writes so as to fill 
+%% in socket buffers. As a result, you will see that some write sockets in 
+%% the select group will become unavailable from time to time.
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "timer_defs_xsb.h"
+#include "char_defs.h"
+
+:- ['auxdefs'].
+:- import tryN/5 from auxdefs.
+
+:- import 
+     socket/2, socket_connect/4, socket_set_option/3,
+     socket_close/2, socket_get0/3, socket_put/3, socket_set_select/4, socket_select/6,
+     socket_select_destroy/1 from socket.
+:- import file_close/1 from file_io.
+
+
+%% machine where server is running
+machine(localhost).
+%% Try something else:
+%%machine(compserv1).
+
+%% Port on which the server is listening
+%% Server must bind to this port
+xsb_port(6025).
+
+client :-
+	writeln('started client...'),
+	machine(IPAddrOrHostname),
+	xsb_port(XSB_port),
+	tryN(4,
+	     try_connect(Sockfd0 ,XSB_port, IPAddrOrHostname, Ecode2),
+	     (writeln(sock_connect1(Sockfd0,XSB_port,IPAddrOrHostname,Ecode2)),
+	     writeln('connected to server...')),
+	     writeln('Cannot connect to server'),
+	     Ecode2
+	    ),
+	
+	set_timer(5),
+	try_connect(Sockfd1, XSB_port, IPAddrOrHostname, Ecode3),
+	(Ecode3 < 0
+	-> writeln('Cannot connect to server'),
+	   socket_close(Sockfd0,_), socket_close(Sockfd1,_), fail
+	; true),
+        writeln(socket_connect2(Sockfd1,XSB_port,IPAddrOrHostname,Ecode3)),
+
+	socket_set_select(mytest, [], [Sockfd0,Sockfd1], []),
+	client_loop(Sockfd0, Sockfd1),
+
+	socket_select_destroy(mytest),
+	writeln('select destroyed...').
+
+client :- writeln('Client error: exiting...').
+
+client_loop(Sockfd0, Sockfd1):-  
+  nl, write('Please enter a character string. ^D terminates: '),
+  getch(Char),
+
+  socket_select(mytest,_, Availr, Availw, Availe, Error),
+  nl,writeln('available write sockets'(Availw)),
+
+  put_loop(1, Char, Sockfd0, Sockfd1),
+
+  (Availw== []
+     -> writeln('no available write sockets...')
+    ;
+    put_list(Availw, Char)
+  ),
+  ((Char == CH_EOF_P; Char == 4; Char == CH_EOF_C) ->
+   true 
+  ; client_loop(Sockfd0, Sockfd1)).
+
+put_loop(N, _Char, _, _) :-
+    N > 7000, !.
+
+put_loop(N, Char, Sockfd0, Sockfd1) :-
+      socket_put(Sockfd0, Char, _Err),
+      socket_put(Sockfd1, Char, _Err),
+      N1 is N + 1,
+      put_loop(N1, Char, Sockfd0, Sockfd1).
+
+put_list([],_).
+put_list([H|T], Char):-
+    ((Char == CH_EOF_P; Char == 4; Char == CH_EOF_C) ->
+      socket_put(H, CH_EOF_C,_),
+      socket_close(H, _),
+      writeln('Exiting.')
+  ;   integer(Char) ->
+      socket_put(H, Char, Err),
+      writeln(socket_put(H, Char, Err))
+  ;   write('Illegal input: '), writeln(Char)
+  ),
+  put_list(T,Char).          
+
+
+%% Open socket and connect
+ try_connect(Sockfd0,XSB_port,IPAddrOrHostname,Ecode) :-
+	 socket(Sockfd0, ErrCode1),
+	 (ErrCode1 =\= SOCK_OK
+	 -> writeln('Cannot connect to the server.'), fail
+	 ; true),
+	 socket_set_option(Sockfd0,linger,SOCK_NOLINGER),
+	 socket_connect(Sockfd0, XSB_port, IPAddrOrHostname, Ecode).
+
+
+getch(Ch) :- get0(Ch1),
+	     ((Ch1 == 10; Ch1 == 13) -> getch(Ch)
+	     ; Ch=Ch1).

@@ -1,0 +1,106 @@
+% XSB/LMC Code for Leader Election Protocol:
+%    Dolev, Klawe, Rodeh,
+%    Adapted from SPIN test suite by Y.S.R., 19 Dec 96.
+%    Parameterized wrt size of ring and buffer size by C.R., Aug 98.
+%                         
+%%%%%%%%%%%%%%%%%%%%%%%%
+{*
+:- datatype message.
+
+message(first(Id)) :- typeof(Id, integer).
+message(second(Id)) :- typeof(Id, integer).
+*}
+
+
+
+
+medium(Read, Write, Buf) ::=
+	Read ? Msg;
+	medium(Read, Write, [Msg|Buf])
+    #
+	Buf \== [];
+	strip_from_end(Buf, Msg, RNBuf);
+	Write ! Msg; 
+	medium(Read, Write, RNBuf).
+
+{*
+strip_from_end([X], X, []).
+strip_from_end([X,Y|Ys], Z, [X|Zs]) :- strip_from_end([Y|Ys], Z, Zs).
+*}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+% {  the node process involved in electing a leader }
+
+node(Right, Left, Id, N) ::= 
+	Right ! first(Id);
+	nodeActive(Right, Left, N, Id, 0).
+
+nodeActive(Right, Left, N, Maxi, Nbr) ::=
+	Left ? first(NId);
+	if (NId \== Maxi)
+	    then {Right ! second(NId); nodeActive(Right, Left, N, Maxi, NId) }
+	    else if (Maxi is N-1)
+		then { action(leader); nodeActive(Right, Left, N, Maxi, NId) }
+		else { action(fail) }
+   # 
+	Left ? second(NId);
+	if (Nbr > NId /\ Nbr > Maxi)
+	    then { Right ! first(Nbr); nodeActive(Right, Left, N, Nbr, Nbr) }
+	    else nodeInactive(Right, Left).
+
+nodeInactive(Right, Left) ::= 
+	Left ? Msg;
+	Right ! Msg;
+	nodeInactive(Right, Left).
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+% { Leader election Protocol }
+% M: number of processes
+
+systemLeader(M) ::= 
+	  one_node(Left, Right, 0, M)
+	| chain(Right, Left, 1, M).
+
+one_node(Right, Left, I, M) ::=
+	  node(Temp, Left, I, M)
+	| medium(Temp, Right, []).
+
+chain(Right, Left, I, M) ::= 
+	if (I is M-1)
+		then one_node(Right, Left, I, M)
+		else {  one_node(Temp, Left, I, M)
+			| { I1 is I+1; chain(Right, Temp, I1, M)} 
+		     }
+	.
+
+l2 ::= 
+	  one_node(Right, Left, 0, 2)
+	| one_node(Left, Right, 1, 2).
+
+l21 ::= 
+	  node(T1, Left, 0, 2)
+	| medium(T1, Right, [])
+	| node(T2, Right, 1, 2)
+	| medium(T2, Left, []).
+
+l22 ::= 
+	  node(T1, Left, 0, 2)
+	| node(T2, Right, 1, 2)
+	| medium(T1, Right, [])
+	| medium(T2, Left, []).
+
+%%=============================================================================
+%%	Properties
+
+ae_leader += <-> tt /\ [-leader] ae_leader.
+
+ee_fail += <fail> tt \/ <-> ee_fail.
+
+one_leader += [-leader] one_leader /\ [leader] no_leader.
+no_leader -= [leader] ff /\ [-] no_leader.
+
+aa_true -= [fail] ff /\ [-] aa_true.
+aa_leader -= <-> tt /\ [-leader] aa_leader.
+
+deadlock += [-]ff \/ <-> deadlock.

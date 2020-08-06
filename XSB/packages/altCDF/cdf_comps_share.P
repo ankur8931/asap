@@ -1,0 +1,884 @@
+:- compiler_options([xpp_on]).
+#include "standard.h"
+
+:- export 
+	get_component_extensional/2,
+	get_component_intensional/3,
+	get_intensional_mfile_expansion/2,
+	get_full_path_and_loadname/6,
+	get_component_direct_dependencies/4,
+	load_component/3,
+	init_path_engine/0,
+	pe_canon_path/2,
+	pe_decanon_path/2,
+	newComponent/4.
+
+:- import 
+	classHasAttr/3, immed_classHasAttr/3,
+	retractallExtTerm/1, newExtTerm/1, newExtTerm/2,
+	cdf_id_fields/4,
+	system_component/1 from cdf_init_cdf.
+
+:- import canonical_pathname/2 from directry.
+
+%:- import apply_checks/2 from cdf_checks.
+:- import apply_checks/2 from usermod.
+
+:- import 
+	isa_ext/2, classHasAttr_ext/3
+ 	from usermod.
+
+% cdf_config.
+:- import cdf_flags/2,
+	  component_table_ext/3,component_table_int/3 from usermod.
+
+:- import cdf_warning/2 from cdf_exceptions.
+:- import check_atom/3, check_ground/3,
+	 permission_error/4 from error_handler.
+
+:- import call_assert/1, file_latest_version/3 from cdf_utilities.
+:- import xsb_configuration/2 from xsb_configuration.
+ 
+:- import cdf_fix_dir/2 from cdf_utilities.
+
+%cdf_io
+:- import load_intensional_rules/1, merge_intensional_rules/1 from cdf_io.
+
+:- import member/2 from basics.
+
+:- import is_absolute_filename/1,slash/1,
+	machine_file_exists/1 from machine.
+
+:- import concat_atom/2 from string.
+:- import messageln/2 from standard.
+
+:- ensure_loaded(cdf_config).
+
+:- dynamic temp_depends(_,_,_,_).
+:- dynamic loaded_component(_).
+
+
+:- comment(module,"Typically, a CDF instance can be partitioned into
+several separate cells representing information that arises from
+different sources, for instance from UNSPSC, NAICS, or DLAFIIG.  There
+may be a need for these cells to be managed separately so that various
+applications can update them and incorporate their information.  The
+CDF components system attempts to address this need by allowing
+ontologies to be built from discrete @em{components}.
+
+One method of partitioning facts in a CDF instance (whether it be a
+loaded state or set of external files) is to choose a @em{component
+argument} for each predicate type, and to set as the component of each
+fact the source of the identifier in the component argument.  (If the
+identifier is a product identifier, the source is the source of the
+outer function symbol).  Using this method, the facts in a CDF
+instance may be partitioned in various ways.
+
+A @em{class-based component system} chooses as component arguments:
+
+@begin{itemize}
+
+@item the first-argument of all facts.
+
+@end{itemize} 
+@noindent Class-based components thus form a collection
+vaguely analagous to a Java package, and are useful when different
+processes are responsible for creating or modifying different classes
+and objects.
+
+A @em{relation-based component system} chooses as argument identifiers
+
+@begin{itemize}
+
+@item the first-argument of all @pred{isa/2} facts.
+
+@item the second-argument of all @pred{hasAttr/3}, @pred{allAttr/3}
+and @pred{classHasAttr/3}, facts.
+
+@end{itemize}
+
+Relation-based component systems differ from class-based systems only
+in their partitions of relations and attributes.  Relation-based
+component systems are useful when different processes may be
+associated with creating or modifying different relations and
+attributes for the same class or object.  The CDF uses a
+relation-based component system by default, but can be repartitioned
+by adjusting the tables in @module{cdf_config.P}.
+
+In either case, one component @em{C1} directly depends on another
+component @em{C2} if @em{id(Nid2,C2)} is an argument in a fact in
+component @em{C1}; or if @em{id(Nid1,C1)} is a component argument of a
+fact in @em{C1}, @em{Nid1} is a product identifier, and
+@em{id(Nid2,C2)} occurs as a direct constituent in @em{C1}.  By this
+definition, it is easy to see that component dependency need not be
+hierarchical so that two components may directly depend on one
+another; furthermore each component must directly depend on itself.
+In addition, each component always directly depends on the component
+@tt{cdf} by fiat.  Component dependency is defined as the transitive
+closure of direct dependency.
+
+Dependency information is used to determine how to load a component
+and when to update it and is usually computed by the CDF system.
+Computing dependency information is easy for extensional facts, but
+computing dependency information for intensional rules is harder, as
+the component system would need to compute all answer substitutions to
+determine all dependencies, and this in impractical for some sets of
+intensional rules.  Rather, dependencies are computed by checking the
+top-level arguments of intensional rules, which leads to an
+under-approximation of the dependencies.
+
+@section{Components, Paths, and Versions}
+
+Given the notions that components partition a CDF instance, and give
+rise to dependency information, the component system must interace
+with file systems and databases in order to allow users to manage
+components as separate entities.
+
+A component is identified by a structured @index{component name},
+which consists of a @em{path} and a @em{source}.  For example,
+information in the directory @tt{/home/tswift/unspsc} would have a
+path of @tt{/home/tswift} and source @tt{unspsc}.  Inside the CDF,
+only the source is used as a source argument for identifiers; The path
+is maintained separately.  The structuring of component names has
+implications for the behavioral of the component system.  If two
+components with the same sources and different paths are loaded, facts
+and rules from the two different components cannot be distinguished,
+as only the source is maintained in identifiers.  The attempt to load
+two such components with the same source and different paths can be
+treated as an error; or the load can be allowed to succeed unioning
+the information from both components, implicitly asserting an axiom of
+equality for the two (structured) component names.
+
+A component name corresponds to a directory containing files with data
+in external form (e.g. the @tt{cdf_extensional.P} file), or in
+external intensional form, as stored in @tt{cdf_intensional.P}.  In
+addition, the directory may contain an initialization file,
+@tt{component_init.P}, whose actions are taken to be transparent to
+the CDF (unless they explicitly call CDF routines).  The CDF also
+provides tools to create components from a current loaded CDF state.
+
+The same component name can have multiple @em{versions}.  An CDF state
+can contain only one version for each component name, and an attempt
+to load two different versions for the same name always gives rise to
+an error.  A convention is made that a component with souce
+@tt{Source}, path @tt{Path} and version @tt{V} is to be found in a
+directory named @tt{Path/Source} if @tt{V} is the latest version of
+@tt{Source} in @tt{Path}, and in @tt{Path/Source_V} otherwise.  On the
+other hand, if two component names @em{C1} and @em{C2} have the same
+source and different paths, they do not have the same name.  If they
+are loaded so that their information is unioned together an error is
+not raised if @em{C1} and @em{C2} have different versions.
+
+@section{Representing Component Information}
+
+Information about a component resides in the CDF data itself and is
+viewable by the user.  When a component with name @tt{C} is loaded,
+the class @tt{id(S,S)} (where @tt{S} is the source of @tt{C}) is
+created as an immed_isa of @tt{id('CDF Component',cdf)}.  Since
+components are not designed to have members, information about them is
+maintained through @pred{classHasAttr/3} facts.
+
+@begin{itemize} 
+
+@item The version of component @tt{C} is kept via 
+
+@begin{verbatim}
+classHasAttr(cid(N,N),crid(hasVersion,N),cid(V,cdfpt))
+@end{verbatim}
+when the component is stored and
+
+@begin{verbatim}
+classHasAttr(cid(compName(cid(N,N),cid(Path,cdfpt)),N),
+                crid(hasVersion,N),cid(V,cdfpt)
+@end{verbatim}
+when the component is loaded in memory. 
+
+@item Dependency information of @tt{C} is maintained via 
+@begin{verbatim}
+classHasAttr(cid(N,N),
+             crid(componentDepends,N),
+             cid(component(cid(N2,N2),cid(P2,cdfpt),cid(V2,cdfpt)),N))
+@end{verbatim}
+@end{itemize}
+
+@section{Major Functionality}
+
+Given a CDF state, a user may want to do several things: 
+@begin{enumerate}
+
+@item A user may wish to create components from a CDF state, or to
+update components used by a CDF state.  One way to do this is by the
+predicate @tt{update_all_components(Dir,Options)} which determines a
+class- or relation-based partition of the CDF instance, and computes
+all dependencies between these cells.  Cells that are not components
+are made into components (with version 0), and those that are already
+components have their version number updated if necessary (by checking
+@tt{dirty} entries of @tt{cdf_flags/2}).  Other aspects may be
+specified by various options.
+
+@comment{
+Alternately, if a part of a loaded CDF instance is to be saved as a
+component, the predicate @tt{update_components(List,Dir)} can be used.
+@tt{List} is a list of component names, and for each @tt{Name} in
+@tt{List}, @pred{update_components/2} writes out the component
+@tt{Name} as a subdirectory of @tt{Dir} whose version is either 0 if
+the component is new, or incremented if the component is updated.  The
+predicate gives an error if a component @tt{Name} in @tt{List} depends
+on an updated component not in @tt{List}, or if it depends on a cell
+that has not been made into a component.
+}
+
+@item A user may wish to load a component, along with all of its
+dependencies.  Loads may be parameterized by:
+@begin{itemize}
+@item Whether it is considered an error to try to load two components
+with different path parts and the same name parts.
+
+@item Whether a fast merge or a slower merge with more redundancy
+checking is to be used.
+
+@item Whether the latest version is to be loaded or a particular
+version is specified.
+@end{itemize}
+
+@item Finally, a user may analyze component dependency information by
+backtracking through @tt{analyze_components/2}, which neither affects
+the CDF state, nor saves component information to files.
+@end{enumerate}
+
+").
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+get_component_extensional(Term,Comp):- 
+	component_table_ext(Term,Compid,_),
+	(nonvar(Compid) -> 
+	    cdf_id_fields(Compid,_,_N,Comp)
+	  ; true).
+
+%------------------
+ 
+get_component_intensional(Term,Body,Component):- 
+	component_table_int(Term,Arg,_Deps),
+	arg(Arg,Term,SourceArg),
+	(nonvar(SourceArg),arg(2,SourceArg,Source),atom(Source) -> 
+	    Source = Component
+	 ; var(SourceArg),Term = isa_int(_,SourcArg2),arg(2,SourcArg2,Source),atom(Source) ->
+	    Source = Component
+	 ; cdf_warning(component,
+	                ['Cannot find component for intensional rule: ',
+			  (:-(Term,Body))]),
+	    fail).
+
+/* TLS: gets all multifile extensions: i.e. if head is isa_int(A,B), call is 
+    isa_int_foo(C,D) */
+/* TLS: Moved out of noshare because it is now used in intialize_state */
+get_intensional_mfile_expansion(Head,Call):- 
+	abolish_table_pred(get_intensional_call(_,_)),
+	component_table_int(Head,_SrcArg,_Arg2),
+	get_intensional_call(Head,Call).
+
+:- table get_intensional_call/2.
+get_intensional_call(Head,Call):- 
+	copy_term(Head,Head1),
+	clause(Head1,Body),
+	functor(Body,F,A),
+	functor(Call,F,A).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+:- comment(load_component/3,
+"@tt{load_component(Name,Path,Parameter_list)} loads the component
+@tt{Name}, from path @tt{Path} and recursively, all other components
+upon which the component depends.  If a version conflict is detected
+between a component tag to be loaded and one already in the CDF state
+or about to be loaded, @tt{loadmerge_component/2} aborts without
+changing CDF extensional rules in internal form, or intensional rules.
+
+The order of loading is as follows.  First, all extensional facts are
+loaded for the component @tt{Path/Name} and for all components on
+which it depends.  Next, the dependency graph is re-traversed
+intensional rules are loaded, and initialization files are consulted
+in a bottom-up manner (i.e. in a post-order traversal of the
+dependency graph). 
+
+@tt{Parameter_list} may contain the following elements:
+@begin{itemize}
+
+@item @tt{action(Action)} where @tt{Action} is @tt{check} or
+@tt{union}.  If the action is to check, two components with the same
+name part and different path parts or versions cannot be loaded: an
+attempt to do so will cause an error.  If the action is to union, two
+components with the same name and different paths may be loaded, and
+the effect will look as if the two components had been unioned
+together.  However an error will occur if two components with the same
+name and paths but different versions are loaded.
+
+@item @tt{force(Bool)} where @tt{Bool} is @tt{yes} or @tt{no} (default
+@tt{no}).  If @tt{Force} is @tt{yes}, any components that have
+previously been loaded into the CDF are reloaded, and their
+initialization files reconsulted.  If @tt{Force} is @tt{no}, no
+actions will be taken to load or initialize components already loaded
+into the CDF.
+
+@item @tt{version(V)} where @tt{V} is a version number.  If the
+parameter list contains such a term, the loader attempts to load
+version @tt{V} of component.  The default action is to load the latest
+version of a coimponent.
+
+@end{itemize}
+").
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+load_component(Name,Path,Arglist):-
+	load_component_setup(Name,Path,Arglist),
+	load_component_1(Name,Path,Arglist),
+	perform_component_level_checks.
+
+load_component_setup(Name,Path,Arglist):-
+	init_path_engine,
+	retractall(temp_depends(_,_,_,_)),
+            check_atom(Name,'load_component_setup/3',1),
+            check_atom(Path,'load_component_setup/3',2),
+            check_ground(Arglist,'load_component_setup/3',3).
+
+load_component_1(Name,Path,Arglist):- 
+	split_arglist_on_version(Arglist,V,Arglist1),
+	(load_component_pass1(Name,Path,AbsPath,V,Arglist1,top) -> 
+	    load_component_pass2(Name,AbsPath,V,[],Arglist) 
+	  ; true),
+	clean_up_dirty_bits.
+
+split_arglist_on_version([],null,[]).
+split_arglist_on_version([version(V)|R],version(V),R):-!.
+split_arglist_on_version([H|T],V,[H|T1]):-
+	split_arglist_on_version(T,V,T1).
+
+clean_up_dirty_bits:- 
+	temp_depends(From,To,_,_),
+	retractall(cdf_flags(dirty,From)),
+	retractall(cdf_flags(dirty,To)),
+	fail.
+clean_up_dirty_bits.
+
+/* TLS: intend to put a apply_checks here */
+perform_component_level_checks:- 
+	loaded_component(Name),
+	retractall(cdf_flags(dirty,Name)),
+	fail.
+perform_component_level_checks:- 
+	loaded_component(Name),
+	apply_checks(componentLoad,Name),
+	fail.
+perform_component_level_checks:- 
+	retractall(temp_depends(_,_,_,_)),
+	retractall(loaded_component(_)).
+
+
+%----------
+
+% AbsPath is the canonical representation of where the component
+% actually is. It is a function of PathIn and the current directory
+% when loading a dependency.
+
+load_component_pass1(Name,PathIn,AbsPath,Vin,Arglist,Flag):- 
+%	writeln(loading_pass1(Name)), /* write_cha, */ nl,
+	get_full_path_and_loadname(Name,PathIn,Vin,AbsPath,V,Loadname),
+	(check_component(Name,AbsPath,V,Arglist,Flag) -> 
+	    slash(Slash),
+  	    messageln(['Loading component: ',AbsPath,Slash,Loadname,' v. ', V], STDMSG),
+                concat_atom([AbsPath,Slash,Loadname],Absname),
+	    cdf_load_extensional_facts(Absname,AbsPath),
+%	    writeln(just_loaded(Name)), /* write_cha, */ nl,
+	    check_good_component(Name,AbsPath),
+	    (	pe_push_dir(AbsPath),
+                load_component_dependencies_pass1(Name,AbsPath,Arglist)
+	    ;	pe_pop_dir(AbsPath)
+	    )
+	  ; 
+	    fail ).
+
+/*
+write_cha:- 
+	classHasAttr_ext(_,crid(hasPath,Name),F),
+	writeln(paths(Name,F)),
+	fail.
+write_cha.
+*/
+
+
+load_component_dependencies_pass1(Name,_Abs,Arglist):-
+%	writeln(loading_deps(Name)), /* write_cha, */ nl,
+ 	findall((New,Relnew,Vnew,DepType),
+		( (   DepType = componentDepends
+		   ;  DepType = staticComponentDepends
+		  ),
+		    classHasAttr_ext(cid(Name,Name),
+				     crid(DepType,Name),
+				     cid(component(cid(New,New),
+						   cid(Relnew,cdfpt),
+						   cid(Vnew,cdfpt)),New))
+		),
+ 		List),
+	member((New,Relnew,Vnew,DepType),List),
+%%%            writeln(checking(dep(Name,New))),	
+	load_component_pass1(New,Relnew,AbsNew,
+	                                   version(Vnew),Arglist,depends),
+           assert_dependencies_for_path2(Name,New,AbsNew,Vnew),
+           %% make sure dependencies store absolute filenames
+	retractallExtTerm(classHasAttr_ext(cid(Name,Name),
+					   crid(DepType,Name),
+					   cid(component(cid(New,New),
+							 cid(Relnew,cdfpt),
+							 cid(Vnew,cdfpt)),
+					       New))),
+/*	newExtTerm(isa_ext(cid(Name,Name),
+			        cid(componentIDs,cdf))), */
+	newExtTerm(isa_ext(cid(component(cid(New,New),
+	                                                      cid(allAtoms,cdf),
+                                                                  cid(allIntegers,cdf)),New),
+			        cid(components,cdf))), 
+	newExtTerm(classHasAttr_ext(cid(Name,Name),
+				    crid(DepType,Name),
+				    cid(component(cid(New,New),
+						  cid(AbsNew,cdfpt),
+						  cid(Vnew,cdfpt)),
+					New))),
+	%% save absolute path in dependencies for path2 so that we don't
+	%% have to simulate the stack of cwd's again
+	fail.
+load_component_dependencies_pass1(_,_,_).
+
+assert_dependencies_for_path2(Name,New,Pathnew,Vnew):- 
+	New \== Name,
+	call_assert(temp_depends(Name,New,Pathnew,Vnew)).
+
+%----------
+
+/* TLS: pass 2 is to load intensional rules and consult initialization file.
+   Assume that all conflict checking has been done in pass2 */
+load_component_pass2(Name,AbsPath,Vin,Anclist,ArgList):- 
+	slash(Slash),
+	get_full_path_and_loadname(Name,AbsPath,Vin,_Full,_V,Loadname),
+	messageln(['Loading int rules and initializing component: ',
+			AbsPath,Slash,Loadname], STDMSG),
+	load_component_dependencies_pass2(Name,Anclist,ArgList),
+	concat_atom([AbsPath,Slash,Loadname],Dir),
+	(member(action(union),ArgList)
+	 ->	merge_intensional_rules(Dir)
+	 ;	load_intensional_rules(Dir)
+	),
+	initialize_component(Loadname,AbsPath).
+
+load_component_dependencies_pass2(Name,Anclist,ArgList):- 
+	temp_depends(Name,New,Pathnew,Vnew),
+	(member(New,Anclist) -> true
+	  ; 
+	    load_component_pass2(New,Pathnew,Vnew,[Name|Anclist],ArgList) ),
+	fail.
+load_component_dependencies_pass2(_,_,_).
+
+initialize_component(Name,Path):- 
+	slash(Slash),
+	cwd(CurrDir),
+	concat_atom([Path,Slash,Name],InitDir),
+	cd(InitDir),
+	(file_exists('initialization_file.P') -> consult('initialization_file.P') ; true),
+	cd(CurrDir).
+
+%	concat_atom([Path,Slash,Name,'/initialization_file.P'],File),
+
+%---------------
+
+check_good_component(Name,Full):- 
+	(component_exists(Name) -> 
+	    true
+	  ;
+	    throw(error(component_load,['Pathname: ',Full,Name,
+				      ' is not a component'])) ).
+component_exists(Name):-
+	immed_classHasAttr(cid(compName(cid(Name,Name), _),Name),
+			 crid(hasVersion,Name),_).
+
+%---------------
+
+/* If check_component succeeds, we go ahead and do a pass 1 load. */
+check_component(Name,Path,V,Arglist,Flag):- 
+	(Flag == top -> true ; \+ system_component(Name)),
+	check_conflicting_path(Name,Path,Arglist),
+	check_conflicting_version(Name,Path,V),
+	(   already_present(Name,Path,V,Arglist)
+	->  %% cdf_warning(component, [Name, ' is already loaded.']),
+	    fail
+	 ;	check_conflicting_path(Name,Path,Arglist),
+		check_conflicting_version(Name,Path,V),
+		assert(loaded_component(Name))
+	).
+
+check_conflicting_version(Name,Path,V):- 
+	(conflicting_version(Name,Path,V,V1) -> 
+	    throw(cdf_error(component_load,['Version ',V,' of ',Name,
+			' cannot be loaded, as version ',V1,
+ 	                         ' is already loaded ']))
+	  ; true).
+
+/* TLS: For now, each component is taken to depend on some version of
+the CDF. */
+conflicting_version(Name,Path,V,V1):- 
+	classHasAttr_ext(cid(compName(cid(Name,Name),
+				      cid(Path,cdfpt)),Name),
+			 crid(hasVersion,Name),cid(V1,cdfpt)),
+	V \== V1.
+
+%---------------
+
+check_conflicting_path(Name,Path,Arglist):- 
+	(\+ member(action(union),Arglist) -> 
+		(conflicting_path(Name,Path,Path1) -> 
+ 	            throw(cdf_error(component_load,['Component ',Name,' has ',
+			'conflicting paths in non-union merge: ',Path,
+			' and ',Path1]))
+		  ; 
+		    true) 
+	      ;  true).
+
+conflicting_path(Name,P,P1):-
+	classHasAttr_ext(cid(compName(cid(Name,Name),
+				      cid(P1,cdfpt)),Name),
+			 crid(hasVersion,Name),_),
+	P \== P1.
+
+%---------------
+
+already_present(Name,Path,V,Arglist):- 
+	(\+ member(force(yes),Arglist) ; loaded_component(Name)),
+	classHasAttr_ext(cid(compName(cid(Name,Name),
+	                                                cid(Path,cdfpt)),Name),
+	                          crid(hasVersion,Name),cid(V,cdfpt)).
+
+%---------------
+
+/* 
+   Name is the name part of a component, and Path its path-part, 
+   possibly input as a relative path name.  Upon success, V is
+   instantiated to the proper version of the component (which may
+   implicitly be the latest version), CanonPath is instantiated
+   to a canonical path, and Loadname is the name, plus version if 
+   applicable.
+ */
+get_full_path_and_loadname(Name,Path,Vin,Abs,V,Loadname):- 
+	pe_canon_path(Path,Abs),
+	(Vin = version(V) -> 
+	    file_find_version_name(Abs,Name,V,Loadname)
+	 ; 
+	    Loadname = Name,file_latest_version(Abs,Name,V) ),!.
+get_full_path_and_loadname(Name,Path,_Vin,_Abs,_V,_Loadname):- 
+	permission_error(expand_filename,path,(Path,' , ',Name),
+	                         'get_full_path_and_loadname/6').
+
+file_find_version_name(Path,Name,Version,Loadname):- 
+	file_latest_version(Path,Name,V),
+	(V = Version -> 
+	    Loadname = Name
+	  ; (V > Version -> 
+	        concat_atom([Name,'_',Version],Loadname)
+	      ; 
+	            slash(Slash),
+		throw(cdf_error(load_component,
+                          	 ['Improper version number',Version,
+				' for ',Path,Slash,Name])) ) ).
+	  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- dynamic temp_new_version(_,_).
+:-  dynamic concurrency_conflict(_).
+
+%-----------------
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Utilities
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* New component initializes a new component, creating version,
+dependency and path information.  Given a previously existing component, 
+re-creating the component with the same path is a safe operation.
+
+	If Action unifies with check and
+		if a previous component exists with the same path, 
+			no action is taken; 
+		otherwise if a previous component exists with a different path,
+ 			an error occurs. 
+	If Action is replace
+		if a previous component exists 
+		    its directoryPath is overwritten with the new path
+*/
+
+newComponent(cid(Name,Name),Path,Action,
+		cid(component(cid(Name,Name),Pathout,Version),Name)):- 
+	newPathandVersion(Action,cid(Name,Name),Path,Pathout,Version).
+
+/* check gives an error if a component exists whose file path is not
+equal to PATH.  New components are created with filepath PATH and
+version 0 
+
+create renames the path of each component to PATH if its file path is
+not equal to PATH (apart from CDF which it leaves alone). If the
+component is new, or has had its file path reset, its version is 0,
+and its version is updated otherwise.
+
+in_place does not affect existing components.  New components are
+cdfcreated with filepath PATH and version 0.
+
+The latter two should just be used in component updates. */
+
+newPathandVersion(check,cid(Src,Src),Path,Path,Version):-
+	((immed_classHasAttr(cid(compName(cid(Src,Src),
+				      Path1),Src),
+			 crid(hasVersion,Src),_), Path1 \= Path) ->
+	      throw(cdf_error(component,['Creating a component path ',Path,
+			' for ',Src,' which has path ',Path1])) 
+	    ; 
+	      newExtTerm(isa_ext(crid(hasVersion,Src),
+	                                     crid('CDF Class-Object Relations',cdf)))),
+
+	(classHasAttr(cid(compName(cid(Src,Src),Path),Src),
+			crid(hasVersion,Src),Version) -> 
+	     true 
+	   ; 
+	     newExtTerm(classHasAttr_ext(cid(compName(cid(Src,Src),Path),Src),
+ 	                                 crid(hasVersion,Src),cid(0,cdfpt))),
+	     Version = cid(0,cdfpt) ).
+newPathandVersion(create,cid(Name,Name),_Pathin,Path,V):- 
+	system_component(Name),!,
+	newExtTerm(isa_ext(crid(componentDepends,Name),
+	                               crid('CDF Class-Object Relations',cdf))),
+	newExtTerm(isa_ext(crid(hasVersion,Name),
+	                               crid('CDF Class-Object Relations',cdf))),
+	newExtTerm(isa_ext(cid(Name,Name),cid(componentIDs,cdf))),
+	newExtTerm(isa_ext(cid(compName(cid(Name,Name),
+	                                                      cid(allAtoms,cdf)),Name),
+			       cid(compNames,cdf))),
+	newExtTerm(isa_ext(cid(component(cid(Name,Name), cid(allAtoms,cdf), cid(allIntegers,cdf)),Name),
+			   cid(components,cdf))),
+	classHasAttr_ext(cid(compName(cid(Name,Name),Path),Name),
+			crid(hasVersion,Name),V).
+/* On create, even if the component has been loaded from somewhere else,  
+   it needs a new path and version, (obtained from the path). */
+newPathandVersion(create,cid(Src,Src),cid(Pathin,cdfpt),cid(Pathin,cdfpt),
+							cid(V1,cdfpt)):- 
+	newExtTerm(isa_ext(crid(componentDepends,Src),
+	                               crid('CDF Class-Object Relations',cdf))),
+	newExtTerm(isa_ext(crid(hasVersion,Src),
+	                               crid('CDF Class-Object Relations',cdf))),
+	newExtTerm(isa_ext(cid(Src,Src),cid(componentIDs,cdf))),
+	newExtTerm(isa_ext(cid(compName(cid(Src,Src),cid(allAtoms,cdf)),Src),
+			   cid(compNames,cdf))),
+	newExtTerm(isa_ext(cid(component(cid(Src,Src), cid(allAtoms,cdf), cid(allIntegers,cdf)), Src),
+			   cid(components,cdf))),
+	retractallExtTerm(classHasAttr_ext(cid(compName(cid(Src,Src),_),Src),
+			 	crid(hasVersion,Src),_Int)),
+	slash(Slash),
+        concat_atom([Pathin,Slash,Src],File),
+        (file_exists(File) ->
+  	     file_latest_version(Pathin,Src,Vold),
+	     V1 is Vold + 1
+	  ;  V1 = 0),
+       newExtTerm(classHasAttr_ext(cid(compName(cid(Src,Src),
+						cid(Pathin,cdfpt)),Src),
+			           crid(hasVersion,Src),cid(V1,cdfpt))).
+/* Assumes merge_check has been done.  Do nothing if the component has been
+   loaded from somewhere.  Otherwise, create it with the new directory path, 
+   and check the directory for the proper version to make the component.  */
+newPathandVersion(in_place,cid(Src,Src),Pathin,Path,cid(V,cdfpt)):- 
+	(classHasAttr(cid(compName(cid(Src,Src),Path),Src),
+		      crid(hasVersion,Src),cid(V,cdfpt)) -> 
+  	     true
+	  ; 
+    	     /* newExtTerm(classHasAttr_ext(cid(Src,Src),
+	                                                       crid(hasPath,Src),Pathin)), */
+	     slash(Slash),
+	     Pathin = cid(PathStr, cdfpt),
+	     concat_atom([PathStr,Slash,Src],File),
+  	     (file_exists(File) ->
+  	         file_latest_version(PathStr,Src,Vold),
+	          V is Vold + 1
+	       ;  V = 0),
+	     newExtTerm(isa_ext(cid(Src,Src),cid(componentIDs,cdf))),
+	     newExtTerm(isa_ext(cid(compName(cid(Src,Src),
+	                                                           cid(allAtoms,cdf)),Src),
+			   cid(compNames,cdf))),
+	     newExtTerm(isa_ext(cid(component(cid(Src,Src), cid(allAtoms,cdf), cid(allIntegers,cdf)), Src),
+				cid(components,cdf))),
+	     newExtTerm(isa_ext(crid(hasVersion,Src),
+		                               crid('CDF Class-Object Relations',cdf))),
+  	     newExtTerm(classHasAttr_ext(cid(compName(cid(Src,Src),Pathin),Src),
+ 				 crid(hasVersion,Src),cid(V,cdfpt))),
+	     Pathin = Path ).
+
+%%%% Path manipulation.
+:- dynamic pe_cwd(_), pe_dir_stack(_), pe_sysdir(_).
+
+%% initialize default path to CDF package dir
+:- init_path_engine.
+
+init_path_engine :-
+	xsb_configuration(install_dir,IDIR),
+	slash(Slash),
+	canonical_pathname([IDIR,Slash,'packages',Slash,'altCDF'],DefaultPath),
+	retractall(pe_cwd(_)),
+	retractall(pe_sysdir(_)),
+	cwd(CurrentPath),
+	asserta(pe_cwd(CurrentPath)),
+	asserta(pe_sysdir(DefaultPath)),
+	retractall(pe_dir_stack(_)).
+
+pe_push_dir(Dir) :-
+	asserta(pe_dir_stack(Dir)),
+	retractall(pe_cwd(_)),
+	asserta(pe_cwd(Dir)),
+%	writeln(pe_push_dir(Dir)),
+	true.
+
+pe_pop_dir(Dir) :-
+%	writeln(pe_pop_dir(Dir)),
+	pe_dir_stack(Dir),
+	retract(pe_dir_stack(Dir)),
+	retractall(pe_cwd(_)),
+	!,
+	(  once(pe_dir_stack(NCwd))
+	-> asserta(pe_cwd(NCwd))
+	;  init_path_engine
+	).
+
+pe_decanon_path(Canon,Rel):- 
+	pe_cwd(Cwd),
+	atom_chars(Canon,Canonlist),
+	atom_chars(Cwd,Cwdlist),
+	strip_base(Cwdlist,Canonlist,Rellist),
+	atom_chars(Rel,Rellist).
+
+strip_base([],[],[]):- !.
+strip_base([],[H|L],L1):- 
+	((slash(S),S = H) -> L1 = L ; L1 = [H|L]).
+strip_base([H|T],[H|T1],L):- 
+	strip_base(T,T1,L).
+
+pe_canon_path('',Dir) :-
+	!,
+	pe_sysdir(Dir).
+pe_canon_path(Path,CPath) :-
+	(   is_absolute_filename(Path)
+	->  canonical_pathname(Path,CPath)
+	;   pe_cwd(Cwd),
+	    slash(Slash),
+	    (	machine_file_exists([Cwd,Slash,Path])
+	    ->	canonical_pathname([Cwd,Slash,Path],CPath)
+	    ;	throw(file_not_found(Path,cwd(Cwd)))
+	    )
+	),
+%	writeln(pe_canon_path(Path,CPath)),
+	true.
+
+cdf_load_extensional_facts(Dir,CPath) :-
+	cdf_fix_dir(Dir,DirS),
+	write(userout, 'Loading '),writeln(userout, Dir),
+	reload_extensional(DirS,CPath).
+
+reload_extensional(Dir,CPath):- 
+	concat_atom([Dir,'cdf_extensional.P'],File),
+	seeing(OldF),
+	see(File),
+	reload_extensional(CPath),
+	seen,
+	see(OldF).
+
+reload_extensional(CPath) :-
+	repeat,
+	read_canonical(Term),
+%%	writeln(Term),
+	(Term == end_of_file
+	 ->	!
+	 ; Term @= :-(_)
+	 ->	fail
+	 ;      use_canonical_path(Term,CPath,CanonTerm),
+	        newExtTerm(newExtTermBatch,CanonTerm),
+	  	fail).
+
+
+use_canonical_path(classHasAttr_ext(cid(N,N),
+				crid(hasVersion,N),Version),
+		   CPath,
+		   classHasAttr_ext(cid(compName(cid(N,N),cid(CPath,cdfpt)),N),
+				 crid(hasVersion,N),Version)) :- !.
+% for backward compatibility - such facts should not be present in the new system
+use_canonical_path(classHasAttr_ext(cid(N,N),crid(hasPath,N),cid(_,cdfpt)),
+		   _, _) :- !, fail.
+use_canonical_path(classHasAttr_ext(cid(compName(cid(N,N),cid(_,cdfpt)),N),
+				crid(hasVersion,N),Version),
+		   CPath,
+		   classHasAttr_ext(cid(compName(cid(N,N),cid(CPath,cdfpt)),N),
+				 crid(hasVersion,N),Version)) :- !.
+use_canonical_path(classHasAttr_ext(cid(component(cid(N,N),cid(_,cdfpt), cid(_,cdfpt)),N),
+				crid(componentDepends,N),
+				Dependency),
+		   _,
+		   classHasAttr_ext(cid(N,N), crid(componentDepends,N),Dependency)) :- !.
+use_canonical_path(classHasAttr_ext(cid(component(cid(N,N),cid(_,cdfpt), cid(_,cdfpt)),N),
+				crid(staticComponentDepends,N),
+				Dependency),
+		   _,
+		   classHasAttr_ext(cid(N,N), crid(componentDepends,N),Dependency)) :- !.
+% end backward compatibility
+use_canonical_path(Term,_,Term).
+
+/****************************************************************/
+/*								*/
+/* get_component_direct_dependencies(+Comp,+Path,+Ver,-Deps)	*/
+/*   takes a path, a component name, and a version and returns	*/
+/*   a list of comp(Comp,AbsPath,Ver) tuples containing one for	*/
+/*   each component version that the input component directly 	*/
+/*   depends on.						*/
+/*								*/
+/****************************************************************/
+
+get_component_direct_dependencies(Comp,RPath,Ver,Deps) :-
+	expand_filename(RPath,Path),
+	(Ver == ''
+	 ->	concat_atom([Path,'/',Comp,'/cdf_extensional.P'],ExtFile)
+	 ;	concat_atom([Path,'/',Comp,'_',Ver,'/cdf_extensional.P'],ExtFile)
+	),
+	seeing(OldF),
+	see(ExtFile),
+	findall(Dep,read_dependencies(Comp,Path,Dep),UDeps),
+	seen,
+	see(OldF),
+	sort(UDeps,Deps).
+
+read_dependencies(CComp,CPath,comp(Comp,Path,Ver)) :-
+	slash(Slash),
+	repeat,
+	read_canonical(Term),
+	(Term == end_of_file
+	 ->	!,fail
+	 ;	(Term = classHasAttr_ext(cid(CComp,CComp),
+					crid(componentDepends,CComp),
+					cid(component(cid(Comp,Comp),
+						      cid(RPath,cdfpt),
+						      cid(Ver,cdfpt)),Comp))
+		 ;
+		 % old way
+		 Term = classHasAttr_ext(cid(component(cid(CComp,CComp),_,_),CComp),
+					crid(componentDepends,CComp),
+					cid(component(cid(Comp,Comp),
+						      cid(RPath,cdfpt),
+						      cid(Ver,cdfpt)),Comp))
+		),
+		(RPath == ''
+		 ->	Path = RPath
+		 ; is_absolute_filename(RPath)
+		 ->	Path = RPath
+		 ;	concat_atom([CPath,Slash,RPath],Path)
+		 )
+	).
+	 
+end_of_file.

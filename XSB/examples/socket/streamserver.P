@@ -1,0 +1,117 @@
+%% Client (streamclient) and server (streamserver) talk to each other
+%% using regular file I/O. They convert socket descriptors into file
+%% streams. This works under Unix only, because one can't convert sockets
+%% into files under Windows.
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "timer_defs_xsb.h"
+#include "char_defs.h"
+
+:- ['auxdefs'].
+:- import tryN/5 from auxdefs.
+
+#define Q_LENGTH  10
+
+:- import 
+     socket/2, socket_bind/3, socket_listen/3, socket_accept/3, 
+     socket_set_option/3, socket_close/2 from socket.
+
+:- import file_close/1, fmt_write/3, fd2ioport/2, file_flush/2 from file_io.
+
+:- import 
+        file_write/2,
+        file_write_canonical/2 
+        from xsb_writ.
+
+:- import
+        file_read_canonical/3 from machine.
+
+%% Port on which the server is listening
+xsb_port(6020).
+
+server :-
+	socket(Sockfd0, ErrCode),
+	(ErrCode =\= SOCK_OK
+	-> writeln('Cannot open socket'), fail
+	; true),
+	writeln(socket(Sockfd0, ErrCode)),
+	socket_set_option(Sockfd0,linger,SOCK_NOLINGER),
+	xsb_port(XSBPort),
+	tryN(4,
+	     socket_bind(Sockfd0, XSBPort, ErrBind),
+	     writeln(socket_bind(Sockfd0, XSBPort, ErrBind)),
+	     writeln('Cannot bind...'),
+	     ErrBind
+	    ),
+
+	socket_listen(Sockfd0,Q_LENGTH, ErrListen),
+	writeln(socket_listen(Sockfd0,Q_LENGTH, ErrListen)),
+
+	tryN(4,
+	     socket_accept(Sockfd0, Sockfd0_out1, ErrorCode),
+	     (writeln(socket_accept1(Sockfd0, Sockfd0_out1, ErrorCode)),
+		 fd2ioport(Sockfd0_out1,Sockptr0)),
+	     writeln('Cannot accept connection1'),
+	     ErrorCode
+	    ),
+	tryN(4,
+	     socket_accept(Sockfd0, Sockfd0_out2, ErrorCode2), 
+	     (writeln(socket_accept2(Sockfd0, Sockfd0_out2, ErrorCode2)),
+		 fd2ioport(Sockfd0_out2,Sockptr1)),
+	     writeln('Cannot accept connection2'),
+	     ErrorCode2
+	    ),
+	server_loop(Sockptr0, Sockptr1, Sockfd0, Sockfd0_out1, Sockfd0_out2).
+
+
+
+server_loop(Sockptr0, Sockptr1, Sockfd0, Sockfd1, Sockfd2) :-
+    writeln(serverloop1),
+    file_read_canonical(Sockptr0, Goal, Psc),
+    Psc = Psc,
+
+    writeln(goal(Goal)),
+    Goal =.. [F|_Rest],
+    (F=end_of_file -> 
+	writeln('Client quits...'),
+	socket_close(Sockfd0,_ErrClose),
+	socket_close(Sockfd1,_ErrClose),
+	socket_close(Sockfd2,_ErrClose),
+	file_close(Sockptr1), file_close(Sockptr0),
+	true
+    ;	((F=h; F=g) ->
+	    call(Goal), writeln(answer(Goal)),
+	    file_write_canonical(Sockptr1, Goal),
+	    file_write(Sockptr1, '. ')
+	;   write('Invalid goal: '), writeln(Goal),
+	    fmt_write(Sockptr1, '''+++Invalid goal: %S''', arg(Goal)),
+	    file_write(Sockptr1, '. ')
+	),
+	file_flush(Sockptr1,_),
+	fail
+    ).
+
+  
+server_loop(Sockptr0, Sockptr1, Sockfd0, Sockfd1, Sockfd2) :-
+  writeln(serverloop2),
+  file_write_canonical(Sockptr1, end),
+  file_write(Sockptr1, '. '),
+  file_flush(Sockptr1,_),
+  server_loop(Sockptr0,Sockptr1, Sockfd0, Sockfd1, Sockfd2).
+
+
+
+g(1).
+g(2).
+g(3).
+g(4).
+g(5). 
+
+
+
+h(a).
+h(b).
+h(c).
+h(d).
+h(e).

@@ -1,0 +1,64 @@
+%%%
+%%% Slightly higher level socket predicates
+%%%
+
+
+:- compiler_options([xpp_on]).
+#include "socket_defs_xsb.h"
+#include "char_defs.h"
+
+:- import 
+     socket_bind/3, socket_listen/3, socket_accept/3, 
+     socket/2, socket_connect/4, 
+     socket_close/2, socket_recv/3, socket_send/3  from socket.
+:- import file_close/1 from file_io.
+
+:- export
+     	socket_bind/2, socket_listen/2, socket_accept/2, 
+	socket/1, socket_connect/3, 
+     	socket_close/1, socket_recv_term/2, socket_send_term/2.
+
+check_rc( Prim, Rc ) :-
+	(	Rc =\= SOCK_OK
+	->	P =.. [Prim, Rc], throw( socket(P) )
+	;	true
+	).
+	
+socket_close(Sockfd) :-
+	socket_close(Sockfd, Rc),
+	check_rc( socket_close, Rc ).
+
+socket_send_term(SockFD, Term) :-
+	fmt_write_string(TermStr, '%S.', arg(Term)),
+	socket_send(SockFD, TermStr, Rc),
+	check_rc( socket_send_term, Rc ).
+
+socket_recv_term(SockFD, Term) :-
+	socket_recv(SockFD, AnswerStr,Rc),
+	check_rc( socket_recv_term, Rc ),
+	file_open(AnswerStr,sr,IOport),
+	file_read(IOport,Term),
+	file_close(IOport).
+ 
+socket(Sockfd) :-
+	socket(Sockfd, Rc),
+	check_rc( socket, Rc ).
+
+socket_connect(Sockfd, Port, IPAddrOrHostname) :-
+	socket_connect(Sockfd, Port, IPAddrOrHostname, Rc),
+	check_rc( socket_connect, Rc ).
+
+
+socket_bind(Sockfd, Port) :-
+	socket_bind(Sockfd, Port, Rc),
+	check_rc( socket_bind, Rc ).
+
+socket_listen(Sockfd,QLen) :-
+	socket_listen(Sockfd,QLen, Rc),
+	check_rc( socket_listen, Rc ).
+
+socket_accept(Sockfd, Sockfd1) :-
+	socket_accept(Sockfd, Sockfd1, Rc),
+	check_rc( socket_listen, Rc ).
+
+

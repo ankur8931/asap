@@ -1,0 +1,483 @@
+/* File:      constraintLib.P
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1999
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+:- compiler_options([sysmod,xpp_on]).
+#include "builtin.h"
+
+:- export when/2, unifiable/3, term_variables/2,setarg/3.
+:- export globalize/1, unglobalize/1, var_compare/3, lookup_variable_id/2.
+
+:- import
+	get_attr/3,
+	put_attr/3,
+	del_attr/2,
+	install_attribute_portray_hook/3,
+	install_verify_attribute_handler/4
+   from machine.
+:- import sort/2 from setof.
+
+:- import check_var/3 from error_handler.
+
+:- import gennum/2, conset/2 from gensym.
+
+:- import call/1, compare/3, nl/0, structure/1, throw/1, 
+	  write/1, '=..'/2 from standard.
+
+/*
+:- import ensure_loaded/1 from consult.
+
+:- ensure_loaded(chr).
+:- import term_variables/2 from chr_interp.
+*/
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%	
+%	when(+Condition, :Goal)
+%
+%		Condition should be one of 
+%			?=(X,Y)
+%			nonvar(X)
+%			ground(X)
+%			(Condition,Condition)
+%			(Condition;Condition)
+%
+%	Author: 	Tom Schrijvers, K.U.Leuven
+% 	E-mail: 	Tom.Schrijvers@cs.kuleuven.ac.be
+%	Copyright:	2003-2004, K.U.Leuven
+%       Ported to XSB by Barry Evans, (?= port by TLS)
+%
+%
+% History:
+% 
+%	Apr 9, 2004
+%	* JW: Supressed debugging this module
+%	* JW: Made when/2 module-aware.
+%	March 2006
+%	* Barry: XSB port; *TLS: added ?=
+%
+%
+% Simple implementation. Does not clean up redundant attributes.
+% Now deals with cyclic terms.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+when(Condition, Goal) :-
+%	strip_module(Goal, M, G),
+%	writeln(trigger(Condition, M:G)),
+	trigger(Condition, Goal).
+
+/*
+strip_module(RT, M, T) :-
+	strip_module(RT, T, M, usermod).
+strip_module(Module:RT2, T, M, _) :-
+	atom(Module), !,
+	strip_module(RT2, T, M, Module).
+strip_module(T, T, M, M).
+*/
+
+trigger(nonvar(X),Goal) :-	trigger_nonvar(X,Goal).
+
+trigger(ground(X),Goal) :-	trigger_ground(X,Goal).
+
+trigger(?=(X,Y),Goal) :-	trigger_determined(X,Y,Goal).
+
+trigger((G1,G2),Goal) :- 	trigger_conj(G1,G2,Goal).
+
+trigger((G1;G2),Goal) :-	trigger_disj(G1,G2,Goal).
+
+trigger_nonvar(X,Goal) :-
+	( nonvar(X) ->
+		call(Goal)
+	;
+		suspend(X,trigger_nonvar(X,Goal))
+	).
+
+trigger_ground(X,Goal) :-
+	term_variables(X,Vs),
+	( Vs = [H|_] ->
+		suspend(H,trigger_ground(Vs,Goal))
+	;
+	call(Goal)
+	).
+
+trigger_conj(G1,G2,Goal) :-
+	trigger(G1,trigger(G2,Goal)).
+
+trigger_disj(G1,G2,Goal) :-
+	trigger(G1,check_disj(Disj,Goal)),
+	trigger(G2,check_disj(Disj,Goal)).
+
+% bug, see below
+check_disj(Disj,Goal) :-
+	( var(Disj) ->
+		Disj = (-),
+		call(Goal)
+	;
+		true
+	).
+
+trigger_determined(X,Y,Goal) :-
+	unifiable(X,Y,Unifier),
+	!,
+	( Unifier == [] ->
+		call(Goal)
+	;
+		put_attr(Det,when,det(trigger_determined(X,Y,Goal))),
+		suspend_list(Unifier,wake_det(Det))
+	).
+trigger_determined(_,_,Goal) :- call(Goal).
+
+wake_det(Det) :-
+	( var(Det) ->
+		get_attr(Det,when,Attr),
+		del_attr(Det,when),
+		Det = (-),
+		Attr = det(Goal),
+		call(Goal)
+	;
+		true
+	).
+
+suspend_list([],_Goal).
+suspend_list([V=W|Unifier],Goal) :-
+	suspend(V,Goal),
+	( var(W) -> suspend(W,Goal) ; true),
+	suspend_list(Unifier,Goal).
+
+suspend(V,Goal) :-
+	( get_attr(V,when,List) ->
+		put_attr(V,when,[Goal|List])
+	;
+		put_attr(V,when,[Goal])
+	).
+
+:- install_verify_attribute_handler(when,Attr,Other,attr_unify_hook(Attr,Other)).
+
+attr_unify_hook(List,Other) :-
+%	writeln('in auh'(List,Other)),
+	is_list(List),
+	!,
+	attr_unify_hook1(Other,List2),
+	call_list(List),
+	call_list(List2).
+attr_unify_hook(_Attr,_Other).
+
+attr_unify_hook1(Other,List) :-
+	var(Other),
+	get_attr(Other,when,List),
+	del_attr(Other,when),
+	!.	
+attr_unify_hook1(_Other,[]).
+
+:- install_attribute_portray_hook(when,Attr,portray_when(Attr)).
+
+portray_when(Attr):- 
+	portray_whenlist(Attr).
+
+portray_whenlist([]).
+portray_whenlist([H]):- !,
+        portray_trigger(H).
+portray_whenlist([H|T]):- 
+        portray_trigger(H),nl,
+	portray_whenlist(T).
+
+portray_trigger(trigger_nonvar(V,Constraint)):- !,
+	    write('trigger '),write(Constraint),write(' when nonvar'(V)).
+portray_trigger(trigger_ground(V,Constraint)):- !,
+	    write('trigger '),write(Constraint),write(' when ground'(V)).
+
+call_list([]) :- !.
+call_list([G|Gs]) :-
+	call(G),
+%	!,
+	call_list(Gs).
+
+%
+%	Can't let a previous failed goal prevent the execution of a later one
+%	The goals on the list can be completely independent.
+%
+%call_list([_G|Gs]) :-
+%	call_list(Gs).
+
+:- export get_trigger_goal/2.
+get_trigger_goal(trigger_nonvar(_,Trigger),Goal) :-
+       !,
+       get_trigger_goal(Trigger,Goal).
+get_trigger_goal(trigger_ground(_,Trigger),Goal) :-
+       !,
+       get_trigger_goal(Trigger,Goal).
+get_trigger_goal(trigger(_,Trigger),Goal) :-
+       !,
+       get_trigger_goal(Trigger,Goal).
+get_trigger_goal(check_disj(Det,Trigger),Goal) :-
+       !,
+       %% note: if Det is nonvar, the trigger's goal has already been used
+       %% so we just fail
+       var(Det),
+       Det = (-),
+       get_trigger_goal(Trigger,Goal).
+get_trigger_goal(Trigger,Trigger).
+
+/*****************************************************/
+
+unifiable(Term1,Term2,List):- 
+	check_var(List,unifiable/3,3),
+	unifiable_1(Term1,Term2,List,[]).
+
+unifiable_1(Term1,Term2,ListIn,ListOut):- 
+	(Term1 == Term2 ->
+	  ListIn = ListOut
+        ; (var(Term1) -> 
+	     ListIn = [Term1 = Term2|ListOut]
+	   ; (var(Term2) -> 
+	       ListIn = [Term2 = Term1|ListOut]
+	     ; (structure(Term1),structure(Term2) -> 
+	         Term1 =.. [Funct|Args1],
+		 Term2 =.. [Funct|Args2],
+		 unifiable_list(Args1,Args2,ListIn,ListOut) 
+	         ; Term1 = Term2) ) ) ).
+
+unifiable_list([],[],List,List).
+unifiable_list([Term1|R1],[Term2|R2],ListIn,ListOut):- 
+	unifiable_1(Term1,Term2,ListIn,ListMid),
+	unifiable_list(R1,R2,ListMid,ListOut).
+
+%---------
+	
+term_variables(Term, Vars) :-
+	listofvars(Term, Vs, []),
+	sort(Vs, Vars).	
+
+listofvars(Term, Vh, Vt) :-
+	(var(Term)
+	 ->	Vh = [Term | Vt]
+	 ;	Term =.. [_|Args],
+		listofvars1(Args, Vh, Vt)
+	).
+
+listofvars1([], V, V).
+listofvars1([T|Ts], Vh, Vt) :-
+	listofvars(T, Vh, Vm),
+	listofvars1(Ts, Vm, Vt).
+
+:- import set_arg/3 from machine.
+setarg(T,N,A):-  set_arg(T,N,A).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Ordering 
+%% Ported to hProlog by Tom Schrijvers, tom.schrijvers@cs.kuleuven.ac.be
+%%
+%% XSB Version Barry EVANS
+%%
+
+% Preliminary support for some CHR handlers
+%
+% Define a stable ordering on variables
+% (Term/Var ordering changes under put_atts, delay, etc.)
+%
+% Bindings still brake our ordering!
+%
+%
+
+:- conset(ordering, 0).
+
+:- install_verify_attribute_handler(ordering,Attr,Other,attr_unify_hook_ordering(Attr,Other)).
+
+%
+% The exception mechanism copies the thrown term.
+% Thus we cannot pass the variable to the catcher ...
+%
+/*
+attr_unify_hook(id(Id),Other) :-
+	(var(Other) ->
+		(get_attr(Other,ordering,id(_)) ->
+			true
+		;
+			put_attr(Other,ordering,id(Id))
+		)
+	;
+		true
+	).
+*/
+attr_unify_hook_ordering(id(Id),Other) :-
+	var(Other),
+	!,
+	attr_unify_hook_ordering_1(Id,Other).
+
+attr_unify_hook_ordering(_Attr,_Other).
+
+attr_unify_hook_ordering_1(_Id,Other) :-
+	get_attr(Other,ordering,id(_)),
+	!.
+
+attr_unify_hook_ordering_1(Id,Other) :-
+	put_attr(Other,ordering,id(Id)).
+
+%
+%	globalize(X)
+%
+globalize(Term) :-
+	term_variables(Term, Vars),
+	var_globalize(Vars).
+
+/*
+var_globalize(X) :-
+	var(X),
+	!,		% indexing only
+	(get_attr(X, ordering, id(_)) ->
+	    true
+	;
+	    put_attr(X, ordering, id(_))
+	).
+*/
+var_globalize(X) :-
+	var(X),
+	!,		% indexing only
+	var_globalize1(X).
+
+var_globalize([]).
+var_globalize([X|Xs]) :-
+	var_globalize(X),
+	var_globalize(Xs).
+
+var_globalize1(X) :-
+	get_attr(X, ordering, id(_)),	% Already got one...
+	!.
+
+var_globalize1(X) :-
+	gennum(ordering,Id),
+	put_attr(X, ordering, id(Id)).
+
+%
+%	unglobalize(X)
+%
+unglobalize(Term) :-
+	term_variables(Term, Vars),
+	var_unglobalize(Vars).
+
+var_unglobalize(X) :-
+	var(X),
+	!,		% indexing only
+	del_attr(X, ordering).
+
+var_unglobalize([]) :- !.
+
+var_unglobalize([X|Xs]) :-
+	var_unglobalize(X),
+	var_unglobalize(Xs).
+
+%
+%	var_compare(X)
+%
+/*
+var_compare(Rel, X, Y) :-
+	(var(X),get_attr(X, ordering, id(IdX)) ->
+	    true
+	;
+	    throw(not_globalized)
+	),
+	(var(Y),get_attr(Y, ordering, id(IdY)) ->
+	    true
+	;
+	    throw(not_globalized)
+	),
+	compare(Rel, IdX, IdY).
+*/
+
+var_compare(Rel, X, Y) :-
+	var(X),
+	var(Y),
+	var_compare1(Rel,X,Y).
+
+var_compare1(Rel,X,Y) :-
+	get_attr(X, ordering, id(IdX)),
+	!,
+	var_compare2(Rel,IdX,Y).
+
+var_compare1(_Rel,_X,_Y) :-
+	throw(not_globalized).
+
+var_compare2(Rel,IdX,Y) :-
+	get_attr(Y, ordering, id(IdY)),
+	!,
+	compare(Rel,IdX,IdY).
+
+var_compare2(_Rel,_IdX,_Y) :-
+	throw(not_globalized).
+
+%
+%	lookup_variable_id(Var,Id)
+%
+
+lookup_variable_id(Var,Id) :-
+	var(Var),
+	!,
+	lookup_variable_id1(Var,Id).
+
+lookup_variable_id(Var,_Id) :-
+	write('### ordering.pl lookup_variable_id '),
+	write(Var),
+	write(' Is not a variable. ###'),
+	nl,
+	fail.
+
+lookup_variable_id1(Var,Id) :-
+	get_attr(Var, ordering, id(Id)),
+	!.
+
+lookup_variable_id(Var,_Id) :-
+	write('### ordering.pl lookup_variable_id '),
+	write(Var),
+	write(' Does not have an Id assigned to it. It has not been globalized. ###'),
+	nl,
+	fail.
+
+
+end_of_file.
+
+
+BUG SHOWN IN FOLLOWING PROGRAM:
+:- import when/2 from constraintLib.
+
+append(A,B,C) :-
+	when((nonvar(A);nonvar(C)),sappend(A,B,C)).
+
+sappend([],L,L).
+sappend([X|L1],L2,[X|L3]) :-
+	append(L1,L2,L3).
+	%mytrue(L1).
+
+mytrue(_).
+
+reverse(L,R) :-
+	when((nonvar(L);nonvar(R)),sreverse(L,R)).
+
+sreverse([],[]).
+sreverse([A|As],Bs) :-
+	append(Cs,[A],Bs), reverse(As,Cs).
+
+on call ?- reverse(X,[a,b,c]).
+
+but if put in mytrue call, it works.  Conjecture is that that
+disjuctive delay that suspends on a temporary variable, doesnt work?
+Maybe any suspension on a temporary variable?
+

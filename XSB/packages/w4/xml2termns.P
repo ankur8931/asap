@@ -1,0 +1,120 @@
+%%% XML to Term ( Version 1.0/October 2002)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% Given a document representation in XML, this module constructs a simplified Prolog term representation of the document.
+%%% Very useful for efficient processing while keeping namespace information:
+%%%
+%%% A QName of the form LocalName is translated to an ordinary Prolog Atom in UTF-8 encoding
+%%% A QName of the form Prefix:LocalName is translated to an atom of the form:
+%%% <Namespace LocalName>
+%%%
+%%% None of <, > and space are allowed in URIs, and simplifies writing of QNames in Prolog.
+%%%
+%%% Only elements, attributes and chardata information items are translated. All other are ignored.
+%%%
+
+
+:- import getTailNodeList/2 from xmldom.
+:- import isCharData/1 from xmldom.
+:- import isWhiteSpace/1 from xmldom.
+:- import isElement/1 from xmldom.
+:- import getHeadNodeList/2 from xmldom.
+:- import getRestNamedMap/2 from xmldom.
+:- import getAttributeValue/2 from xmldom.
+:- import getAttributeName/4 from xmldom.
+:- import getFirstNamedMap/3 from xmldom.
+:- import getElementAttributes/3 from xmldom.
+:- import getElementChildren/2 from xmldom.
+:- import getElementName/4 from xmldom.
+:- import getDocumentElement/2 from xmldom.
+
+:- import append/3 from basics.
+
+:- export xml2term/2.
+:- export xml2term/3.
+
+:- ensure_loaded( xmldom ).
+
+
+% Main Predicate:
+% xml2term( + DocumentTerm, - Term )
+% xml2term( + DocumentTerm, + WhiteSpace, - Term )
+
+xml2term( Doc, Term ) :-
+	documentItem2term( Doc, remove, Term ).		
+
+xml2term( Doc, WhiteSpace, Term ) :-
+	documentItem2term( Doc, WhiteSpace, Term ).		
+
+% Item specific translation predicates
+
+documentItem2term( Doc, WhiteSpace, DocumentElement ) :-
+	getDocumentElement( Doc, El),
+	elementItem2term( El, WhiteSpace, DocumentElement ).
+
+elementItem2term( Element, WhiteSpace, Term ) :-
+	getElementName( Element, NamespaceURI, LocalName, _ ),
+	getElementChildren( Element, Children ),
+	getElementAttributes( Element, Attributes, NamespaceAttribs ),
+	constructUniqueName( NamespaceURI, LocalName, NameTerm ),
+	functor( Term, NameTerm, 2 ),
+	arg( 1, Term, AttributeList ),
+	arg( 2, Term, ChildrenList ),
+
+	attributeList2term( Attributes, AttributeList, RestAttribList ),
+	attributeList2term( NamespaceAttribs, RestAttribList, [] ),
+
+	nodeList2term( Children, WhiteSpace, ChildrenList ).
+	
+	
+attributeItem2term( Attribute, Term ) :-
+	getAttributeName( Attribute , NamespaceURI, LocalName, _ ),
+	getAttributeValue( Attribute , Value ),
+	constructUniqueName( NamespaceURI, LocalName, NameTerm ),
+	functor( Term, NameTerm, 1 ),
+	arg( 1, Term, Value ).
+
+nodeList2term( Nodes, WhiteSpace, List ) :-
+	getHeadNodeList( Nodes , Item ),
+	infoSetItem2term( Item, WhiteSpace, List, RestList ),
+	getTailNodeList( Nodes , RestNodes ), !,
+	nodeList2term( RestNodes, WhiteSpace, RestList ).
+nodeList2term( _, _, [] ).
+
+infoSetItem2term( Item, WhiteSpace, [Term|RestList], RestList ) :- 
+	isElement( Item ), !,
+	elementItem2term( Item, WhiteSpace, Term ).
+infoSetItem2term( Item, WhiteSpace, List, RestList ) :- 
+	isWhiteSpace( Item ), !,
+	( WhiteSpace = keep -> List = [Item|RestList] ; List = RestList ).
+infoSetItem2term( Item, _, [Item|RestList], RestList ) :- 
+	isCharData( Item ), !.
+infoSetItem2term( _, _, List, List ).
+
+
+attributeList2term( Attributes, [Term|Terms], RestTerms ) :-
+	getFirstNamedMap( Attributes, _, Attrib ), !,
+	attributeItem2term( Attrib, Term ),
+	getRestNamedMap( Attributes, RestAttributes ),
+	attributeList2term( RestAttributes, Terms, RestTerms ).
+attributeList2term( _, RestTerms, RestTerms ).
+	
+
+% Constructs the corresponding atom:
+constructUniqueName( '', LocalName, LocalName ) :- !.
+constructUniqueName( NamespaceURI, LocalName, Name ) :- !,
+	atom_codes( NamespaceURI, URICodes ),
+	atom_codes( LocalName, LocalCodes ),
+	append( LocalCodes, [0'>], EndLocalCodes ),
+	append( [0'<|URICodes], [0' |EndLocalCodes], NameCodes ),
+	atom_codes( Name, NameCodes ).
+
+

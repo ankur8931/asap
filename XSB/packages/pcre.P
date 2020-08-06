@@ -1,0 +1,58 @@
+/* File:      pcre.P
+** Author(s): Mandak Pathak
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2010
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+%%:- import xsb_configuration/2 from xsb_configuration.
+:- import bootstrap_package/2 from packaging.
+%%:- import abort/1 from standard.
+
+:- import pl_trymatch/4, pl_substitute/4 from pcre4pl.
+
+:- export match/4, substitute/4, check_installation/0.
+
+%% bootstrap(package-dirname-as-string, package-name-as-symbol).
+%% This also asserts 
+%% package_configuration(dir(PackageName), FullPackageDirname)
+%% some packages use it.
+
+:- bootstrap_package([pcre,cc], pcre),
+   [pcreconfig].
+
+
+%% Make uniform interface to the package
+
+match(Pattern, Subject, ResultList, CheckAll) :-	
+	check_installation,
+	pl_trymatch(Pattern, Subject, ResultList, CheckAll).
+	
+substitute(Pattern,Subject,Substitution,Result) :-
+	check_installation,
+	pl_substitute(Pattern,Subject,Substitution,Result).
+
+check_installation :-
+	catch(\+ pcre_info:pcre_info(support,yes),
+	      _,
+	      throw(error(existence_error, 'Error: The XSB package PCRE has not been configured - see the XSB manual, volume 2'))),
+	!,
+	throw(error(existence_error, 'Error: The package PCRE has not been configured - see the XSB manual, volume 2')).
+
+check_installation :- !.

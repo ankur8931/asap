@@ -1,0 +1,69 @@
+--- Makefile.old	2006-05-26 21:05:42.000000000 +0100
++++ Makefile	2006-07-18 21:36:14.359375000 +0100
+@@ -1,36 +1,57 @@
+ CXX = g++
+ CXXFLAGS = -O3 -Wall -W
+-LFLAGS =
+ LIBSRCS = smodels.cc stack.cc dcl.cc atomrule.cc read.cc \
+ queue.cc timer.cc list.cc improve.cc program.cc api.cc stable.cc \
+ tree.cc denant.cc restart.cc
+ SRCS = $(LIBSRCS) main.cc
+ OBJS = $(SRCS:.cc=.o)
+ 
++# uncomment the following in order to create native win32
++# binaries and/or libraries under cygwin  --lfcastro
++CXXFLAGS += -mno-cygwin
++LIBTOOL = 
++LIBOBJS = $(LIBSRCS:.cc=.o)
++NAME = smodels.exe
++LIBNAME = smodels.dll
++LDMODES = 
++LCMODES = 
++LFLAGS = -mno-cygwin
++LFLAGS += -Wl,--out-implib=$(LIBNAME:.dll=.a)
++LFLAGS += -Wl,--output-def=$(LIBNAME:.dll=.def)
++LDOPTS = -shared
++# use the following otherwise --lfcastro
++# LIBTOOL = libtool
++# NAME = smodels
++# LIBOBJS = $(LIBSRCS:.cc=.lo)
++# LIBNAME = libsmodels.la
++# LIBPATH = /usr/local/lib
++# LDMODES = --mode=link --tag=CXX
++# LCMODES = --mode=compile --tag=CXX
++# LFLAGS = 
++# LDOPTS = -rpath $(LIBPATH)
++
+ smodels: $(OBJS)
+-	$(CXX) $(LFLAGS) -o smodels $(OBJS)
++	$(CXX) $(LFLAGS) -o $(NAME) $(OBJS)
+ 
+ %.o: %.cc
+ 	$(CXX) $(CXXFLAGS) -c $<
+ 
+ .PHONY: lib libinstall clean all build binary install
+ 
+-LIBPATH = /usr/local/lib
+-LIBOBJS = $(LIBSRCS:.cc=.lo)
+ 
+ # Make a shared library
+ lib: $(LIBOBJS)
+-	libtool --mode=link --tag=CXX $(CXX) $(LFLAGS) -o libsmodels.la \
+-		$(LIBOBJS) -rpath $(LIBPATH)
++	$(LIBTOOL) $(LDMODES) $(CXX) $(LFLAGS) -o $(LIBNAME) \
++		$(LIBOBJS) $(LDOPTS)
+ 
+ %.lo: %.cc
+-	libtool --mode=compile --tag=CXX $(CXX) $(CXXFLAGS) -c $<
++	$(LIBTOOL) $(LCMODES) $(CXX) $(CXXFLAGS) -c $<
+ 
+ libinstall:
+-	libtool install -c libsmodels.la $(LIBPATH)/libsmodels.la
++	$(LIBTOOL) install -c libsmodels.la $(LIBPATH)/libsmodels.la
+ 
+ clean:
+-	rm -f core $(OBJS) $(LIBOBJS) smodels libsmodels.la
++	rm -f core $(OBJS) $(LIBOBJS) $(NAME) $(LIBNAME)
+ 
+ all:
+ 	$(MAKE) clean smodels

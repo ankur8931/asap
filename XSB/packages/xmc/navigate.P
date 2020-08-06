@@ -1,0 +1,53 @@
+
+% justification_root(+Q, -RootNode)
+% ---- Evaluates query Q and returns the rootnode of the tree.
+
+justification_root(Q, node(RootNodeId, Q, nil, TV)) :-
+	justify(Q, TV, RootNodeId), close_open_tables, !.
+
+
+%get_child((G, TV, tabled, _), Child) :- !, 
+%	'$justifier_trie'(T),
+%	NodeId = num(_),
+%	nb_asserted(seen(NodeId, G, (_, _, R, _)), T),
+%	get_child1(R, Child).
+
+get_child(NodeId, Child) :- 
+	'$justifier_trie'(T),
+	nb_asserted(seen(NodeId, _G, R), T),
+	get_child1(R, Child).
+
+get_child1(L, Child) :- arc(L, L1), get_child2(L1, Child).
+
+get_child2((G, TV, P, L, _), Child) :-
+	(show(G) -> '$justifier_trie'(T),
+		    nb_asserted(seen(num(CId), G, _), T),
+		    Child = node(num(CId), G, P, TV)
+		 ; ((allowed(G)) % , \+ single_child((G, TV, _, L, _))) 
+			-> Child = node((G, TV, P, L, nil), G, P, TV)
+			; (\+ builtin(G)
+				-> get_child1(L, node(R1, G1, P1, TV1)),
+				   (P = nil -> Child = node(R1, G1, P1, TV1);
+					(P1 = nil -> Child = node(R1, G1, P, TV1);
+					    append(P, P1, P2),
+					    Child = node(R1, G1, P2, TV1)
+					)
+				   ) 
+			  )	   
+		   )
+	).
+
+get_children(NodeId, Children) :- 
+	setof(C, get_child(NodeId, C), Children).
+
+single_child(NId) :- get_children(NId, [_1child]).
+
+%arc((neg(A), B, P, C, D), S) :- !, toggle_tv(B, B1), arc((A, B1, P, C, D), S).
+arc((neg(A), B, P, tabled, D), S) :- !, toggle_tv(B, B1), arc((A, B1, P, tabled, D), S).
+arc((neg(A), B, P, C, D), S) :- !, arc(C, S).
+arc((leaf(A), B, P, C, D), S) :- !, arc((A, B, P, C, D), S).
+arc((A, B, P, C, D), (A, B, P, C, D)).
+arc((_, _, _, _, S), S1) :- arc(S, S1). 
+
+%-------------------------------------------------------------------------
+

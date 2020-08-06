@@ -1,0 +1,16 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : s = http://description.org/schema/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://www.w3.org/Home/Lassila],[element(http://description.org/schema/ : Creator,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : ID = statement1],[Ora Lassila])]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = #statement1],[element(http://description.org/schema/ : believedBy,[],[Stefan Decker])])])
+
+----------RDF----------
+
+[description(description,about(http://www.w3.org/Home/Lassila),[id(#statement1,http://description.org/schema/ : Creator = literal(Ora Lassila))]),description(description,about(#statement1),[http://description.org/schema/ : believedBy = literal(Stefan Decker)])]
+
+--------Triples--------
+
+{http://www.w3.org/Home/Lassila, http://description.org/schema/Creator, literal(Ora Lassila)}
+{#statement1, http://www.w3.org/1999/02/22-rdf-syntax-ns#type, http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement}
+{#statement1, http://www.w3.org/1999/02/22-rdf-syntax-ns#subject, http://www.w3.org/Home/Lassila}
+{#statement1, http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate, http://description.org/schema/Creator}
+{#statement1, http://www.w3.org/1999/02/22-rdf-syntax-ns#object, literal(Ora Lassila)}
+{#statement1, http://description.org/schema/believedBy, literal(Stefan Decker)}

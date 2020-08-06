@@ -1,0 +1,72 @@
+##############################################################################
+#									     #
+# Makefile for compiling C programs that call XSB as a module                #
+# and for linking with that module	     	     	     	     	     #
+#    	     	     	     	     	     	     	     	     	     #
+# You will need to edit this file to adjust to your particular program       #
+#									     #
+##############################################################################
+
+## File:      modMakefile.in
+## Author(s): kifer 
+## Copyright (C) The Research Foundation of SUNY, 1998
+## 
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+## 
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+## 
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: modMakefile.in,v 1.6 2010-08-19 15:03:35 spyrosh Exp $
+## 
+
+## DON'T EDIT FROM HERE TIL NEXT NOTICE
+############################################################################
+
+# Where the architectue specific XSB stuff is
+arch_dir=@arch_config_prefix@
+
+CC=@CC@
+CPP=@CPP@
+CFLAGS=@CFLAGS@
+# Flags for files requiring lower optimization level (emuloop.c)
+CPPFLAGS=@CPPFLAGS@
+LDFLAGS=@LDFLAGS@
+
+# where the xsb object module is found
+xsbmodule=$(arch_dir)/saved.o/$(emumake_goal)module.o
+
+# just to be sure that sh is used 
+SHELL=/bin/sh
+
+###### END NO-EDIT ZONE
+
+##################### You may need to edit some of the files below!
+
+# Where to install your C program that calls XSB binaries
+bindir=$(arch_dir)/bin
+
+
+# You will most likely need to edit this
+your_program: your_program.o
+	gcc -o $(bindir)/your_program $(xsbmodule) your_program.o $(LDFLAGS)
+	@echo ""
+	@echo "***************************************************"
+	@echo "The executable is in:"
+	@echo "     $(bindir)/your_program"
+	@echo ""
+	@echo ""
+
+
+your_program.o: your_program.c
+	gcc -c $(CFLAGS) your_program.c
+
+

@@ -1,0 +1,79 @@
+:- op( 1200, xfx, '::=' ).
+:- op( 500, fx, '?' ).
+
+:- dynamic production/4.
+:- dynamic code/2.
+:- dynamic non_terminal/2.
+:- dynamic start/1.
+:- dynamic eof/1.
+:- dynamic not_include_code/1.
+
+read_grammars( Grammars ) :-
+	clear_database, 
+	read_all_grammars( Grammars ).
+	
+read_all_grammars( [] ) :- !.
+read_all_grammars( [File|RestFiles] ) :-
+	read_grammar( File ), !,
+	read_all_grammars( RestFiles ).
+read_all_grammars( File ) :-
+	read_grammar( File ).
+ 
+read_grammar( In ) :-
+	open( In, read, Stream ),
+	read( Stream, Production ),
+	read_productions( Production, Stream ),
+	close( Stream ).
+
+clear_database :-
+	abolish_all_tables,
+	retractall( production(_,_,_,_) ),
+	retractall( code(_,_) ),
+	retractall( non_terminal(_,_) ),
+	retractall( start(_) ),
+	retractall( eof(_) ),
+	retractall( not_include_code( _ ) ).
+
+read_productions( end_of_file, _ ) :- !.
+read_productions( Production, Stream ) :-
+	assert_production( Production ),
+	read( Stream, NewProduction ), !,
+	read_productions( NewProduction, Stream ).
+
+assert_production( ( Head --> Body ) ) :- !,
+	production_number( Head, N ),
+	assert( production( Head, Body, N, dcg ) ).
+
+assert_production( ( Head ::= Body ) ) :- !,
+	production_number( Head, N ),
+	assert( production( Head, Body, N, look) ).
+
+assert_production( ( Head :- Body ) ) :- !,
+	assert( code( Head, Body) ).
+
+assert_production( (:- start( Name/Arity )) ) :- !,
+	functor( NonTerm, Name, Arity ),
+	assert( start( NonTerm ) ).
+
+assert_production( ( :- end( NonTerm )) ) :- !,
+	assert( eof( NonTerm ) ).
+
+assert_production( ( :- - Name/Arity ) ) :- !,
+	assert( not_include_code( Name/Arity) ).
+
+assert_production( Head ) :- !,
+	assert( code( Head, true) ).
+
+
+production_number( Head, Counter ) :-
+	functor( Head, Name, Arity ),
+	inc_counter( Name/Arity, Counter ).
+
+inc_counter( Prod, 1 ) :-
+	\+ non_terminal( Prod, _ ), !,
+	assert( non_terminal( Prod, 1 ) ).
+
+inc_counter( Prod, Counter ) :-
+	retract( non_terminal( Prod, N ) ), !,
+	Counter is N + 1,
+	assert( non_terminal( Prod, Counter ) ).

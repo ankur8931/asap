@@ -1,0 +1,4 @@
+suite/xsdtypes.rdf
+suite/xmllit.rdf
+are not parsed by the sgml parser properly.
+Need to investigate.

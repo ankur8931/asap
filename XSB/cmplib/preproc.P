@@ -1,0 +1,290 @@
+/* File:      preprocess.P
+** Author(s): Saumya Debray, Terrance Swift, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: preproc.P,v 1.8 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+
+/*======================================================================*/
+/* This module contains code for preprocessing a predicate definition.	*/
+/* It behaves like a source-to-source translation, but the translation	*/
+/* is actually done in the internal format: pred(N,A,Clauses), which	*/
+/* is part of a "Module".						*/
+/*	After preprocessing, pred(N,A,Clause) becomes a LIST of		*/
+/*	pred(N,A,Clause,Prag). Note pragma info is attached to each	*/
+/*	new predicate definition.					*/
+/*									*/
+/* Source transformations are needed (currently) for:			*/
+/*									*/
+/*	1. clauses having "cut":					*/
+/*		from 				to			*/
+/*		====				==			*/
+/*    p(X1,...,Xn) :- B1, !, B2.	p(X1,...,Xn) :- '_$savecp'(CP),	*/
+/*    ... ... ...				p'(X1,...,Xn,CP).	*/
+/*    p(Z1,...,Zn) :- D1, !, D2.	p'(X1,...,Xn,CP) :- B1, 	*/
+/*						'_$cutto'(CP), B2.	*/
+/*					p'(Z1,...,Zn,CP) :- D1, 	*/
+/*						'_$cutto'(CP), D2.	*/
+/*	2. Negation							*/
+/*		....							*/
+/*======================================================================*/
+
+/*======================================================================*/
+/* preprocess(+pred(Sym,Cls,_), - list of pred(Sym,Cls,Prag), #SymTab)	*/
+/*======================================================================*/
+
+preprocess(pred(Sym,Clauses,_), PredDefs, SymTab) :-
+	find_prag(Sym, PredPrag),	% find pragma for the pred
+	have_hardcut(Clauses, HardCut),
+	( HardCut =:= 0 ->
+		PredDefs = [pred(Sym,NClauses,PredPrag)],
+		pre_clauses(Clauses, NClauses)
+	; sym_name(Sym, Name, Arity),
+          gensym_pred(Name, Name1),
+          Arity1 is Arity + 1,
+          sym_insert(Name1, Arity1, [pred,internal], SymTab, NewSym),
+          gen_arglist(Arity, ArgList, ArgList1, LastArg),
+	  NewClause = clause(ArgList,
+                and( inlinegoal('_$savecp', 1, [LastArg]),
+                     goal(NewSym, ArgList1)), _),
+	  PredDefs = [pred(Sym,[NewClause],[]),pred(NewSym,NClauses,PredPrag)],
+	  pre_cutclauses(Clauses, NClauses)
+	),
+	!.
+
+gen_arglist(0, [], [varocc(0)], varocc(0)).
+gen_arglist(I, [varocc(I)|ArgList], [varocc(I)|ArgList1], LastArg) :- 
+	I > 0,
+	I1 is I - 1,
+	gen_arglist(I1, ArgList, ArgList1, LastArg).
+	
+/*======================================================================*/
+/* pre_clauses(+OldClauses, -NewClauses)				*/
+/*======================================================================*/
+
+pre_clauses([], []).
+pre_clauses([clause(Args,Body,P)|Rest], [clause(Args,NBody,P)|NRest]) :-
+	pre_body(Body, NBody, _),
+	pre_clauses(Rest, NRest).
+
+/*======================================================================*/
+/* pre_cutclauses(+OldClauses, -NewClauses)				*/
+/*======================================================================*/
+
+pre_cutclauses([], []).
+pre_cutclauses([clause(A,B,P)|CRest], [clause(NA,NB,P)|NCRest]) :-
+        cmp_gensym('_v', CutVid),
+        append(A, [varocc(CutVid)], NA),
+	pre_body(B, NB, CutVid),
+        pre_cutclauses(CRest, NCRest).
+
+/*======================================================================*/
+/* have_hardcut(+Clauses, -HasHardCut)					*/
+/*	NOTE: have_hardcut/2 is also used in cp_opt.P and spec.P.  	*/
+/*======================================================================*/
+
+have_hardcut([], 0).
+have_hardcut([clause(_, Body,_)|Rest], HardCut) :-
+	have_hardcut_1(Body, HardCut0),
+	( HardCut0 =\= 0 -> HardCut = 1 ; have_hardcut(Rest, HardCut) ).
+
+have_hardcut_1(and(G1,G2),HardCut) :- 
+	have_hardcut_1(G1, HardCut1),
+	( HardCut1 =\= 0 -> HardCut = 1 ; have_hardcut_1(G2, HardCut) ).
+have_hardcut_1(if(_G1,G2), HardCut) :- have_hardcut_1(G2, HardCut).
+have_hardcut_1(or(G1,G2), HardCut) :-
+	have_hardcut_1(G1, HardCut1),
+	( HardCut1 =\= 0 -> HardCut = 1 ; have_hardcut_1(G2, HardCut) ).
+have_hardcut_1(not(_G), 0).		% cuts in compiled nots are soft
+have_hardcut_1(goal(_,_), 0).
+have_hardcut_1(inlinegoal(Pred,Arity,_), HardCut) :-
+	( Pred == '!', Arity =:= 0 -> HardCut = 1 ; HardCut = 0 ).
+
+/*======================================================================*/
+/*======================================================================*/
+
+pre_body(and(A,B), and(NA,NB), CutVid) :- !,
+	pre_body(A, NA, CutVid),
+	pre_body(B, NB, CutVid).
+pre_body(if(A,B), NB, CutVid) :- !,
+	pre_ifthen(A, B, inlinegoal(fail,0,[]), NB, CutVid).
+pre_body(or(if(A,B),C), NB, CutVid) :- !,
+	pre_ifthen(A, B, C, NB, CutVid).
+pre_body(or(A,B), Goal, CutVid) :-
+	compl_cond(A, B, Test, TP0, FP0),
+	!,
+	( empty_ifthen_else(TP0, FP0) -> 
+		Goal = inlinegoal(true,0,[])
+	; Goal = if_then_else(Test,TP,FP),
+	  pre_body(TP0, TP, CutVid), 
+	  pre_body(FP0, FP, CutVid)
+	).
+pre_body(or(A,B), or(NA,NB), CutVid) :- !,
+	pre_body(A, NA, CutVid),
+	pre_body(B, NB, CutVid).
+pre_body(not(Goal), NewGoal, CutVid) :- !,
+	pre_ifthen(Goal,inlinegoal(fail,0,[]),inlinegoal(true,0,[]),NewGoal,CutVid).
+pre_body(inlinegoal('!',0,_),
+	 inlinegoal('_$cutto',1,[varocc(CutVid)]), CutVid) :- !.
+pre_body(Goal, Goal, _CutVid).
+
+
+pre_ifthen(A,B,C,if_then_else(A1,NB,NC),CutVid) :-
+	all_inline_tests(A,A1),
+	!,
+	pre_body(B,NB,CutVid),
+	pre_body(C,NC,CutVid).
+pre_ifthen(A,B,C,NGoal,CutVid) :-
+	cmp_gensym('_v', CutVid1),
+	have_hardcut_1(A,Hardcut),
+	(Hardcut =:= 1
+	 ->	cmp_gensym('_v',CutVidCond),
+		pre_body(A, T1a, CutVidCond),
+		T1 = and(inlinegoal('_$savecp', 1, [varocc(CutVidCond)]),
+			 T1a)
+	 ;	pre_body(A, T1, _)
+	),
+	pre_body(B, NB, CutVid),
+	(C == inlinegoal(fail,0,[])
+	 ->	NGoal = and(inlinegoal('_$savecp', 1, [varocc(CutVid1)]),
+			    and(T1,
+				and(inlinegoal('_$cutto', 1, [varocc(CutVid1)]),
+				    NB)))
+	 ;	pre_else(C, NC, CutVid, CutVid1),
+		NGoal = and(inlinegoal('_$savecp', 1, [varocc(CutVid1)]),
+			    or( and(T1,
+				    and(inlinegoal('_$cutto', 1, [varocc(CutVid1)]),
+					NB)),NC))
+	).
+
+pre_else(or(if(A,B),inlinegoal(fail,0,[])), NGoal, CutVid, _) :- !,
+	pre_body(if(A,B),NGoal,CutVid).
+pre_else(or(if(A,B),C), NGoal, CutVid, CutVid1) :- !,
+	NGoal = or( and(NA,and(inlinegoal('_$cutto', 1, [varocc(CutVid1)]),
+			NB)), NC),
+	pre_body(A, NA, CutVid1),
+	pre_body(B, NB, CutVid),
+	pre_else(C, NC, CutVid, CutVid1).
+pre_else(Goal, NGoal, CutVid, _) :- pre_body(Goal, NGoal, CutVid).
+
+/*======================================================================*/
+/* all_inline_tests(+Goal,-GoalOut)					*/
+/*	Succeeds if the Goal can be transformed (into GoalOut) into	*/
+/*	one or more inline tests that does not change the state 	*/
+/*	(without unification).						*/
+/*	At this point, a test is considered to be inline (and hence a	*/
+/*	candidate for transformation to an "if-then-else") iff it is	*/
+/*	either an inline test, or a conjunction or disjunction of	*/
+/*	inline tests.  We could have set things up so that arbitrary	*/
+/*	constructs involving inlines are allowed, but this complicates	*/
+/*	code generation quite a bit, and it's not clear that these more	*/
+/*	complex constructs are encountered frequently in practice.	*/
+/*======================================================================*/
+
+all_inline_tests(and(G1,G2),and(G1o,G2o)) :-
+	all_inline_tests(G1,G1o),
+	all_inline_tests(G2,G2o).
+all_inline_tests(or(G1,G2),or(G1o,G2o)) :-
+	all_inline_tests(G1,G1o),
+	all_inline_tests(G2,G2o).
+all_inline_tests(inlinegoal(Pred,Arity,Args),inlinegoal(Pred,Arity,Args)) :- 
+	inline_test(Pred,Arity).
+all_inline_tests(goal(sym(Pred,Arity,_,_),Args),inlinegoal(Pred,Arity,Args)) :- 
+	inline_jumpcof_cond(Pred,Arity,_).
+
+/*======================================================================*/
+/* inline_test(+Pred, +Arity)						*/
+/*	Succeeds if it is an inline test that does not change the	*/
+/*	state (without unification).					*/
+/*======================================================================*/
+
+inline_test('>', 2).
+inline_test('>=', 2).
+inline_test('=<', 2).
+inline_test('<', 2).
+inline_test('=:=', 2).
+inline_test('=\=', 2).
+
+inline_test('==', 2).
+inline_test('@=', 2).
+inline_test('\==', 2).
+inline_test('@<', 2).
+inline_test('@=<', 2).
+inline_test('@>', 2).
+inline_test('@>=', 2).
+
+inline_test(var, 1).
+inline_test(nonvar, 1).
+
+inline_test(true, 0).
+inline_test(Pred,Arity) :- inline_jumpcof_cond(Pred,Arity,_).
+
+/*======================================================================*/
+/* find_prag(+Sym, -PredPrag)						*/
+/*	Find pragma information for the symbol; currently only index(I)	*/
+/*	is used. 							*/
+/*	NOTE: if more pragma is added, need to take care everywhere	*/
+/*	pred/4 term is used --- specifically, trans_cuts put index info */
+/*	only on the second predicates, not the major one, which has	*/
+/*	only one clause!						*/
+/*======================================================================*/
+
+find_prag(Sym, PredPrag) :-
+	( option(index_off), !, PredPrag = []
+	; sym_prop(index(Index), Sym), !, PredPrag = [index(Index)|PragR],
+	  ti_prag(Sym, PragR)
+	; sym_prop((parallel), Sym), !, PredPrag = [(parallel)]
+	; PredPrag = [index(_)|PragR],		% use default index
+	  ti_prag(Sym, PragR)
+	).
+
+ti_prag(Sym, Prag) :-
+	( (sym_prop((ti_off), Sym) ; conget(ti_off_all, 1)) ->
+		Prag = []
+	; (sym_prop((ti), Sym) ; conget(ti_all, 1)) ->
+		Prag = [(ti)]
+	; sym_name(Sym,apply,Arity), Arity > 1 ->
+%		message(('% Using transformational indexing on apply/',Arity)),
+		Prag = [(ti)]
+	; /* default */
+		Prag = []
+	).
+
+/*======================================================================*/
+/* Auxilliary predicates						*/
+/*======================================================================*/
+
+empty_ifthen_else(inlinegoal(true,0,[]), inlinegoal(true,0,[])).
+
+gensym_pred(P, NP) :-
+	cmp_gensym('_#', N2),
+	str_cat(P, N2, NP).
+
+cmp_gensym(Root,Sym) :-
+	coninc('_$compiler_gensym_ctr',Cnt),
+	number_codes(Cnt,CntC),
+	atom_codes(CntA,CntC),
+	str_cat(Root,CntA,Sym).
+
+force_preprocess_loaded.
+

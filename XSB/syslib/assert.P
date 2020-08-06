@@ -1,0 +1,1070 @@
+/* File:      assert.P
+** Author(s): Kostis Sagonas, David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: assert.P,v 1.50 2010/03/16 16:41:37 dwarren Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+#include "builtin.h"
+#include "psc_defs.h"
+#include "thread_defs_xsb.h"
+#include "biassert_defs.h"
+#include "incr_xsb_defs.h"
+#include "standard.h"
+
+/*======================================================================*/
+/* Predicates to add dynamic clauses in Prolog's database:		*/
+/*  - assert(+Clause)							*/
+/*	same as assert(Clause, 1, 1)					*/
+/*  - asserta(+Clause)							*/
+/*	same as assert(Clause, 0, 1)					*/
+/*  - assertz(+Clause)							*/
+/*	same as assert(Clause, 1, 1)					*/
+/*  - asserti(+Clause, +Index)						*/
+/*	same as assert(Clause, 1, Index)				*/
+/* where:								*/
+/*    assert(+Clause, +AorZ, +Index)            			*/
+/*	Asserts a clause.		                                */
+/*	AorZ/\1:  0 for insertion as the first clause, 1 for as last.	*/
+/*	AorZ/\2:  0 for simple register allocation,			*/
+/*		  2 for setting var occurrence counts for reg alloc.	*/
+/*	Index: the number of the argument on which to index; 		*/
+/*		0 for no indexing. (If there is index declaration, this	*/
+/*			argument is ignored.)				*/
+/*======================================================================*/
+
+/*======================================================================*/
+/* Formats for dynamic code:						*/
+/* PSC rec point to:							*/
+/*	PrRef:								*/
+/*		0: BC instruction: fail (if empty),			*/
+/*			jump and save breg (if nonempty)		*/
+/*		4: Addr of first Clref on ALL chain			*/
+/*		8: Addr of last Clref on ALL chain			*/
+/*									*/
+/* PrRef's point to chain of ClRef's (one of 3 types):			*/
+/* (the -8 location stores length of buff + flag indicating ClRef type	*/
+/*	ClRef2 (for compiled code):					*/
+/*		-8: length of buffer (+2)				*/
+/*		-4: Addr of previous ClRef (or PrRef)			*/
+/*		0: Try-type instruction, for chain			*/
+/*		4: (cont) Addr of next ClRef on chain			*/
+/*		8: jump							*/
+/*		12: Addr of compiled code				*/
+/*	ClRef0 (for unindexed asserted code):				*/
+/*		-8: length of buffer (+0)				*/
+/*		-4: Addr of previous ClRef (or PrRef)			*/
+/*		0: Try-type instruction, for chain			*/
+/*		4: (cont) Addr of next ClRef on chain			*/
+/*		8+: BC for asserted clause				*/
+/*	ClRef1 (for group of indexed clauses, aka SOB record):		*/
+/*		-8: length of buffer (+1)				*/
+/*		-4: Addr of previous ClRef (or PrRef)			*/
+/*		0: Try-type instruction, for chain			*/
+/*		4: (cont) Addr of next ClRef on chain			*/
+/*		8: BC switch-on-bound instruction (drop thru if var)	*/
+/*		11: (cont) arg to index on				*/
+/*		12: (cont) address of Hash Table			*/
+/*		16: (cont) size of Hash Table				*/
+/*		20: BC jump to	(or fail if empty)			*/
+/*		24: (cont) Addr of first ClRefI on all subchain		*/
+/*		28: Addr of last ClRefI on all subchain			*/
+/*		32: Number of clauses in hash table			*/
+/*		36+: Hash Table						*/
+/*									*/
+/* ClRef1's point to indexed clauses, each represented by a ClRefI:	*/
+/*	ClRefI (for an indexed clause):					*/
+/*		-8: length of buffer (+3)				*/
+/*		-4: Addr of previous ClRefI on all chain		*/
+/*		0: Try-type instruction, for all subchain		*/
+/*		4: (cont) Addr of next ClRefI on all subchain		*/
+/*		8: BC noop(6) to skip next 12 bytes			*/
+/*		12: Addr of previous ClRefI on bucket chain		*/
+/*		16: Try-type instruction, for hash bucket subchain	*/
+/*		20: (cont) Addr of next ClRefI in bucket		*/
+/* and for each additional index:					*/
+/*		24: BC noop(6) to skip next 12 bytes			*/
+/*		28: Addr of previous ClRefI on bucket chain		*/
+/*		32: Try-type instruction, for hash bucket subchain	*/
+/*		36: (cont) Addr of next ClRefI in bucket		*/
+/*		40+: BC for asserted code				*/
+/*									*/
+/*======================================================================*/
+
+
+% NOTE: Predicate assert0/1 is a quicker assert/1 with no error
+%	checking, provided for system usage only.
+
+assert0(Clause) :- assert(Clause,1,1).
+
+% check_asserts factored into main assert body.
+assert(Clause)  :-
+%	check_assert(Clause, 'assert/1'),
+	call_xsb_hook(xsb_assert_hook(_),Clause,all),
+	assert(Clause,1,1,'assert/1'),
+	fail.
+assert(_).			% reclaim heap space
+
+asserta(Clause) :-
+%	check_assert(Clause,'asserta/1'),
+	call_xsb_hook(xsb_assert_hook(_),Clause,all),
+	assert(Clause,0,1,'asserta/1'),
+	fail.
+asserta(_).			% reclaim heap space
+
+assertz(Clause) :-
+%	check_assert(Clause,'assertz/1'),
+	call_xsb_hook(xsb_assert_hook(_),Clause,all),
+	assert(Clause,1,1,'assertz/1'),
+	fail.
+assertz(_).
+
+
+/* Obsolete.
+call_assert_hook(Clause) :-
+	term_psc(assert_hook(_),Psc),
+	psc_type(Psc,Type),
+	(Type > T_ORDI % basically means: != T_ORDI
+	 ->	call_c(assert_hook(Clause))
+	 ;	true
+	).
+*/
+
+% NOTE: Predicates asserti[a,z]/2 though exported, are not available to
+%	the user (in the intepreter) and so no error checking is done.
+%	Should they become available in the interpreter error checking
+%	must be added to them.
+
+asserti(Clause, Index) :- assert(Clause,1,Index).
+assertai(Clause,Index) :- assert(Clause,0,Index).
+assertzi(Clause,Index) :- assert(Clause,1,Index).
+
+% Safeguard.
+assert(Clause,AZL,Index):- assert(Clause,AZL,Index,'assert/1').
+
+/* DSW: inserted this check to transform clauses for multifile predicates.
+Does result in double breakdown of Clause, which could be optimized by
+changing assert0/4 to take already separated Head and Body. */
+
+assert(Clause,AZL,Index1,ErrPred) :-
+	(var(Clause) ->
+	 instantiation_error(ErrPred,Index1,nonvar)
+	 ; Clause = (Head:-Body)
+	 ->	true
+	 ;	Head = Clause, Body = true
+	),
+	('_$multifile'(Head)
+	 ->	Head =.. [Pred|Args],
+		get_p_mod(Pred,usermod,LinkPred),
+		LHead =.. [LinkPred|Args],
+		(clause(Head,LHead)
+		 ->	true
+		 ;	functor(Head,Pred,Arity),
+			functor(NHead,Pred,Arity),
+			NHead =.. [Pred|GArgs],
+			LBody =.. [LinkPred|GArgs],
+			assert0((NHead:-LBody),1,1,'assert/1')
+		),
+		(Body == true -> NClause = LHead ; NClause = (LHead:-Body)),
+		assert0(NClause,AZL,Index1,ErrPred)
+	 ;	(Head = Mod:BHead
+		 ->	term_new_mod(Mod,BHead,NHead),
+			(Body == true -> NClause = NHead ; NClause = (NHead:-Body)),
+			assert0(NClause,AZL,Index1,ErrPred)
+		 ;	assert0(Clause,AZL,Index1,ErrPred)
+		)
+	).
+
+/* TLS - arranged this code so that check for trie_asserted is done
+   first, and a minimal amount of checks are done afterwards.  This
+   sped up the time for trie_asserts significantly.  trie asserts did
+   *not* properly check for :-/2 before -- now they do. */
+
+% TLS: uglified the code by moving check_assert and cut_transform into
+% this predicate -- but it saves a few percent.
+assert0(Clause, AZL, Index1,_ErrPred) :-
+	( var(Clause) -> instantiation_error(Pred,1,nonvar) ; true),
+	('_$trie_asserted'(Clause) -> 
+	    t_assert_2(Clause,_Flag)
+	  ; 
+	  (Clause = (Head:-Body) ->
+	      check_assert_fact(Head, Pred), 
+  	      ( check_body(Body) -> true ; type_error(callable,Body,Pred,1)),
+              ('_$trie_asserted'(Head), Body \== true -> 
+		    warning(['Asserting clause with non-empty body for ',Head,
+		             ' which is trie-indexed. ',
+		            'Indexing for this predicate may not be efficient.']) ; true),
+%		    permission_error(assert_clause_with_body,trie_asserted_head,
+%		                     Clause,ErrPred) ; true),
+	     cut_transform(Clause,Nclause)
+            ;	Clause = Head,Body = true,
+  	        check_assert_fact(Head, Pred),
+		Nclause = Clause
+           ),
+	   conpsc(Head, PSC),
+	   psc_arity(PSC, Arity),
+           ( '_$index'(Head,Index,HashTabSize)
+              ->	true
+		 ;	integer(Index1)
+		 ->	(Index1 > Arity
+			 ->	Index = 0,default_assert_size(HashTabSize)
+			 ;	Index1 < 0
+			 ->	Index = 1,default_assert_size(HashTabSize)
+			 ;	Index = Index1,default_assert_size(HashTabSize)
+			)
+		 ;	Index = Index1,default_assert_size(HashTabSize)
+	 ),
+	NArity is Arity+1, % to hold the cut addr
+%	writeln(calling_dynamic_code_function(CONVERT_TO_DYNA, Head,Prref,_,_)),
+	dynamic_code_function(CONVERT_TO_DYNA, Head,Prref,assert,1),
+%	writeln(called_dynamic_code_function(CONVERT_TO_DYNA, Head,Prref,_,_)),
+%	convert_to_dyna(Head,Prref,ErrPred),
+	(integer(AZL)
+		 ->	AZLI = AZL
+		 ;	(memberchk(large_clause,AZL)
+			 ->	AZLLC = 2
+			 ;	AZLLC = 0
+			),
+			(memberchk(beginning,AZL)
+			 ->	AZLF = 0
+			 ;	AZLF = 1
+			),
+			AZLI is AZLLC + AZLF
+		),
+	code_to_buff(Nclause,PSC,AZLI),
+	AZ is AZLI /\ 1,
+	assert_buff_to_clref(Head,NArity,Prref,AZ,Index,HashTabSize) ).
+
+code_to_buff(Clause0,AZ) :-
+	term_psc(Clause0,PSC),
+	code_to_buff(Clause0,PSC,AZ).
+
+/* Must fail after code is put into buffer, to reset variables bound in 
+   the process */
+code_to_buff(Clause0,PSC,AZ) :-
+	psc_get_intern(PSC,Val),
+	(Val =:= T_INTERN
+	 ->	intern_term(Clause0,Clause)
+	 ;	Clause = Clause0
+	),
+	(AZ =< 1
+	 ->	assert_code_to_buff(Clause), fail
+	 ;	set_var_occurrences(Clause),
+		assert_code_to_buff(Clause), fail
+	).
+code_to_buff(_,_,_).
+
+set_var_occurrences(Term) :-
+	(atomic(Term)
+	 ->	true
+	 ; var(Term)
+	 ->	(is_attv(Term)
+		 ->	get_attributes(Term,Attributes),
+			set_var_occurrences(Attributes)
+		 ;	Term = '$assertVAR'(_,1)
+		)
+	 ; Term = '$assertVAR'(_,N)
+	 ->	N1 is N+1,
+		term_set_arg(Term,2,N1,0)
+	 ;	functor(Term,_,Arity),
+		set_var_occurrences_sub(1,Arity,Term)
+	).
+
+set_var_occurrences_sub(N,Arity,Term) :-
+	(N > Arity
+	 ->	true
+	 ;	arg(N,Term,Arg),
+		set_var_occurrences(Arg),
+		N1 is N+1,
+		set_var_occurrences_sub(N1,Arity,Term)
+	).
+
+
+/*======================================================================*/
+/* check_assert(+Clause, +Predicate_Called)				*/
+/*	Given the Clause to be asserted in the database and the flavor	*/
+/*	of assert used, checks the Clause for errors so  that Prolog's	*/
+/*	database remains consistent. As usual, if an error is detected	*/
+/*	the predicate aborts.						*/
+/*	The errors that can occur are:					*/
+/*	  - instantiation error: If Head of Clause is uninstantiated.	*/
+/*	  - type error: If Head of Clause is not a callable term or	*/
+/*		if Body contains a non-callable goal.			*/
+/*	  - permission error: If the predicate corresponding to Head	*/
+/*		is one of XSB's built-in predicates (Database error).	*/
+/*======================================================================*/
+
+check_assert((Head :- Body), Pred) :- 
+	!,			% This captures Clause being variable
+	( var(Head) ->
+	    instantiation_error(Pred,1,nonvar)
+	; check_assert_fact(Head, Pred), 
+	  ( check_body(Body) -> true
+	  ; type_error(callable,Body,Pred,1)
+	  )
+	).
+%check_assert(Head, Pred). :- check_assert_fact(Head, Pred).
+check_assert(_Head,_Pred).
+
+% TLS: note that checking for static is done in convert_to_dyna
+check_assert_fact(Head, Pred) :- 	% asserting a fact
+	( callable(Head) -> 
+	    ( functor(Head, F, A),
+		standard_symbol(F, A, _Prop),
+		\+ standard_dynamic_symbol(F, A) ->
+		permission_error(modify,static_procedure,F/A,Pred)
+	    ;	true
+	    )
+	; type_error(callable,Head,Pred,1)
+	).
+
+check_body(X) :- var(X), !.
+check_body((X,Y)) :- !, check_body(X), check_body(Y).
+check_body(X) :- callable(X).
+
+/*======================================================================*/
+/* cut_tra<nsform(+Clause, -NewClause)					*/
+/*	Transform cuts to '_$cutto'.					*/
+/*======================================================================*/
+
+cut_transform((Head:-Body),(Nhead:-Nbody)) :- !,
+	Head =.. Hlist,
+	append(Hlist,[Cutpoint],Nhlist),
+	Nhead =.. Nhlist,
+	(var(Body) % goal_cut_trans does not check top-level var.
+	 ->	Nbody = call(Body)
+	 ;	goal_cut_trans(Body,Nbody,Cutpoint)
+	).
+cut_transform(Head,Head). /* leave unchanged, Arity is one less */
+
+/*======================================================================*/
+/* convert_to_dyna(+PredHead, -Prref, +ErrPred)				*/
+/*	Convert the predicate to DYNA, and return its Prref.		*/
+/*	If it is already a dynamic pred, simply return its Prref.	*/
+/*======================================================================*/
+
+/*
+ TLS: rewrite 08/2010.  
+
+ In principle, all options and other checking would be done at the
+ start, as throwing an error midway through leads to a partially
+ executed command.  In any case, I do check that the options are
+ ground and defined,and that the set is not inconsistent.  Checks of
+ the predlist are done within the execution of dyanmic_1.
+
+ Note that in general setting bits in the psc record must be done
+ before convert_to_dynamic, as this latter function sets up the
+ EP-wrapper of the dynamic predicate based on info about whether the
+ dynamic predicate is incremental or tabled.
+
+ */
+
+dynamic(Spec):- 
+	check_nonvar(Spec,(dynamic)/1,1),
+	dynamic_1(Spec).
+
+% Need to check for list, because psc_type for list returns 0 even
+% though lists are callable.
+dynamic_1(as(Preds,Options)):- !,
+	check_predicate_type(Preds),
+	check_dynamic_options(Options,Preds),
+	exec_pre_dynamic_options(Options,Preds),
+        dynamic_2(Preds).
+dynamic_1(Preds) :-   
+        is_list(Preds),!,
+	domain_error(comma_list_or_non_builtin_callable,Preds,(dynamic)/2,1).
+dynamic_1(Preds) :- 
+	check_nonvar_comma_list(Preds,(dynamic)/1,1),
+	check_predicate_type(Preds),
+        dynamic_2(Preds).
+
+% At this point we know that preds are all ok.
+dynamic_2((P1,P2)) :- !, dynamic_2(P1), dynamic_2(P2).
+dynamic_2(Spec) :-
+	mpa_to_skel(Spec,Head), 
+	dynamic_code_function(CONVERT_TO_DYNA, Head,_Prref,'dynamic/1',1).
+
+% Before we do anything, abort if any predicates are static or foreign
+check_predicate_type((Pred,Preds)) :- !,
+	check_predicate_type(Pred),
+	check_predicate_type(Preds).
+check_predicate_type(Pred) :- 
+        check_callable(Pred,'dynamic/1',1),
+	mpa_to_skel(Pred,Call),
+	term_psc(Call,Psc),
+	psc_type(Psc,Type),
+	((Type =:= T_PRED ; Type =:= T_FORN) -> 
+	    permission_error(modify,static,Pred,'dynamic/1')
+	    ; true).
+
+exec_pre_dynamic_options((Option,Options),PredList) :- !,
+	exec_pre_dynamic_option(Option,PredList),
+	exec_pre_dynamic_options(Options,PredList).
+exec_pre_dynamic_options(Option,PredList) :- 
+	atom(Option),!,
+	exec_pre_dynamic_option(Option,PredList).
+exec_pre_dynamic_options(Culprit,_PredList) :- 
+	domain_error(comma_list_or_dynamic_option,Culprit,(dynamic)/2,1).
+
+exec_pre_dynamic_option(tabled,PredList) :- !,
+	table(PredList).
+exec_pre_dynamic_option(incremental,PredList) :- !,
+	set_predlist_incremental(PredList,INCREMENTAL).
+exec_pre_dynamic_option(opaque,PredList) :- !,
+	set_predlist_incremental(PredList,OPAQUE).
+exec_pre_dynamic_option(variant,PredList) :- !,
+	use_variant_tabling(PredList).
+exec_pre_dynamic_option(private,PredList) :- !,
+	thread_private(PredList).
+exec_pre_dynamic_option(shared,PredList) :- !,
+	thread_shared(PredList).
+exec_pre_dynamic_option(intern,PredList) :- !,
+	set_predlist_intern(PredList).
+
+set_predlist_intern((Pred,Preds)):- !,
+	set_predlist_intern(Pred),
+	set_predlist_intern(Preds).
+set_predlist_intern(Pred):- 
+	mpa_to_skel(Pred,Call),
+	term_psc(Call,Psc),
+%	psc_type(Psc,Type),
+%	writeln(psc_type(Type)),
+	psc_set_intern(Psc,T_INTERN).
+
+set_predlist_incremental((Pred,Preds),Option):- !,
+	set_predlist_incremental(Pred,Option),
+	set_predlist_incremental(Preds,Option).
+
+set_predlist_incremental(Pred,Option):- 
+	mpa_to_skel(Pred,Call),
+	term_psc(Call,Psc),
+	psc_type(Psc,Type),
+%	writeln(psc_type(Type)),
+	(Type =:= T_DYNA -> 
+	    psc_get_incr(Psc,Incr),
+%	    writeln(psc_incr(Incr)),
+	    (Incr =:= NONINCREMENTAL -> 
+		(Option =:= OPAQUE -> New = opaque
+	         ; Option =:= INCREMENTAL -> New = incremental 
+	         ; New = '???'),
+	       table_error(('Dynamic predicate ',Pred,
+	                    ' previously defined as nonincremental cannot be set to ',New))
+	     ; psc_set_incr(Psc,Option) )
+        ;   psc_set_incr(Psc,Option) ).
+
+%---
+
+check_dynamic_options((Option,Options),PredCList) :- !,
+	check_dynamic_option(Option,Options,PredCList),
+	check_dynamic_options(Options,PredCList).
+check_dynamic_options(Option,PredCList) :- !,
+	check_dynamic_option(Option,Option,PredCList).
+
+check_dynamic_option(tabled,Options,PredCList) :- !,
+        (comma_member(incremental,Options) -> 
+	    misc_error(('Cannot declare ',PredCList,
+	           ' as dynamic with options tabled and incremental'))
+	 ;  true).
+check_dynamic_option(variant,Options,PredCList) :- !,
+        (comma_member(incremental,Options) -> 
+	    misc_error(('Cannot declare ',PredCList,
+	           ' as dynamic with options variant and incremental'))
+	 ;  true).
+check_dynamic_option(shared,Options,PredCList) :- !,
+        (comma_member(private,Options) -> 
+	    misc_error(('Cannot declare ',PredCList,
+	           ' as dynamic with options shared and private'))
+	 ;  true).
+check_dynamic_option(private,Options,PredCList) :- !,
+        (comma_member(shared,Options) -> 
+	    misc_error(('Cannot declare ',PredCList,
+	           ' as dynamic with options private and shared'))
+	 ;  true).
+check_dynamic_option(incremental,Options,PredCList) :- !,
+        (comma_member(opaque,Options) -> 
+	    misc_error(('Cannot declare ',PredCList,
+	           ' as dynamic with options incremental and opaque'))
+	 ;  true),
+        (comma_member(tabled,Options) -> 
+	    misc_error(('Cannot currently declare ',PredCList,
+	           ' as dynamic with options incremental and tabled'))
+	 ;  true),
+        (comma_member(variant,Options) -> 
+	    misc_error(('Cannot currently declare ',PredCList,
+	           ' as dynamic with options incremental and tabled'))
+	 ;  true).
+check_dynamic_option(opaque,Options,PredCList) :- !,
+        (comma_member(incremental,Options) -> 
+	    misc_error(('Cannot declare ',PredCList,
+	           ' as dynamic with options opaque and incremental'))
+	 ;  true).
+check_dynamic_option(intern,Options,PredCList) :- !,
+	(comma_member(incremental,Options)
+	 ->	misc_error(('Cannot declare ',PredCList,
+			    ' as dynamic with options intern and incremental'))
+	 ;	true
+	),
+	(comma_member(tabled,Options)
+	 ->	misc_error(('Cannot declare ',PredCList,
+			    ' as dynamic with options intern and tabled'))
+	 ;	true
+	),
+	(comma_member(opaque,Options)
+	 ->	misc_error(('Cannot declare ',PredCList,
+			    ' as dynamic with options intern and opaque'))
+	 ;	true
+	).
+check_dynamic_option(Option,_,_PredCList) :- !,
+	domain_error(dynamic_option,Option,(dynamic)/1,1,
+	'must be one of tabled,variant,incremental,opaque,private,shared').
+
+/*======================================================================*/
+/* get_dynamic_pred_ep(+PHead,+Operation,+CallingRef,-PredEP,-PSC):     */
+/*	returns the PredEP for the predicate that is the main functor   */
+/*      symbol of PHead.  CallingRef is used in the error message       */
+/*      thrown if PHead is a compiled predicate.  The predicate fails   */
+/*      if PHead is undefined, and succeeds returning the PredEP if     */
+/*      PHead is a dynamic predicate.                                   */
+/*      Operation is one of the atoms {access,modify}                   */
+/*                                                                      */
+/* TLS: changed to return PSC, also                                     */ 
+/*                                                                      */
+/*======================================================================*/
+
+get_dynamic_pred_ep(Head,Operation,CallingPred,PredEP,PSC) :-
+	conpsc(Head, PSC),
+	psc_type(PSC,Type),
+	(	Type =:= T_PRED ->
+		% static predicate
+	 	functor(Head,F,A),
+		(	Operation == access ->
+			permission_error(Operation,private_procedure,F/A,CallingPred)
+		;	% Operation == modify,
+			permission_error(Operation,static_procedure,F/A,CallingPred)
+		)
+	;	Type =:= T_DYNA,
+		% dynamic predicate; get PredEP 
+		psc_ep(PSC, PredEP)
+	).
+
+:- export dynamic_pred_has_clauses/2.
+dynamic_pred_has_clauses(Head,Has_Clauses) :-
+    dynamic_code_function(DYNAMIC_PRED_HAS_CLAUSES,Head,Has_Clauses,dynamic_pred_has_clauses,1).
+
+/*======================================================================*/
+/* retract(+Fact)							*/
+/*	this routine retracts facts. It does so by running the chain of */
+/*	buffers, explicitly. When it finds a fact that unifies, it 	*/
+/*	overwrites the first instruction in the buffer (after the 	*/
+/*	retrymeelse instruction) to be a fail. This is somewhat of a 	*/
+/*	kludge but is easy. Besides you shouldn't be using retract 	*/
+/*	anyway. 							*/
+/*	(dsw 4/21/92) It's also incorrect. It deletes ALL clauses in	*/
+/*	the group COMPILED with it. This is particularly unpleasant in	*/
+/*	op/3, where redefining a 'builtin' operator, deletes them ALL.	*/
+/*======================================================================*/
+
+retract(Rule) :-	% changed for multifile predicates (9/2008)
+	(Rule = (Head0 :- Body)
+	 ->	true
+	 ;	Head0 = Rule, Body = true
+	),
+	(nonvar(Head0),Head0 = Mod:Head1
+	 ->	term_new_mod(Mod,Head1,Head),
+		Head1 =.. [_|Args],
+		Head =.. [_|Args]
+	 ;	Head = Head0
+	),
+	call_xsb_hook(xsb_retract_hook(_),[Head,Body],all),
+	(nonvar(Head), '_$multifile'(Head)
+	 % argument 1 fo retract/1 must be instantiated
+	 ->	do_multifile_retract(Head, Body)
+     ;		%check_retract(Head, retract/1),
+	/* check_retract not needed -- checks performed in dynamic_code_function */
+	        dynamic_code_function(GET_DYNAMIC_PRED_EP,Head,PSC,PredEP,retract,1), 
+%           	get_dynamic_pred_ep(Head,modify,'retract/1',PredEP,PSC),
+		db_retract(Head, Body, PredEP,PSC)
+	).
+
+% need to add check_if_trie_assert
+% optimize get_dynamic_pred_ep.
+
+/* TLS: retract_fact is significantly faster than retract -- I'll try
+   to integrate some of its savings with retract at some point, but
+   keeping it around for now. */
+retract_fact(Head) :-	% changed for multifile predicates (9/2008)
+	dynamic_code_function(GET_DYNAMIC_PRED_EP,Head,PSC,PredEP,retract_fact,1), 
+	call_xsb_hook(xsb_retract_hook(_),[Head,true],all),
+	('_$multifile'(Head) -> 
+	    do_multifile_retract(Head, true)
+	  ; 
+	    db_retract_fact(Head,PredEP,PSC) ).
+
+do_multifile_retract(Head, Body) :-
+	clause(Head,New_Head),
+	check_retract(New_Head, multifile_retract/1),
+	(get_dynamic_pred_ep(New_Head,modify,'retract/1',PredEP,PSC)
+	 ->	db_retract(New_Head, Body, PredEP, PSC)
+	 ;	fail
+	).
+
+retract0(Rule) :-	% original retract/1, is used in standard.P
+	(Rule = (Head :- Body)
+	 ->	true
+	 ;	Head = Rule, Body = true
+	),
+	check_retract(Head, retract/1),
+	get_dynamic_pred_ep(Head,modify,'retract/1',PredEP,PSC),
+	db_retract(Head, Body, PredEP,PSC).
+
+retractall(Fact0) :-
+	(nonvar(Fact0),Fact0 = Mod:Fact1
+	 ->	term_new_mod(Mod,Fact1,Fact),
+		Fact1 =.. [_|Args],
+		Fact =.. [_|Args]
+	 ;	Fact = Fact0
+	),
+	call_xsb_hook(xsb_retract_hook(_),[Fact,true],all),
+	(nonvar(Fact), '_$multifile'(Fact)
+	 ->	do_multifile_retractall(Fact)
+	 ;	retractall0(Fact)
+	).
+
+do_multifile_retractall(Fact) :-
+	clause(Fact,New_Fact),
+	retractall0(New_Fact),
+	fail.
+do_multifile_retractall(_).
+
+retractall0(Fact) :-
+	check_retract(Fact, retractall/1),
+	(get_dynamic_pred_ep(Fact,modify,'retractall/1',PredEP,PSC)
+	 ->	db_retractall(Fact, PredEP,PSC)
+	 ;	true
+	).
+
+system_retractall(Fact):- 
+	get_dynamic_pred_ep(Fact,modify,'retractall/1',PredEP,PSC),
+	db_retractall(Fact, PredEP,PSC).
+
+retract_nr(Rule) :-
+	obsolete(retract_nr/1, retract/1),
+	(Rule = (Head :- Body)
+	 ->	true
+	 ;	Head = Rule, Body = true
+	),
+	check_retract(Head, retract_nr/1),
+	get_dynamic_pred_ep(Head,modify,'retract_nr/1',PredEP,PSC),
+	db_retract_nr(Head, Body, PredEP,PSC).
+
+reclaim_space(Fact) :-
+	obsolete(reclaim_space/1, gc_dynamic/0),
+	check_retract(Fact, reclaim_space/1),
+	(get_dynamic_pred_ep(Fact,modify,'reclaim_space/1',PredEP,_PSC)
+	 ->	db_reclaim_space(Fact, PredEP)
+	 ;	true
+	).
+
+/*======================================================================*/
+/*									*/
+/* retract_last_fact(+Skel) should only be applied to dynamic predicates*/
+/* containing only facts.  Skel must be a most-general term.		*/
+/* retract_last retracts the last fact of the predicate and returns	*/
+/* the bindings in Skel.						*/
+/*									*/
+/*======================================================================*/
+
+retract_last_fact(Skel) :-
+	(is_most_general_term(Skel)
+	 ->	true
+	 ;      instantiation_error(retract_last_fact/1,1,skeleton)
+	),
+	get_dynamic_pred_ep(Skel,modify,'retract_last_fact/1',PredEP,PSC),
+	db_get_last_clause(PredEP,Clref,_Type,EntryPoint),
+	do_dyn_code_call(EntryPoint,Skel),
+	db_retract0(Clref,0,PSC).
+
+do_dyn_code_call(EntryPt,Skel) :-
+	code_call(EntryPt,Skel,1). % 1 => dynamic pred, and last call in clause.
+
+/*======================================================================*/
+/* check_retract(+Head_of_Clause, +Predicate_Called)			*/
+/*	Given the Head of the Clause to be retracted from the database	*/
+/*	checks it for exceptions so that Prolog's database remains	*/
+/*	consistent. As usual, if an error is detected the predicate	*/
+/*	aborts.								*/
+/*	The errors that can occur are:					*/
+/*	  - instantiation error: If Head_of_Clause is uninstantiated.	*/
+/*	  - type error: If Head_of_Clause is not a callable term.	*/
+/*	  - permission error: If the predicate corresponding to Head	*/
+/*		is one of XSB's built-in predicates (Database error).	*/
+/*	Note that it is not a type error to call the retract(s) with	*/
+/*	Head a functor of a non-dynamic procedure, or with a body	*/
+/*	instantiated to a non-valid Prolog body. In these cases		*/
+/*	predicate retract or retractall simply fail.			*/
+/*======================================================================*/
+
+% TLS: note that static check is done in get_dynamic_pred_ep
+% this can easily be moved to C.
+check_retract(Head, Pred) :-
+	( var(Head) ->
+	    instantiation_error(Pred,1,nonvar)
+	; (callable(Head) -> 
+	   true
+	;  type_error(callable,Head,Pred,1))
+	).
+
+/*======================================================================*/
+/* abolish(+Pred/+Arity) or abolish(+PredSpec)				*/
+/*	Removes all procedures specified from the Prolog database.	*/
+/*	After this command is executed the current program functions	*/
+/*	as if the named procedures had never existed. Predicate		*/
+/*	abolish/[1,2] removes all clauses of the specified procedure	*/
+/*	regardless of whether they are dynamic or compiled, but it	*/
+/*	cannot abolish built-in predicates or predicates in unloaded	*/
+/*	modules.							*/
+/*	As it ought to, abolish/[1,2] does not complain when trying to	*/
+/*	abolish an undefined predicate.					*/
+/*======================================================================*/
+abolish(Spec) :-
+	(	var(Spec) ->
+		instantiation_error(abolish/1,1,nonvar)
+	;	Spec = (Pred/Arity) ->
+		(	var(Pred) ->
+			instantiation_error(abolish/1,1,'nonvar predicate indicator')
+		;	check_atom(Pred,abolish/1,1),
+			check_arity_integer(Arity,abolish/1,1),
+			functor(Nspec,Pred,Arity)
+		)
+	;	Nspec = Spec,
+		functor(Nspec,Pred,Arity)
+	),
+	(	standard_symbol(Pred,Arity,_Prop) ->
+		permission_error(modify,standard_predicate,Pred/Arity,abolish/1)
+	;	call_xsb_hook(xsb_retract_hook(_),[Nspec,true],all),
+		abolish1(Nspec)
+	).
+
+/*======================================================================*/
+/* abolish(+Pred, +Arity)						*/
+/*	Predicate abolish/2 is an obsolete special case of abolish/1	*/
+/*	maintained here to provide compatibility with DEC-10 Prolog,	*/
+/*	Quintus Prolog, C Prolog and earlier versions of SB and		*/
+/*	PSB-Prolog.							*/
+/*======================================================================*/
+
+abolish(Pred,Arity) :-
+	functor(Spec,Pred,Arity),
+	abolish1(Spec).
+
+:- import current_prolog_flag/2 from curr_sym.
+verbose_writeln(Term):- current_prolog_flag(verboseness,X),X > 0,!,writeln(Term).
+verbose_writeln(_Term).
+
+:- import writeln/1 from standard.
+abolish1(Term) :-
+	retract_index(Term),
+	retract_trie_index(Term),
+	retract_table(Term),
+	conpsc(Term,Psc),
+	psc_type(Psc, Type),
+	immutable_predicate_psc(Psc,Immutable),
+%	writeln(immutable_predicate_psc(Psc,Immutable)),
+	(Immutable == 1 -> 
+	    verbose_writeln('Debug immutable: can''t abolish immutable'(Term)) ,fail
+	  ; true),
+	(Type =:= T_DYNA	    % DYNA
+	 ->	db_abolish(Psc)
+	 ; Type =:= T_PRED	    % normal compiled predicate
+	 ->	psc_ep(Psc,Ep),	    % get entry point
+		unload_seg(Ep),	    % free the space
+		psc_init_info(Psc)
+	 /**
+                psc_set_type(Psc, T_ORDI),
+		NewEP is Psc+4*8, %WORDSIZE,
+		psc_set_ep(Psc, NewEP) **/
+		/*,psc_set_env(Psc, T_UNLOADED)*/
+	 ;	Type =:= T_ORDI	 /* need to check imported !!!! */
+	).
+
+immutable_predicate_psc(Psc,Immutable):- 
+     psc_data(Psc, ModulePsc),
+     (( atom(ModulePsc) ; ModulePsc == 0)-> 
+        Immutable = 0
+      ; psc_immutable(ModulePsc,Immutable)).
+
+/* for testing
+:- export immutable_predicate/2.
+immutable_predicate(Term,Immutable):- 
+     conpsc(Term,Psc),
+     psc_data(Psc, ModulePsc),
+     (ModulePsc == 0 -> 
+        Immutable = 0
+      ; psc_immutable(ModulePsc,Immutable)).
+*/
+/*======================================================================*/
+/* clause(+Head, ?Body)							*/
+/*	Predicate clause/2 searches the database for a clause whose	*/
+/*	head matches the given Head and whose body matches Body. So	*/
+/*	Head must be instantiated. This procedure is non-deterministic.	*/
+/*	it can be used to backtrack through all the clauses matching	*/
+/*	a given Head and Body. It fails when there are no (or no	*/
+/*	further) matching clauses in the database.			*/
+/*	In the case of unit-clauses, Body is unified with 'true'.	*/
+/*======================================================================*/
+
+clause(Head, Body) :-
+	check_clause(Head),
+	clause0(Head, Body0),
+	goal_cut_untrans(Body0, Body).
+
+
+clause0(Head, Body) :-
+	get_dynamic_pred_ep(Head,access,'clause0/2',PredEP,_PSC),
+	db_clause(Head,Body,PredEP,_Clref).
+
+
+/*======================================================================*/
+/* check_clause(+Head_of_Clause)					*/
+/*	Given the Head of the Clause to be asserted in the database	*/
+/*	checks this Head for errors. As usual, if an error is detected	*/
+/*	the predicate aborts.						*/
+/*	The errors that can occur are:					*/
+/*	  - instantiation error: If Head of Clause is uninstantiated.	*/
+/*	  - type error: If Head of Clause is not a callable term.	*/
+/*	  - permission error: If the predicate corresponding to Head	*/
+/*		is one of XSB's built-in predicates (Database error).	*/
+/*	Note that it is not a type error to call clause/2 with Head a	*/
+/*	functor of a non-dynamic procedure, or with body instantiated	*/
+/*	to a non-valid Prolog body. In these cases predicate clause/2	*/
+/*	simply fails.							*/
+/*======================================================================*/
+
+% TLS: note that static check is done in get_dynamic_pred_ep
+check_clause(Head) :-
+	( var(Head) ->
+	    instantiation_error(clause/2,1,nonvar)
+	;   callable(Head) -> 
+	    (	functor(Head, F, A),
+		standard_symbol(F, A, _Prop),
+		\+ standard_dynamic_symbol(F, A)
+	    ->	permission_error(access,private_procedure,F/A,clause/2)
+	    ;	true
+	    )
+	  ; type_error(callable,Head,clause/2,1)
+	).
+
+/*======================================================================*/
+/*======================================================================*/
+t_assert(Clause, Flag) :- check_assert(Clause,'trie_assert/1'),
+	t_assert_1(Clause, Flag).
+
+t_assert_exit(Clause) :- abort(('Illegal Term in trie_assert:',Clause)).
+
+t_assert_1((Head :- Body), _Flag) :- t_assert_exit((Head :- Body)).
+t_assert_1(Clause, Flag) :- 
+	conpsc(Clause, PSC),
+	psc_arity(PSC, Arity),
+	dynamic_code_function(CONVERT_TO_DYNA, Clause,Prref,t_assert,_),
+%	convert_to_dyna(Clause,Prref,trie_assert/1),
+%	writeln(clause(Clause) +psc(PSC) +arity(Arity) +prref(Prref)),
+	trie_assert_builtin(Clause,PSC,Arity,Prref,Flag).
+
+/*======================================================================*/
+/* exchange_definitions(+Skel1,+Skel2)					*/
+/*	Skel1 and Skel2 are predicate terms.  This predicate exchanges	*/
+/*	the entry points and types in the PSC records of the two	*/
+/*	predicates.							*/
+/*======================================================================*/
+
+exchange_definitions(Skel1,Skel2) :-
+	conpsc(Skel1,PSC1),
+	conpsc(Skel2,PSC2),
+	psc_type(PSC1,Type1),
+	psc_type(PSC2,Type2),
+	psc_ep(PSC1,EP1),
+	psc_ep(PSC2,EP2),
+	psc_set_ep(PSC1,EP2),
+	psc_set_ep(PSC2,EP1),
+	psc_set_type(PSC1,Type2),
+	psc_set_type(PSC2,Type1).
+
+/*======================================================================*/
+/* predicate_defined(+Skel)						*/
+/*	Skel is a predicate term (perhaps modified by mod:).  This	*/
+/*	predicate succeeds if the predicate term is defined as having	*/
+/*	clauses, i.e., could be called.					*/
+/*======================================================================*/
+
+predicate_defined(Spec) :-
+	(Spec = Mod:GSkel, nonvar(GSkel)
+	 ->	term_new_mod(Mod,GSkel,Skel)
+	 ;	Skel = Spec
+	),
+	term_psc(Skel,Psc),
+	psc_type(Psc,Type),
+	Type =\= 0,		%  != T_ORDI
+	Type =\= 12.		%  != T_UDEF, not loaded
+
+
+trie_assert_builtin(_Clause,_PSC,_Arity,_Prref,_Flag) :-
+	'_$builtin'(TRIE_ASSERT).
+
+
+/* These predicates are intended to be used only experimentally, for get_unifiable_returns */
+
+system_retract_fact(Rule) :-	
+	get_dynamic_pred_ep(Rule,modify,'retract/1',PredEP,PSC),
+	db_retract(Rule, true, PredEP,PSC).
+
+t_assert_2(Clause, Flag) :- 
+	conpsc(Clause, PSC),
+	psc_arity(PSC, Arity),
+%	db_get_prref(PSC,Prref),
+	dynamic_code_function(CONVERT_TO_DYNA, Clause,Prref,t_assert,_),
+%	convert_to_dyna(Clause,Prref,trie_assert/1),
+%	writeln(clause(Clause) +psc(PSC) +arity(Arity) +prref(Prref)),
+	trie_assert_builtin(Clause,PSC,Arity,Prref,Flag).
+
+/* experimental predicates, to allow an update of an integer field in a
+simple fact predicate: Fields must be integer or atom before updated
+argument, and indexed argument cannot be updated.
+E.g. update(p(a,X,_),[2],[NX],(NX is X+1)) updates the second field of the
+p(a,_,_) fact by adding 1 to it.  */
+
+update(Fact,Args,Vals,Exp) :-
+	get_fact_clref(Fact,ClRef),
+	call_c(Exp),
+	update_fields(Args,Vals,ClRef).
+
+get_fact_clref(Fact,ClRef) :-
+	term_psc(Fact,PSC),
+	psc_type(PSC,Type),
+	Type =:= 1,		% T_DYNA
+	psc_ep(PSC,PredEP),
+	PredEP =\= 0,
+	db_clause(Fact,true,PredEP,ClRef).
+
+%% if have the ClRef
+update_clref(ClRef,Args,Vals,Exp) :-
+	call_c(Exp),
+	update_fields(Args,Vals,ClRef).
+
+update_fields([],[],_).
+update_fields([Arg|Args],[Val|Vals],ClRef) :-
+	Disp is (7+2*Arg)*4,
+	buff_set_word(ClRef,Disp,Val),
+	update_fields(Args,Vals,ClRef).
+
+%------------------------------------------------------------------------------
+end_of_file.
+%------------------------------------------------------------------------------
+
+/* Should no longer be needed now that convert to dyna is in C */
+% convert_to_dyna(PHead,Prref,ErrPred) :-
+% 	xsb_sys_mutex_lock(MUTEX_DYNAMIC),
+% 	conpsc(PHead, PSC),
+% 	psc_type(PSC, SYMTYPE),
+% 	( SYMTYPE =:= T_DYNA ->			/* already dynamic */
+% 	   db_get_prref(PSC,Prref)
+% 	; SYMTYPE =:= T_ORDI  ->   	     /* undefined, it's first clause */
+% 		db_new_prref(PSC,PHead,Prref)
+% 	; SYMTYPE =:= T_UDEF  ->    	     /* unloaded, this is 1st clause */
+% 		db_new_prref(PSC,PHead,Prref)
+% 	; SYMTYPE =:= T_PRED ->		     /* compiled, illegal */
+%                 functor(PHead, F, A),
+% 		xsb_sys_mutex_unlock(MUTEX_DYNAMIC),
+% 		permission_error(modify,static,F/A,ErrPred)
+% 	; 
+% 		xsb_sys_mutex_unlock(MUTEX_DYNAMIC),
+% 		type_error(callable,PHead,ErrPred,1)
+% 	),
+% 	xsb_sys_mutex_unlock(MUTEX_DYNAMIC).
+
+/*======================================================================*/
+/* db_new_prref(+PSC,+PHead,-Prref):					*/
+/*	creates an empty Prref, i.e.  one with no clauses in it.  	*/
+/*	If called, it will simply fail.  Prref must be a variable at 	*/
+/*	the time of call.  It points the entry point of the psc record	*/
+/*	pointed to by PSC to this Prref.  So in effect it makes it	*/
+/*	dynamic.	 						*/
+/*	Prref ->:							*/
+/*		-4: Addr of last Clref on ALL chain			*/
+/*		0: BC instruction: fail (if empty),			*/
+/*			jump and save breg (if nonempty)		*/
+/*		4: Addr of first Clref on ALL chain			*/
+/*======================================================================*/
+
+%db_new_prref(PSC,_PHead,Prref) :-
+%	db_build_prref(PSC, _Tabled, Prref).
+
+
+%--------
+
+% set_incremental_for_dynamic((Pred,Preds),Option):- !,
+% 	set_incremental_for_dynamic(Pred,Option),
+% 	set_incremental_for_dynamic(Preds,Option).
+% set_incremental_for_dynamic(Pred,Option):- 
+% 	add_incr_dynamic(Pred,Option).
+
+% TLS: change to allow "dynamic p/n as incremental" to properly work.
+% add_incr_dynamic(Spec,Type) :-
+% 	mpa_to_skel(Spec,Call),
+% 	term_psc(Call,Psc),
+% 	psc_set_incr(Psc,Type), %% set it as incremental/non-increental
+%%	psc_set_tabled(Psc,1),
+% 	psc_type(Psc,SymType),
+% %	writeln(psc_type(Psc,SymType)),
+% 	(SymType \== T_DYNA
+% 	 ->	psc_set_ep(Psc,4), % set to addr of fail instruction
+% 		psc_set_type(Psc,T_DYNA)
+% 	 ;	psc_set_ep(Psc,4)  % set to addr of fail instruction  << change tls
+% 	),
+% 	% TLS: should be dynamic, but this makes sure there is a tabletrysingleanswers 
+% 	% instruction generated.
+% 	dynamic_code_function(CONVERT_TO_DYNA, Call,_Prref,add_incr_dynamic,1).
+
+/*
+| 	(Option == NONINCREMENTAL -> 
+| 	    dynamic_code_function(CONVERT_TO_NONINCREMENTAL,Psc,_,'dynamic/1',1)
+|	  ; (Option == INCREMENTAL -> 
+| 	       ((psc_type(Psc,SymType),SymType == T_DYNA) ->
+|		   psc_set_ep(Psc,4) % set to addr of fail instruction
+|		 ; true)
+|	     ; true ) ).
+*/
+% TLS: change to allow "dynamic p/n as incremental" to properly work.
+% add_incr_dynamic(Spec,Type) :-
+% 	mpa_to_skel(Spec,Call),
+% 	term_psc(Call,Psc),
+% 	psc_set_incr(Psc,Type), %% set it as incremental/non-increental
+%%	psc_set_tabled(Psc,1),
+% 	psc_type(Psc,SymType),
+% %	writeln(psc_type(Psc,SymType)),
+% 	(SymType \== T_DYNA
+% 	 ->	psc_set_ep(Psc,4), % set to addr of fail instruction
+% 		psc_set_type(Psc,T_DYNA)
+% 	 ;	psc_set_ep(Psc,4)  % set to addr of fail instruction  << change tls
+% 	),
+% 	% TLS: should be dynamic, but this makes sure there is a tabletrysingleanswers 
+% 	% instruction generated.
+% 	dynamic_code_function(CONVERT_TO_DYNA, Call,_Prref,add_incr_dynamic,1).

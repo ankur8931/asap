@@ -1,0 +1,48 @@
+
+% TLS: from assertions.pl
+
+%% To become obsolete? MH 
+:- op(975, xfx,(=>)).
+:- op(978, xfx,(::)).
+
+:- op(1150, fx,(decl)).
+:- op(1150,xfx,(decl)).
+:- op(1150, fx,(pred)).
+:- op(1150,xfx,(pred)).
+:- op(1150, fx,(prop)).
+:- op(1150,xfx,(prop)).
+:- op(1150, fx,(modedef)).
+
+:- op(1150, fx,(calls)). 
+:- op(1150,xfx,(calls)). 
+:- op(1150, fx,(success)). 
+:- op(1150,xfx,(success)). 
+:- op(1150, fx,(comp)).
+:- op(1150,xfx,(comp)).
+
+% TLS:  from regtypes.pl
+
+:- op(1150, fx,(regtype)). 
+:- op(1150,xfx,(regtype)). 
+
+% TLS: from functions/ops.pl (?)
+
+:- op(800, xfx, (:=)).
+:- op(50, fx, (~)).
+
+% TLS: basicmodes.pl
+
+%:- op(500, fx,(?)).
+
+% TLS:  guess
+
+:- op(1150, fx,(meta_predicate)). 
+
+:- op(1150, fx,(data)). 
+:- op(1150,xfx,(data)). 
+:- op(1150, fx,(discontiguous)). 
+:- op(1150,xfx,(discontiguous)). 
+
+:- 	op(500,yfx,#).
+:- 	op(1100,fx,(document_export)).
+:- 	op(1100,fx,(document_import)).

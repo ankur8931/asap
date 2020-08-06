@@ -1,0 +1,3012 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export
+	class/4, newClass/5, retractallClass/4,
+	updateClass/4, 
+	subclass/2, proper_subclass/2,
+	immediate_subclass/2, 
+	newSubclass/2, retractallSubclass/2,
+	is_a_relation/1, is_an_inheritable_relation/1,
+	newRelName/5, newRelName/4, newRelName/3, subrel/2,
+	irel/3, immediate_irel/3, 
+	newIrel/3, retractallIrel/3,
+	schrel/3, immediate_schrel/3, 
+	newSchrel/3,  retractallSchrel/3,
+	newStrelName/5, newStrelName/4, strel/3, immediate_strel/3, is_a_strel/1,
+	newStrel/3, retractallStrel/3,
+	object/4, newObject/5, retractallObject/4, updateObject/4,
+	memberof/2, immediate_memberof/2, 
+	newMemberof/2, retractallmemberof/2,
+	(attribute)/3, immediate_attribute/3, 
+	newAttribute/3, retractallAttribute/3,
+            updateAttribute/5,
+	attribute_object/3,
+	newAttribute_object/3, retractallAttribute_object/3,
+	new_oms/0,
+	set_chk_index/0,
+	show_oms_size/0.
+
+:- import intern_string/2, slash/1, stat_flag/2  from machine.
+:- import conset/2, conget/2 from gensym.
+:- import concat_atom/2 from string.
+:- import variant/2, subsumes/2 from subsumes.
+:- import ground/1, member/2 from basics.
+:- import abolish_table_pred/1 from tables.
+:- import search_module/6 from consult.
+:- import new_trie/1, delete_trie/1, trie_interned/4, 
+	  trie_unintern_nr/2, trie_unintern/2, trie_intern/5 from intern.
+
+%%%%%%%%%%%%% Core Declarations 
+
+cdf_dynamic(oms_cn/4).
+cdf_index(oms_cn,4,[1,2,3]).
+cdf_dynamic(oms_sc/2).
+cdf_index(oms_sc,2,[1,2]).
+cdf_dynamic(oms_rln/3).
+cdf_index(oms_rln,3,[1+2,1,2+3]).
+cdf_dynamic(oms_strel/3).
+cdf_index(oms_strel,3,[1+2,1,2+3]).
+cdf_dynamic(oms_schrel/3).
+cdf_index(oms_schrel,3,[1+2,1,2+3]).
+cdf_dynamic(oms_obj/4).
+cdf_index(oms_obj,4,[1,3]).
+cdf_dynamic(oms_mo/2).
+cdf_index(oms_mo,2,[1,2]).
+cdf_dynamic(oms_at/3).
+cdf_index(oms_at,3,[1+2,1,2+3]).
+cdf_dynamic(oms_ao/3).
+cdf_index(oms_ao,3,[1+2]).
+
+cdf_dynamic(oms_logging_state/1).
+cdf_dynamic(oms_log_trie/1).
+
+%%%%%%%%%%%%% Declarations for External View
+
+cdf_dynamic(class_ext/3).
+cdf_dynamic(subclass_ext/4).
+cdf_dynamic(relationship_ext/6).
+cdf_dynamic(strel_ext/6).
+cdf_dynamic(schrel_ext/6). 
+cdf_dynamic(object_ext/3).
+cdf_dynamic(memberof_ext/4).
+cdf_dynamic(attribute_ext/6).
+cdf_dynamic(attribute_object_ext/6). 
+
+%%%%%%%%%%%%% Declarations for External Intensional View
+
+cdf_dynamic(class_int/3).
+cdf_dynamic(immediate_subclass_int/4).
+cdf_dynamic(immediate_relationship_int/6).
+cdf_dynamic(immediate_strel_int/6).
+cdf_dynamic(immediate_schrel_int/6).
+cdf_dynamic(object_int/3).
+cdf_dynamic(immediate_memberof_int/4).
+cdf_dynamic(immediate_attribute_int/6).
+cdf_dynamic(attribute_object_int/6).
+
+cdf_dynamic(cn_id_map/4).
+cdf_index(cn_id_map,4,[1,3+4],5001).
+
+cdf_dynamic(ob_id_map/4).
+cdf_index(ob_id_map,4,[1,3+4],5001).
+
+%%%%%%%%%%%%% Declarations for caching and XJ interface
+:- ensure_loaded(oms_oblivion).
+
+:- (search_module(oms_xj,_,_,_,_,_) -> 
+	    consult(oms_xj)
+     ;	    consult(oms_cdf)
+   ).
+
+%%%%%%%%%%%%% Declarations for exception handling
+:- ensure_loaded(oms_exceptions).
+
+%%%%%%%%%%%%% Declarations for updatable DB
+%%:- ensure_loaded(oms_db_updatable).
+
+cdf_dynamic(oms_extint_updatable/1).
+cdf_dynamic(retractall_object_int/4).
+cdf_dynamic(newObject_int/5).
+cdf_dynamic(retractall_memberof_int/2).
+cdf_dynamic(retractall_attribute_int/3).
+cdf_dynamic(newAttribute_int/3).
+
+cdf_dynamic(assert_oms_int/1).
+cdf_dynamic(retractall_oms_int/1).
+
+%%%%%%%%%%%%% Declarations for constraint checking
+%:- ensure_loaded(oms_constraints).
+%cdf_dynamic(oms_checking/1).
+
+:- ensure_loaded(oms_config).
+
+:- initialize_oms.
+
+initialize_oms:- 
+	init_dynamic_code,
+	init_index_std,
+	retractall(oms_logging_state(_)),
+	asserta(oms_logging_state(off)),
+	oms_set_log_off,
+	init_oms_rels.
+	
+init_dynamic_code:- 
+	cdf_dynamic(F/A),
+	dynamic(F/A),
+	fail.
+init_dynamic_code.
+
+%--------------------------------------------------------------------
+/* TLS: these should be used only when checking dead code.  They
+include superceded predicate names and "imports" from other files.
+
+:- document_export assert_attribute/3,assert_attribute_object/3,
+	assert_memberof/2,
+	assert_object/4, 
+	assert_relationship/3,assert_schrel/3,assert_strel/3,
+	assert_subclass/2, 
+
+	irel/3, newIrel/3,newRelationship_omsext/3,
+
+	table_subclass/2, 
+
+	retractall_attribute/3, retractall_attribute_object/3,
+	retractall_class/4, retractall_memberof/2,
+	retractall_object/4,  retractall_relationship/3,
+	retractall_schrel/3, retractall_strel/3,  retractall_subclass/2,
+
+% Needed for updates in oms_xj/oms_cdf.
+	assert_oms/1,
+
+% used by oms_io:
+	oms_initialize_ctrs/0.
+
+:- import check_incremental_constraints/1 from oms_constraints.
+:- import oms_update_list/1 from oms_cdf.
+:- import oms_error/2, oms_warning/2 from oms_exceptions.
+*/
+%--------------------------------------------------------------------
+
+:- comment(module,
+"
+@section{Using the OMS}
+
+The OMS Programmer's View (@ref{Programmer's View of the OMS}) is
+defined in this file, along with the (@ref{OMS: Internal Format}.
+Both of these views use generated identifiers, which means that data
+in External Format must be transformed into Internal Format by one of
+the predicates in @ref{oms_io (library)}.  The user of the OMS will
+normally access data in the OMS's Internal Format through the
+Programmer's View, which supports a semantics of inheritance (see
+@ref{Semantic Axioms for the Programmer's View}) and accesses External
+Intensional Data.  Predicates defined at the Programmer's View include
+@pred{class/4}, @pred{subclass/2}, @pred{relationship/3}, and others
+defined below.  Predicates that support the Internal Format include
+@pred{oms_cn/4}, @pred{oms_sc/2}, @pred{oms_rln/3} and others.
+
+@section{Builtin Classes and Relations}
+
+The following classes and relations are defined for @em{every}
+instance of the OMS.  In other words, any ontology definable via the
+OMS includes these classes and relations.
+
+@begin{itemize}
+
+@item @tt{id(OMS Root,OMS)} @cindex{OMS Root}: Root node of the
+Ontology.  Includes all objects and relation tuples.  As a result, all
+classes are subclasses of @tt{id('OMS Root','OMS')} and  all relations are
+subrelations of @tt{id('OMS Root','OMS')}.
+
+
+@item @tt{id('OMS Relations','OMS')}: @cindex{OMS Relations'}
+	Class that includes all relation tuples --- inheritable or
+not.  @footnote{For historical purposes, inheritable relations are
+sometimes called @em{relationships}.}  Defined as an immediate
+subrelation of @tt{id('OMS Root','OMS')}.
+
+As mentioned in @ref{A Quick Tour of the OMS}, OMS relations can
+define inheritable attributes which hold for subclasses and objects,
+inheritable schema constraints, and non-inheritable properties of
+sets.  Subclasses of @tt{OMS Relations} define inheritable attributes.
+
+@item @tt{id('OMS Inheritable Relations','OMS')}: 
+@cindex{OMS Inheritable Relations}
+	Includes all non-inheritable set-valued relation tuples.
+Defined as an immediate subrelation of @tt{id('OMS Relations','OMS')}.
+
+@item @tt{id('OMS Set-Valued Relations','OMS')}: 
+@cindex{OMS Set-Valued Relations}
+	Includes all non-inheritable set-valued relation tuples.
+Defined as an immediate subrelation of @tt{id('OMS Relations','OMS')}.
+
+
+@item @tt{id('OMS Components','OMS')}: @cindex{OMS Components}
+	Includes all component names.  Defined as an immediate
+subclass of @tt{id('OMS Root','OMS')}.
+
+@item @tt{id('OMS Primitive Types','OMS')}: @cindex{OMS Primitive
+Types} The classes here are implemented as part of the undelying OMS
+code and avoids explicit class creation, for numbers, atoms, etc.
+They are represented in XSB by structured terms.  Defined as an
+immediate subclass of @tt{id('OMS Root','OMS')}.
+
+The primitive types supplied by the OMS are: 
+@begin{verbatim}
+       oms_cn(integer(X),'INTEGER/1',integer(X),'OMS').
+       oms_cn(float(X),'FLOAT/1',float(X),'OMS').
+       oms_cn(atom(X),'ATOM/1',atom(X),'OMS').
+       oms_cn(cardinal(X),'CARDINAL/1',cardinal(X),'OMS').
+       oms_cn(aint(X),'AINT/1',atom(X),'OMS').
+       oms_cn(object(X),'OBJECT/1',object(Y,Z),'OMS').
+       oms_cn(clause(X,Y),'CLAUSE/2',clause(X,Y),'OMS').
+@end{verbatim}
+
+@noindent The data structures represented by first three are
+self-explanatory; @tt{aint(_)} is used to represent integers that have
+the form of Prolog atoms, such as @tt{'01968'}; while @tt{obj(_)} is
+used to represent the set of all object IDs.  To store a Prolog clause
+@em{C}, it is regarded as a term and stored using the (and terms) are
+stored @em{say something more abt. clause/2}.
+
+Each of the primitive types can be seen as constituting a rather flat
+hierarchy.  A given integer, say @tt{integer(7)} is a leaf of the
+integer hierarchy.  Its immediate parent is @tt{integer(_)}, in which
+the underscore signifies an anonymous Prolog variable.
+@tt{integer(_)} can be thought of as standing for the expression
+@em{(all X).integer(X)}.  Thus, @tt{integer(_)} is the parent of each
+instanitated integer, so that the usual ordering of integers is not
+maintained within the OMS.  Similarly, @tt{atom(_)} is the parent of
+each instantiated atom and so on.
+@end{itemize}
+"). 
+
+%%% (Re-)Initialization %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% TLS: new_oms/0 may not get used heavily, but I think its useful
+% to have all the re-initialization stuff here in one place, to record
+% what the state consists of and to make future maintenance easier. 
+
+:- comment(new_oms/0,"Normally, initialization is done automatically
+upon loading an OMS.  The routine @pred{new_oms/0} should be called
+only when an OMS is to be reinitialized during a session.  This
+predicate removes all data in internal, external, and external
+intensional format, and reasserts the basic OMS classes and
+relations.").
+
+new_oms:- 
+	conset('_cid_ctr',0),
+	conset('_oid_ctr',0),
+	reset_dynamics,
+	asserta(oms_logging_state(off)),
+	oms_set_log_off,
+	init_oms_rels.
+
+reset_dynamics:- 
+	cdf_dynamic(F/A),
+	functor(T,F,A),
+	retractall(T),
+	fail.
+reset_dynamics.
+
+%-------
+
+init_index_std :-
+	(    cdf_index(F,A,I),index(F/A,I)
+	   ; cdf_index(F,A,I,N),index(F/A,I,N)  ),
+	fail.
+init_index_std.
+
+%-------
+
+init_oms_rels :-
+	(oms_cn(_,_,_,_) -> true ; conset('_cid_ctr',0)),
+
+	(oms_obj(_,_,_,_) -> true ; conset('_oid_ctr',0)),
+
+	newClass('OMS Root',unk,'OMS',RootCid) ,
+
+	newClass('OMS Relations',RootCid,'OMS',RelCid),
+
+	newClass('OMS Inheritable Relationships',RelCid,'OMS',Inhid),
+
+	newClass('Definition',Inhid,'OMS',_Defid),
+	newClass('Necessary Condition',Inhid,'OMS',_Necessid),
+	newClass('Sufficient Condition',Inhid,'OMS',_Suffid),
+
+	newClass('OMS Set-Valued Relations',RelCid,'OMS',StrelId),
+
+	/* Now description is just a type of strel */
+	newClass('Descriptions',StrelId,'OMS',_Did),
+
+	newClass('OMS Primitive Types',RootCid,'OMS',TypesCid),
+	newClass([],TypesCid,'OMS',_Nullid),
+	assert_primitive_types(TypesCid),
+	init_component_info.
+
+/* Note: Cid must be unified with Native ID for external dumping to
+ work.  Do NOT use newClass for these -- variable handling has been
+ taken out of that predicate.  */
+assert_primitive_types(TypsCid):- 
+	newPrimitiveClass('AINT/1',TypsCid,aint(X),'OMS',aint(X)),
+	newPrimitiveClass('ATOM/1',TypsCid,atom(X),'OMS',atom(X)),
+	newPrimitiveClass('CARDINAL/1',TypsCid,cardinal(X),'OMS',cardinal(X)),
+	newPrimitiveClass('FLOAT/1',TypsCid,float(X),'OMS',float(X)),
+	newPrimitiveClass('INTEGER/1',TypsCid,integer(X),'OMS',integer(X)),
+	newPrimitiveClass('OBJECT/1',TypsCid,object(_),'OMS',object(_,_)),
+	newPrimitiveClass('CLAUSE/2',TypsCid,clause(X,Y),'OMS',clause(X,Y)).
+
+newPrimitiveClass(Name,ParentCid,NewCid,Source,NativeID):- 
+	(oms_cn(NewCid,Name,NativeID,Source) -> true 
+           ; 
+	   UpdateList = [asserta(oms_cn(NewCid,Name,NativeID,Source)),
+		      asserta(oms_sc(NewCid,ParentCid))],
+           oms_update_list(UpdateList)).
+
+oms_primitive_type(X):- oms_primitive_class(X,_,_,_).
+
+oms_primitive_class(aint(X),'AINT/1',aint(X),'OMS').
+oms_primitive_class(atom(X),'ATOM/1',atom(X),'OMS').
+oms_primitive_class(cardinal(X),'CARDINAL/1',cardinal(X),'OMS').
+oms_primitive_class(float(X),'FLOAT/1',float(X),'OMS').
+oms_primitive_class(integer(X),'INTEGER/1',integer(X),'OMS').
+oms_primitive_class(clause(X,Y),'CLAUSE/2',clause(X,Y),'OMS').
+oms_primitive_class(object(X),'OBJECT/1',object(Y,Z),'OMS') :-
+	(nonvar(X)
+	 ->	object(X,_,Y,Z)
+	 ; nonvar(Y),nonvar(Z)
+	 ->	object(X,_,Y,Z)
+	 ;	true
+	).
+
+%-----------
+
+init_component_info :-
+        class(RootCid,'OMS Root','OMS Root','OMS'),
+	newClass('OMS Component',RootCid,'OMS',Compid),
+	newClass('component/3',Compid,
+			component('OMS Root','OMS',atom(_),'OMS',
+				  integer(_),'OMS'),
+			'OMS',_Compid),
+	newClass('compName/2',Compid,
+			compName('OMS Root','OMS',atom(_),'OMS'),'OMS',_Tagid),
+	newComponent('OMS','.',check,OCid,Rcid),
+	newStrel(OCid,Rcid,OCid).
+
+cdf_install_dir('.').
+/*cdf_install_dir(P) :- 
+	xsb_configuration(install_dir, InstallDir),
+        fmt_write_string(P,'%s/packages/CDF',f(InstallDir)).*/
+
+/* New component initializes a new component, creating version,
+dependency and path information.  Given a previously existing component, 
+re-creating the component with the same path is a safe operation.
+
+	If Action unifies with check and
+		if a previous component exists with the same path, 
+			no action is taken; 
+		otherwise if a previous component exists with a different path,
+ 			an error occurs. 
+	If Action is replace
+		if a previous component exists 
+		    its directoryPath is overwritten with the new path
+*/
+	
+newComponent(Name,Path,component(NameId,atom(Path),integer(V)),Depid):- 
+	newComponent(Name,Path,check,
+			component(NameId,atom(Path),integer(V)),Depid).
+
+newComponent(Name,Path,Action,component(NameId,atom(Pathout),integer(V)),
+							Depid):- 
+	class(GenCompid,_,'OMS Component','OMS'),
+	newClass(Name,GenCompid,Name,NameId),
+	newStrelName(componentDepends,componentDepends,Name,Depid),
+	newPathandVersion(Action,Name,NameId,Path,Pathout,V).
+
+/* check gives an error if a component exists whose file path is not
+equal to PATH.  New components are created with filepath PATH and
+version 0 
+
+create renames the path of each component to PATH if its file path is
+not equal to PATH (apart from OMS which it leaves alone). If the
+component is new, or has had its file path reset, its version is 0,
+and its version is updated otherwise.
+
+in_place does not affect existing components.  New components are
+created with filepath PATH and version 0.
+
+The latter two should just be used in component updates. */
+
+newPathandVersion(check,Name,NameId,Path,Path,V):-
+	newStrelName(hasPath,hasPath,Name,PathRid),
+	((strel(NameId,PathRid,atom(Path1)),Path1 \= Path) ->
+	      oms_error(component,['Creating a component path ',Path1,
+			' for ',Name,' which has path ',Path]) 
+	    ; 
+	      newStrel(NameId,PathRid,atom(Path)) ),
+	newStrelName(hasVersion,hasVersion,Name,VersId),
+	(strel(compName(NameId,atom(Path)),VersId,integer(V)) -> 
+	     true 
+	   ; 
+	     newStrel(compName(NameId,atom(Path)),VersId,integer(0)),
+	     V = 0 ).
+newPathandVersion(create,'OMS',NameId,_Pathin,Path,V):- !,
+	newStrelName(hasPath,hasPath,'OMS',PathRid),
+	newStrelName(hasVersion,hasVersion,'OMS',Versid),
+	immediate_strel(NameId,PathRid,atom(Path)),
+	immediate_strel(compName(NameId,atom(Path)),Versid,integer(V)).
+/* On create, even if the component has been loaded from somewhere else,  
+   it needs a new path and version, (obtained from the path). */
+newPathandVersion(create,Name,NameId,Pathin,Pathin,V1):- 
+	newStrelName(hasPath,hasPath,Name,PathRid),
+        retractallStrel(NameId,PathRid,atom(_)),
+	newStrelName(hasVersion,hasVersion,Name,VersId),
+        retractallStrel(compName(NameId,atom(_)),VersId,integer(_)),
+        newStrel(NameId,PathRid,atom(Pathin)),
+        concat_atom([Pathin,'/',Name],File),
+        (file_exists(File) ->
+  	     file_latest_version(Pathin,Name,Vold),
+	     V1 is Vold + 1
+	  ;  V1 = 0),
+       newStrel(compName(NameId,atom(Pathin)),VersId,integer(V1)).
+/* Assumes merge_check has been done.  Do nothing if the component has been
+   loaded from somewhere.  Otherwise, create it with the new directory path, 
+   and check the directory for the proper version to make the component.  */
+newPathandVersion(in_place,Name,NameId,Pathin,Path,V):- 
+	newStrelName(hasPath,hasPath,Name,PathRid),
+	newStrelName(hasVersion,hasVersion,Name,VersId),
+	(strel(compName(NameId,atom(Path)),VersId,integer(V)) -> 
+  	     true
+	  ; 
+    	     newStrel(NameId,PathRid,atom(Path)),
+	     concat_atom([Pathin,'/',Name],File),
+  	     (file_exists(File) ->
+  	         file_latest_version(Pathin,Name,Vold),
+	          V is Vold + 1
+	       ;  V = 0),
+	     newStrel(NameId,VersId,integer(V)),
+	     Pathin = Path ).
+
+retract_superfluous_paths_and_vs(NameId,PathRid,Versid,Path):-
+	strel(NameId,PathRid,atom(Path1)),Path1 \= Path,
+        retractallStrel(NameId,PathRid,atom(Path1)),
+        retractallStrel(compName(NameId,atom(Path1)),Versid,integer(_)),
+	fail.
+retract_superfluous_paths(_,_,_).
+
+%------------
+
+%% Given a OMS in memory, initialize ID counters to max used.
+oms_initialize_ctrs :-
+	(conset('_$maxctr',0),
+	 (oms_cn(Cid,_,_,_) ; cn_id_map(Cid,_,_,_)),
+	 integer(Cid),
+	 conget('_$maxctr',Cnt),
+	 Cid > Cnt,
+	 conset('_$maxctr',Cid),
+	 fail
+	 ;
+	 conget('_$maxctr',CCnt),
+	 conset('_cid_ctr',CCnt)
+	),
+	(conset('_$maxctr',0),
+	 (oms_obj(Oid,_,_,_) ; ob_id_map(Oid,_,_,_)),
+	 conget('_$maxctr',Cnt),
+	 Oid > Cnt,
+	 conset('_$maxctr',Oid),
+	 fail
+	 ;
+	 conget('_$maxctr',OCnt),
+	 conset('_oid_ctr',OCnt)
+	).
+
+%%% CLASS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(class/4,"@tt{class(Cid,Name,NatCid,Source)} retrieves a
+class with internal ID of @tt{Cid}, name of @tt{Name}, native ID of
+@tt{NatCid}, and source @tt{Source}.
+
+In the case in which @tt{Cid} or @tt{NatCid} are instantiated to
+parameterized classes, and they do not unify with a currently loaded
+class, a check will be made to see if they are subsumed by a currently
+loaded class, returning the name and/or source of the subsuming class.
+The @tt{Cid} and @tt{NatCid}, are those of the subsumed class -- there
+is always a 1-1 relation between the @tt{NatCid}X@tt{Source} and
+@tt{Cid} of any fact in any OMS.
+
+Finally, @tt{class/4} will access either Internal or External
+Intensional facts as needed.
+
+@em{Technical Point}.  @pred{class/4} will also intern
+@pred{cn_id_map/4} relations as needed for External Intensional facts.
+").
+
+/* TLS: check unbound calls to get_class_int to make sure they properly
+   handle intensional parameterized classes. Non-deterministic unless
+   the first conditional is true.
+*/
+class(Cid,Label,NatCid,Sou) :-
+	nonvar(Cid) ->
+	%%	(ground(Cid) ; nonvar(Cid),oms_primitive_type(Cid)) -> %% did not take care of param classes with non-ground primitive classes as arguments or of param classes with some arguments being variables
+	        class_cidbound(Cid,Label,NatCid,Sou) 
+          ; (nonvar(NatCid),nonvar(Sou) ->
+                   class_nidbound(Cid,Label,NatCid,Sou) 
+               ;
+	       (           oms_cn(Cid,Label,NatCid,Sou) ;
+                   get_class_int(Cid,Label,NatCid,Sou))).
+
+/* Succeed if you can unify with an internal CID or external
+   intensional CID.  Otherwise, if NID is a parametrized class, get
+   the skeleton and check subsumption against extensional and
+   intensional classes.  Extra unification of non-para terms (first
+   w. unification of term and then with skeleton) "optimizes" for
+   atomic CIDs.  This predicate is deterministic, as CID is
+   instantiated. 
+
+TLS: changed to fix problem in, e.g. class(object(1),X,Y,Z)
+*/
+
+class_cidbound(Cid,Label,NatCid,Sou):-
+     (oms_primitive_class(Cid,Label,NatCid,Sou) -> true
+      ;	(oms_cn(Cid,Label,NatCid,Sou) -> true 
+         ; (cn_id_map(Cid,Label,NatCid,Sou)  -> true 
+            ; (\+ atomic(Cid),
+               skeleton(Cid,Cidskel),
+              ( (oms_cn(Cidskel,Label,_Natid1,Sou),
+                 term_subclass(Cid,Cidskel), 
+		 parameterized_int_ext(Cid,NatCid,Sou))
+	         -> true 
+	            ; (cn_id_map(Cidskel,Label,_NatCid1,Sou),
+		       term_subclass(Cid,Cidskel), 
+				% get NID of orig. CID, not of subsuming CID
+		       parameterized_int_ext(Cid,NatCid,Sou))
+		    ->	   true
+	       ;      functor(Cid,Fn,Ar), EAr is Ar*2, functor(ESkel,Fn,EAr),
+		      class_int(Label,ESkel,Sou),
+		      (cn_id_map(CidISkel,Label,ESkel,Sou)
+		       ->     true
+		       ;      parameterized_ext_int(ESkel,CidISkel,Sou),
+			      assert(cn_id_map(CidISkel,Label,ESkel,Sou))
+		      ),
+		      term_subclass(Cid,CidISkel),
+		      parameterized_int_ext(Cid,NatCid,Sou)
+	      ))))).
+
+/* This predicate assumes that CID is not fully instantiated, and that
+   source may not be bound: determinism is therefore not enforced.
+
+   If the Native CID is atomic, we check extensional or external
+   intensional as usual -- interning the intensional mapping if
+   necessary.  Otherwise, things get more complicated.  We first try
+   to check oms_cn (a heuristic hack); otherwise we transform the
+   Native_id to a CID, interning cn_int_maps as we go.  Finally, we
+   check to see whether the transformed CID is subsumed by extensional
+   or external intensional.  
+
+   If a call is made along the lines of class(Q,W,h(E,R,T,Y),U) it
+   will succeed against whatever it unifies with internaly or
+   ext_int-ally.  This is in analogy to our handling of
+   the goal class(h(E,R),W,T,U).
+
+*/
+
+/* TLS: I am assumnig that if we get to here, nid and source
+    are both bound -- therefore CID must be functional, and we
+    don't need non-determinism. */
+class_nidbound(Cid,Label,NatCid,Sou):-
+	(oms_primitive_class(Cid,Label,NatCid,Sou) -> 
+	      true
+	    ; (oms_cn(Cid,Label,NatCid,Sou) -> 
+	            true
+	          ; (get_class_int(Cid,Label,NatCid,Sou) -> 
+		     true
+		   ; class_nidbound_param(Cid,Label,NatCid,Sou) ) ) ).
+
+class_nidbound_param(Cid,Label,NatCid,Sou):-
+	NatCid =.. [Functor|List],
+	class_nidbound_1(List,NewList,NatCid),
+	Cid =.. [Functor|NewList],
+	skeleton(Cid,CidSkel),
+	        (oms_cn(CidSkel,Label,_NatSkel,Sou),
+	         term_subclass(Cid,CidSkel)
+	         ;
+	         term_get_class_int(Cid,Label,NatCid,Sou)).
+
+class_nidbound_1([],[],_).
+class_nidbound_1([_H],_,Term):- !,
+	oms_error(update,('Cannot intern the class:',Term)).
+% TLS: taken out only ground NIDS make it here
+%  (see comment for class_nidbound)
+%class_nidbound_1([Nid,S|T],[_|T1],Term):- 
+%        var(Nid),var(S), !,class_nidbound_1(T,T1,Term).
+class_nidbound_1([Nid,S|T],[Cid|T1],Term):- 
+	(atomic(Nid) -> class_or_abort(Nid,S,Cid,Term)
+	   ; ext_int(Cid,_Label,Nid,S)),
+	class_nidbound_1(T,T1,Term).
+
+call_assert(Term):- (call(Term) -> true ; asserta(Term)).
+
+%-------------------------------------------------------------
+/* Supporting routines to produce a Cid from External Intensional
+ * rules. 
+ *
+ * TLS: fixed buglet.  Dont know if this one will go away when I rethink
+   terms in subclass. */
+
+term_get_class_int(GoalCid,Label,NatCid,Sou) :-
+	skeleton(NatCid,NatSkel),
+	(cn_id_map(NewCid,Label,NatSkel,Sou),
+	 term_subclass(GoalCid,NewCid)
+	 ->	true
+	 ;	(class_int(Label,NatCid,Sou),
+	         %%ext_int(GoalCid,Label,NatCid,Sou)
+		 create_new_para_cid_for_int(NatCid,GoalCid,Sou,Label)
+		 ->	true
+		 ;	class_int(Label,NatSkel,Sou),
+			create_new_para_cid_for_int(NatSkel,CidNew,
+			                                            Sou,Label),
+			%%ext_int(CidNew,Label,NatSkel,Sou),
+			term_subclass(GoalCid,CidNew) )
+	).	
+
+get_class_int(Cid,Label,NatCid,Sou) :-
+	(ground(NatCid), ground(Sou), cn_id_map(Cid,Label,NatCid,Sou)
+	 ->	true 
+	 ;	(ground(Cid),cn_id_map(Cid,Label,NatCid,Sou)
+		 ->	true 
+		 ;	class_int(Label,NatCid,Sou),
+			(cn_id_map(Cid,Label,NatCid,Sou)
+			 ->	true
+			 ;	(structure(NatCid)
+				 ->	parameterized_ext_int(NatCid,Cid,Sou)
+				 ;	atomic_newcid(Cid)
+				),
+				asserta(cn_id_map(Cid,Label,NatCid,Sou))
+			)
+		)
+	).
+
+ext_int(Cid,Label,NatCid,Sou):- 
+	atomic(NatCid),!,
+        (oms_cn(Cid,Label,NatCid,Sou) -> true 
+         ; get_class_int(Cid,Label,NatCid,Sou)).
+ext_int(Cid,Label,NatCid,Sou):- 
+	oms_primitive_class(Cid,Label,NatCid,Sou).
+ext_int(Cid,Label,NatCid,Sou):- 
+	\+ oms_primitive_class(Cid,Label,NatCid,Sou),
+	parameterized_ext_int(NatCid,Cid,Sou).
+
+parameterized_ext_int(NatCid,Cid,_Sou):- 
+	NatCid =.. [Functor|List],
+	parameterized_ext_int_1(List,NewList,NatCid),
+	Cid =.. [Functor|NewList].
+
+parameterized_ext_int_1([],[],_).
+parameterized_ext_int_1([_H],_,Term):- !,
+	oms_error(update,('Cannot intern the class:',Term)).
+parameterized_ext_int_1([Nid,Sou|T],[Cid|T1],Term):- 
+	(atomic(Nid) -> class_or_abort(Nid,Sou,Cid,Term)
+	 ; var(Nid) -> true
+	   ; ext_int(Cid,_,Nid,Sou)),
+	parameterized_ext_int_1(T,T1,Term).
+
+class_or_abort(Nid,Source,Cid,_Term):- class(Cid,_,Nid,Source),!.
+class_or_abort(H,S,_N,Term):-
+	oms_error(update,('Cannot find class for',H,S,'in',Term)).
+
+newcid(NatCid,Source,Cid):- 
+	(atomic(NatCid) -> atomic_newcid(Cid) ; 
+	    parameterized_ext_int(NatCid,Cid,Source)).
+
+atomic_newcid(Cid) :-
+	conget('_cid_ctr',OCid),
+	Cid is OCid+1,
+	conset('_cid_ctr',Cid).
+
+%-------------------------------------------------------------
+
+/* TLS changing the published inteface for consisetency */
+retractall_class(Cid,Name,NatCid,Sou):- 
+	retractallClass(Cid,Name,NatCid,Sou).
+
+:- comment(retractallClass/4,
+
+"@tt{retractallClass(Cid,Name,NatCid,Sou)} retracts all classes in
+Internal Format that match the arguments.  It will not affect classes
+in External Intensional Format.  Note it is the user's responsibility
+to remove all references to this class.  (@em{TLS: add documentation
+about obliterate_class})").
+
+retractallClass(Cid,Label,NatCid,Sou) :-
+	oms_update_list([retractall(oms_cn(Cid,Label,NatCid,Sou))]).
+
+:- comment(newClass/4, "@tt{newClass(Name,ParentCid,Source,NewCid)}
+creates a new class and adds it to the ontology.  It calls
+@pred{newClass/5} passing Name as the native ID.").
+
+newClass(Name,ParentCid,Source,NewCid) :-
+	newClass(Name,ParentCid,Name,Source,NewCid).
+
+:- comment(newClass/5,
+"@tt{newClass(Name,ParentCid,NativeId,Source,-NewCid)} creates a new
+class and adds it to the ontology.  
+@begin{itemize}
+@item Name is the name of the new class and must be instantiated to an atom;
+@item ParentCid is the class ID of this node's parent, if known and @tt{unk}
+if not.  
+@item NativeID must be instantiated to a valid NativeId: and must be
+either an atom or the native id for a parameterized class.
+@item Source is the source ontology, used to disambiguate native ids
+when ontologies are merged.  It must be instantiated to an atom.
+@item @tt{NewCid} must be a variable; it will be instantiated to the new Cid.
+@end{itemize}
+
+If there is already a class (defined via @pred{oms_cn/4} or
+@pred{class_int/3} with the given @tt{NatCid} and @tt{Source}, then
+that the id of that class is returned in @tt{NewCid}.  If a new class
+is added, it is added in Internal Format, as a @pred{oms_cn/4} fact.").
+
+newClass(Name,ParentCid,NativeId,Source,NewCid) :-
+	newClass(Name,ParentCid,NativeId,Source,NewCid,UpdateList,[]),
+	oms_update_list(UpdateList).
+
+newClass(Name,ParentCid,NativeId,Source,NewCid,UpdateList0,UpdateList) :-
+	check_new_name(Name,class(Name,NativeId,Source)),
+	check_new_nid(NativeId,class(Name,NativeId,Source)),
+	check_new_source(Source,class(Name,NativeId,Source)),
+	(var(NewCid)
+	 ->	(class_nidbound(NewCid,Name0,NativeId,Source)  % old class
+		 ->	add_parent_if_nec(NewCid,Name,ParentCid,UpdateList0,UpdateList),
+			(Name \== Name0
+			 ->	oms_warning(update,('newClass called with old NativeId and Source [',
+						    NativeId,', ',Source,
+						    '] but new Name [',Name,', ',Name0,']'))
+			 ;	true
+			)
+		 ;	check_source_consistency(NativeId,Source),
+		        newcid(NativeId,Source,NewCid), % new class
+			(ParentCid=unk
+			 ->	UpdateList0 = [asserta(oms_cn(NewCid,Name,NativeId,Source))|UpdateList]
+			 ;      sc_parent_exists(ParentCid),
+				UpdateList0 = [asserta(oms_cn(NewCid,Name,NativeId,Source)),asserta(oms_sc(NewCid,ParentCid))|UpdateList]
+			)
+		)
+	 ;	oms_warning(update,('newClass needs a variable in CID: ',
+                                    NewCid,', ',Name,', ',
+                                    NativeId,', ',Source)),
+		UpdateList0=UpdateList
+	).
+
+/* Code as of 7/24 
+newClass(Name,ParentCid,NativeId,Source,NewCid,UpdateList0,UpdateList) :-
+	check_new_name(Name,class(Name,NativeId,Source)),
+	check_new_nid(NativeId,class(Name,NativeId,Source)),
+	check_new_source(Source,class(Name,NativeId,Source)),
+	(var(NewCid)
+	 ->	(class(NewCid,OldName,NativeId,SourceO) % old class
+		 ,(SourceO=='OMS';SourceO==Source)    % dont muck around w OMS!
+		 ->	(OldName == Name
+			 ->    add_parent_if_nec(NewCid,Name,ParentCid,
+                                                 UpdateList0,UpdateList)
+			    ;  oms_warning(update,('newClass called with ',
+                                      ' old NativeId and Source, but new Name',
+				      Name,OldName,NativeId,SourceO)),
+			        fail
+			)
+		 ;	check_source_consistency(NativeId,Source),
+		        newcid(NativeId,Source,NewCid), % new class
+			UpdateList0 = [asserta(oms_cn(NewCid,Name,NativeId,Source))|UpdateList1],
+			add_parent_if_nec(NewCid,Name,ParentCid,UpdateList1,UpdateList)
+		)
+	 ;	oms_warning(update,('newClass needs a variable in CID: ',
+                                    NewCid,Name,NativeId,Source)),
+		UpdateList0=UpdateList
+	).
+*/
+
+
+/* Note that this predicate should be folded into newClass (which   predicate should also be made more maintainable */
+check_source_consistency(Nid,Source):- 
+	(atomic(Nid) -> true ; 
+	    check_source_consistency_1(Nid,Source)).
+
+
+check_source_consistency_1(Nid,Source):-
+	    skeleton(Nid,Skel),
+	    (oms_cn(_,_,Skel,Source1) ; cn_id_map(_,_,Skel,Source1)),
+	    Source1 \== Source,!,
+	    oms_warning(update,('Cannot create a class for ',Nid,' in ',Source,
+  	                    ' since ',Skel,' is already used for ',Source1,
+	 	            ' ontology.')).
+
+check_source_consistency_1(_,_).
+
+add_parent_if_nec(_,_,unk,UdL,UdL) :- !.
+add_parent_if_nec(NewCid,_,ParentCid,UdL,UdL) :-
+	immediate_subclass(NewCid,ParentCid),!.
+add_parent_if_nec(NewCid,_,ParentCid,
+                               [asserta(oms_sc(NewCid,ParentCid))|UdL],UdL) :-
+	class(ParentCid,_,_,_),!.
+add_parent_if_nec(NewCid,Name,ParentCid,_,_) :-
+	oms_warning(update,('No parent class for ',ParentCid,
+                            ' of ',Name:NewCid)),
+	fail.
+
+:- comment(updateClass/4,"@tt{updateClass(Cid,Name,NatId,Source)}
+updates @tt{Name}, @tt{Native Id}, and/or @tt{Source} information for
+the class identified with @tt{CID} -- as long as that class is defined
+by an internal fact of the predicate @tt{oms_cn/4}.  Its intended use
+is in editors or other GUIs that may manipulate names and identifiers
+of classes.").
+
+updateClass(Cid,Label,NatId,Source) :-
+	nonvar(Cid),
+	class(Cid,_,_,_),
+	oms_update_list([retractall(oms_cn(Cid,_,_,_)),
+			 asserta(oms_cn(Cid,Label,NatId,Source))]).
+
+%%% SUBCLASS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(subclass/2,"@tt{subclass(SubCid,SupCid)} is true if class
+SubCid is semantically a subset of class SupCid.  For non-primitive
+classes, @pred{subclass/2} is the reflexive transitive closure of
+@pred{immediate_subclass/2} and tuple subsumption.  For an example of
+tuple subsumption, f(a,source1,b,source2) may be a subclass of
+f(c,source1,b,souce2) if a is a subset of c in source 1 (see @ref{OMS:
+External Format}).  For primitive types, term subsumption is used
+instead of tuple subsumption -- for example integer(5) is a subclass
+of integer(_).  Only terms appearing in explicit class definitions are
+generated (not all their instances), but for testing (i.e. a
+bound/bound call), subsumed terms are handled.  ").
+
+%%%:- table subclass/2.
+:- table table_subclass/2.
+:- use_subsumptive_tabling table_subclass/2.
+table_subclass(One,Two):- subclass(One,Two).
+
+subclass(One,Two):- 
+	nonvar(One),var(Two),!,
+	subclass_bf(One,Two).
+subclass(One,Two):- 	
+	nonvar(One),nonvar(Two),!,
+	subclass_bb_nv(One,Two).
+subclass(One,Two):- 
+	var(One),nonvar(Two),!,
+	subclass_fb(One,Two).
+subclass(One,Two):- 
+	inner_subclass_ff(One,Two).
+
+/* one and two are nonvars */
+subclass_bb_nv(One,Two):- 
+    (integer(One),integer(Two) -> 
+	         det_subclass_bb(One,Two)
+	       ; 
+	          subclass_bb(One,Two)).
+
+/* One and Two are nonvars, but at least one is not an integer */
+/* Primitive types are handled separately in 3rd clause
+ * because variables must be handled */
+subclass_bb(One,Two):- 
+	integer(One),!,
+	inner_subclass_bb(One,Two).
+subclass_bb(One,Two):- 	/* One is a term */
+	integer(Two),!,
+	subclass_bb_1(One,Two).
+subclass_bb(One,Two):- /* One is a term, Two is a term */
+	oms_primitive_type(One),
+	!,subsumes(Two,One).  
+subclass_bb(One,Two):- /* One is a non-primitive term, Two is a term */
+	term_subclass(One,Two).
+
+/* One is a Term, Two is an integer */
+subclass_bb_1(One,Two):- 
+	oms_primitive_type(One),!,
+	inner_subclass_bb(One,Two).
+/* One is a non-primitive term, Two is an integer.
+ * Thus, we need not check the immediate subclass, Mid, 
+ * which must be a term */
+subclass_bb_1(One,Two):- 
+	skeleton(One,Oneskel),
+	inner_immediate_subclass(Oneskel,Mid),
+	term_subclass(One,Oneskel),
+	inner_subclass_bb(Mid,Two).
+
+/* On second clause, want integer(5) to be a subclass of itself and of
+integer(X), but want integer(X) only to be a sc of itself. */
+
+subclass_bf(One,Two):- integer(One),!, 
+	inner_subclass_bf(One,Two).
+subclass_bf(One,Two):- 
+	oms_primitive_type(One),!, 
+	(One = Two ;
+	 (ground(One) -> 
+	     skeleton(One,Oneskel),
+	     inner_immediate_subclass(Oneskel,Mid),
+	     inner_subclass_bf(Oneskel,Two) 
+	 ;   
+	     inner_immediate_subclass(One,Mid),
+	     inner_subclass_bf(Mid,Two))).  
+subclass_bf(One,Two):- 
+	One = Two 
+    ;   skeleton(One,Oneskel), 
+	inner_immediate_subclass(Oneskel,Mid),
+	prim_or_not_term_subclass(One,Oneskel), 
+	(Oneskel == One -> 
+	    inner_subclass_bf(Mid,Two) 
+	  ; inner_subclass_bf(Oneskel,Two)).
+
+subclass_fb(One,Two):- 
+	integer(Two),!,
+	inner_subclass_fb(One,Two).  
+subclass_fb(One,One):-
+	skeleton(One,Oneskel), class(Oneskel,_,_,_),
+	prim_or_not_term_subclass(One,Oneskel).
+
+%%% subclass(-,-).
+inner_subclass_ff(Sub,Sub).
+inner_subclass_ff(Sub,Sup) :-
+	inner_immediate_subclass(Sub,Par),
+	inner_subclass_bf(Par,Sup).
+
+%%% wpc: subclass(+,+), and sub is integer.
+inner_subclass_bb(Sub,Sub).
+inner_subclass_bb(Sub,Sup) :-
+	inner_immediate_subclass(Sub,Par),
+	inner_subclass_bf(Par,Sup).
+
+det_subclass_bb(Sub,Sub):-!.
+det_subclass_bb(Sub,Sup) :-
+	inner_immediate_subclass(Sub,Par),
+	inner_subclass_bf(Par,Sup),
+	!.
+
+%%% subclass(+,-).
+inner_subclass_bf(Sub,Sub).
+inner_subclass_bf(Sub,Sup) :-
+	inner_immediate_subclass(Sub,Par),
+	inner_subclass_bf(Par,Sup).
+
+%%% subclass(-,+).
+inner_subclass_fb(Sup,Sup).
+inner_subclass_fb(Sub,Sup) :-
+	inner_immediate_subclass(Child,Sup),
+	inner_subclass_fb(Sub,Child).
+
+skeleton(Term,Term1):- 
+	functor(Term,T,A),
+	functor(Term1,T,A).
+
+prim_or_not_term_subclass(One,Oneskel):- 
+	(oms_primitive_type(Oneskel) -> true ; term_subclass(One,Oneskel)).
+
+/* assumes Term1 and Term2 both have the same outer functor */
+term_subclass(Term1,Term2):- 
+	Term1 =.. [F|R1],
+	Term2 =.. [F|R2],
+	term_subclass_list(R1,R2).
+
+term_subclass_list([],[]).
+term_subclass_list([H|T],[H1|T1]):- 
+	once(subclass(H,H1)),
+	term_subclass_list(T,T1).
+
+:- comment(proper_subclass/2, "@tt{proper_subclass(SubCid,SupCid)} is
+true if SubCid is a subclass of SupCid but is not the same class").
+
+proper_subclass(SubCid,SupCid) :-
+	subclass(SubCid,SupCid),
+	SubCid \== SupCid.
+
+:- comment(immediate_subclass/2,
+"@tt{immediate_subclass(SubCid,SupCid)} is true if there is a
+corresponding fact in @pred{oms_sc/2} or in the intensional rules.  In
+other words, it succeeds if @tt{SubCid} is an immediate subclass of
+@tt{SupCid} in the Taxonomy.").
+
+inner_immediate_subclass(SubCid,SupCid) :- 
+	oms_sc(SubCid,SupCid).
+inner_immediate_subclass(CCid,PCid) :-
+	immediate_subclass_int(CCid,PCid).
+
+immediate_subclass(SubCid,SupCid) :- 
+	nonvar(SubCid),
+            skeleton(SubCid,SubSkel), 
+	oms_cn(SubSkel,_Label,_Natid1,_Sou),
+	term_subclass(SubCid,SubSkel),
+	SubCid \== SubSkel,
+	SupCid = SubSkel.
+immediate_subclass(SubCid,SupCid) :- 
+	oms_sc(SubCid,SupCid).
+immediate_subclass(CCid,PCid) :-
+	immediate_subclass_int(CCid,PCid).
+
+immediate_subclass_int(CCid,PCid) :-
+	(nonvar(CCid)
+	 ->	class_cidbound(CCid,_,CNatId,CSou),
+		immediate_subclass_int(CNatId,CSou,PNatId,PSou),
+		class_nidbound(PCid,_,PNatId,PSou)
+	 ; nonvar(PCid)
+	 ->	class_cidbound(PCid,_,PNatId,PSou),
+		immediate_subclass_int(CNatId,CSou,PNatId,PSou),
+		class_nidbound(CCid,_,CNatId,CSou)
+	 ;	immediate_subclass_int(CNatId,CSou,PNatId,PSou),
+		class_nidbound(CCid,_,CNatId,CSou),
+		class_nidbound(PCid,_,PNatId,PSou)
+	).
+
+:- comment(assert_subclass/2, "@tt{assert_subclass(SubCid,SupCid)}
+adds a new subclass-superclass pair to the taxonomy, if it's not
+already there.").
+assert_subclass(SubCid,SupCid) :- newSubclass(SubCid,SupCid).
+
+:- comment(retractallSubclass/2,
+"@tt{retractallSubclass(SubCid,SupCid)} deletes all unifying
+@pred{oms_sc/2} facts from the Internal Format of the ontology.  It
+does not affect facts defined via @pred{immediate_subclass_int/4}.").
+
+retractallSubclass(SubCid,SupCid) :-
+	oms_update_list([retractall(oms_sc(SubCid,SupCid))]).
+
+/* TLS for consistency */
+retractall_subclass(SubCid,SupCid) :-
+	retractallSubclass(SubCid,SupCid).
+
+:- comment(newSubclass/2,"@tt{NewSubclass(SubCid,SupCid)} adds a new
+@pred{oms_sc/2} fact (Internal Format) to the ontology, if it is not
+already present in the Programmer's View (i.e. the transitive closure
+of @pred{oms_sc/2}, @pred{immediate_subclass_int/4} and term subsumption for
+parameterized classes).  ").
+
+newSubclass(CCid,PCid) :-
+%	check_incremental_constraints(subclass(CCid,PCid)),
+	newSubclass(CCid,PCid,Updates,[]),
+	oms_update_list(Updates).
+
+newSubclass(CCid,PCid,UpD0,UpD) :-
+	(subclass(CCid,PCid)  % was if_
+	 ->	UpD0 = UpD
+	 ;	insert_new_subclass(CCid,PCid,UpD0,UpD)).
+
+insert_new_subclass(CCid,PCid,Upd0,Upd):- 
+	sc_parent_exists(CCid),
+	sc_child_exists(PCid),
+	Upd0 = [asserta(oms_sc(CCid,PCid))|Upd].
+
+sc_parent_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('newSubclass: no existing parent class with ',
+		               'CID: ',SCid)),
+	  	   fail).
+
+sc_child_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('newSubclass: no existing child class with ',
+		     'CID: ',SCid)),
+	  	   fail).
+
+%%% SUBREL %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(subrel/2,"@tt{subrel(Sub,Sup)} is true if @tt{Sub} is
+semantically a subrelation of Sup.  For @pred{subrel/2} is the
+reflexive transitive closure of @pred{immediate_subrel/2} and tuple
+subsumption.  Only terms appearing in explicit relation definitions
+are generated (not all their instances), but for testing (i.e. a
+bound/bound call), subsumed terms are handled.  ").
+
+subrel(Sub,Sup):- subclass(Sub,Sup).
+
+subrelation(SRCid,RCid) :-  %%dsw: I think we want to stop at Inh Rel?
+	class(IRelCid,_,'OMS Inheritable Relationships','OMS'),
+	subclass(SRCid,RCid),
+	proper_subclass(RCid,IRelCid).
+
+immediate_subrel(Sub,Sup):- immediate_subclass(Sub,Sup).
+
+%%% RELATIONSHIP %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(is_a_relation/1, "@tt{is_a_relation(Id)} is true if @tt{Id)
+is an inheritable or set-valued relation. ").
+
+is_a_relation(RCid) :-
+	is_an_inheritable_relation(RCid).
+is_a_relation(RCid) :-
+	is_a_strel(RCid).
+
+%%% Irels (nee relationships) %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(is_an_inheritable_relation/1,
+"@tt{is_an_inheritable_relation(RCid)} checks that @tt{RCid} is the
+identifier of a subrelation of @tt{id('OMS Inheritable
+Relations','OMS')}.  If @tt{RCid} is unbound, all such (proper)
+subrelations are returned nondeterministically.").
+
+is_an_inheritable_relation(RCid):- is_an_inheritable_relationship(RCid).
+
+is_an_inheritable_relationship(RCid) :-
+	class_nidbound(RelsCid,'OMS Inheritable Relationships',
+	              'OMS Inheritable Relationships','OMS'),
+	(nonvar(RCid)
+	 ->	subclass(RCid,RelsCid), RCid \== RelsCid	
+	 ;	findall(RCid,(subclass_fb(RCid,RelsCid), RCid \== RelsCid),URCids),
+		sort(URCids,RCids), % eliminate duplicates from multiple parents
+		member(RCid,RCids)
+	).
+
+:- comment(immediate_irel/3, "@tt{immediate_irel(SCid,RCid,TCid)}
+accesses facts stored directly in @pred{oms_rln/3} in the OMS state,
+as well as those defined via intensional rules.").
+
+immediate_irel(SCid,RCid,TCid) :- 
+	immediate_relationship(SCid,RCid,TCid).
+
+/***immediate_relationship(SCid,RCid,TCid) :-
+	(ground(SCid),class_cidbound(SCid,L1,N1,S1) -> Sou=class(SCid,L1,N1,S1) ; Sou = class(SCid,????)),
+	(ground(RCid),class_cidbound(RCid,L2,N2,S2) -> Rel=class(RCid,L2,N2,S2) ; Rel = class(RCid,????)),
+	(ground(TCid),class_cidbound(TCid,L3,N3,S3) -> Targ=class(TCid,L3,N3,S3) ; Targ = class(TCid,????)),
+	writeln(reln(Sou,Rel,Targ)),
+	fail.***/
+immediate_relationship(SCid,RCid,TCid) :- 
+	oms_rln(SCid,RCid,TCid).
+immediate_relationship(SCid,RCid,TCid) :-
+	immediate_relationship_int(SCid,RCid,TCid).
+
+immediate_relationship_int(SCid,RCid,TCid) :-
+	(nonvar(SCid)
+	 ->	(nonvar(RCid)
+		 ->	class_cidbound(SCid,_,SNatId,SSou),
+			class_cidbound(RCid,_,RNatId,RSou),
+			immediate_relationship_int(SNatId,SSou,
+                                                   RNatId,RSou,TNatId,TSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		 ;	class_cidbound(SCid,_,SNatId,SSou),
+			immediate_relationship_int(SNatId,SSou,
+                                         RNatId,RSou,TNatId,TSou),
+			class_nidbound(RCid,_,RNatId,RSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		)
+	 ;	(nonvar(RCid) 
+		 ->	class_cidbound(RCid,_,RNatId,RSou),
+			immediate_relationship_int(SNatId,SSou,
+                                                   RNatId,RSou,TNatId,TSou),
+			class_nidbound(SCid,_,SNatId,SSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		    ; 
+		            immediate_relationship_int(SNatId,SSou,
+	                                   RNatId,RSou,TNatId,TSou),
+			class_nidbound(SCid,_,SNatId,SSou),
+			class_nidbound(RCid,_,RNatId,RSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+	) ).
+
+:- comment(irel/3, "@tt{irel(SCid,RCid,TCid)} defines the inheritable
+relationship predicate, where @tt{SCid} is the source class ID,
+@tt{RCid} is the relationship class ID, and @tt{TCid} is the target
+class ID.  For these inheritable relationships, the taxonomy is
+traversed and the most specific relationships consistent with the
+parameters are returned.  ").
+
+irel(SCid,RCid,TCid) :-
+	relationship(SCid,RCid,TCid).
+
+relationship(SCid,RCid,TCid) :-
+	var(SCid),var(RCid),var(TCid), !,
+	immediate_relationship(SCid,RCid,TCid).
+relationship(SCid,RCid,TCid) :-
+	var(RCid), !,  %% relationship is free var
+	is_an_inheritable_relationship(RCid),
+	relationship_inh_fr(SCid,RCid,TCid).
+relationship(SCid,RCid,TCid) :-
+	%%is_an_inheritable_relationship(RCid),  
+            %% should be error if this is false
+	relationship_inh(SCid,RCid,TCid).
+
+:- table relationship_inh_fr/3.
+relationship_inh_fr(SCid,RCid,TCid) :-
+	OutTerm = rln(SCid,RCid,TCid),
+	copy_term(OutTerm,CopyTerm),
+	relationship_inh_gen_fr(SCid,RCid,TCid),
+	(more_specific_relationship(OutTerm,CopyTerm) -> fail ; true).
+
+:- table relationship_inh/3.
+relationship_inh(SCid,RCid,TCid) :-
+	OutTerm = rln(SCid,RCid,TCid),
+	copy_term(OutTerm,CopyTerm),
+	relationship_inh_gen(SCid,RCid,TCid),
+	(more_specific_relationship(OutTerm,CopyTerm) -> fail ; true).
+
+:- table relationship_inh_gen/3.
+relationship_inh_gen(SCid,RCid,TCid) :-
+	subclass(RCidP,RCid),
+	relationship_inh_gen_fr(SCid,RCidP,TCid).
+
+:- table relationship_inh_gen_fr/3.
+relationship_inh_gen_fr(SCid,RCid,TCid) :-
+	(var(SCid)
+	 ->	(var(TCid)
+		 ->	immediate_relationship(SCid,RCid,TCid)
+		 ;	subclass(TCidP,TCid),
+			immediate_relationship(SCid,RCid,TCidP)
+		)
+	 ;      subclass(SCid,SCidP),
+		immediate_relationship(SCidP,RCid,TCidP),
+		(var(TCid)
+		 ->	TCid = TCidP
+		 ;	subclass(TCidP,TCid) 
+		)
+	).
+
+more_specific_relationship(OutTerm,CopyTerm) :-
+	CopyTerm = rln(SCidO,RCidO,TCidO),
+	OutTerm = rln(SCid,RCid,TCid),
+	relationship_inh_gen(SCidO,RCidO,TCidO),
+	\+ variant(OutTerm,CopyTerm),	
+	subclass(RCidO,RCid),	
+	subclass(SCid,SCidO),	
+	subclass(TCidO,TCid).	
+
+:- comment(assert_relationship/3,
+"@tt{assert_relationship(SCid,RCid,TCid)} adds a new inheritable
+relationship tuple to the ontology, if it is not already implied
+(using inheritance if applicable) by the relationships already in the
+ontology.  A relationship can be added only if @tt{RCid} is a subclass
+of @tt{OMS Inheritable Relationships}").
+
+assert_relationship(SCid,RCid,TCid) :-
+	newRelationship(SCid,RCid,TCid).
+
+:- comment(retractallIrel/3, "@tt{retractallIrel(SCid,RCid,TCid)}
+retracts all explicitly defined inheritable relationship tuples that
+unify with the parameters.  Note that this operation simply removes
+all matching tuples in @pred{oms_rln/3}.  It does not affect
+information derived via @pred{immediate_relationship_int/6}, and may
+not affect information derived via inheritance.").
+
+retractalllrel(SCid,RCid,TCid) :- retractallRelationship(SCid,RCid,TCid).
+
+retractall_relationship(SCid,RCid,TCid) :-
+	retractallRelationship(SCid,RCid,TCid).
+
+retractallRelationship(SCid,RCid,TCid) :-
+	oms_update_list([retractall(oms_rln(SCid,RCid,TCid))]).
+
+:- comment(newIrel/3, "@tt{newIrel(SCid,RCid,TCidA)} adds a new
+inheritable relationship to the ontology if it is not already implied
+(through inheritance, if applicable) by the irels already in the OMS
+state.").
+
+newIrel(SCid,RCid,TCidA):- 
+	newRelationship(SCid,RCid,TCidA).
+
+newRelationship(SCid,RCid,TCidA) :-
+	newRelationship(SCid,RCid,TCidA,Updates,[]),
+	oms_update_list(Updates).
+
+/* TLS main change is that I now also check that RCid is a class of
+   relation */
+newRelationship(SCid,RCid,TCid,Upd0,Upd) :-
+%	standardize_value(TCidA,TCid),
+%	check_incremental_constraints(relationship(SCid,RCid,TCid)),
+	(relationship(SCid,RCid,TCid)
+	 ->	Upd0 = Upd
+	 ; insert_new_relationship(SCid,RCid,TCid,Upd0,Upd)).
+
+insert_new_relationship(SCid,RCid,TCidA,Upd0,Upd):- 
+	relationship_source_class_exists(SCid),
+	relationship_relation_exists(RCid),
+	relationship_target_class_exists(TCidA),
+	Upd0 = [asserta(oms_rln(SCid,RCid,TCidA))|Upd].
+
+relationship_source_class_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add an inheritable ',
+		    ' relationship where source is missing: ',SCid)),
+	   fail).
+
+relationship_relation_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add an inheritable ',
+		    ' relationship where source is missing: ',SCid)),
+	   fail),
+	(is_an_inheritable_relationship(SCid) -> true 
+	 ; oms_warning(update,('attempt to add an inheritable ',
+		    ' relationship for class that is not a ',
+		    ' relationship: ',SCid)),
+	   fail).
+
+relationship_target_class_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add an inheritable ',
+		    ' relationship where target is missing: ',SCid)),
+	   fail).
+
+%%% SET-VALUED RELATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(is_a_strel/1, "@tt{is_a_strel(RCid)} checks that @tt{RCid}
+is the class ID of a subclass of @tt{id('OMS Set-Valued
+Relations','OMS')}.  If @tt{RCid} is unbound, all such (proper)
+subclasses are returned nondeterministically.").
+
+is_a_strel(RCid) :-
+	class(RelsCid,'OMS Set-Valued Relations',
+		      'OMS Set-Valued Relations','OMS'), 
+	(nonvar(RCid)
+	 ->	subclass(RCid,RelsCid), RCid \== RelsCid % was if_
+	 ;	subclass_fb(RCid,RelsCid), RCid \== RelsCid
+	).
+
+
+:- comment(strel/3, "@tt{strel(SCid,RCid,TCid)} defines the semantic
+set-valued relation predicate, where @tt{SCid} is the source class ID,
+@tt{RCid} is the relation class ID, and @tt{TCid} is the target class
+ID. ").
+
+immediate_strel(SCid,RCid,TCid) :- oms_strel(SCid,RCid,TCid).
+immediate_strel(SCid,RCid,TCid) :- immediate_strel_int(SCid,RCid,TCid).
+
+immediate_strel_int(SCid,RCid,TCid) :-
+	(nonvar(SCid)
+	 ->	(nonvar(RCid)
+		 ->	class_cidbound(SCid,_,SNatId,SSou),
+			class_cidbound(RCid,_,RNatId,RSou),
+			immediate_strel_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		 ;	class_cidbound(SCid,_,SNatId,SSou),
+			immediate_strel_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			class_nidbound(RCid,_,RNatId,RSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		)
+	 ;	(nonvar(RCid) -> 
+			class_cidbound(RCid,_,RNatId,RSou),
+			immediate_strel_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			class_nidbound(SCid,_,SNatId,SSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		; 	immediate_strel_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+			class(SCid,_,SNatId,SSou),
+			class(RCid,_,RNatId,RSou),
+			class(TCid,_,TNatId,TSou) )
+	).
+
+strel(SCid,RCid,TCid) :-
+	var(SCid),var(RCid),var(TCid), !,
+	immediate_strel(SCid,RCid,TCid).
+strel(SCid,RCid,TCid) :-
+	var(RCid), !,  %% relation is free var
+	is_a_strel(RCid),
+	strel_inh_fr(SCid,RCid,TCid).
+strel(SCid,RCid,TCid) :-
+	strel_inh(SCid,RCid,TCid).
+
+:- table strel_inh_fr/3.
+strel_inh_fr(SCid,RCid,TCid) :-
+	OutTerm = strel(SCid,RCid,TCid),
+	copy_term(OutTerm,CopyTerm),
+	strel_inh_gen_fr(SCid,RCid,TCid),
+	(more_specific_strel(OutTerm,CopyTerm) -> fail ; true).
+
+:- table strel_inh/3.
+strel_inh(SCid,RCid,TCid) :-
+	OutTerm = strel(SCid,RCid,TCid),
+	copy_term(OutTerm,CopyTerm),
+	strel_inh_gen(SCid,RCid,TCid),
+	(more_specific_strel(OutTerm,CopyTerm) -> fail ; true).
+
+:- table strel_inh_gen/3.
+strel_inh_gen(SCid,RCid,TCid) :-
+	subclass(RCidP,RCid),
+	strel_inh_gen_fr(SCid,RCidP,TCid).
+
+:- table strel_inh_gen_fr/3.
+strel_inh_gen_fr(SCid,RCid,TCid) :-
+	(var(SCid)
+	 ->	(var(TCid)
+		 ->	immediate_strel(SCid,RCid,TCid)
+		 ;	subclass(TCidP,TCid),
+			immediate_strel(SCid,RCid,TCidP)
+		)
+	 ;      immediate_strel(SCid,RCid,TCidP),
+		(var(TCid)
+		 ->	TCid = TCidP
+		 ;	subclass(TCidP,TCid) % was if_
+		)
+	).
+
+more_specific_strel(OutTerm,CopyTerm) :-
+	CopyTerm = strel(SCid,RCidO,TCidO),
+	OutTerm = strel(SCid,RCid,TCid),
+	strel_inh_gen(SCid,RCidO,TCidO),
+	\+ variant(OutTerm,CopyTerm),	
+	subclass(RCidO,RCid),	
+	subclass(TCidO,TCid).
+
+:- comment(assert_strel/3, "@tt{assert_strel(SCid,RCid,TCid)} adds a
+new set-valued relation tuple to the ontology, if it is not already
+present.").
+
+assert_strel(SCid,RCid,TCid) :-  newStrel(SCid,RCid,TCid).
+
+:- comment(retractallStrel/3, "@tt{retractallStrel(SCid,RCid,TCid)}
+retracts all set-valued relation tuples that unify with the
+parameters.  Note that this is a syntactic operation that simply
+removes all matching tuples in @pred{oms_strel/3}, but does not affect
+@pred{strel_int/6}.").
+
+retractall_strel(SCid,RCid,TCid) :-
+	retractallStrel(SCid,RCid,TCid).
+
+retractallStrel(SCid,RCid,TCid) :-
+	oms_update_list([retractall(oms_strel(SCid,RCid,TCid))]).
+
+:- comment(newStrel/3, "@tt{newStrel(SCid,RCid,TCidA)} adds a new
+set-valued relation to the ontology if it is not already present.").
+
+newStrel(SCid,RCid,TCidA) :-
+	newStrel(SCid,RCid,TCidA,Updates,[]),
+	oms_update_list(Updates).
+
+/* TLS main change is that I now also check that RCid is a subclass of
+   relation */
+newStrel(SCid,RCid,TCid,Upd0,Upd) :-
+%	standardize_value(TCidA,TCid),
+%	check_incremental_constraints(strel(SCid,RCid,TCid)),
+	(strel(SCid,RCid,TCid)
+	 ->	Upd0 = Upd
+	 ; insert_new_strel(SCid,RCid,TCid,Upd0,Upd)).
+
+insert_new_strel(SCid,RCid,TCidA,Upd0,Upd):- 
+	strel_source_class_exists(SCid),
+	strel_relation_exists(RCid),
+	strel_target_class_exists(TCidA),
+	Upd0 = [asserta(oms_strel(SCid,RCid,TCidA))|Upd].
+
+strel_source_class_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add a ',
+		    ' strel where source is missing: ',SCid)),
+	   fail).
+strel_relation_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add a ',
+		    'strel where strell class is missing: ',SCid)),
+	   fail),
+	(is_a_strel(SCid) -> true 
+	 ; oms_warning(update,('attempt to add a ',
+		    'strel for class that is not a strel: ',SCid)),
+	   fail).
+strel_target_class_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add a ',
+		    'strel where target is missing: ',SCid)),
+	   fail).
+
+%%% SCHEMA RELATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(immediate_schrel/3, "@tt{immediate_schrel(SCid,RCid,TCid)}
+accesses facts stored directly in @pred{oms_schrel/3} and information
+produced via @pred{immediate_schrel_int/6}.").
+
+immediate_schrel(SCid,RCid,TCid) :- oms_schrel(SCid,RCid,TCid).
+immediate_schrel(SCid,RCid,TCid) :- immediate_schrel_int(SCid,RCid,TCid).
+
+immediate_schrel_int(SCid,RCid,TCid) :-
+	(nonvar(SCid)
+	 ->	(nonvar(RCid) ->	
+	                        class_cidbound(SCid,_,SNatId,SSou),
+			class_cidbound(RCid,_,RNatId,RSou),
+			immediate_schrel_int(SNatId,SSou,
+			                     RNatId,RSou,TNatId,TSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		 ;	class_cidbound(SCid,_,SNatId,SSou),
+			immediate_schrel_int(SNatId,SSou,
+			                     RNatId,RSou,TNatId,TSou),
+			class_nidbound(RCid,_,RNatId,RSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		)
+	 ;	(nonvar(RCid) -> 
+			class_cidbound(RCid,_,RNatId,RSou),
+	                        immediate_schrel_int(SNatId,SSou,
+				RNatId,RSou,TNatId,TSou),
+			class_nidbound(SCid,_,SNatId,SSou),
+			class_nidbound(TCid,_,TNatId,TSou)
+		; 	immediate_schrel_int(SNatId,SSou,
+		                                    RNatId,RSou,TNatId,TSou),
+			class(SCid,_,SNatId,SSou),
+			class(RCid,_,RNatId,RSou),
+			class(TCid,_,TNatId,TSou) ) ).
+
+:- comment(schrel/3, "@tt{schrel(SCid,RCid,TCid)} defines the semantic
+schema relation predicate, where @tt{SCid} is the source class ID,
+@tt{RCid} is the relation class ID, and @tt{TCid} is the target class
+ID.  Since schema relations are inheritable, the taxonomy is traversed
+and the most specific schema relations consistent with the parameters
+are returned.  ").
+
+schrel(SCid,RCid,TCid) :-
+	var(SCid),var(RCid),var(TCid), !,
+	immediate_schrel(SCid,RCid,TCid).
+schrel(SCid,RCid,TCid) :-
+	var(RCid), !,  %% relation is free var
+	is_an_inheritable_relationship(RCid),
+	schrel_inh_fr(SCid,RCid,TCid).
+schrel(SCid,RCid,TCid) :-
+	%%is_an_inheritable_relationship(RCid),
+	schrel_inh(SCid,RCid,TCid).
+
+:- table schrel_inh_fr/3.
+schrel_inh_fr(SCid,RCid,TCid) :-
+	OutTerm = schrel(SCid,RCid,TCid),
+	copy_term(OutTerm,CopyTerm),
+	schrel_inh_gen_fr(SCid,RCid,TCid),
+	(more_specific_schrel(OutTerm,CopyTerm) -> fail ; true).
+
+:- table schrel_inh/3.
+schrel_inh(SCid,RCid,TCid) :-
+	OutTerm = schrel(SCid,RCid,TCid),
+	copy_term(OutTerm,CopyTerm),
+	schrel_inh_gen(SCid,RCid,TCid),
+	(more_specific_schrel(OutTerm,CopyTerm) -> fail ; true).
+
+:- table schrel_inh_gen/3.
+schrel_inh_gen(SCid,RCid,TCid) :-
+	subclass(RCidP,RCid),
+	schrel_inh_gen_fr(SCid,RCidP,TCid).
+
+:- table schrel_inh_gen_fr/3.
+schrel_inh_gen_fr(SCid,RCid,TCid) :-
+	(var(SCid)
+	 ->	(var(TCid)
+		 ->	immediate_schrel(SCid,RCid,TCid)
+		 ;	subclass(TCidP,TCid),
+			immediate_schrel(SCid,RCid,TCidP)
+		)
+	 ;      subclass(SCid,SCidP),
+		immediate_schrel(SCidP,RCid,TCidP),
+		(var(TCid)
+		 ->	TCid = TCidP
+		 ;	subclass(TCidP,TCid) % was if_
+		)
+	).
+
+more_specific_schrel(OutTerm,CopyTerm) :-
+	CopyTerm = schrel(SCidO,RCidO,TCidO),
+	OutTerm = schrel(SCid,RCid,TCid),
+	schrel_inh_gen(SCidO,RCidO,TCidO),
+	\+ variant(OutTerm,CopyTerm),	
+	subclass(RCidO,RCid),	
+	subclass(SCid,SCidO),	
+	subclass(TCidO,TCid).
+
+:- comment(assert_scassert_schrelhrel/3, "@tt{assert_schrel(SCid,RCid,TCid)} adds a
+new schema relation tuple to the ontology, if it is not already
+implied (using inheritance if applicable) by the schema relations
+already in the ontology.").
+
+assert_schrel(SCid,RCid,TCid) :- newSchrel(SCid,RCid,TCid).
+
+:- comment(retractallSchrel/3, "@tt{retractallSchrel(SCid,RCid,TCid)}
+retracts all stored schema relation tuples that unify with the
+parameters.  Note that this is a syntactic operation that simply
+removes all matching tuples in @pred{oms_schrel/3} but does not affect
+@pred{immediate_schrel_int/6} and may not affect information derived via
+inheritance.").
+
+retractall_schrel(SCid,RCid,TCid) :-
+	retractallSchrel(SCid,RCid,TCid).
+
+retractallSchrel(SCid,RCid,TCid) :-
+	oms_update_list([retractall(oms_schrel(SCid,RCid,TCid))]).
+
+:- comment(newSchrel/3, "@tt{newSchrel(SCid,RCid,TCidA)} adds a new
+schema relation to the ontology if it is not already implied
+(through inheritance, if applicable) by the schema relations
+already in the ontology.").  
+
+newSchrel(SCid,RCid,TCidA) :-
+	newSchrel(SCid,RCid,TCidA,Updates,[]),
+	oms_update_list(Updates).
+
+/* TLS main change is that I now also check that RCid is a subclass of
+   relation */
+newSchrel(SCid,RCid,TCid,Upd0,Upd) :-
+%	standardize_value(TCidA,TCid),
+%	check_incremental_constraints(schrel(SCid,RCid,TCid)),
+	(schrel(SCid,RCid,TCid)
+	 ->	Upd0 = Upd
+	 ; insert_new_schrel(SCid,RCid,TCid,Upd0,Upd)).
+
+insert_new_schrel(SCid,RCid,TCidA,Upd0,Upd):- 
+	schrel_source_class_exists(SCid),
+	schrel_relation_exists(RCid),
+	schrel_target_class_exists(TCidA),
+	Upd0 = [asserta(oms_schrel(SCid,RCid,TCidA))|Upd].
+
+schrel_source_class_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add a ',
+		    'schrel where source is missing:',SCid)),
+	   fail).
+schrel_relation_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add a schrel where ',
+                               'relationship class is missing:',SCid)),
+	   fail),
+	(is_an_inheritable_relationship(SCid) -> true 
+	 ; oms_warning(update,('attempt to add a schrel for class ',
+	                       'that is not an inheritable relationship',
+			        SCid)),
+	   fail).
+schrel_target_class_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('attempt to add a schrel where ',
+                               'target is missing:',SCid)),
+	   fail).
+
+%%% OBJECT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(object/4,"@tt{object(Oid,Name,NatCid,Source)} retrieves an
+object with internal ID of @tt{Oid}, name @tt{Name}, native ID
+@tt{NatCid}, and source @tt{Source}.
+
+In the case in which @tt{Oid} or @tt{NatOid} are instantiated to
+parameterized object's, they must unify with a currently loaded object
+that is a member of a product class that is conformable with the
+object.  @tt{object/4} will access either Internal or External
+Intensional facts as needed.
+
+@em{Technical Point}.  @pred{object/4} will also intern
+@pred{ob_id_map/4} relations as needed for External Intensional facts.
+").
+
+object(Oid,Name,NatId,Source) :-
+	(nonvar(Oid)
+	 ->	(oms_obj(Oid,Name,NatId,Source)
+		 ->	true
+		 ;	ob_id_map(Oid,Name,NatId,Source)
+		)
+	 ; ground(NatId),nonvar(Source)
+	 ->	(oms_obj(Oid,Name,NatId,Source)
+		 ->	true
+		 ;	get_object_int_b(Oid,Name,NatId,Source)
+ 		)
+	 ;	(oms_obj(Oid,Name,NatId,Source)
+		 ;
+		 get_object_int(Oid,Name,NatId,Source)
+		)
+	).
+
+get_object_int_b(Oid,Name,NatId,Source) :-
+	(ob_id_map(Oid,Name,NatId,Source)
+	 ->	true
+	 ;	object_int(Name,NatId,Source),
+	 	newoid(NatId,Oid,unk,Source,_Upd0,_Upd1),
+		asserta(ob_id_map(Oid,Name,NatId,Source))
+	).
+
+get_object_int(Oid,Name,NatId,Source) :-
+	object_int(Name,NatId,Source),
+	(ob_id_map(Oid,Name,NatId,Source)
+	 ->	true
+		 ;	
+	 	newoid(NatId,Oid,unk,Source,_Upd0,_Upd1),
+		asserta(ob_id_map(Oid,Name,NatId,Source))
+	).
+
+:- comment(updateObject/4,"@tt{updateClass(Cid,Name,NatId,Source)}
+updates @tt{Name}, @tt{Native Id}, and/or @tt{Source} information for
+the object identified with @tt{CID} -- as long as that object is defined
+by an internal fact of the predicate @tt{oms_obj/4}.  Its intended use
+is in editors or other GUIs that may manipulate names and identifiers
+of objects.").
+
+updateObject(Oid,Label,NatId,Source) :-
+	nonvar(Oid),
+	object(Oid,_,_,_),
+	oms_update_list([retractall(oms_obj(Oid,_,_,_)),
+			 asserta(oms_obj(Oid,Label,NatId,Source))]).
+
+:- comment(assert_object/4, "@tt{assert_object(Oid,Name,Native_Id,Source)}
+adds a new object to the ontology, if it is not already there.").
+assert_object(Oid,Name,Native_Id,Source) :- 
+	asserta(oms_obj(Oid,Name,Native_Id,Source)).
+
+:- comment(retractallObject/4,
+"@tt{retractallObject(Oid,Name,Native_Id,Source)} retracts all objects
+matching the parameters from oms_obj/4 facts.  It does not affect
+@pred{object_int/3} facts.  ").
+
+retractall_object(Oid,Name,Native_Id,Source) :-
+	retractallObject(Oid,Name,Native_Id,Source).
+
+retractallObject(Oid,Name,Native_Id,Source) :-
+	oms_update_list([retractall(oms_obj(Oid,Name,Native_Id,Source))]).
+
+:- comment(newObject/5, "@tt{newObject(Name,Cid,NatOid,Source,Oid)}
+adds an object to the ontology, if it is not already present in
+internal @pred{oms_obj/4} facts or derivable via external intensional
+rules.  @tt{Oid} must be given as a variable and the predicate returns
+its newly created object ID.
+
+If the new object @tt{NatOid} is non-atomic, a check is made to ensure
+that it is conformable with @tt{Cid}.").
+
+newObject(Name,Cid,NatOid,Source,Oid) :-
+	newObject(Name,Cid,NatOid,Source,Oid,Updates,[]),
+	oms_update_list(Updates).
+
+newObject(Name,Cid,Nid,Source,Oid,Upd0,Upd) :-
+	check_new_name(Name,object(Name,Nid,Source)),
+	check_new_noid(Nid,object(Name,Nid,Source)),
+	check_new_source(Source,object(Name,Nid,Source)),
+	check_class_conformability(Nid,Cid),
+	(var(Oid) ->	
+	    newObject_oidunbound(Oid,Cid,Name,Nid,Source,Upd0,Upd)
+	  ;	
+	    (object(Oid,Name,Nid,Source)  -> % Oid bound so it must exist  
+		add_member_if_nec(Oid,Cid,Upd0,Upd)
+	      ;	
+	        oms_warning(update,('Illegal OID to newObject',Oid)),
+	        fail ) ).
+
+check_class_conformability(Nid,Cid):- (atomic(Nid) ; atomic(Cid)),!.
+check_class_conformability(Nid,Cid):- 
+	get_product_skeleton(Nid,Nidskel),
+	get_product_skeleton(Cid,Cidskel),
+	Nidskel = Cidskel,!.
+check_class_conformability(Nid,Cid):- 
+	oms_error(update,('Cannot create new object ',Nid,
+	          'as member of ',Cid,'due to non-conformability.')).
+
+get_product_skeleton(Cid,_):- atomic(Cid),!.
+get_product_skeleton(Cid,Skel):- 
+	structure(Cid),!,
+	Cid =..[Functor|List],
+	get_product_skeleton_list(List,NewList),
+	Skel =..[Functor|NewList].
+get_product_skeleton(Cid,_Skel):- 
+	oms_error(update,('Improper Cid: ',Cid)).
+	
+get_product_skeleton_list([],[]).
+get_product_skeleton_list([H|T],[NH|NT]):- 
+	get_product_skeleton(H,NH),
+	get_product_skeleton_list(T,NT).
+
+newObject_oidunbound(Oid,Cid,Name,Nid,Source,Upd0,Upd):- 
+	object(Oid,_Name,Nid,Source)  % already exists
+		 ->	add_member_if_nec(Oid,Cid,Upd0,Upd)
+		 ;	newoid(Nid,Oid,Cid,Source,Upd0,Upd1),
+			Upd1 = [asserta(oms_obj(Oid,Name,Nid,Source))|Upd2],
+			add_member_if_nec(Oid,Cid,Upd2,Upd).
+
+newObject_oidunbound_1(Oid,Cid,Nid,Source,Upd0,Upd):- 
+	object(Oid,_Name,Nid,Source)  % already exists
+		 ->	add_member_if_nec(Oid,Cid,Upd0,Upd)
+		 ;	oms_cn(Rootid,_,'OMS Root','OMS'),
+		        newoid(Nid,Oid,Rootid,Source,Upd0,Upd1),
+			Upd1 = [asserta(oms_obj(Oid,Nid,
+			                        Nid,Source))|Upd2],
+			add_member_if_nec(Oid,Cid,Upd2,Upd).
+
+new_atomic_oid(Oid):- 
+	conget('_oid_ctr',OOid),
+	Oid is OOid+1,
+	conset('_oid_ctr',Oid).
+
+/* need to handle arity */
+newoid(NatOid,Oid,_Rootid,_Source,Upd,Upd) :-
+	atomic(NatOid),!,
+	new_atomic_oid(Oid).
+newoid(NatOid,Oid,Rootid,Source,Upd0,Upd1) :-
+%	check_class_for_prod_obj(NatOid,Source),
+	NatOid =.. [_Functor|Old_Oid_list],
+	newoid_list(Old_Oid_list,_New_Oid_list,Rootid,Source,Upd0,Upd1),
+	new_atomic_oid(Oid).
+	
+%	Oid =.. [Functor|New_Oid_list].
+
+/* TLS: dont know if this is still being used.
+check_class_for_prod_obj(NatOid,Sou):- 
+	functor(NatOid,F,A),
+	functor(Skel,F,A),
+	(oms_cn(_Cid,_Label,Skel,Sou) ;
+                   get_class_int(_Cid,_,Skel,Sou)).
+*/
+
+newoid_list([],[],_Rootid,_Term,Upd,Upd):- !.
+newoid_list([Nid,Src|OT],[Oid|NT],Rootid,Term,Updin,Updout):- !,
+	newObject_oidunbound_1(Oid,Rootid,Nid,Src,Updin,Updmid),
+	newoid_list(OT,NT,Rootid,Term,Updmid,Updout).
+newoid_list(_,_,_,Term,_,_):- 
+	oms_error(update,('Cannot intern the class:',Term)).
+
+add_member_if_nec(_Oid,unk,Upd,Upd) :- !.
+add_member_if_nec(Oid,Cid,Upd,Upd) :-
+	immediate_memberof(Oid,Cid), !.
+add_member_if_nec(Oid,Cid,Upd0,Upd) :-
+	class(Cid,_,_,_),
+	!,
+	Upd0 = [asserta(oms_mo(Oid,Cid))|Upd].
+add_member_if_nec(Oid,Cid,_,_):-
+	oms_warning(update,('No class for memberof',objectID=Oid,classID=Cid)),
+	fail.
+
+%%% MEMBEROF %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(immediate_memberof/2, "@tt{immediate_memberof(Oid,Cid)} is
+true if there is a fact in @pred{oms_mo/2} or information directly
+derivable from a @pred{immediate_memberof_int/4} rule indicating that
+@tt{Oid} is an object in the class with ID @tt{Cid}.").
+
+immediate_memberof(Oid,Cid) :- oms_mo(Oid,Cid).
+immediate_memberof(Oid,object(Oid)):- nonvar(Oid).
+immediate_memberof(Oid,Cid):- 
+	(structure(Oid) -> 
+	    % checks for Cid = strucure + var
+	    immediate_memberof_struct_bx(Oid,Cid)
+           ; 
+	    (( var(Oid),structure(Cid),
+	        \+ oms_primitive_type(Cid)) 
+	    -> 
+		immediate_memberof_struct_fb(Oid,Cid) ) ).
+immediate_memberof(Oid,Cid) :-
+	immediate_memberof_int(Oid,Cid).
+
+immediate_memberof_struct_bx(Oid,Cid):- 
+	    (structure(Cid) ->
+		Oid =.. [F|OList],
+		Cid =.. [F|CList],
+		immediate_memberof_list(OList,CList)
+	      ; 
+	        var(Cid),
+	        Oid =.. [F|OList],
+		immediate_memberof_list(OList,CList),
+		Cid =.. [F|CList],
+		class(Cid,_,_,_) ).    % check to see the class is there...
+
+immediate_memberof_struct_fb(Oid,Cid):- 
+	Cid =.. [F|CList],
+	immediate_memberof_list(OList,CList),
+	Oid =.. [F|OList].
+
+immediate_memberof_list([],[]).
+immediate_memberof_list([H|T],[NH|NT]):- 
+	immediate_memberof(H,NH),
+	immediate_memberof_list(T,NT).
+
+immediate_memberof_int(Oid,Cid) :-
+	(nonvar(Oid)
+	 ->	object(Oid,_Name,CNatId,CSou),
+		(nonvar(Cid)
+		 ->	class(Cid,_,PNatId,PSou),
+			immediate_memberof_int(CNatId,CSou,PNatId,PSou)
+		 ;	immediate_memberof_int(CNatId,CSou,PNatId,PSou),
+			class(Cid,_,PNatId,PSou)
+		)
+	 ;      (nonvar(Cid)
+		 ->	class(Cid,_,PNatId,PSou),
+			immediate_memberof_int(CNatId,CSou,PNatId,PSou)
+		 ;	immediate_memberof_int(CNatId,CSou,PNatId,PSou),
+			class(Cid,_,PNatId,PSou)
+		),
+		object(Oid,_,CNatId,CSou)
+	).
+
+:- comment(memberof/2, "@tt{memberof(Oid,Cid)} is the semantic
+memberof predicate.  It is true if object Oid is an immediate member
+of class Cid or any subclass of that class").
+memberof(Oid,Cid) :-
+	(var(Oid)
+	 ->	subclass(DCid,Cid),
+		immediate_memberof(Oid,DCid)
+	 ;	immediate_memberof(Oid,DCid),
+		subclass(DCid,Cid)
+	).
+
+:- comment(assert_memberof/2, "@tt{assert_memberof(Oid,Cid)} adds
+object Oid to class Cid if it's not already known to be a member.").
+assert_memberof(Oid,Cid) :- newMemberof(Oid,Cid).
+
+:- comment(retractallMemberof/2, "@tt{retractallMemberof(Oid,Cid)}
+removes object @tt{Oid} from direct membership of @tt{Cid}.  This is a
+syntactic operation that directly operates on the @pred{oms_mo/2}
+representation and does not affect information derived via
+@pred{immediate_memberof_int/4}.").
+
+retractall_memberof(Oid,Cid) :-
+	retractallMemberof(Oid,Cid).
+
+retractallMemberof(Oid,Cid) :-
+	oms_update_list([retractall(oms_mo(Oid,Cid))]).
+
+:- comment(newMemberof/2, "@tt{newMemberof(CCid,PCid)} adds object
+@tt{Oid} to class Cid if it is not already known to be a member
+(perhaps through transitivty of memberof).  This predicate adds a new
+Internal Format fact @pred{oms_mo/2}.").
+
+newMemberof(Oid,Cid) :-
+	newMemberof(Oid,Cid,Upd0,[]),
+	oms_update_list(Upd0).
+
+memberof_class_exists(SCid):- 
+	(class_exists_for_cid(SCid) -> true
+	 ; oms_warning(update,('newMemberof, missing class for ',SCid)),
+	   fail).
+
+
+newMemberof(Oid,Cid,Upd0,Upd) :-
+	(memberof(Oid,Cid)
+	 ->	Upd0 = Upd
+	 ;	(object(Oid,_,_,_)
+		 ->	(memberof_class_exists(Cid),
+			 Upd0 = [asserta(oms_mo(Oid,Cid))|Upd])
+		 ;	oms_warning(update,('newMemberof but object does ',
+			         'not exist',Oid)),
+			fail
+		)
+	).
+
+%%% ATTRIBUTE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%attribute(Oid,RCid,TCid) :- oms_at(Oid,RCid,TCid).
+
+:- comment(immediate_attribute/3,
+"@tt{immediate_attribute(Oid,RCid,TCid)} is true if the indicated
+tuple unifies with a stored attribute tuple in @pred{oms_at/3}, or
+with information directly derivable from a @pred{immediate_attribute_int/6}
+rule.  ").
+
+/***immediate_attribute(Oid,RCid,TCid) :-
+	(ground(Oid),object(Oid,L1,N1,S1) -> Obj=object(Oid,L1,N1,S1) ; Obj = object(Oid,????)),
+	(ground(RCid),class_cidbound(RCid,L2,N2,S2) -> Rel=class(RCid,L2,N2,S2) ; Rel = class(RCid,????)),
+	(ground(TCid),class_cidbound(TCid,L3,N3,S3) -> Targ=class(TCid,L3,N3,S3) ; Targ = class(TCid,????)),
+	writeln(attr(Obj,Rel,Targ)),
+	fail.***/
+immediate_attribute(Oid,RCid,TCid) :- oms_at(Oid,RCid,TCid).
+immediate_attribute(Oid,RCid,TCid) :-
+	immediate_attribute_int(Oid,RCid,TCid).
+
+immediate_attribute_int(Oid,RCid,TCid) :-
+	(nonvar(Oid)
+	 ->	object(Oid,_Name,SNatId,SSou),
+		(nonvar(RCid)
+		 ->	class(RCid,_,RNatId,RSou),
+			(nonvar(TCid)
+			 ->	class(TCid,_,TNatId,TSou),
+				immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				class(TCid,_,TNatId,TSou)
+			)
+		 ;	(nonvar(TCid)
+			 ->	class(TCid,_,TNatId,TSou),
+				immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				class(TCid,_,TNatId,TSou)
+			),
+			class(RCid,_,RNatId,RSou)
+		)
+	 ;	(nonvar(RCid)
+		 ->	class(RCid,_,RNatId,RSou),
+			(nonvar(TCid)
+			 ->	class(TCid,_,TNatId,TSou),
+				immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				class(TCid,_,TNatId,TSou)
+			)
+		 ;	(nonvar(TCid)
+			 ->	class(TCid,_,TNatId,TSou),
+				immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	immediate_attribute_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				class(TCid,_,TNatId,TSou)
+			),
+			class(RCid,_,RNatId,RSou)
+		),
+		object(Oid,_Name,SNatId,SSou)
+	).
+
+:- comment((attribute)/3, "@tt{attribute(Oid,RCid,TCid)} is true if
+object @tt{Oid} can be inferred to be related through @tt{RCid} to
+@tt{TCid} (using inheritance) and no more specific relation can be
+inferred.  This uses inheritance from @tt{relationship/3}, so an
+object that has no tuples concerning it in @pred{oms_at/3} or
+information concerning it in @pred{immediate_attribute_int/6} could
+still have (inherited) attribute information.").
+
+attribute(Oid,RCid,TCid) :-
+	attribute_dir(Oid,RCid,TCid).
+attribute(Oid,RCid,TCid) :-
+	(nonvar(Oid)
+	 ->	immediate_memberof(Oid,SCid),
+		relationship(SCid,RCid,TCid)
+	 ;      relationship(SCid,RCid,TCid),
+		immediate_memberof(Oid,SCid)
+	),
+	\+ attribute_dir(Oid,RCid,TCid).
+
+attribute_dir(Oid,RCid,TCid) :-
+	(nonvar(RCid)
+	 ->	subrelation(ORCid,RCid),
+		immediate_attribute(Oid,ORCid,OTCid)
+	 ;	immediate_attribute(Oid,ORCid,OTCid),
+		subrelation(ORCid,RCid)
+	),
+	(subclass(OTCid,TCid)->true;fail).
+
+/* check_attribute(+,+,+).  This predicate should be used *only* in
+newAttribute. The idea is that newAttribute should add a new attribute
+only if that new attribute is not implied by the ontology.  But using
+attribute as a check in newAttribute is 1) inefficient and 2) not
+quite right.  The not-quite-right part is be cause newAttribute seeks
+to backtrack through all *maximal" attribtues implied by the ontology
+(last ifthenelse of attribute/3) and we want newAttribute to add only
+if the attribute is not implied, regardless if it is maximally implied
+or not. */
+
+check_attribute(Oid,RCid,TCid) :-
+	(immediate_attribute(Oid,RCid,TCid) 
+         ->	true
+	 ;	immediate_memberof(Oid,SCid),
+		relationship(SCid,RCid,TCid)
+	).
+%	(  immediate_attribute(Oid,RCid,TCid) 
+%         ; immediate_memberof(Oid,SCid),
+%	   relationship(SCid,RCid,TCid)).
+% would like a cut here but can't over relationship.
+
+:- comment(assert_attribute/3, "@tt{assert_attribute(Oid,RCid,TCid)}
+adds this tuple as an attribute tuple, if it is not already implied by
+the ontology.").
+assert_attribute(Oid,RCid,TCid) :- newAttribute(Oid,RCid,TCid).
+
+:- comment(retractallAttribute/3,
+"@tt{retractallAttribute(Oid,RCid,TCid)} retracts all @pred{oms_at/3}
+tuples that match the parameters.  Note that this is purely a
+syntactic operation operating directly on the @pred{oms_at/3}
+representation.  It does not affect information derived via
+@pred{immediate_attribute_int/6} and may not affect attribute
+information derived via inheritance.").
+
+retractall_attribute(Oid,RCid,TCid) :-
+	retractallAttribute(Oid,RCid,TCid).
+
+retractallAttribute(Oid,RCid,TCid) :-
+	oms_update_list([retractall(oms_at(Oid,RCid,TCid))]).
+
+:- comment(updateAttribute/5,
+"@tt{update_attribute(Oid,RCid,TCid,VarTerm,ValList)} updates a set of
+values, only invalidating those that changed.  VarTerm must contain
+all the free variables in (Oid,RCid,TCid), and ValList is a list of
+instances of VarTerm.  The goal is to minimize invalidation.  The
+semantics is: (retractall_attribute(Oid,RCid,TCid),
+(member(VarTerm,ValList), assert_attribute(Oid,RCid,TCid)), fail ;
+true).").
+
+updateAttribute(Oid,Rid,Cid,Vars,NValList) :-
+	findall(Vars,attribute(Oid,Rid,Cid),OValList),
+	sort(NValList,SNValList),
+	sort(OValList,SOValList),
+	updateAttributeMerge(SOValList,SNValList,p(Oid,Rid,Cid,Vars),Updates,[]),
+	oms_update_list(Updates).
+
+updateAttributeMerge(SOValList,SNValList,ArgsVars,Updates0,Updates) :-
+	SOValList = [OVal|SOVals],
+	SNValList = [NVal|SNVals],
+	!,
+	(OVal == NVal
+	 ->	updateAttributeMerge(SOVals,SNVals,ArgsVars,Updates0,Updates)
+	 ; OVal @< NVal
+	 ->	copy_term(ArgsVars,p(NOid,NRid,NCid,OVal)),
+		(oms_at(NOid,NRid,NCid)   % don't delete if inherited
+		 ->	Updates0 = [retractall(oms_at(NOid,NRid,NCid))|Updates1],
+			updateAttributeMerge(SOVals,SNValList,ArgsVars,
+					       Updates1,Updates)
+		 ;	updateAttributeMerge(SOVals,SNValList,ArgsVars,
+					       Updates0,Updates)
+		)
+	 ;	copy_term(ArgsVars,p(NOid,NRid,NCid,NVal)),
+		newAttribute(NOid,NRid,NCid,Updates0,Updates1),
+		updateAttributeMerge(SOValList,SNVals,ArgsVars,Updates1,Updates)
+	).
+updateAttributeMerge([],[NVal|SNVals],ArgsVars,Updates0,Updates) :- !,
+	copy_term(ArgsVars,p(NOid,NRid,NCid,NVal)),
+	newAttribute(NOid,NRid,NCid,Updates0,Updates1),
+	updateAttributeMerge([],SNVals,ArgsVars,Updates1,Updates).
+updateAttributeMerge([OVal|SOVals],[],ArgsVars,Updates0,Updates) :- !,
+	copy_term(ArgsVars,p(NOid,NRid,NCid,OVal)),
+	(oms_at(NOid,NRid,NCid)   % don't delete if inherited
+	 ->	Updates0 = [retractall(oms_at(NOid,NRid,NCid))|Updates1],
+		updateAttributeMerge(SOVals,[],ArgsVars,Updates1,Updates)
+	 ;	updateAttributeMerge(SOVals,[],ArgsVars,Updates0,Updates)
+	).
+updateAttributeMerge([],[],_ArgsVars,Updates,Updates).
+
+:- comment(newAttribute/3, "@tt{newAttribute(SOid,RCid,TCid)}adds this
+tuple as an @pred{oms_at/3} attribute tuple, if it is not already
+implied by the ontology.  Checks attribute facts against schema
+information to make sure the schema constraints are not violated.").
+
+newAttribute(SOid,RCid,TCid) :-
+	(var(SOid)
+	 ->	oms_error(newAttribute,'Calling newAttribute with variable object')
+	 ;	newAttribute(SOid,RCid,TCid,Updates,[]),
+		oms_update_list(Updates)
+	).
+
+newAttribute(SOid,RCid,TCid,Upd0,Upd) :-
+%	check_incremental_constraints(attribute(SOid,RCid,TCid)),
+	(check_attribute(SOid,RCid,TCid)
+	 ->	Upd0 = Upd
+	 ;	(class_exists_for_cid(RCid),
+	         class_exists_for_cid(TCid),object(SOid,_,_,_)
+		 ->	Upd0 = [asserta(oms_at(SOid,RCid,TCid))|Upd]
+		 ;	oms_warning(update,('newAttribute but class ',
+			         'or object does not exist: ',
+			         SOid,RCid,TCid)),
+			fail
+		) 
+	).
+
+%%% ATTRIBUTE_OBJECT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(attribute_object/3,"@tt{attribute_object(Oid,RCid,TOid)}
+accesses facts stored in @pred{oms_ao/3}, and from the external
+intensional rules @pred{attribute_object_int/6}.  Semantically the
+meaning is that object @tt{Oid} has an @tt{RCid} relation to object
+@tt{TOid}.").
+
+/***attribute_object(Oid,RCid,TOid) :-
+	(ground(Oid),object(Oid,L1,N1,S1) -> Obj=object(Oid,L1,N1,S1) ; Obj = object(Oid,????)),
+	(ground(RCid),class_cidbound(RCid,L2,N2,S2) -> Rel=class(RCid,L2,N2,S2) ; Rel = class(RCid,????)),
+	(ground(TOid),object(TOid,L3,N3,S3) -> TObj=object(TOid,L3,N3,S3) ; TObj = object(TOid,????)),
+	writeln(atob(Obj,Rel,TObj)),
+	fail.***/
+
+attribute_object(Oid,RCid,TOid) :-
+	(nonvar(RCid)
+	 ->	subrelation(ORCid,RCid),
+		immediate_attribute_object(Oid,ORCid,TOid)
+	 ;	immediate_attribute_object(Oid,ORCid,TOid),
+		subrelation(ORCid,RCid)
+	).
+attribute_object(Oid,RCid,TOid) :-
+	attribute(Oid,RCid,object(TOid)).
+
+%%immediate_attribute_object(Oid,RCid,TOid) :- writeln(oms_ao(Oid,RCid,TOid)),fail.
+immediate_attribute_object(Oid,RCid,TOid) :- oms_ao(Oid,RCid,TOid).
+immediate_attribute_object(Oid,RCid,TOid) :-
+	attribute_object_int(Oid,RCid,TOid).
+
+attribute_object_int(Oid,RCid,TCid) :-
+	(nonvar(Oid)
+	 ->	object(Oid,_Name,SNatId,SSou),
+		(nonvar(RCid)
+		 ->	class(RCid,_,RNatId,RSou),
+			(nonvar(TCid)
+			 ->	object(TCid,_,TNatId,TSou),
+				attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				object(TCid,_,TNatId,TSou)
+			)
+		 ;	(nonvar(TCid)
+			 ->	object(TCid,_,TNatId,TSou),
+				attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				object(TCid,_,TNatId,TSou)
+			),
+			class(RCid,_,RNatId,RSou)
+		)
+	 ;	(nonvar(RCid)
+		 ->	class(RCid,_,RNatId,RSou),
+			(nonvar(TCid)
+			 ->	object(TCid,_,TNatId,TSou),
+				attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				object(TCid,_,TNatId,TSou)
+			)
+		 ;	(nonvar(TCid)
+			 ->	object(TCid,_,TNatId,TSou),
+				attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou)
+			 ;	attribute_object_int(SNatId,SSou,RNatId,RSou,TNatId,TSou),
+				object(TCid,_,TNatId,TSou)
+			),
+			class(RCid,_,RNatId,RSou)
+		),
+		object(Oid,_Name,SNatId,SSou)
+	).
+
+assert_attribute_object(Oid,RCid,TOid) :- newAttributeObject(Oid,RCid,TOid).
+
+:- comment(retractallAttribute_object/3,
+"@tt{retractallAttribute_object(Oid,RCid,TCid)} retracts all
+@pred{oms_ao/3} tuples that match the parameters.  Note that this is
+purely a syntactic operation operating directly on the @pred{oms_ao/3}
+representation.  It does not affect information derived via
+@pred{attribute_object_int/6} and may not affect attribute_object
+information derived via inheritance.").
+
+retractall_attribute_object(Oid,RCid,TOid) :-
+	retractallAttribute_object(Oid,RCid,TOid).
+
+retractallAttribute_object(Oid,RCid,TOid) :-
+	oms_update_list([retractall(oms_ao(Oid,RCid,TOid))]).
+
+
+:- comment(newAttribute_object/3,
+"@tt{newAttribute_object(SOid,RCid,TOid)} adds this tuple as an
+Internal Format @pred{oms_ao/3} tuple, if it is not already implied by
+the ontology.  The potential fact is checked to make sure that schema
+constraints are not violated..").
+
+newAttribute_object(SOid,RCid,TOid) :-
+	newAttributeObject(SOid,RCid,TOid).
+
+newAttributeObject(SOid,RCid,TOid) :-
+	newAttributeObject(SOid,RCid,TOid,Updates,[]),
+	oms_update_list(Updates).
+
+newAttributeObject(SOid,RCid,TOid,Upd0,Upd) :-
+%	check_incremental_constraints(attribute_object(SOid,RCid,TOid)),
+	(attribute_object(SOid,RCid,TOidX),
+	 variant(TOidX,TOid)
+	 ->	Upd0 = Upd
+	 ;	(object(SOid,_,_,_),class_exists_for_cid(RCid),
+		 object(TOid,_,_,_)
+		 ->	Upd0 = [asserta(oms_ao(SOid,RCid,TOid))|Upd]
+		 ;	oms_warning(update,('OMS UPDATE: newAttributeObject',
+				 'called but some argument does not exist',
+				 SOid,RCid,TOid)),
+		 	fail
+		)
+	).
+
+%%% MIXED %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+
+:- comment(newRelName/5,
+"@tt{newRelName(Name,ParentId,Nid,Source,NewId)} creates a name for an
+inheritable relation that is an immediate subrelation of @tt{ParentId}
+(which in turn must be a sub-relation of @tt{id('OMS Inheritable
+Relations','OMS')}).  This predicate only creates a relation name, and
+does not create any specific relation tuples").
+
+newRelName(Name,ParentId,Nid,Source,NewId) :-
+	newClass(Name,ParentId,Nid,Source,NewId).
+
+:-comment(newRelName/4,"newRelName(+Name,+Nid,+Source,-Cid) creates a
+relation that is an immediate subrelation of @tt{id('OMS Inheritable
+Relationships','OMS')}.  This predicate only creates the relation, and
+does not create any specific relationship tuples").
+
+newRel(Name,Nid,Source,NewCid) :-
+	newRelationshipClass(Name,Nid,Source,NewCid).
+
+newRelationshipClass(Name,Nid,Source,NewCid) :-
+	class(RelCid,'OMS Inheritable Relationships',
+		     'OMS Inheritable Relationships','OMS'),
+	newClass(Name,RelCid,Nid,Source,NewCid).
+
+:-comment(newRelName/3,"newRelName(+Name,+Source,-Cid) creates a relation that
+is an immediate subrelation of @tt{id('OMS Inheritable
+Relationships','OMS')}, and assumes that @tt{Nid} is the same as
+@tt{Name}.  This predicate only creates the relation, and does not
+create any specific relationship tuples").
+
+newRel(Name,Source,NewCid) :- newRelationshipClass(Name,Source,NewCid).
+
+newRelationshipClass(Name,Source,NewCid) :-
+	class(RelCid,'OMS Inheritable Relationships',
+		     'OMS Inheritable Relationships','OMS'),
+	newClass(Name,RelCid,Source,NewCid).
+
+:- comment(newStrelName/5,
+"@tt{newStrelName(Name,ParentId,Nid,Source,NewId)} creates a name for
+a set-valued relation that is an immediate subrelation of
+@tt{ParentId} (which in turn must be a sub-relation of @tt{id('OMS
+Set-Valued Relations','OMS')}).  This predicate only creates a
+relation name, and does not create any specific relation tuples").
+
+newStrelName(Name,ParentId,Nid,Source,NewId) :-
+	newClass(Name,ParentId,Nid,Source,NewId).
+
+:- comment(newStrelName/4, "@tt{newStrelName(Name,Nid,Source,NewId)}
+creates a name for a set-valued relation that is an immediate
+subrelation of @tt{id('OMS Set-Valued Relations','OMS')}.  This
+predicate only creates a relation name, and does not create any
+specific relation tuples").
+
+newStrelClass(Name,Nid,Source,NewId) :- newStrelName(Name,Nid,Source,NewId).
+
+newStrelName(Name,Nid,Source,NewId) :-
+	class(RelCid,'OMS Set-Valued Relations',
+		     'OMS Set-Valued Relations','OMS'),
+	newClass(Name,RelCid,Nid,Source,NewId).
+
+%-----------------------------------------------------------------
+% General checks use in more than one create instruction
+
+/* transforms internal to external.  Does not check for class
+ * coverage.  stuff with primitive types is an attempt at optimization
+ * (other than object, which is special).  */
+
+/* changed to partially reflect ext_int.  make explicit calls to
+oms_primitive_class.  Am not sure if we can always assume that Cid + ,
+but I'm preserving the semantics we had for param_int_ext 
+
+int_ext(Cid,NatCid,Sou):- 
+	oms_primitive_class(Cid,_Label,NatCid,Sou),!.
+int_ext(Cid,NatCid,Sou):- 
+	atomic(Cid),!,
+        (oms_cn(Cid,Label,NatCid,Sou) -> true 
+         ; get_class_int(Cid,Label,NatCid,Sou)).
+int_ext(Cid,NatCid,Sou):- 
+%	\+ oms_primitive_class(Cid,Label,NatCid,Sou),
+	parameterized_int_ext(Cid,NatCid,Sou).
+*/
+
+parameterized_int_ext(Term,Newterm,Sou):- 
+	oms_primitive_class(Term,_Label,Newterm,Sou).
+parameterized_int_ext(Term,Newterm,Sou):- 
+	\+ oms_primitive_type(Term),   %%% dsw?? (changed TLS: using
+	                                               %%%  oms_primitive_type/1
+	Term =.. [F|List],
+	parameterized_int_ext_1(List,Newlist,Term),
+	Newterm =.. [F|Newlist],
+	get_source_of_prod(Term,Newterm,Sou).	% assume unique in OMS.
+
+parameterized_int_ext_1([],[],_).
+parameterized_int_ext_1([H|T],[N,S|T1],Term):- 
+	(atomic(H)
+	 ->	class_nid_or_abort(H,S,N,Term)
+	 ; var(H)
+	 ->	true
+	 ;	parameterized_int_ext(H,N,S)),
+	parameterized_int_ext_1(T,T1,Term).
+
+class_nid_or_abort(H,S,N,_Term):- class(H,_,N,S),!.
+class_nid_or_abort(H,S,_N,Term):-
+	oms_error(update,('Cannot find class for',H,S,'in',Term)).
+
+/* only want the first skel for source here.  Assume that we can't
+   add more than one. */
+get_source_of_prod(Term,_,Source):- 
+	skeleton(Term,Skel),
+	oms_cn(Skel,_,_,Source),!.
+get_source_of_prod(_,NewTerm,Source):- 
+	skeleton(NewTerm,Skel),
+	class_int(_,Skel,Source),!.
+
+class_exists_for_cid(SCid):- 
+	class_cidbound(SCid,_,_,_).
+
+% To be used with class and object creation.
+check_new_name(Name,Term):- 
+	(nonvar(Name)
+	 ->	true
+	 ;	oms_warning(update,('cannot create OMS fact with ',
+			 'name unbound: ',Term)),
+		fail
+	),
+	(atomic(Name)
+	 ->	true
+	 ;	oms_warning(update,('warning: creating class with ',
+			 'non-atomic name: ',Term))
+	).
+
+/* To be used with class creation, and with
+   merging from external files. */
+check_new_nid(Nid,Term):- 
+	(nonvar(Nid)
+	 ->	true
+	 ;	oms_warning(update,('cannot create OMS fact with',
+			 'native id unbound ',Term)),
+		fail
+	).
+
+/* To be used with object creation, and with
+   merging from external files. */
+check_new_noid(Nid,Term):- 
+	(nonvar(Nid)
+	 ->	true
+	 ;	oms_warning(update,('cannot create OMS fact with ',
+			 'native id unbound ',Term)),
+		fail
+	).
+
+/* To be used with class and object creation, and with
+   merging from external files. */
+check_new_source(Source,Term):- 
+	(nonvar(Source)
+	 ->	true
+	 ;	oms_warning(update,('cannot create OMS fact ',
+                         'source unbound: ',Term)),
+		fail
+	),
+	(atomic(Source)
+	 ->	true
+	 ;	oms_warning(update,('creating OMS fact with',
+			 'non-atomic source: ',Term))
+	).
+
+%%%%%%%%%%  Retract tables as appropriate upon update.
+
+assert_oms(Term) :-
+	oms_log(assert(Term)),
+	assert_oms_term(Term),
+	abolish_nec_tables(Term).
+
+assert_oms_term(Term) :-
+	call_assert_oms_int(Term),
+	!.
+%	get_component_intensional(Term,Name),
+%	(oms_dirty(Name)
+%	 ->	true
+%	 ;	make_oms_dirty(Name)
+%	),	!.
+assert_oms_term(Term) :-
+	asserta(Term),
+	get_component_extensional(Term,Name),
+	(oms_dirty(Name)
+	 ->	true
+	 ;	make_oms_dirty(Name)
+	).
+
+get_component_extensional(oms_cn(_,_,_,Comp),Comp):- !.
+get_component_extensional(oms_obj(_,_,_,Comp),Comp):- !.
+get_component_extensional(Term,Component):- 
+	component_table_ext(Term,arg(Arg,Type),_),
+	arg(Arg,Term,CompId),
+	source_from_id(Type,CompId,Component).
+
+source_from_id(class,CompId,Component):- 
+	oms_cn(CompId,_,_,Component).
+source_from_id(obj,CompId,Component):- 
+	oms_obj(CompId,_,_,Component).
+
+
+get_component_intensional(Term,Body,Component):- 
+	component_table_int(Term,Arg,_Deps),
+	arg(Arg,Term,Source),
+	(atom(Source) -> 
+	    Source = Component
+	 ;  oms_warning(component,
+	                ['Cannot find component for intensional rule: ',
+			  (:-(Term,Body))]),
+	    fail).
+
+call_assert_oms_int(oms_cn(Cid,N,Nid,Cmp)) :-
+	assert_oms_int(class_ext(N,Nid,Cmp)),
+	assert(cn_id_map(Cid,N,Nid,Cmp)).
+call_assert_oms_int(oms_sc(SubCid,SupCid)) :-
+	class_cidbound(SubCid,_,SubNid,SubCmp),
+	class_cidbound(SupCid,_,SupNid,SupCmp),
+	assert_oms_int(subclass_ext(SubNid,SubCmp,SupNid,SupCmp)).
+call_assert_oms_int(oms_rln(Cid,Rid,Tid)) :-
+	class_cidbound(Cid,_,CNid,CCmp),
+	class_cidbound(Rid,_,RNid,RCmp),
+	class_cidbound(Tid,_,TNid,TCmp),
+	assert_oms_int(relationship_ext(CNid,CCmp,RNid,RCmp,TNid,TCmp)).
+call_assert_oms_int(oms_strel(Cid,Rid,Tid)) :-
+	class_cidbound(Cid,_,CNid,CCmp),
+	class_cidbound(Rid,_,RNid,RCmp),
+	class_cidbound(Tid,_,TNid,TCmp),
+	assert_oms_int(strel_ext(CNid,CCmp,RNid,RCmp,TNid,TCmp)).
+call_assert_oms_int(oms_schrel(Cid,Rid,Tid)) :-
+	class_cidbound(Cid,_,CNid,CCmp),
+	class_cidbound(Rid,_,RNid,RCmp),
+	class_cidbound(Tid,_,TNid,TCmp),
+	assert_oms_int(schrel_ext(CNid,CCmp,RNid,RCmp,TNid,TCmp)).
+call_assert_oms_int(oms_obj(Oid,N,Nid,Cmp)) :-
+	assert_oms_int(object_ext(N,Nid,Cmp)),
+	assert(ob_id_map(Oid,N,Nid,Cmp)).
+call_assert_oms_int(oms_mo(Oid,Cid)) :-
+	object(Oid,_,ONid,OCmp),
+	class_cidbound(Cid,_,CNid,CCmp),
+	assert_oms_int(memberof_ext(ONid,OCmp,CNid,CCmp)).
+call_assert_oms_int(oms_at(Oid,Rid,Tid)) :-
+	object(Oid,_,ONid,OCmp),
+	class_cidbound(Rid,_,RNid,RCmp),
+	class_cidbound(Tid,_,TNid,TCmp),
+	assert_oms_int(attribute_ext(ONid,OCmp,RNid,RCmp,TNid,TCmp)).
+call_assert_oms_int(oms_ao(Oid,Rid,TOid)) :-
+	object(Oid,_,ONid,OCmp),
+	class_cidbound(Rid,_,RNid,RCmp),
+	object(TOid,_,TNid,TCmp),
+	assert_oms_int(attribute_object_ext(ONid,OCmp,RNid,RCmp,TNid,TCmp)).
+
+retractall_oms(Term) :-
+	oms_log(retractall(Term)),
+	retractall_oms_term(Term),
+	abolish_nec_tables(Term).
+ 
+retractall_oms_term(Term) :- 
+	call_retractall_oms_int(Term),
+	%% fail to check other components if component argument is not bound, 
+	%% i.e. retractall(oms_at(oid,_,_))
+%	get_component_intensional(Term,Name),
+%	(oms_dirty(Name)
+%	 ->	true
+%	 ;	make_oms_dirty(Name)
+%	),	
+	fail. 
+retractall_oms_term(Term) :-
+	retract(Term),
+	get_component_extensional(Term,Name),
+	(oms_dirty(Name)
+	 ->	true
+	 ;	make_oms_dirty(Name)
+	),
+	fail.
+retractall_oms_term(_).
+
+call_retractall_oms_int(oms_cn(Cid,N,Nid,Cmp)) :-
+	(nonvar(Cid),var(Nid)
+	 ->	class_cidbound(Cid,_,Nid,Cmp)
+	 ;	true
+	),
+	retractall_oms_int(class_ext(N,Nid,Cmp)),
+	retractall(cn_id_map(Cid,N,Nid,Cmp)).
+call_retractall_oms_int(oms_sc(SubCid,SupCid)) :-
+	class_cidbound_var(SubCid,SubNid,SubCmp),
+	class_cidbound_var(SupCid,SupNid,SupCmp),
+	retractall_oms_int(subclass_ext(SubNid,SubCmp,SupNid,SupCmp)).
+call_retractall_oms_int(oms_rln(Cid,Rid,Tid)) :-
+	class_cidbound_var(Cid,CNid,CCmp),
+	class_cidbound_var(Rid,RNid,RCmp),
+	class_cidbound_var(Tid,TNid,TCmp),
+	retractall_oms_int(relationship_ext(CNid,CCmp,RNid,RCmp,TNid,TCmp)).
+call_retractall_oms_int(oms_strel(Cid,Rid,Tid)) :-
+	class_cidbound_var(Cid,CNid,CCmp),
+	class_cidbound_var(Rid,RNid,RCmp),
+	class_cidbound_var(Tid,TNid,TCmp),
+	retractall_oms_int(strel_ext(CNid,CCmp,RNid,RCmp,TNid,TCmp)).
+call_retractall_oms_int(oms_schrel(Cid,Rid,Tid)) :-
+	class_cidbound_var(Cid,CNid,CCmp),
+	class_cidbound_var(Rid,RNid,RCmp),
+	class_cidbound_var(Tid,TNid,TCmp),
+	retractall_oms_int(schrel_ext(CNid,CCmp,RNid,RCmp,TNid,TCmp)).
+call_retractall_oms_int(oms_obj(Oid,N,Nid,Cmp)) :-
+	(nonvar(Oid),var(Nid)
+	 ->	object(Oid,N,Nid,Cmp)
+	 ;	true
+	),
+	retractall_oms_int(object_ext(N,Nid,Cmp)),
+	retractall(ob_id_map(Oid,N,Nid,Cmp)).
+call_retractall_oms_int(oms_mo(Oid,Cid)) :-
+	object_bound_var(Oid,ONid,OCmp),
+	class_cidbound_var(Cid,CNid,CCmp),
+	retractall_oms_int(memberof_ext(ONid,OCmp,CNid,CCmp)).
+call_retractall_oms_int(oms_at(Oid,Rid,Tid)) :-
+	object_bound_var(Oid,ONid,OCmp),
+	class_cidbound_var(Rid,RNid,RCmp),
+	class_cidbound_var(Tid,TNid,TCmp),
+	retractall_oms_int(attribute_ext(ONid,OCmp,RNid,RCmp,TNid,TCmp)).
+call_retractall_oms_int(oms_ao(Oid,Rid,TOid)) :-
+	object_bound_var(Oid,ONid,OCmp),
+	class_cidbound_var(Rid,RNid,RCmp),
+	object_bound_var(TOid,TNid,TCmp),
+	retractall_oms_int(attribute_object_ext(ONid,OCmp,RNid,RCmp,TNid,TCmp)).
+
+class_cidbound_var(Cid,Nid,Cmp) :-
+	(nonvar(Cid)
+	 ->	class_cidbound(Cid,_,Nid,Cmp)
+	 ;	true
+	).
+
+object_bound_var(Oid,Nid,Cmp) :-
+	(nonvar(Oid)
+	 ->	object(Oid,_,Nid,Cmp)
+	 ;	true
+	).
+
+abolish_nec_tables(oms_rln(_,_,_)) :- !,
+	abolish_relationship_inherits.
+abolish_nec_tables(oms_schrel(_,_,_)) :- !,
+	abolish_schrel_inherits.
+abolish_nec_tables(oms_strel(_,_,_)) :- !,
+	abolish_strel_inherits.
+abolish_nec_tables(oms_sc(_,_)) :- !,
+	abolish_relationship_inherits,
+	abolish_schrel_inherits,
+	abolish_strel_inherits.
+abolish_nec_tables(_).
+
+abolish_relationship_inherits :-
+	abolish_table_pred(relationship_inh_gen(_,_,_)),
+	abolish_table_pred(relationship_inh_gen_fr(_,_,_)),
+	abolish_table_pred(relationship_inh(_,_,_)),
+	abolish_table_pred(relationship_inh_fr(_,_,_)).
+
+abolish_schrel_inherits :-
+	abolish_table_pred(schrel_inh_gen(_,_,_)),
+	abolish_table_pred(schrel_inh_gen_fr(_,_,_)),
+	abolish_table_pred(schrel_inh(_,_,_)),
+	abolish_table_pred(schrel_inh_fr(_,_,_)).
+
+abolish_strel_inherits :-
+	abolish_table_pred(strel_inh_gen(_,_,_)),
+	abolish_table_pred(strel_inh_gen_fr(_,_,_)),
+	abolish_table_pred(strel_inh(_,_,_)),
+	abolish_table_pred(strel_inh_fr(_,_,_)).
+
+%%% Logging %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(oms_set_log_on/0,"This predicate creates a new log and
+ensures that logging will be performed for further updates until
+logging is turned off.").
+
+oms_set_log_on:- oms_logging_state(X),
+	       (X == on -> 
+		   true
+	          ;    retractall(oms_logging_state(_)),
+	               asserta(oms_logging_state(on)),
+		   (oms_log_trie(_) -> 
+		        oms_error(logging,['^%*&^%* log state inconsistent!',
+		                                     '(off to on)'])
+		     ;  new_trie(T),
+		         assert(oms_log_trie(T)))).
+
+
+:- comment(oms_set_log_off/0,"This predicate turns logging off, and
+deletes the current log, as it may have become out of date.").
+
+oms_set_log_off:- oms_logging_state(X),
+	       (X == off -> 
+		   true
+	          ;    retractall(oms_logging_state(_)),
+	               asserta(oms_logging_state(off)),
+		   (oms_log_trie(T) -> 
+		        delete_trie(T),
+		        retractall(oms_log_trie(_))
+		     ;  oms_error(logging,['^%*&^%* log state inconsistent!',
+		                                     '(on to off)']))).
+
+:- comment(oms_reset_log/0,"If logging is on, this predicate deletes
+the current log, and creates a new one.  If logging is off, no action
+is taken").
+
+oms_reset_log:- 
+	(oms_log_trie(X) -> 
+	    delete_trie(X),
+	    retractall(oms_log_trie(X))
+	  ; true),
+	  new_trie(X),
+	  assert(oms_log_trie(X)).
+
+/* Need to handle variables better.  */
+oms_log(Term):- 
+	oms_logging_state(X),
+	(X == on -> oms_log_1(Term) ; true).
+
+oms_log_1(assert(Term)):- 
+	oms_log_trie(T),
+	(trie_interned(retractall(Term),T,Leaf,_skel) -> 
+	    trie_unintern_nr(T,Leaf) ; true),
+	trie_intern(assert(Term),T,_,_,_).
+oms_log_1(retractall(Term)):- 
+	oms_log_trie(T),
+	(trie_interned(assert(Term),T,Leaf,_skel) -> 
+	    trie_unintern_nr(T,Leaf)  
+	  ; trie_intern(retractall(Term),T,_,_,_)).
+
+show_log:- 
+	oms_log_trie(T),
+	trie_interned(Term,T,_,_),
+	writeln(Term),
+	fail.
+
+%%% OTHER PREDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- import '_$index'/3 from file_op.
+%% performance testing predicate
+set_chk_index :-
+	set_chk_index(oms_cn(_,_,_,_)),
+	set_chk_index(oms_sc(_,_)),
+	set_chk_index(oms_rln(_,_,_)),
+	set_chk_index(oms_strel(_,_,_)),
+	set_chk_index(oms_schrel(_,_,_)),
+	set_chk_index(oms_obj(_,_,_,_)),
+	set_chk_index(oms_mo(_,_)),
+	set_chk_index(oms_at(_,_,_)),
+	set_chk_index(oms_ao(_,_,_)).
+
+set_chk_index(Goal) :-
+	asserta((Goal :- chk_index(Goal))).
+
+chk_index(Goal) :-
+	('_$index'(Goal,Index,_)
+	 ->	(integer(Index)
+		 ->	\+ bound_on([Index],Goal)
+		 ;	\+ bound_on(Index,Goal)
+		)
+	 ;	\+ bound_on([1],Goal)
+	),
+	telling(OF),tell(user),writeln('Non-indexed call '(Goal)),
+	tell(OF),
+	fail.
+
+bound_on([ArgNo|_ArgNos],Goal) :-
+	bound_on_all(ArgNo,Goal).
+bound_on([_ArgNo|ArgNos],Goal) :-
+	bound_on(ArgNos,Goal).
+
+bound_on_all(ArgNo,Goal) :-
+	ArgNo1 is ArgNo /\ 255,
+	arg(ArgNo1,Goal,Arg),
+	nonvar(Arg),
+	(ArgNo < 256
+	 ->	true
+	 ;	ArgNoM is ArgNo >> 8,
+		bound_on_all(ArgNoM,Goal)
+	).
+
+create_new_para_cid_for_int(NatCid,Cid,Sou,Label):- 
+	create_new_para_cid_for_int_1(NatCid,Cid,Sou,NatCid),
+	call_assert(cn_id_map(Cid,Label,NatCid,Sou)).
+	
+create_new_para_cid_for_int_1(Term,Term,'OMS',_NatCid):- 
+	skeleton(Term,Skel),
+	oms_primitive_type(Skel),!.
+create_new_para_cid_for_int_1(NativeId,Cid,Sou,NatCid):- 
+	NativeId =.. [F|List],
+	create_new_para_cid_for_int_2(List,Newlist,NatCid),
+	Cid =.. [F|Newlist],
+	intern_if_necessary(Cid,NativeId,Sou).
+
+create_new_para_cid_for_int_2([],[],_).
+create_new_para_cid_for_int_2([_H],_,Term):- !,
+	oms_error(update,('Cannot intern the class:',Term)).
+create_new_para_cid_for_int_2([Nid,S|T],[Cid|T1],Term):- 
+	(atomic(Nid) -> class_or_abort(Nid,S,Cid,Term)
+	   ; create_new_para_cid_for_int_1(Nid,Cid,S,Term)),
+	create_new_para_cid_for_int_2(T,T1,Term).
+
+intern_if_necessary(Cid,NativeId,Sou):- 
+     (oms_cn(Cid,_,NativeId,Sou) -> 
+          true
+        ; 
+          class_int(Label,NativeId,Sou),	
+          call_assert(cn_id_map(Cid,Label,NativeId,Sou))).
+
+show_oms_size:- 
+	count_success(oms_cn(_,_,_,_)),
+	count_success(oms_sc(_,_)),
+	count_success(oms_obj(_,_,_,_)),
+	count_success(oms_mo(_,_)),
+	count_success(oms_rln(_,_,_)),
+	count_success(oms_strel(_,_,_)),
+	count_success(oms_schrel(_,_,_)),
+	count_success(oms_ao(_,_,_)),
+	count_success(oms_at(_,_,_)),
+	count_success(cn_id_map(_,_,_,_)),
+	count_success(ob_id_map(_,_,_,_)).
+	
+count_success(Term):- 
+	conset('_$size_matters',0),
+	count_success_1(Term),
+	conget('_$size_matters',N),
+	functor(Term,F,A),
+	writeln(('There are ',N,' ',F,'/',A,' successes')).
+	
+count_success_1(Term):- 
+	call(Term),
+	inc_count,
+	fail.
+count_success_1(_).
+
+inc_count:- 
+	conget('_$size_matters',N),
+	N1 is N + 1,
+	conset('_$size_matters',N1).
+
+/*
+time_call(Call,Time):- 
+	cputime(T),
+	time_call_1(Call),
+	cputime(T1),
+	Time is T1 - T.
+
+time_call_1(Call):- 
+	call(Call),
+	fail.
+time_call_1(_).
+*/
+end_of_file.
+
+%%% delete_subsumed_relationships(+SCid,+RCid,+TCid) deletes all
+%%% relationships that are redundant due to being inherited from this
+%%% given relationship.
+delete_subsumed_relationships(SCid,RCid,TCid) :-
+	findall(retractall(oms_rln(SSCid,SRCid,STCid)),
+		properly_subsumed_relationship(SCid,RCid,TCid,SSCid,SRCid,STCid),
+		UpdateList),
+	oms_update_list(UpdateList),
+	fail.
+delete_subsumed_relationships(_SCid,_RCid,_TCid).
+
+%%% properly_subsumed_relationship(+SCid,+RCid,+TCid,-SSCid,-SRCid,-STCid)
+%%% returns relationships implied by input relationship through inheritance.
+properly_subsumed_relationship(SCid,RCid,TCid,SSCid,SRCid,STCid) :-
+	(if_inherited_relationship(RCid)
+	 ->	%%subclass_fb(SRCid,RCid),
+		subclass_bf(RCid,SRCid),
+		subclass_fb(SSCid,SCid),
+		immediate_relationship(SSCid,SRCid,STCid),
+		if_subclass(TCid,STCid),
+		(SRCid\==RCid
+		 ->	true
+		 ; SSCid\==SCid
+		 ->	true
+		 ;	STCid\==TCid
+		)
+	).
+	
+
+
+create_new_para_cid_for_int(NatCid,Cid,Sou):- 
+	create_new_para_cid_for_int_1(NatCid,Cid,Sou,NatCid),
+        call_assert(cn_id_map(Cid,NatCid,Sou)).
+	
+create_new_para_cid_for_int_1(Term,Term,'OMS',_NatCid):- 
+	skeleton(Term,Skel),
+	oms_primitive_type(Skel),!.
+create_new_para_cid_for_int_1(NativeId,Cid,Sou,NatCid):- 
+	NativeId =.. [F|List],
+	create_new_para_cid_for_int_2(List,Newlist,NatCid),
+	Cid =.. [F|Newlist],
+	intern_if_necessary(Cid,NativeId,Sou).
+
+create_new_para_cid_for_int_2([],[],_).
+create_new_para_cid_for_int_2([_H],_,Term):- !,
+	oms_error(update,('Cannot intern the class:',Term)).
+create_new_para_cid_for_int_2([Nid,S|T],[Cid|T1],Term):- 
+	(atomic(Nid) -> class_or_abort(Nid,S,Cid,Term)
+	   ; create_new_para_cid_for_int_1(Nid,Cid,S,Term)),
+	create_new_para_cid_for_int_2(T,T1,Term).
+
+intern_if_necessary(Cid,NativeId,Sou):- 
+	(oms_cn(Cid,_,NativeId,Sou) -> true 
+          ; call_assert(cn_id_map(Cid,NativeId,Sou))).
+
+unifiable(Term1,Term2):- 
+	\+  \+ Term1 = Term2.
+
+%%% attributes_implying_relationship(+ISCid,+IRCid,+ITCid,-Oid,-RCid,-TCid)
+%%% given a relationship, returns immediate attributes that imply it.
+%%% (For deletion)
+
+attributes_implying_relationship(ISCid,IRCid,ITCid,Oid,RCid,TCid) :-
+	(if_inherited_relationship(RCid)
+	 ->	subclass_fb(RCid,IRCid),
+		memberof(Oid,ISCid),
+		immediate_attribute(Oid,RCid,TCid),
+		subclass(TCid,ITCid)	% was if_
+	).
+
+set_convert_int_ext([],[],_S).
+set_convert_int_ext([Cid|R],[Nid|Nr],S):- 
+	int_ext(Cid,Nid,S),
+	set_convert_int_ext(R,Nr,S).
+
+set_convert_ext_int([],[],_S).
+set_convert_ext_int([Nid|NR],[Cid|CR],S):- 
+	ext_int(Cid,_Label,Nid,S),
+	set_convert_ext_int(NR,CR,S).
+
+
+/*
+class_nidbound(Cid,Label,NatCid,Sou):- 
+	\+ oms_primitive_class(Cid,Label,NatCid,Sou),
+        (oms_cn(Cid,Label,NatCid,Sou)
+         ; get_class_int(Cid,Label,NatCid,Sou)).
+class_nidbound(Cid,Label,NatCid,Sou):- 
+	\+ oms_primitive_class(Cid,Label,NatCid,Sou),
+	\+ oms_cn(Cid,Label,NatCid,Sou),
+	 TLS: use cn_id_map rather than get_class_int for efficiency  
+            \+ cn_id_map(Cid,Label,NatCid,Sou),
+	NatCid =.. [Functor|List],
+	class_nidbound_1(List,NewList,NatCid),
+	Cid =.. [Functor|NewList],
+	skeleton(Cid,CidSkel),
+	        (oms_cn(CidSkel,Label,_NatSkel,Sou),
+	         term_subclass(Cid,CidSkel)
+	         ;
+	         term_get_class_int(Cid,Label,NatCid,Sou)).
+*/
+/*
+get_class_int(Cid,Label,NatCid,Sou) :-
+	class_int(Label,NatCid,Sou),
+	(cn_id_map(Cid,Label,NatCid,Sou)
+	 ->	true
+	 ;	atomic_newcid(Cid),
+		asserta(cn_id_map(Cid,Label,NatCid,Sou))
+	).	
+*/
+
+/*** old definitions, without reverse indexing:
+relationship_inh_gen(SCid,RCid,TCid) :-
+%%	subclass(RCid,RCidP),
+	subclass(RCidP,RCid),
+	subclass(SCid,SCidP),
+	immediate_relationship(SCidP,RCidP,TCidP),
+	(var(TCid)
+	 ->	TCid = TCidP
+	 ;	subclass(TCidP,TCid)	% was if_
+	).
+:- table relationship_inh_gen_fr/3.
+relationship_inh_gen_fr(SCid,RCid,TCid) :-
+	subclass(SCid,SCidP),
+	immediate_relationship(SCidP,RCid,TCidP),
+	(var(TCid)
+	 ->	TCid = TCidP
+	 ;	subclass(TCidP,TCid)	% was if_
+	).
+****/
+
+/**** old def without reverse indexing
+:- table schrel_inh_gen/3.
+schrel_inh_gen(SCid,RCid,TCid) :-
+%%	subclass(RCid,RCidP),
+	subclass(RCidP,RCid),
+	subclass(SCid,SCidP),
+	immediate_schrel(SCidP,RCidP,TCidP),
+	(var(TCid)
+	 ->	TCid = TCidP
+	 ;	subclass(TCidP,TCid)	% was if_
+	).
+
+:- table schrel_inh_gen_fr/3.
+schrel_inh_gen_fr(SCid,RCid,TCid) :-
+	subclass(SCid,SCidP),
+	immediate_schrel(SCidP,RCid,TCidP),
+	(var(TCid)
+	 ->	TCid = TCidP
+	 ;	subclass(TCidP,TCid)	% was if_
+	).
+****/
+
+:- (library_directory(Dir),
+    (concat_atom([Dir,'/oms_xj.xwam'],XJXWAM),
+     file_exists(XJXWAM)
+     ->	    consult(oms_xj)
+     ;	(concat_atom([Dir,'/oms_xj.P'],XJP),
+	 file_exists(XJP))
+     ->	    consult(oms_xj)
+     ;	    fail
+    ),
+    !
+    ;	   
+    consult(oms_cdf)
+   ).
+
+/*  TLS: taken out 1/03
+standardize_value(X,X) :- var(X), !.
+standardize_value(integer(X),integer(Y)) :-
+	(var(X)
+	 ->	Y = X
+	 ; integer(X)
+	 ->	Y = X
+	 ;	friendly_atom_codes(X,XC),
+		number_codes(Y,XC),
+		number_codes(Y,YC),
+		YC = XC
+	),
+	!.
+standardize_value(X,X).
+*/
+
+:- comment(newSchrelClass/3,"Creates a class that is an immediate
+subclass of of @tt{OMS Schema Relations}.  This predicate only creates
+a class, and does not create any specific relation tuples").
+
+newSchrelClass(Name,Source,NewCid) :-
+	class(RelCid,'OMS Schema Relations',
+		     'OMS Schema Relations','OMS'),
+	newClass(Name,RelCid,Source,NewCid).
+
+:- comment(is_a_schrel/1, "@tt{is_a_schrel(RCid)} checks
+that @tt{RCid} is the class ID of a subclass of @tt{OMS Schema
+Relations}.  If @tt{RCid} is unbound, all such (proper) subclasses
+are returned nondeterministically.").
+
+is_a_schrel(RCid) :-
+	class(RelsCid,'OMS Schema Relations',
+	              'OMS Schema Relations','OMS'),
+	(nonvar(RCid)
+	 ->	subclass(RCid,RelsCid), RCid \== RelsCid	% was if_
+	 ;	subclass_fb(RCid,RelsCid), RCid \== RelsCid
+	).
+

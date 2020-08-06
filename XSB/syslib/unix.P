@@ -1,0 +1,125 @@
+%%%
+%%%  This file is deprecated. For backward compatibility only
+%%%  Use shell.P instead!
+%%%
+/* File:      unix.P
+** Author(s): Kostis F. Sagonas, Jiyang Xu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: unix.P,v 1.13 2005/01/14 18:32:05 ruim Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on,sysmod]).
+#include "extensions_xsb.h"
+#include "builtin.h"
+
+
+:- export unix/2, cd/1, unix/1, ls/0, rename/2, rm/1, edit/1.
+:- export sys_chdir/2, sys_access/3, sys_stat/3, sys_link/3.
+
+:- import str_cat/3 from string.
+:- import atom/1, abort/1 from standard.
+:- import psc_name/2, sys_system/7, term_psc/2, term_type/2, expand_filename/2
+   from machine.
+
+:- import obsolete/2 from obsolete.
+
+
+unix(Command) :- 
+	term_type(Command, T),
+	( T =:= 3 -> constr_command(Command, Command1), unix(Command1, Res)
+	; T =:= 5 -> unix(Command, Res)
+	),
+	Res =:= 0.
+
+constr_command([H], H).
+constr_command([H|T], String) :-
+	constr_command(T, SubString),
+	str_cat(H, SubString, String).
+	
+unix(Command, Result) :-
+	obsolete('unix/1, unix/2', 'shell/1, shell/2'),
+	term_type(Command, T),
+	( T =:= 5 -> sys_system(0, Command, R, _, _, _, _), Result = R
+	; T =:= 1 -> term_psc(Command, PSC), psc_name(PSC, RCommand), 
+	             sys_system(0, RCommand, R, _, _, _, _), Result = R
+	).
+
+
+cd(Path) :- 
+	obsolete('cd/1 in module unix', 'use cd/1 in module shell'),
+	( atom(Path) -> 
+		expand_filename(Path, Dir), sys_chdir(Dir, Res), Res=:=0
+	; var(Path) ->
+		abort('Uninstantiated argument 1 of cd/1')
+	; abort('Wrong type in argument 1 of cd/1')
+	).
+
+rename(Old, New) :-
+	sys_rename(Old, New, Res), Res =:= 0.
+
+ls :-
+	unix('ls -F', Res), Res =:= 0.
+
+rm(Name) :-
+	obsolete('rm/1 in module unix', 'use rm/1 in module shell'),
+	sys_unlink(Name, Res), Res =:= 0.
+
+edit(File) :- 
+	obsolete('edit/1 in module unix', 'use edit/1 in module shell'),
+	expand_filename(File, FileName), 
+	unix(['$EDITOR ', '$EDITOR_OPTIONS ', FileName, XSB_SRC_EXTENSION_ATOM]).
+
+/*
+sys_exit() :- sys_syscall(1).
+ */
+sys_link(Source, Dest, Res) :-
+	obsolete('sys_link/3 in module unix',
+		 'use sys_link/3 in module shell'),
+	sys_syscall(  9, Res, Source, Dest).
+sys_unlink(Path, Res) 	    :- sys_syscall( 10, Res, Path).
+sys_chdir(Dir, Res)	    :- sys_syscall( 12, Res, Dir).
+sys_access(File, Mode, Res) :-
+	obsolete('sys_access/3 in module unix',
+		 'use sys_access/3 in module shell'),
+	sys_syscall( 33, Res, File, Mode).
+sys_stat(Path, Buff, Res)   :-
+	obsolete('sys_stat/1 in module unix',
+		 'use sys_stat/1 in module shell'),
+	sys_syscall( 38, Res, Path, Buff).
+sys_rename(Old, New, Res)   :-
+	obsolete('rename/3 in module unix',
+		 'use rename/3 in module shell'),
+	sys_syscall(128, Res, Old, New).
+
+
+/*
+sys_syscall(_CallNo, _Res)				 :- '_$builtin'(SYS_SYSCALL).
+ */
+sys_syscall(_CallNo, _Res, _A1)				 :- '_$builtin'(SYS_SYSCALL).
+sys_syscall(_CallNo, _Res, _A1, _A2)			 :- '_$builtin'(SYS_SYSCALL).
+/*
+sys_syscall(_CallNo, _Res, _A1, _A2, _A3)		 :- '_$builtin'(SYS_SYSCALL).
+sys_syscall(_CallNo, _Res, _A1, _A2, _A3, _A4)		 :- '_$builtin'(SYS_SYSCALL).
+sys_syscall(_CallNo, _Res, _A1, _A2, _A3, _A4, _A5)	 :- '_$builtin'(SYS_SYSCALL).
+sys_syscall(_CallNo, _Res, _A1, _A2, _A3, _A4, _A5, _A6) :- '_$builtin'(SYS_SYSCALL).
+ */

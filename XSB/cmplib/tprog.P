@@ -1,0 +1,229 @@
+/* File:      tprog.P
+** Author(s): Saumya Debray, Kostis Sagonas, Terrance Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: tprog.P,v 1.25 2011-06-21 17:58:26 dwarren Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/* compile_clause(+Sym, +Clause, -PilCode, -PilCodeR, +NC)      	*/
+/*	This procedure takes a clause in internal source form		*/
+/*	clause(_,_,_), translates it into the intermediate form		*/
+/*	clause(_,_,_) (done by the predicate inprog/3), and then	*/
+/*	produces the list of PIL instructions for that clause.		*/
+/*	- PilCode-PilCodeR is the difference list of the resulting	*/
+/*			   translation of the clause.			*/
+/*	+ NC is the relative number of Clause for the predicate that	*/
+/*	     is being compiled.						*/
+/* 	Refer to the file Format for the format of InClause.		*/
+/*======================================================================*/
+%%:- import writeln/2 from standard.
+compile_clause(Sym, Clause, PilCode, PilCodeR, NC) :-
+	flatten(Clause, FlatClause),
+%%	writeln(userout,''),writeln(userout,pre(Clause)),writeln(userout,pst(FlatClause)),
+	inprog(Sym, FlatClause, InClause),
+	!,	% needed to cut unnecessary choice points... (bmd & kostis)
+	tclause(Sym, InClause, PilCode, PilCodeR, NC).
+
+tclause(Sym, clause(Args,Body,crec(ARSize,Label)),
+	[label(clau,Label)|Pil0], Pilr, NC) :- 
+	( sym_type(Sym, tabled(_,Tabar)) -> Tabled = 1,
+					    ARSize1 is ARSize + 1
+	; Tabar = Tabar, Tabled = 0,ARSize1 = ARSize
+	),
+	gennum(N), Label = (Sym,N),
+	sym_name(Sym, _, Arity),
+	reserve(Arity, [], Tin),
+	( Tabled =:= 0 -> 
+	    ( ARSize > 0 -> Pil0 = [allocate_gc(2,ARSize)|Pil1]
+	    ; Pil1 = Pil0
+	    )
+        ; Pil0 = [allocate_gc(2,ARSize),getVn(ARSize)|Pil1]   
+							% was getpbreg
+	),
+	theadpars(Args,1,Pil1,Pil3,Tin,TRegs),
+	tbody(Body,ARSize1,Pil3,Pilr,TRegs,_,lastgoal,no,
+	      [],Tabled,Tabar,e(Sym,NC)).
+
+%:- import telling/1, tell/1, write/1, nl/0, told/0 from standard.
+
+/*======================================================================*/
+/* theadpars(+Args, +Argno, -Pil, -Pilr, +TRin, -TRout)			*/
+/*	Generates code for the arguments of the head. It generates	*/
+/*	code for one argument first, and then recursively calls itself	*/
+/*	to generate code for the rest of the arguments.			*/
+/*	 + TRin:  list of registers in use at entry.			*/
+/*	 - TRout: list of registers in use at exit.			*/
+/*======================================================================*/
+
+theadpars([], _, Pil, Pil, T, T).
+theadpars([Par|Rest], N, Pil, Pilr, TRin, TRout) :-
+	release(N, TRin, TRm),
+	tgetpar(Par, N, Pil, Pil1, TRm, TRmid),
+	N1 is N+1,
+	theadpars(Rest, N1, Pil1, Pilr, TRmid, TRout).
+
+/*======================================================================*/
+/* ----------- EFFICIENT CODE FOR DISJUNCTIONS/CONDITIONALS ----------- */
+/* 
+   This is an algorithm to generate efficient code for disjunctions
+   and conditionals nested arbitrarily deep.  The emphasis here is to
+   avoid chains of branches when different execution paths come together.
+   However, instead of tedious scanning of assembly code to detect this,
+   we try to avoid it altogether by passing labels around.
+
+   The idea is the following: execution branches need come together only
+   if the goals are of the form (c1 OR c2) AND c3.  In this case, when we
+   see the AND, we generate a label, which is the label of the place where
+   the execution paths should meet.  This is then passed into the routines
+   that process the disjunction, as a parameter "meet(Label)".
+
+   The decision on when to actually emit the "meet" label is decided by
+   passing around a parameter, Depth.  This can take a value of 0 or 1.
+   A depth value of 0 indicates an "outer disjunction", i.e. a goal of
+   the form ( (c1 OR c2) AND c3 ).  A depth value of 1 indicates an "inner
+   disjunction", e.g. the inner OR in the case ((c1 OR (c2 OR c3)) AND c4).
+   This information is used to determine when to generate the label
+   corresponding to the "meet" label: this is generated if and only if
+   (i) a meet exists, i.e. is nonvariable, and (ii) the depth is 0.  If
+   these conditions are met, the meet label is generated and the depth set
+   to 1 so that duplicate labels are not produced.
+
+   Things are complicated by the fact that we generally only look at the
+   outermost connective (it is expensive to search the tree all the time).
+   Thus, it is possible to have a goal of the form
+   		( (c1 AND (c2 OR c3) ) AND c4 )
+   Here, the paths should come together before c4.  This can be handled as
+   before, as it turns out: if the goal is of the form ((c1 OR c2) AND c3),
+   then a new meet is generated and passed into the first conjunct (i.e.
+   (c1 OR c2), together with a new depth of 0; the meet and depth values
+   passed down into the second conjunct c2 are what was passed in from
+   above, since this is where the execution paths should subsequently come
+   together, if necessary.
+
+ */
+
+/*======================================================================*/
+/* tbody(+Goal, +ARSize, Pil-Pilr, +Tin, -Tout,				*/
+/*	 +Meet, +Nested, +HoldRegs, e(+Sym,+NC))			*/
+/*	Tin, Tout: the registers in use at the entry and at the exit.	*/
+/*	Meet: When processing the nested or-branches, this is the label	*/
+/*	      to meet. It can be also "lastgoal", in which case all	*/
+/*	      or-branch (top level or nested) do not generate labels	*/
+/*	      and jumps. Also "midgoal" for insignificant cases.	*/
+/*	Nested: if "no", this is the top level or-branch (if		*/
+/*		we are processing an or-branch);			*/
+/*		if "yes", this would be a nested or-branch.		*/
+/*======================================================================*/
+tbody(and(Goal,Goals),A,Pil,Pilr,Tin,Tout,Meet,_,HoldRegs,Tabled,Tabar,EPN) :-
+    tbody(Goal,A,Pil,Pil1,Tin,Tmid,midgoal,no,HoldRegs,Tabled,Tabar,EPN),
+    !,
+    tbody(Goals,A,Pil1,Pilr,Tmid,Tout,Meet,no,HoldRegs,Tabled,Tabar,EPN),
+    !.
+tbody(or(Goal,Goals),A,Pil,Pilr,Tin,[],Meet,Nested,HoldRegs,Tabled,Tabar,EPN) :-
+    ( Nested == no ->
+	Pil = [trymeorelse(A,Label2)|Pil1],
+	( Meet == lastgoal -> ThisMeet = Meet, Pil5 = Pilr
+	; gennum(LabId4), ThisMeet = (disj,LabId4),
+	  Pil5 = [label(meet, ThisMeet)|Pilr]
+	)
+    ; 	Pil = [retrymeorelse(A,Label2)|Pil1],
+	Pil5 = Pilr, ThisMeet = Meet
+    ),
+    tbody(Goal,A, Pil1,Pil2,Tin,_,Meet,no,HoldRegs,Tabled,Tabar,EPN),
+    gennum(LabId2), Label2 = (disj,LabId2),
+    ( Meet == lastgoal ->
+	Pil2 = [label(disj,Label2)|Pil3]
+    ;	Pil2 = [jump(ThisMeet),label(disj,Label2)|Pil3]
+    ),
+    ( more_branches(Goals) -> Pil3=Pil4 ; Pil3 = [trustmeorelsefail(A)|Pil4] ),
+    tbody(Goals,A,Pil4,Pil5,Tin,_,ThisMeet,yes,HoldRegs,Tabled,Tabar,EPN).
+tbody(if_then_else(inlinegoal(fail,0,[]),_,FGoal),A,Pil,Pilr,Tin,Tout,M,N,
+      HoldRegs,Tabled,Tabar,EPN) :- !,  % to handle test of fail
+    tbody(FGoal,A,Pil,Pilr,Tin,Tout,M,N,HoldRegs,Tabled,Tabar,EPN).
+tbody(if_then_else(inlinegoal(true,0,[]),TGoal,_),A,Pil,Pilr,Tin,Tout,M,N,
+      HoldRegs,Tabled,Tabar,EPN) :- !,  % to handle test of true
+    tbody(TGoal,A,Pil,Pilr,Tin,Tout,M,N,HoldRegs,Tabled,Tabar,EPN).
+tbody(if_then_else(Test,TGoal,FGoal),A,Pil,Pilr,Tin,Tout,M,_,
+      HoldRegs0,Tabled,Tabar,EPN) :-
+    gennum(TLabId), TLabel = label(then,(disj,TLabId)),
+    gennum(FLabId), FLabel = label(else,(disj,FLabId)),
+    tvar_hold(Test, HoldRegs0, HoldRegs1),
+    tcond(Test,TLabel,FLabel,Pil,[TLabel|Pil1],Tin,Tmid,HoldRegs1,EPN),
+    tbody(TGoal,A,Pil1,Pil2,Tmid,Tout0,M,no,HoldRegs1,Tabled,Tabar,EPN),
+    ( M == lastgoal ->
+	Pil2 = [FLabel|Pil3], Pil4 = Pilr
+    ;	Pil2 = [jump(ThisMeet),FLabel|Pil3],
+	gennum(MLabId), ThisMeet = (meet,MLabId),
+	Pil4 = [label(meet, ThisMeet)|Pilr]
+    ),
+    merge(Tmid,Tout0,Tout1),
+    tbody(FGoal,A,Pil3,Pil4,Tout1,Tout2,M,no,HoldRegs0,Tabled,Tabar,EPN), 
+    /* tvar may be in */
+    merge(Tout1,Tout2,Tout), !.		/* branches of an i-t-e */
+tbody(nil,_,Pil,Pilr,T,T,_,_,_,Tabled,Tabar,EPN) :-
+    ( Tabled =:= 0 -> Pil = [proceed|Pilr]
+    ; EPN=e(Sym,_),Pil = [check_interrupt(Sym,3), new_answer_dealloc(Tabar,2)|Pilr]
+    ).
+tbody(goal(Sym,Args),A,Pil,Pilr,Tin,Tout,Meet,_,_HoldRegs,Tabled,Tabar,_) :-
+    sym_name(Sym, Pred, Arity),
+    reserve(Arity,Tin,T1), Tout = [],
+    tgoalargs(Args,1,Pil,Pil1,T1,_,Tabled),
+    ( (option(sysmod), inline_builtin(Pred, Arity, BltNum)) ->
+	( Meet == lastgoal ->
+	  ( A > 0 ->  Pil1 = [deallocate,builtin(BltNum),proceed_gc|Pilr]
+	   ; Pil1 = [builtin(BltNum),proceed | Pilr]
+	  )
+        ; Pil1 = [builtin(BltNum)|Pilr]
+        )
+    ; ( Meet == lastgoal ->
+	( Tabled =:= 1 ->      /* if tabled = 1, A>0 */
+		A1 is A-1,
+		Pil1 = [call(Sym,A),
+			check_interrupt(Sym,A),
+			new_answer_dealloc(Tabar,A1)|Pilr]
+	 ; ( A > 0 -> Pil1 = [deallocate,execute(Sym)|Pilr]
+	   ;          Pil1 = [execute(Sym)|Pilr] )
+	 )
+      ; Pil1 = [call(Sym,A)|Pilr] )   /* not LastLit --  A: ARSize */
+    ),
+    !.
+
+tbody(inlinegoal(Pred,_Ar,Args),A,Pil,Pilr,Tin,Tout,Meet,_,HoldRegs,
+							Tabled,Tabar,EPN) :-
+    geninline(Pred,Args,HoldRegs,A,Pil,Pil1,Tin,Tout,EPN),
+    ( Meet == lastgoal ->
+	( Tabled =:= 1 ->      /* if tabled = 1, A>0 */
+		A1 is A-1,
+		EPN = e(Sym,_),
+		Pil1 = [check_interrupt(Sym,A),
+			new_answer_dealloc(Tabar,A1)|Pilr]
+	 ; ( A > 0 -> Pil1 = [deallocate,proceed_gc|Pilr]
+	    /* some obscure case might require _gc here following, but I can't generate one. */
+	   ;          Pil1 = [proceed|Pilr] )
+	 )
+    ; Pil1 = Pilr /* not last lit */
+    ).
+
+more_branches(or(_,_)).
+
+force_tprog_loaded.

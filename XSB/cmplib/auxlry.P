@@ -1,0 +1,395 @@
+/* File:      auxlry.P
+** Author(s): Debray, Warren, Kifer, Sagonas, Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: auxlry.P,v 1.33 2011-12-22 21:24:46 tswift Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,optimize,sysmod]).
+#include "standard.h"
+#include "celltags_xsb.h"
+
+
+/*============================================================*/
+/*  messages and such							*/
+/*============================================================*/
+
+message(Message) :- ttywritenl(Message, STDMSG).
+
+:- import warning/2 from standard.
+warning(Message) :-
+	(current_compiled_module(Module)
+	 ->	true
+	 ; load_dyn_module(Module)
+	 ->	true
+	 ;	Module = '**Unknown**'
+	),
+%	ttywritenl(('++Warning[XSB]: [Compiler] ', Module, ': ', Message), STDWARN).
+	warning([Module,' : ',Message],'Compiler').
+
+error(Message) :- 
+	misc_error(Message).
+
+/*
+TLS No need for this any more -- lets use XSBs error mechanism
+
+error(Message) :- 
+	( conget('error occurred', 1)
+	->  true
+	;   conset('error occurred', 1)
+	),
+	ttywritenl(('++Error[XSB]: [Compiler] ', Message), STDERR),
+	(conget(quit_on_error,1)
+	->  sys_exit(1)
+	;   true
+	).
+*/
+
+:- dynamic('_$global_compiler_options'(_)).
+
+set_global_compiler_options(Options) :-
+	retractall('_$global_compiler_options'(_)),
+	assert('_$global_compiler_options'(Options)).
+
+/*================================================================*/
+/*  setoptions(+Options)						*/
+/*	Compiler option setting.					*/
+/*================================================================*/
+
+setoptions(_) :-
+	current_option(Option),
+	conset(Option, 0),
+	%% must unset 'preprocessing_done'.
+	%% Otherwise, if one does compile(foo,[xpp_on]) twice in the same XSB
+	%% session then the second compile/2 fails since preprocessing_is_done/0
+	%% is true and so enqueue_preprocessor/2 won't initialize
+	%% the preprocessor queue (will leave it empty).
+	unset_preprocessing_done,
+	fail.
+setoptions(_) :- 
+	'_$global_compiler_options'(Options), 
+	setoptions1(Options), 
+	fail.
+setoptions(Options) :- setoptions1(Options), fail.
+setoptions(_Options).
+
+setoptions1([]).
+setoptions1([Opt|Rest]) :- 
+	(Opt = +(Opt1)
+	 ->	setopt(Opt1,1)
+	 ; Opt = -(Opt1)
+	 ->	setopt(Opt1,0)
+	 ;	setopt(Opt,1)
+	),
+	(conget(xpp_dump,1) -> conset(xpp_on,1)
+        %% next line for heavy duty gpp debugging
+	%%; conget(xpp_on,1) -> conset(xpp_dump,1)
+        ; true
+        ),
+	%% cpp was off and now is on, hence we had compiler_options(xpp_on)
+	%% Restart!
+	(conget(migh_need_restart,1), conget(xpp_on,1)
+	->  conset(needs_restart,1), conset(migh_need_restart,0)
+	;   setoptions1(Rest)
+	).
+
+
+setopt(Opt,Setting) :-
+	( current_option(Opt) -> conset(Opt, Setting)
+	; current_option(Opt, NewOpt) -> conset(NewOpt, Setting)
+	; warning(('Unknown compiler option: ', Opt))
+	),
+	additional_option_settings(Opt).
+
+additional_option_settings(Opt) :-
+	Opt == ciao_directives,
+	!,
+	set_ciao_opts.
+additional_option_settings(Opt) :-
+	(Opt == xpp_on ; Opt == xpp_dump),
+	!,
+	enqueue_preprocessor(gpp).
+additional_option_settings(Opt) :-
+	(functor(Opt,OptName,1), arg(1,Opt,OptList1),   %% unary xpp_on/xpp_dump
+	    (is_list(OptList1) -> OptList = OptList1
+	    ; OptList = [OptList1]
+	    ),
+	    !
+	; Opt =.. [OptName|OptList]                    %% N-ary xpp_on/xpp_dump
+	),
+	(OptName == xpp_on ; OptName == xpp_dump),
+	!,
+	set_preprocessor_queue(OptList).
+additional_option_settings(_).
+
+/* TLS: just want to avoid any more goose chases w. ti_dump.  The
+proble is that the ti_dump option is checked before ti_dump is
+properly added to the pragma.  Its not that important an option so I
+added this.  Perhaps other options need to use this code? */
+
+check_file_compiler_options([]).
+check_file_compiler_options([H|T]):- 
+	(unsuitable_for_file_options(H) -> 
+	    warning(('Option: ', T,' must be passed in via list in compile/2'))
+	;   true),
+	check_file_compiler_options(T).
+
+unsuitable_for_file_options(ti_dump).
+
+% redefining for export
+current_xsb_compiler_option(Option):- 
+	current_option(Option).
+
+/* Old PSB genes */
+current_option(sysmod).
+current_option(optimize).
+current_option(asm_dump).
+current_option(index_off).
+current_option(compile_off).
+current_option(verbo).
+
+/* tabling */
+current_option(auto_table).
+current_option(suppl_table).
+%current_option(table_dump).
+current_option(suppl_fold_off).
+
+/* specialization */
+current_option(spec_repr).
+current_option(spec_dump).
+current_option(spec_off).
+current_option(unfold_off).
+
+/* unification factoring */
+current_option(ti_all).
+current_option(ti_dump).
+current_option(ti_long_names).
+current_option(ti_opt1).
+
+/* preprocessor */
+current_option(xpp_on).
+current_option(xpp_dump).
+
+/* parse */
+current_option(quit_on_error).
+current_option(canonical).
+
+/* CRs mode inferencing */
+current_option(modeinfer).
+current_option(mi_verbose).
+current_option(mi_debug).
+current_option(mi_dump).
+current_option(mi_warn).
+current_option(mi_foreign).
+
+/* Compiler tests */
+current_option(profile).
+
+current_option(singleton_warnings_off).
+current_option(allow_redefinition).
+
+% TLS: taken out 11/03: these do not seem to be used.
+% current_option(init_var_off).
+% current_option(no_check).
+% current_option(ccp).
+
+% Probably relics of aborted attempt at clause reordering.
+% current_option(db_opt).
+% current_option(unfold).
+% current_option(reorder).
+
+/* TLS: added Jan, O1.  This is put in so that XSB can read files commented
+   via lpdoc without having to have something along the lines of texinfo .src
+   files.  The current set of accepted directives is small and is
+   geared towards lpdoc, but I'll probably
+   expand them as I understand better more of ciao's functionality.
+*/
+
+current_option(ciao_directives).
+
+current_option(Opt,OptName) :-
+	functor(Opt,OptName,_),
+	(OptName == xpp_on ; OptName == xpp_dump),
+	!.
+% TLS: used for backward compatability when options change.
+current_option(_,_):- fail.
+
+
+
+set_ciao_opts:- 
+	op(500,yfx,#),
+	op(975, xfx,(=>)),
+	op(978, xfx,(::)).
+%	op(1100,fx,(document_export)),
+%	op(1100,fx,(document_import)).
+
+
+set_preprocessor_queue([]).
+set_preprocessor_queue([PreprocSpec|Rest]) :-
+	enqueue_preprocessor(PreprocSpec),
+	set_preprocessor_queue(Rest).
+
+
+/*================================================================*/
+/*  option(+Option)							*/
+/*	Succeeds iff Option is one of the compilation options that are	*/
+/*	set.								*/
+/*================================================================*/
+
+option(X) :- conget(X, 1).
+
+/*================================================================*/
+/*  time_message(+StartTime, +Message)					*/
+/*	Display the Message and the elapsed cpu time.			*/
+/*================================================================*/
+
+time_message(StartTime, Message) :- 
+	cputime(Time),
+	Laps is Time - StartTime,
+	message(('[', Message, ', cpu time used: ', Laps, ' seconds]')).
+
+verbo_time_message(StartTime, Message) :- 
+	( option(verbo) -> time_message(StartTime, Message) ; true ).
+
+/*================================================================*/
+/*  subsumes(+X, +Y):							*/
+/*	X subsumes Y, i.e. Y is an instance of X			*/
+/*	The procedure is side-effect free.				*/
+/*===============================================================*/
+
+subsumes(X,Y) :- \+ X=Y,!,fail.
+subsumes(X,Y) :- numbervars_cmplib(Y,0,_), \+ X=Y,!,fail.
+subsumes(_,_).
+
+/*======================================================================*/
+/*  subsumed_member(+Elem, +List):					*/
+/*	check if Elem is subsumed by a one of elements in List		*/
+/*======================================================================*/
+
+subsumed_member(X, L) :- member(Y, L), subsumes(Y, X).
+
+/*======================================================================*/
+/* dict_lookup(+Key,-+Value,+-Dict)					*/
+/*	find the Value associated with Key in the dictionary;		*/
+/*	if no entry for it, insert it.					*/
+/*		Key can be a variable also.				*/
+/*======================================================================*/
+
+dict_lookup(Key, Value, Dict) :- 
+	var(Dict), !, 
+	Dict = ['@'(Key, Value) | _].
+dict_lookup(Key, Value, ['@'(Y, Value) | _]) :- 
+	Key == Y, !.
+dict_lookup(Key, Value, [_|Dict]) :- dict_lookup(Key, Value, Dict).
+
+
+/*----freeze------------------------------------------------------------*/
+
+freeze(X) :- numbervars_cmplib(X, 0, _).
+
+/*----melt--------------------------------------------------------------*/
+/* melt(+Term, -NewTerm):	melt a frozen term to a new copy	*/
+/*----------------------------------------------------------------------*/
+
+melt(X, Y) :- melt(X, Y, _).
+
+melt(X, X, _) :- atomic(X), !.
+melt('_$cmplib_var'(I), V, FrozenVarDict) :- !, dict_lookup(I, V, FrozenVarDict).
+melt(X, Y, FrozenVarDict) :-
+	functor(X, F, N),
+	functor(Y, F, N),
+	meltargs(N, X, Y, FrozenVarDict).
+
+meltargs(0, _, _, _) :- !.
+meltargs(I, X, Y, FrozenVarDict) :-
+	arg(I, X, X1),
+	arg(I, Y, Y1),
+	melt(X1, Y1, FrozenVarDict),
+	I1 is I - 1,
+	meltargs(I1, X, Y, FrozenVarDict).
+
+/*----writetop----------------------------------------------------------*/
+
+writetop(Term, Level) :-
+	writetop0(Term, Level), nl(userout).
+
+writetop0(Term, _Level) :- atomic(Term), !, write(userout,Term).
+writetop0(Term, _Level) :- var(Term), !, write(userout,Term).
+writetop0(Term, Level) :- 
+	Level1 is Level - 1,
+	Term =.. [F|Args],
+	write(userout,F),write(userout,'('),
+	( Level1 < 0 -> write(userout,'_') ; writetop_args(Args,Level1), ! ),
+	write(userout,')'),
+	!.
+
+writetop_args([X], Level) :- writetop0(X, Level), !.
+writetop_args([X|R], Level) :-
+	writetop0(X, Level), write(userout,','), writetop_args(R, Level).
+
+
+/*======================================================================*/
+/*  ll_arg(+Index, +Term, ?Arg).					*/
+/*	Provides the system a low-level arg/3 predicate that does not	*/
+/*	check for error conditions and only covers the case when Term	*/
+/*	is a structure (other than a list structure) and  Index is an	*/
+/*	integer that is between 1 and the arity of Term.		*/
+/*======================================================================*/
+
+ll_arg(Index, Term, Arg) :-
+	term_arg(Term, Index, A),
+	A = Arg.
+
+
+/*======================================================================*/
+/* Use compiler-local version of numbervars to avoid $VAR clashes with  */
+/* user code                                                            */
+/*======================================================================*/
+numbervars_cmplib(Y,I,J) :- term_type(Y,T),
+	(T =:= XSB_FREE
+	 ->	Y='_$cmplib_var'(I), J is I+1
+	 ; T =:= XSB_ATTV
+	 ->	Y='_$cmplib_var'(I), J is I+1
+	 ; T =:= XSB_LIST
+	 ->	Y=[A1|A2],
+	 	numbervars_cmplib(A1,I,I1), numbervars_cmplib(A2,I1,J)
+	 ; T =:= XSB_STRUCT
+	 ->	term_psc(Y,PSC), psc_arity(PSC,N),
+	 	numbervars_cmplib(Y,I,J,1,N)
+	 ;	J=I
+	).
+numbervars_cmplib(Y,I,J,N,A) :-
+	(N > A
+	 ->	J=I
+	 ;	term_arg(Y,N,Arg),
+	 	numbervars_cmplib(Arg,I,I1),
+	 	N1 is N+1, numbervars_cmplib(Y,I1,J,N1,A)
+	).
+
+%   numbervars_cmplib(+Term)
+%   makes a HiLog Term ground by binding variables to subterms _$cmplib_var(N) with
+%   integer values of N ranging from 0 up. This predicate was written since
+%   most of the calls to numbervars_cmplib/3 are of the form: numbervars_cmplib(Term,0,_)
+ 
+%numbervars_cmplib(Term) :-
+%        numbervars_cmplib(Term, 0, _).
+
+/* --------------------- end of file auxlry.P ------------------------- */

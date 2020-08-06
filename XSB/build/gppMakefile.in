@@ -1,0 +1,54 @@
+##############################################################################
+#									     #
+# Makefile for compiling the XSB preprocessor, GPP			     #
+#									     #
+##############################################################################
+
+## File:      gppMakefile.in
+## Author(s): kifer
+## Copyright (C) The Research Foundation of SUNY, 1999
+##
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+##
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+##
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: gppMakefile.in,v 1.10 2012-09-27 02:25:57 kifer Exp $
+##
+
+
+CC=@CC@
+BINDIR=@arch_bindir@
+OBJDIR=@arch_config_prefix@/saved.o
+mno_cyg_inclib=@mno_cyg_inclib@
+LDFLAGS=@LDFLAGS@
+CFLAGS=@GPPCFLAGS@
+WIN_NT_FLAG=@GPPWNTFLAG@
+
+all: prepare gpp install
+
+gpp: gpp.o prepare
+	@echo -e "\t[$(CC)] -o gpp"
+	@$(CC) $(LDFLAGS) -o gpp $(OBJDIR)/gpp.o
+
+gpp.o: gpp.c
+	@echo -e "\t[$(CC)] gpp.c using $(CFLAGS) $(WIN_NT_FLAG)"
+	@$(CC) $(CFLAGS) $(WIN_NT_FLAG) -c $(mno_cyg_inclib) gpp.c
+	@mv -f gpp.o $(OBJDIR) || echo ""
+
+prepare:
+	@ln $(OBJDIR)/gpp.o . 2> /dev/null || echo ""
+
+install: gpp
+	@mv -f gpp $(BINDIR) 2> /dev/null || echo ""
+	@mv -f gpp.exe $(BINDIR) 2> /dev/null || echo ""
+	@rm -f gpp.o

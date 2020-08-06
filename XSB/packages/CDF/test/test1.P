@@ -1,0 +1,27 @@
+
+% This is a basic test of OMS inheritance, sc, etc.
+
+% note: this test assumes unique names in ext1.P
+
+test:- 
+	test_subset.
+
+test_subset:- 
+%	sanity test of subclass.
+	test_nondet_solutions(internal_name_subclass(c1,_X),
+				[internal_name_subclass(c1,'OMS Root'),
+				 internal_name_subclass(c1,c1),
+				 internal_name_subclass(c1,c2),
+				 internal_name_subclass(c1,c3)]),
+% 	sanity test of relationship
+	test_det_call(name_relationship(c1,r2,_),name_relationship(c1,r2,c12)),
+% 	simple tests of 1st arg inh
+	test_det_call(name_attribute(o2,r2,_),name_attribute(o2,r2,c12)),
+	test_det_call(name_attribute(o2,r4,_),name_attribute(o2,r4,c12)),
+	test_det_call(name_attribute_object(o2,r4,_),
+		      name_attribute_object(o2,r4,o12)),
+	test_det_fail(name_attribute(o1,r4,_)), 
+% 	simple test of 2st arg inh
+	test_det_call(name_attribute(o2,r3,_),name_attribute(o2,r3,c12)).
+% 	3rd arg inh does not seem to work.
+

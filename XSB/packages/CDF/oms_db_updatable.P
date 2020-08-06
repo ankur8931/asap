@@ -1,0 +1,730 @@
+:- compiler_options([ciao_directives]).
+
+:- import member/2, length/2, append/3 from basics.
+:- import odbc_sql/4, odbc_open/2, odbc_open/4 from odbc_call.
+:- import term_to_atom/2 from string.
+:- ensure_loaded(oms_utilities).
+
+:- document_export coerce_db_type/5, oms_db_open/3.
+
+:- comment(module,
+"
+@section{Updatable External Object Data Sources}
+
+@em{Updatable External Object Data Sources} provide a way for OMS object
+data (objects and their attributes) to be stored and retrieved from
+external tables within a relational database that is accessible
+through the ODBC interface.  Objects can be created and deleted and
+their attributes can be added, deleted and updated.  The table(s) in
+the (external) relational database are updated to reflect such
+changes.
+
+An Updatable External Object Data Source is stored as a ""component""
+@ref{library (oms_components)}, which is identified by a particular,
+unique, @em{Source}.
+
+The external database table(s) of an Updatable External Object Data
+Source must be of specific form(s), and represent objects and their
+attributes in particular ways.  However, the ways supported are
+general enough to allow reasonably natural external data
+representations.
+
+The main table in an Updatable External OMS Object Data Source is
+called the @em{Object Table}.  An object table is a database table
+whose rows represent objects to be seen within an OMS.  Such a set of
+objects will share the same ""source"" in the OMS, indicating their
+""component"".
+
+An Object Table contains a column which is the OMS object Native ID,
+and that column must be a key for the object table.  The table may
+have other columns that can be reflected as OMS attributes for the
+objects.  Each such attribute must (clearly) be functional.  There may
+also be other tables, called Attribute Tables, which have a foreign
+key to the object table, and a column that can be reflected as an OMS
+attribute for the object.  These attributes need not be functional.
+
+An Object Table must be declared with the following fact.
+
+@begin{verbatim}
+ext_object_table(Source,TableName,NOidAttr,NameAttr,
+		 MemberofNCid,MemberofSou).
+@end{verbatim}
+
+where:
+
+@begin{itemize}
+@item
+@tt{Source} is the component identifier for this object table.
+@item
+@tt{TableName} is the name of the object table in the database.
+@item
+@tt{NOidAttr} is the column name of the key column of the object table.
+@item
+@tt{NameAttr} is the column name of field that contains the name field
+  for the object.  (If there is no special one, it should be the same
+  as @tt{NOidAttr}.)
+@item
+@tt{MemberofNCid} determines the Native ID of the classes of which the
+objects are members.  If it is an atom, then it is the name of a
+column in the table whose values contain the Native ID for the class
+containing the corresponding object.  If it is of the form
+@tt{con(Atom)}, then @tt{Atom}, itself, is the Native ID of the single
+class that contains @em{all} objects in the table.
+@item
+@tt{MemberofSou} determines the Sources of the classes containing the
+objects in the table.  If it is an atom, then it is the name of a
+column in the object table whose values are the sources of the classes
+containing the corresponding objects.  If it is of the form
+@tt{con(Atom)}, then @tt{Atom}, itself, is the Source for all classes
+containing objects in the table.  (Note if @tt{memberofNCid} is of the
+form con(_), then @tt{MemberofSou} should also be of that form.)
+@end{itemize}
+
+The caller must have previously opened an ODBC connection, named
+Source, by using @pred{oms_db_open/3}, before these routines will work.
+
+For each functional attribute represented in an Object Table, there
+must be a fact of the following form:
+
+@begin{verbatim}
+ext_functional_attribute_table(Source,RelNatCid,RelSou,
+                                      TarAttr,Trans).
+@end{verbatim}
+
+where:
+
+@begin{itemize} 
+@item 
+@tt{Source} is the component identifier for this object table.  
+@item 
+@tt{RelNatCid} is the Native ID of the OMS relationship for this
+attribute.  
+@item 
+@tt{RelSou} is the Source of the OMS relationship for this attribute.
+@item 
+@tt{TarAttr} is the name of the column(s) in the table containing the
+value of this attribute.  If the internal target type is a product
+type, then this is a list of the column names of the columns that
+contain the product values.  The predicate @pred{coerce_db_type/5}
+converts from internal Native Ids to (and from) (lists of) data field
+values.  Rules for @pred{coerce_db_type/5} are provided to do standard
+(Trans = std) conversion between primitive OMS and database types.
+Product types are unfolded to be a list of primitive OMS and database
+types and are converted as such.  If desired, @tt{coerce_db_type/5}
+could be extended to include special-purpose conversion methods
+(probably only of interest for special product types.)  
+@item
+@tt{Trans} is an atom that indicates the type of translation from
+internal to external format.  Normally it is '@tt{std}', unless
+@pred{coerce_db_type/5} has been extended to include special
+translation capabilities.  @end{itemize}
+
+There must be a @tt{schrel} in the OMS for each of these OMS
+relationships indicating the OMS type of the attribute value.
+
+For each attribute table, there must be a fact of the following form:
+
+@begin{verbatim}
+ext_attribute_table(Source,TableName,NOidAttr,
+                    RelationNatCid,RelationSou,TarAttr,Trans)
+@end{verbatim}
+
+where:
+@begin{itemize}
+@item
+@tt{Source} is the component identifier for this object table.
+@item
+@tt{TableName} is the name of the attribute table in the database.
+@item
+@tt{NOidAttr} is the column name of the column of the attribute table which
+  is a foreign key to the object table.
+@item
+@tt{RelationsNatCid} is the Native ID of the OMS relationship for this
+  attribute.
+@item
+@tt{RelationSou} is the Source of the OMS relationship for this attribute.
+@item
+@tt{TarAttr} is the name(s) of the column(s) in the table containing the
+value(s) of this attribute.  It is an atomic name if the value is of a
+primitive OMS type; it is a list of names if the value of this
+attribute is of a product type.
+@item
+@tt{Trans} is an atom that indicates the type of translation from internal to
+external format.  Normally it is '@tt{std}'.
+@end{itemize}
+
+For each functional @tt{attribute_object}, there must be a fact of the
+following form:
+
+@begin{verbatim}
+ext_functional_attribute_object_table(Source,RelationNatCid,RelationSou,
+                                            TarAttr,TarSource)
+@end{verbatim}
+
+where, as above
+
+@begin{itemize}
+@item
+@tt{Source} is the component identifier for this object table.
+@item
+@tt{RelationsNatCid} is the Native ID of the OMS relationship for this
+  attribute.
+@item
+@tt{RelationSou} is the Source of the OMS relationship for this attribute.
+@item
+@tt{TarAttr} is the name of the column in the table containing the value of
+  a native object ID.
+@item
+@tt{TarSource} is the Source of the native Oids in the TarAttr field.
+@end{itemize}
+
+For each attribute_object table, there must be a fact of the following form:
+
+@begin{verbatim}
+ext_attribute_object_table(Source,TableName,NOidAttr,
+                    RelationNatCid,RelationSou,TarAttr,TarSource)
+@end{verbatim}
+where, once again:
+@begin{itemize}
+@item
+@tt{Source} is the component identifier for this object table.
+@item
+@tt{TableName} is the name of the attribute table in the database.
+@item
+@tt{NOidAttr} is the column name of the column of the attribute table which
+  is a foreign key to the object table.
+@item
+@tt{RelationsNatCid} is the Native ID of the OMS relationship for this
+  attribute.
+@item
+@tt{RelationSou} is the Source of the OMS relationship for this attribute.
+@item
+@tt{TarAttr} is the name of the column in the table containing the value of
+  a native object ID.
+@item
+@tt{TarSource} is the Source of the native Oids in the TarAttr field.
+@end{itemize}
+
+").
+
+:- comment(oms_db_open/3,"
+@tt{oms_db_open(Component,CallToGetPar,Parameter)} opens an odbc
+connection to a database for use by oms_db_updatable, or
+oms_db_storage, routines.  @tt{Component} is an atom representing the
+component; @tt{CallToGetPar} is a callable term, which will be called
+to instantiate variables in @tt{Parameters}.  If @tt{Parameters} is
+given as a ground term, then @tt{CallToGetPar} should be @tt{true}.
+It can be used, for example, to ask the user for a database and/a
+password.  @tt{Parameter} specifies the necessary information for
+odbc_open to open a connection.  It is one of the following forms:
+@tt{odbc(Server,Name,Passwd)} or @tt{odbc(ConnectionString)}.  See the
+@tt{odbc_open/1/3} documentation @footnote{See Volume 2 of the XSB
+manual.}  for details on what these parameters must be.  ").
+
+oms_db_open(Source,BindCall,ConnectData) :-
+	call(BindCall),
+	oms_db_connect(ConnectData,Source).
+
+oms_db_connect(odbc(Server,Name,Passwd),Connection) :-
+	odbc_open(Server,Name,Passwd,Connection).
+oms_db_connect(odbc(ConnectionString),Connection) :-
+	odbc_open(ConnectionString,Connection).
+
+
+:- dynamic ext_object_table/6.
+:- dynamic ext_functional_attribute_table/5.
+:- dynamic ext_attribute_table/7.
+:- dynamic ext_functional_attribute_object_table/5.
+:- dynamic ext_attribute_object_table/7.
+
+/****************************************************************/
+/*								*/
+/* Objects from an Updatable External Object Data Source 	*/
+/*								*/
+/****************************************************************/
+object_int_udb(Name,NatId,Source) :-
+	ext_object_table(Source,TableName,NOidAttr,NameAttr,_MC,_MS),
+	%%writeln(ob_int(Name,NatId,Source)),
+	(nonvar(NatId)
+	 ->	(ob_id_map(_Oid,Name,NatId,Source)
+		 ->	true
+		 ;	odbc_sql_local(Source,
+				       [NatId],
+				       ['select ',NameAttr,
+					' from ',TableName,
+					' where ',NOidAttr,' = ?'],
+				       [NameDB])
+		)
+	 ;	odbc_sql_local(Source,
+			       [],
+			       ['select ',NOidAttr,',',NameAttr,
+				' from ',TableName],
+			       [NatId,NameDB])
+	),
+	% NameDB could be integer or atom in DB
+	term_to_atom(NameDB,Name).
+
+retractall_oms_int_udb(object_ext(Name,NatId,Source)) :-
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,_MC,_MS),
+	(var(NatId)
+	 ->	(var(Name)
+		 ->	odbc_sql_local(Source,
+				       [],
+				       ['delete from ',TableName],[])
+		 ;	object(Name,NatId,Source),
+			odbc_sql_local(Source,
+				       [NatId],
+				       ['delete from ',TableName,
+					' where ',NOidAttr,' = ?'
+					],[])
+		)
+	 ;	odbc_sql_local(Source,
+			       [NatId],
+			       ['delete from ',TableName,
+				' where ',NOidAttr,' = ?'
+				],[])).
+
+assert_oms_int_udb(object_ext(Name,NatId,Source)) :-
+	ext_object_table(Source,TableName,NOidAttr,NameAttr,_MC,_MS),
+	%%writeln(new_ob_int(Name,Cid,NatId,Source)),
+	(NOidAttr == NameAttr
+	 ->	odbc_sql_local(Source,
+			       [NatId],
+			       ['insert into ',TableName,
+				' (',NOidAttr,')',
+				' values (?)'
+				],
+			       [])
+	 ;	(atom(Name)
+		 ->	true
+		 ;	oms_warning(update,('Name of asserted object is not an atom', Name)),
+			fail
+		),
+		odbc_sql_local(Source,
+			       [NatId,Name],
+			       ['insert into ',TableName,
+				'(',NOidAttr,',',NameAttr,')',
+				' values (?,?)'
+				],
+			       [])
+	).
+
+assert_oms_int_udb(memberof_ext(NatId,Source,MCid,MSSou)) :-
+	%% writeln(assert_mo(Oid,Cid)),
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,MC,MS),
+	(MC = con(MCid)
+	 ->	MS = con(MSSou)
+	 ; (atom(MC),MS = con(MSSou))
+	 ->	odbc_sql_local(Source,
+			       [MCid,NatId],
+			       ['update ',TableName,
+				' set ',MC, ' = ?',
+				' where ',NOidAttr, ' = ?'
+				],
+			       []
+			      )
+	 ;      atom(MC),atom(MS),
+		odbc_sql_local(Source,
+			       [MCid,MSSou,NatId],
+			       ['update ',TableName,
+				' set ',MC, ' = ? ,',
+				MS, ' = ?',
+				' where ',NOidAttr, ' = ?'
+				],
+			       [])
+	).
+
+
+/****************************************************************/
+/*								*/
+/* Memberof from an Updatable External Object Data Source 	*/
+/*								*/
+/****************************************************************/
+immediate_memberof_int_udb(NatOID,Source,NatCid,CSou) :-
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,MC,MCSou),
+	%%writeln(db_im_mo(NatOID,Source,NatCid,CSou)),
+	(nonvar(NatOID)
+	 ->	(MC = con(NatCid)
+		 ->	MCSou = con(CSou)
+		 ; MCSou = con(CSou)
+		 ->	atom(MC),
+			odbc_sql_local(Source,
+				       [NatOID],
+				       ['select ',MC,
+					' from ',TableName,
+					' where ',NOidAttr,' = ?'],
+				       [NatCid])
+		 ;      atom(MC),atom(MCSou),
+			odbc_sql_local(Source,
+				       [NatOID],
+				       ['select ',MC,',',MCSou,
+					' from ',TableName,
+					' where ',NOidAttr,' = ?'],
+				       [NatCid,CSou])
+		)
+	 ;	(MC = con(NatCid)
+		 ->	MCSou = con(CSou),
+			object(_,_,NatOID,Source)
+		 ; MCSou = con(CSou)
+		 ->	atom(MC),
+			(nonvar(NatCid)
+			 ->	odbc_sql_local(Source,
+				       [NatCid],
+				       ['select ',NOidAttr,
+					' from ',TableName,
+					' where ',MC,'= ?'],
+				       [NatOID])
+			 ;	odbc_sql_local(Source,
+				       [],
+				       ['select ',NOidAttr,',',MC,
+					' from ',TableName],
+				       [NatOID,NatCid])
+			)
+		 ;      atom(MC),atom(MCSou),
+			(nonvar(NatCid),nonvar(CSou)
+			 ->	odbc_sql_local(Source,
+					       [NatCid,CSou],
+					       ['select ',NOidAttr,
+						' from ',TableName,
+						' where ',MC,'= ? and ',MCSou,'= ?'],
+					       [NatOID])
+			 ;	odbc_sql_local(Source,
+					       [],
+					       ['select ',NOidAttr,',',MC,',',MCSou,
+						' from ',TableName],
+					       [NatOID,NatCid,CSou])
+			)
+		)
+	).
+
+retractall_oms_int_udb(memberof_ext(NatOid,Source,MCid,CSou)) :-
+	%% writeln(retracting(mo(Oid,Cid))),
+	nonvar(NatOid), nonvar(Source),
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,MC,MCSou),
+	(MC = con(MCid)
+	 ->	true
+	 ; (atom(MC),MCSou = con(CSou))
+	 ->	odbc_sql_local(Source,
+			       [NatOid],
+			       ['update ',TableName,
+				' set ',MC, ' = NULL',
+				' where ',NOidAttr, ' = ?'
+				],
+			       []
+			      )
+	 ;      atom(MC),atom(MCSou),
+		odbc_sql_local(Source,
+			       [NatOid],
+			       ['update ',TableName,
+				' set ',MC, ' = NULL,',
+				MCSou, ' = NULL',
+				' where ',NOidAttr, ' = ?'
+				],
+			       [])
+	).
+
+/****************************************************************/
+/*								*/
+/* Attributes from an Updatable External Object Data Source 	*/
+/*								*/
+/****************************************************************/
+%% RSou = Source in relational component model
+%% may be anything otherwise
+immediate_attribute_int_udb(SNOid,Source,RNCid,RSou,TNCid,TSou) :-
+	ext_object_table(Source,OTableName,ONOidAttr,_NameAttr,_MC,_CSou),
+	(ext_functional_attribute_table(Source,RNCid,RSou,TarAttr,Tran),
+	 TableName = OTableName,
+	 NOidAttr = ONOidAttr
+	 ;
+	 ext_attribute_table(Source,TableName,NOidAttr,RNCid,RSou,TarAttr,Tran)
+	),
+	class(RCid,_,RNCid,RSou),
+	%%writeln(im_at_int(SNOid,RNCid,TNCid)),
+	(nonvar(SNOid)
+	 ->	(atom(TarAttr)
+		 ->	odbc_sql_local(Source,
+				       [SNOid],
+				       ['select ',TarAttr,
+					' from ',TableName,
+					' where ',NOidAttr,' = ?'],
+				       Results)
+		 ;	db_build_commasep(TarAttr,Query,
+					  [' from ',TableName,' where ',NOidAttr,' = ?']),
+			odbc_sql_local(Source,
+				       [SNOid],
+				       ['select '|Query],
+				       Results)
+		),
+		object(SOid,_,SNOid,Source),
+		schrel(SCid,RCid,Type),
+		memberof(SOid,SCid), 
+		class(Type,_,NType,TSou),
+		coerce_db_type(NType,Tran,TNCid,Results,[])
+	 ;	(nonvar(RNCid),nonvar(RSou),nonvar(TNCid),nonvar(TSou)
+		 ->	coerce_db_type(TNCid,Tran,TNCid,DBTVal,[]),
+			(atom(TarAttr)
+			 ->	odbc_sql_local(Source,
+					       DBTVal,
+					       ['select ',NOidAttr,
+						' from ',TableName,
+						' where ',TarAttr,' = ?'],
+					       [SNOid])
+			 ;	
+			 db_build_sets(TarAttr,Sets,[]),
+			 odbc_sql_local(Source,
+					DBTVal,
+					['select ',NOidAttr,
+					 ' from ',TableName,' where ',Sets],
+					[SNOid])
+			)
+		 ;	writeln('ERROR: Attribute_int must have NatOId or (RNCid,RSou,TNCid,TSou) bound'),
+			fail
+		)
+	)
+	%%,writeln(im_attr(SNOid,RNCid,TNCid))
+	.
+
+retractall_oms_int_udb(attribute_ext(NatId,Source,RNCid,RSou,TNCid, _TSou)) :-
+	nonvar(NatId),nonvar(RNCid),nonvar(RSou),
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,_MC,_MS),
+	%%writeln(ret_at_int(NatId,RNCid,TCid)),
+	(ext_functional_attribute_table(Source,RNCid,RSou,TarAttr,_Tran),
+	 (atom(TarAttr)
+	  ->	 odbc_sql_local(Source,
+				[NatId],
+				['update ',TableName,
+				 ' set ',TarAttr,' = NULL',
+				 ' where ',NOidAttr,' = ?'],
+				[])
+	  ;	 db_build_nulls(TarAttr,EqNull,[' where ',NOidAttr,' = ?']),
+		 odbc_sql_local(Source,
+				[NatId],
+				['update ',TableName,
+				 ' set '|EqNull],
+				[])
+	 )
+	 ;
+	 ext_attribute_table(Source,ATableName,ANOidAttr,RNCid,RSou,TarAttr,Tran),
+	 (nonvar(TNCid)
+	  ->	 coerce_db_type(TNCid,Tran,TNCid,DBVal,[]),
+		 (atom(TarAttr)
+		  ->	 odbc_sql_local(Source,
+					[NatId|DBVal],
+					['delete from ',ATableName,
+					 ' where ',ANOidAttr,' = ?',
+					 ' and ',TarAttr,' = ?'],[])
+		  ;	 db_build_condition(TarAttr,Cond,[]),
+			 odbc_sql_local(Source,
+					[NatId|DBVal],
+					['delete from ',ATableName,
+					 ' where ',ANOidAttr,' = ?',
+					 ' and '|Cond],[])
+		 )
+	  ;	 odbc_sql_local(Source,
+				[NatId],
+				['delete from ',ATableName,
+				 ' where ',ANOidAttr,' = ?'],[])
+	 )
+	).
+
+assert_oms_int_udb(attribute_ext(NatId,Source,RNCid,RSou,TNCid,_TSou)) :-
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,_MC,_MS),
+	(ext_functional_attribute_table(Source,RNCid,RSou,TarAttr,Tran),
+	 coerce_db_type(TNCid,Tran,TNCid,TVal,[]),
+	 append(TVal,[NatId],InpPars),
+	 (atom(TarAttr)
+	  ->	 odbc_sql_local(Source,
+				InpPars,
+				['update ',TableName,
+				 ' set ',TarAttr,' = ?',
+				 ' where ',NOidAttr,' = ?'],
+				[])
+	  ;	 db_build_sets(TarAttr,Sets,[' where ',NOidAttr,' = ?']),
+		 odbc_sql_local(Source,
+				InpPars,
+				['update ',TableName,
+				 ' set '|Sets],
+				[])
+	 )
+	 ;
+	 ext_attribute_table(Source,ATableName,ANOidAttr,RNCid,RSou,TarAttr,Tran),
+	 coerce_db_type(TNCid,Tran,TNCid,TVal,[]),
+	 (atom(TarAttr)
+	  ->	 odbc_sql_local(Source,
+				[NatId|TVal],
+				['insert into ',ATableName,
+				 '(',ANOidAttr,',',TarAttr,')',
+				 ' values (?,?)'
+				 ],
+				[])
+	  ;	 db_build_questions(TarAttr,Ques,[')']),
+		 db_build_commasep(TarAttr,Tail,[') values (?,'|Ques]),
+		 odbc_sql_local(Source,
+				[NatId|TVal],
+				['insert into ',ATableName,
+				 '(',ANOidAttr,','|Tail
+				 ],
+				[])
+	 )
+	).
+
+
+/************************************************************************/
+/*									*/
+/* Attribute_objects from an Updatable External Object Data Source 	*/
+/*									*/
+/************************************************************************/
+attribute_object_int_udb(SNOid,Source,RNCid,RSou,TNCid,TSou) :-
+	ext_object_table(Source,OTableName,ONOidAttr,_NameAttr,_MC,_CSou),
+	(ext_functional_attribute_object_table(Source,RNCid,RSou,TarAttr,TSou),
+	 TableName = OTableName,
+	 NOidAttr = ONOidAttr
+	 ;
+	 ext_attribute_object_table(Source,TableName,NOidAttr,RNCid,RSou,TarAttr,TSou)
+	),
+	class(RCid,_,RNCid,RSou),
+	%%writeln(im_at_int(SNOid,RNCid,TNCid)),
+	(nonvar(SNOid)
+	 ->	object(SOid,_,SNOid,Source),
+		schrel(SCid,RCid,object(_)),
+		memberof(SOid,SCid), \+ SCid = object(_),
+		odbc_sql_local(Source,
+			       [SNOid],
+			       ['select ',TarAttr,
+				' from ',TableName,
+				' where ',NOidAttr,' = ?'],
+			       [TNCid])
+	 ;	writeln('ERROR: Attribute_object_int must have NatId bound'),
+		fail
+	)
+	%%,writeln(im_attr(SNOid,RNCid,TNCid))
+	.
+
+retractall_oms_int_udb(attribute_object_ext(NatId,Source,RNCid,RSou,DBVal,TSou)) :-
+	nonvar(NatId),nonvar(RNCid),nonvar(RSou),
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,_MC,_MS),
+	%%writeln(ret_ao_int(NatId,RNCid,TOid)),
+	(ext_functional_attribute_object_table(Source,RNCid,RSou,TarAttr,TSou),
+	 odbc_sql_local(Source,
+			[NatId],
+			['update ',TableName,
+			 ' set ',TarAttr,' = NULL',
+			 ' where ',NOidAttr,' = ?'],
+			[])
+	 ;
+	 ext_attribute_object_table(Source,ATableName,ANOidAttr,RNCid,RSou,TarAttr,TSou),
+	 (nonvar(DBVal), nonvar(TSou)
+	  ->	 odbc_sql_local(Source,
+				[NatId,DBVal],
+				['delete from ',ATableName,
+				 ' where ',ANOidAttr,' = ?',
+				 ' and ',TarAttr,' = ?'],[])
+	  ;	 odbc_sql_local(Source,
+				[NatId],
+				['delete from ',ATableName,
+				 ' where ',ANOidAttr,' = ?'],[])
+	 )
+	).
+%%	oms_update_list([ext_update(oms_ao(NatId,Source,RNCid,RSou,DBVal,TSou))]).
+
+assert_oms_int_udb(attribute_object_ext(NatId,Source,RNCid,RSou,TVal,TSou)) :-
+	ext_object_table(Source,TableName,NOidAttr,_NameAttr,_MC,_MS),
+	(ext_functional_attribute_object_table(Source,RNCid,RSou,TarAttr,TSou),
+	 odbc_sql_local(Source,
+			[TVal,NatId],
+			['update ',TableName,
+			 ' set ',TarAttr,' = ?',
+			 ' where ',NOidAttr,' = ?'],
+			[])
+	 ;
+	 ext_attribute_object_table(Source,ATableName,ANOidAttr,RNCid,RSou,TarAttr,TSou),
+	 odbc_sql_local(Source,
+			[NatId,TVal],
+			['insert into ',ATableName,
+			 '(',ANOidAttr,',',TarAttr,')',
+			 ' values (?,?)'
+			 ],
+			[])
+	).
+%%	oms_update_list([ext_update(oms_ao(Oid,RCid,TOid))]).
+
+/****************************************************************/
+/*								*/
+/* Helper predicates for Updatable External Object Data Source 	*/
+/*								*/
+/****************************************************************/
+
+%%% coerce_db_type(Type,Tran,NativeId,ExtVals0,ExtVals)
+coerce_db_type(atom(_),std,atom('NULL'),['NULL'|X],X) :- !, fail.
+coerce_db_type(atom(_),std,atom(Atom),[Atom|X],X) :- atom(Atom), !.
+coerce_db_type(integer(_),std,integer(Int),[Int|X],X) :- (integer(Int); atom(Int),atom_codes(Int,IntC), number_codes(_,IntC)), !.
+coerce_db_type(atom(_),std,aint(Atom),[Atom|X],X) :- atom(Atom), !.
+coerce_db_type(float(_),std,float(Flt),[Flt|X],X) :- float(Flt), !.
+coerce_db_type(Type,Tran,NativeValue,ExtVals0,ExtVals) :-
+	structure(Type),
+	!,
+	Type =.. [Ty|TypeArgs],
+	(var(NativeValue)
+	 ->	coerce_db_type_flatten(TypeArgs,Tran,NativeArgs,ExtVals0,ExtVals),
+		NativeValue =.. [Ty|NativeArgs]
+	 ;	NativeValue =.. [Ty|NativeArgs],
+		coerce_db_type_flatten(TypeArgs,Tran,NativeArgs,ExtVals0,ExtVals)
+	).
+coerce_db_type(Type,std,NatId,[NatId|X],X) :-
+	subclass(NatId,Type).
+
+coerce_db_type_flatten([],_,[],ExtVals,ExtVals).
+coerce_db_type_flatten([Type,Sou|TypeArgs],Tran,[Value,Sou|NativeArgs],ExtVals0,ExtVals) :-
+	coerce_db_type(Type,Tran,Value,ExtVals0,ExtVals1),
+	coerce_db_type_flatten(TypeArgs,Tran,NativeArgs,ExtVals1,ExtVals).
+
+db_build_condition([Attr],[Attr,' = ?'|C],C) :- !.
+db_build_condition([Attr|Attrs],[Attr,' = ? and '|C0],C) :-
+	db_build_condition(Attrs,C0,C).
+
+db_build_nulls([Attr],[Attr,' = NULL'|X],X) :- !.
+db_build_nulls([Attr|Attrs],[Attr,' = NULL, '|X0],X) :-
+	db_build_nulls(Attrs,X0,X).
+
+db_build_sets([Attr],[Attr,' = ?'|X],X) :- !.
+db_build_sets([Attr|Attrs],[Attr,' = ?, '|X0],X) :-
+	db_build_sets(Attrs,X0,X).
+
+db_build_commasep([Attr],[Attr|A],A) :- !.
+db_build_commasep([Attr|Attrs],[Attr,', '|A0],A) :-
+	db_build_commasep(Attrs,A0,A).
+
+db_build_questions([_],['?'|Q],Q) :- !.
+db_build_questions([_|As],['?,'|Q0],Q) :-
+	db_build_questions(As,Q0,Q).
+
+/*
+odbc_sql_local(Connection,Input,Statement,Output):- 
+	%% writeln('SQL_CALL'(Statement,Input)),
+	findall(O,odbc_sql(Connection,Input,Statement,O),Outputs1),
+	sort(Outputs1,Outputs),
+	member(Output,Outputs).
+
+/*
+assert_ifnew(Head,Body) :-
+	(clause(Head,Body)
+	 ->	true
+	 ;	assert((Head:-Body))
+	).
+
+:- assert_ifnew(object_int(Name,NatID,Source),
+		 object_int_udb(Name,NatID,Source)).
+
+:- assert_ifnew(immediate_memberof_int(NOid,Source,NCid,CSource),
+		immediate_memberof_int_udb(NOid,Source,NCid,CSource)).
+
+:- assert_ifnew(immediate_attribute_int(SNOid,Source,RNCid,RSou,TNCid,TSou),
+		 immediate_attribute_int_udb(SNOid,Source,RNCid,RSou,TNCid,TSou)).
+
+:- assert_ifnew(attribute_object_int(SNOid,Source,RNCid,RSou,TNOid,TSou),
+		 attribute_object_int_udb(SNOid,Source,RNCid,RSou,TNOid,TSou)).
+
+:- assert_ifnew(assert_oms_int(Term),assert_oms_int_udb(Term)).
+
+:- assert_ifnew(retractall_oms_int(Term),retractall_oms_int_udb(Term)).
+*/

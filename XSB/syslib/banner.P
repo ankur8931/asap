@@ -1,0 +1,88 @@
+/* File:      banner.P -- API for controlling the banner
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2002
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: banner.P,v 1.1.6.1 2004/10/18 20:48:16 ruim Exp $
+** 
+*/
+
+
+
+:- compiler_options([xpp_on,sysmod,optimize]).
+
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+
+:- export
+	set_banner_control/2,
+	banner_control/1.
+:- import
+	stat_set_flag/2,
+	stat_flag/2
+   from machine.
+
+banner_control(noprompt) :- is_enabled(NOPROMPT).
+banner_control(nobanner) :- is_enabled(NOBANNER).
+banner_control(quietload) :- is_enabled(QUIETLOAD).
+banner_control(nofeedback) :- is_enabled(NOFEEDBACK).
+
+%% Flag is 1 for enable, 0 for disable
+set_banner_control(noprompt,Flag) :-
+	(Flag == 1 -> enable_control(NOPROMPT)
+	; disable_control(NOPROMPT)
+	).
+set_banner_control(nobanner,Flag) :-
+	(Flag == 1 -> enable_control(NOBANNER)
+	; disable_control(NOBANNER)
+	).
+set_banner_control(quietload,Flag) :-
+	(Flag == 1 -> enable_control(QUIETLOAD)
+	; disable_control(QUIETLOAD)
+	).
+set_banner_control(nofeedback,Flag) :-
+	(Flag == 1 -> enable_control(NOFEEDBACK)
+	; disable_control(NOFEEDBACK)
+	).
+
+%% Type: NOPROMPT, NOBANNER, QUIETLOAD, NOFEEDBACK
+is_enabled(Type) :-
+	stat_flag(BANNER_CTL,BannerCtl),
+	Status is BannerCtl mod Type,
+	Status =:= 0.
+
+%% Type: NOPROMPT, NOBANNER, QUIETLOAD
+disable_control(Type) :-
+	stat_flag(BANNER_CTL,BannerCtl),
+	Status is BannerCtl mod Type,
+	(Status =:= 0 ->
+	    NewBannerCtl is BannerCtl div Type,
+	    stat_set_flag(BANNER_CTL,NewBannerCtl)
+	; %% already enabled
+	    NewBannerCtl = BannerCtl
+	).
+
+enable_control(Type) :-
+	stat_flag(BANNER_CTL,BannerCtl),
+	Status is BannerCtl mod Type,
+	(Status =:= 0 ->
+	    NewBannerCtl = BannerCtl
+	; %% already enabled
+	    NewBannerCtl is BannerCtl * Type,
+	    stat_set_flag(BANNER_CTL,NewBannerCtl)
+	).

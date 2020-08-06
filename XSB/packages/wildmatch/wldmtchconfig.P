@@ -1,0 +1,103 @@
+/* File:      wldmtchconfig.P -- loader for the wildmatch foreign module
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: wldmtchconfig.P,v 1.12 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+:- compiler_options([xpp_on]).
+#include "extensions_xsb.h"
+
+
+:- import slash/1, str_cat/3, machine_file_exists/1 from machine.
+:- import fmt_write_string/3, file_time/2 from file_io.
+:- import search_module/6 from consult.
+:- import xsb_configuration/2 from xsb_configuration.
+:- import rename/2 from shell.
+
+%% Construct the file cc/xsb_wildmatch.H on the fly
+make_xsb_wildmatchH(CC, CC_opts, LoaderFlags) :-
+   slash(Slash),
+    xsb_configuration(configuration, XSBconfiguration),
+    package_configuration(dir(wildmatch), WildMatchDir),
+    fmt_write_string(LD_directives_file,
+		     '%s%scc%sxsb_wildmatch%s',
+		     f(WildMatchDir, Slash, Slash,XSB_HDR_EXTENSION_ATOM)),
+    telling(OldTell),
+    tell(LD_directives_file),
+    writeln('%% This file is generated on-the-fly by wldmtchconfig.P'),
+    writeln('%% Do not edit--any changes will be written over.'),
+    write('%% XSB config:     '), writeln(XSBconfiguration),
+    write('%% XSB CC:         '), writeln(CC),
+    write('%% Compiler flags: '), writeln(CC_opts),
+    writeln(':- import slash/1 from machine.'),
+    writeln(':- export do_glob_directory__/4, do_wildmatch__/3, do_convert_string__/3.'),
+    write(':- ldoption('''),
+    write(LoaderFlags),
+    writeln(''').'),
+    told,
+    tell(OldTell).
+    
+
+:-  package_configuration(dir(wildmatch), WildMatchDir),
+    slash(Slash),
+    Basename = xsb_wildmatch,
+    fmt_write_string(Module,
+		     '%s%scc%s%s', f(WildMatchDir, Slash, Slash,Basename)),
+    (  %% avoid recompilation: check if xsb_wildmatch object file exists and 
+       %% is newer than xsb_wildmatch.c.
+       search_module(Basename,Dir,_Mod,_Ext,_Base,ModuleO),
+       str_cat(Module, '.c', ModuleSourceFile),
+       str_cat(Module, XSB_HDR_EXTENSION_ATOM, ModuleH),
+       machine_file_exists(ModuleH),
+       file_time(ModuleO, time(CT1,CT2)),
+       file_time(ModuleSourceFile, time(ST1,ST2)),
+       time(ST1,ST2) @< time(CT1,CT2)
+    %% module compiled and is current, so just load
+    -> [Basename]
+
+    %% If Module isn't compiled or is old --- recompile
+    ;   xsb_configuration(compiler, CC),
+	xsb_configuration(loader_flags, LoaderFlags),
+	xsb_configuration(compiler_flags, CCflags),
+	fmt_write_string(CC_opts,
+			 ' %s %s ',
+			 f(CCflags,LoaderFlags)),
+	make_xsb_wildmatchH(CC, CC_opts, LoaderFlags),
+	xsb_configuration(config_libdir, ConfigLibdir),
+	str_cat(Module, XSB_OBJ_EXTENSION_ATOM, Objfile),
+	consult(Module, [cc(CC), cc_opts(CC_opts)]),
+	fmt_write_string(LibObjFile,
+			 '%s%s%s%s',
+			 args(ConfigLibdir,Slash,Basename,XSB_OBJ_EXTENSION_ATOM)),
+	rename(Objfile, LibObjFile),
+	%% Note: the .so ending is heavily Unix-centered. I dunno what this
+	%% corresponds to in windows. - mk
+	(
+	(xsb_configuration(architecture,A),str_sub(darwin,A))
+	->
+	str_cat(Module, '.dylib', SharedLib),
+	fmt_write_string(LibMod, '%s%s%s.dylib', a(ConfigLibdir,Slash,Basename))
+	;
+	str_cat(Module, '.so', SharedLib),
+	fmt_write_string(LibMod, '%s%s%s.so', a(ConfigLibdir,Slash,Basename))
+	),
+	rename(SharedLib,LibMod)
+     ).

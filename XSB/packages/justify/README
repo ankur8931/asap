@@ -1,0 +1,47 @@
+How to use Justifier:
+
+In the original program table declarations can have only one predicate
+per declaration; i.e.,
+":- table a/m, b/n." should be split up into two declarations:
+":- table a/m.
+:- table b/n."
+
+For each predicate that needs to be justified, assert 'justify_pred'
+with the predicate as argument. For example, if p/1 and q/2 need to be
+justified, add
+
+justify_pred(p(_)).
+justify_pred(q(_,_)).
+
+to the program. This causes justifier to transform p/1 and q/2 so that when
+the transformed predicates are evaluated, evidence for them is generated.
+
+Assume that the predicates to be justified are in test.P. Then, load
+the justifier:
+
+| ?- [justify].
+
+Then transform the program:
+
+| ?- jxm('test').
+
+This will produce test_jxm.P. Restart xsb and load test_jxm:
+
+| ?- [test_jxm].
+
+Now, to build true justification for predicate p(X), execute
+
+| ?- just_true(p(X), E).
+
+This will return the evidence in E. Similarly, to build false justification
+for p(X), execute 'just_false(p(X), E).'.
+
+Note that E only contains the first segment of justification. To
+obtain justification of predicates in the segment returned, call just_true or
+just_false for each predicate in that segment.
+
+Evidence is generated as per the format described in the following paper:
+   Giridhar Pemmasani, Haifeng Guo, Yifei Dong,  C. R. Ramakrishnan,
+     I. V. Ramakrishnan, "Online Justification for Tabled Logic Programs",
+     FLOPS, 2004.
+

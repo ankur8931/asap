@@ -1,0 +1,2060 @@
+## File:      configure.in
+## Author(s): kifer
+## Contact:   xsb-contact@cs.sunysb.edu
+##
+## Copyright (C) The Research Foundation of SUNY, 1998
+##
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+##
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+##
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: configure.in,v 1.242 2012-09-29 02:08:25 kifer Exp $
+##
+##
+
+dnl  Autoconf script for XSB
+dnl  To rebuild the `configure' script from this, execute the command
+dnl	autoconf
+dnl  in the directory containing this script.
+dnl
+dnl
+
+
+AC_PREREQ(2.67)dnl
+
+AC_INIT(../emu/emuloop.c)
+dnl
+
+if test -f buildxsb.lock ; then
+   echo "***Build lock exists: another configure/makexsb is probably running.
+***Wait until the previous build is complete.
+***If this is a stale lock, remove ./buildxsb.lock and run configure again."
+   exit 1
+fi
+
+rm -f config.status
+
+SHELL=/bin/sh
+
+build_dir="`pwd`"
+
+# strip the last directory and possibly trailing slashes
+topdir=`echo "${build_dir}" | sed 's,/[[^/]][[^/]]*/*$,,'`
+
+topdir_sans_spaces="`echo "$topdir" | sed 's, ,,g'`"
+
+if test "$topdir" != "$topdir_sans_spaces" ;  then
+    echo ""
+    echo "*** XSB cannot be compiled in $topdir"
+    echo "*** on Unix-style systems:  The directory path for XSB"
+    echo "*** configurations cannot have spaces (a limitation of GNU Make)."
+    echo "*** Please choose a location that has no whitespaces in its name."
+    echo "*** If you configure XSB using the --prefix=DIR option, you can later"
+    echo "*** move XSB to DIR using the \`./makexsb install' command."
+    echo ""
+    exit 1
+fi
+
+AC_CONFIG_AUX_DIR("$build_dir")
+
+# Needed by the xsb_config.h file
+AC_DEFINE(CONFIG_INCLUDED)
+AC_DEFINE(___ALWAYS_TRUE___)
+
+
+AC_ARG_WITH(gcc,
+[  --with-gcc                   use GCC to compile XSB])
+AC_ARG_WITH(cc,
+[  --with-cc                    use CC to compile XSB])
+AC_ARG_WITH(acc,
+[  --with-acc                   use ACC to compile XSB])
+AC_ARG_WITH(cilk,
+[  --with-cilk                force a cilk compiled version of XSB],
+   cilk=yes,cilk=no)
+AC_ARG_WITH(bits64,
+[  --with-bits64                force a 64-bit version of XSB],
+   bits64=yes,bits64=no)
+AC_ARG_WITH(bits32,
+[  --with-bits32                force a 32-bit version of XSB],
+   bits32=yes,bits32=no)
+AC_ARG_WITH(aout,
+[  --with-aout                  build XSB for a Unix system with .aout binary format])
+AC_ARG_WITH(optimization,
+[  --with-optimization=Ox       build XSB with compiler optimization level O, O1, ..., O4])
+AC_ARG_WITH(config-tag,
+[  --with-config-tag=TAG        Makes the configuration directory name look like
+                          	CONFIG_PREFIX/configuration-TAG. If TAG is missing
+				the directory is CONFIG_PREFIX/configuration
+                          	TAG is used for debugging, so one can have
+                          	different builds under the same architecture])
+AC_ARG_WITH(site-prefix,
+[  --with-site-prefix=DIR       Site-specific XSB libraries are found in DIR])
+AC_ARG_WITH(includes,
+[  --with-includes=DIR          These might be needed if it is necessary to tell
+                          	the compiler about additional header files to
+                          	include with the -I option. This need arises if
+                          	your standard header files are in odd places or
+                          	if XSB is compiled with ODBC support.
+                          	You can specify a list of libraries by
+				enclosing them in quotes])
+AC_ARG_WITH(static-libraries,
+[  --with-static-libraries=DIR  These might be needed, if compiling with support
+                          	for statically linked packages (such as Oracle)
+                          	or if your standard C libraries are in 
+                          	odd places. These libraries are added as
+				-L options during XSB compilation. One can
+                          	specify a list of libraries by enclosing them
+                          	in quotes. This list is automatically added to
+                          	loader flags to ensure that the packages will
+                          	be linked in])
+AC_ARG_WITH(dynamic-libraries,
+[  --with-dynamic-libraries=DIR This specifies the list of libraries used by 
+                          	packages linked dynamically with XSB. These
+                          	libraries are automatically added to the XSB 
+                          	library search path, so they could be loaded at
+                          	run time])
+AC_ARG_WITH(xpath-dir,
+[  --with-xpath-dir=DIR         the location of the libxml2 library is at DIR])
+AC_ARG_WITH(curl-libdir,
+[  --with-curl-libdir=DIR       the location of the libcurl.so is at DIR])
+AC_ARG_WITH(curl-incdir,
+[  --with-curl-incdir=DIR       the location of the include files for the Curl library is at DIR])
+AC_ARG_WITH(pcre-libdir,
+[  --with-pcre-libdir=DIR       the location of the libpcre.so is at DIR])
+AC_ARG_WITH(pcre-incdir,
+[  --with-pcre-incdir=DIR       the location of the include files for the PCRE library is at DIR])
+AC_ARG_WITH(dbdrivers,
+[  --with-dbdrivers             configure dbdrivers package])
+AC_ARG_WITH(odbc-libdir,
+[  --with-odbc-libdir=DIR       provide info on where the ODBC libraries are])
+AC_ARG_WITH(odbc-incdir,
+[  --with-odbc-incdir=DIR       provide info on where the ODBC include files are])
+AC_ARG_WITH(mysql-libdir,
+[  --with-mysql-libdir=DIR       provide info on where the MySQL libraries are])
+AC_ARG_WITH(mysql-incdir,
+[  --with-mysql-incdir=DIR       provide info on where the MySQL include files are])
+AC_ARG_WITH(mysqlembedded-libdir,
+[  --with-mysqlembedded-libdir=DIR       provide info on where the MySQL Embedded Server libraries are])
+AC_ARG_WITH(mysqlembedded-incdir,
+[  --with-mysqlembedded-incdir=DIR       provide info on where the MySQL Embedded Server include files are])
+AC_ARG_WITH(oracle,
+[  --with-oracle                compile with support of Oracle])
+AC_ARG_WITH(odbc,
+[  --with-odbc                  compile with support for ODBC])
+AC_ARG_WITH(iodbc,
+[  --with-iodbc                 use iODBC driver manager])
+AC_ARG_WITH(smodels,
+[  --with-smodels=path          use SMODELS for the XNMR module.
+                                path is the path where smodels has
+                                been installed and compiled])
+AC_ARG_WITH(itkwish,
+[  --with-itkwish=DIR		DIR where the itkwish shell is located])
+
+
+AC_ARG_ENABLE(no-cygwin,
+[  --enable-no-cygwin           Compile with the gss option -mno-cygwin (default: disabled)
+                                The latest Cygwins don't support this flag],
+				enable_no_cygwin=yes,
+                            	enable_no_cygwin=no)
+AC_ARG_ENABLE(general-tagging,
+[  --enable-general-tagging     When this option is enabled XSB will determine
+                               which bits in the address to tag during
+                               runtime. This option is the last resort, if
+			       XSB cannot figure out the appropriate tagging
+			       schema for your architecture],general_tagging=yes)
+AC_ARG_ENABLE(debug,
+[  --enable-debug               compile with debugging turned on])
+AC_ARG_ENABLE(debug-verbose,
+[  --enable-debug-verbose       compile with verbose messages])
+AC_ARG_ENABLE(debug-vm,
+[  --enable-debug-vm            compile with VM-level debugging])
+AC_ARG_ENABLE(debug-assertions,
+[  --enable-debug-assertions    compile with debug assertions])
+AC_ARG_ENABLE(dwarf-debug,
+[  --enable-dwarf-debug         compile with extra (macro) debugging turned on])
+AC_ARG_ENABLE(oracle-debug,
+[  --enable-oracle-debug        compile with Oracle debugging turned on])
+AC_ARG_ENABLE(profile,
+[  --enable-profile             compile with profiling turned on])
+AC_ARG_ENABLE(optimization,
+[  --disable-optimization       compile with no optimization (default: enabled)],
+                 		disable_optimization=yes)
+AC_ARG_ENABLE(batched-scheduling,
+[  --enable-batched-scheduling  compile using the batched scheduling strategy;
+                                default is the local strategy])
+AC_ARG_ENABLE(gc-test,
+[  --enable-gc-test             stress-test the garbage collector (for developers)])
+AC_ARG_ENABLE(demand,
+[  --enable-demand              compile with demand support])
+AC_ARG_ENABLE(jumptable,
+[  --disable-jumptable          disables the jumptable-based emulator loop],
+                   disable_jumptable=yes)
+AC_ARG_ENABLE(mt,
+[  --enable-mt                  compile multithreaded engine])
+AC_ARG_ENABLE(fast-floats,
+[  --enable-fast-floats         compile with one-word floats (including tag)],
+                   fast_floats=yes)
+AC_ARG_ENABLE(ccmpl,
+[  --enable-ccmpl               compile mt engine with concurrent completion])
+AC_ARG_ENABLE(profiling,
+[  --enable-profiling           force gcc to generate information for profiling])
+AC_ARG_ENABLE(electric-fence,
+[  --enable-electric-fence      link with the electric fence malloc debugger (currently unsupported)])
+AC_ARG_WITH(pita,
+[  --with-pita=DIR       compile XSB with PITA, with CUDD in directory DIR])
+
+# TLS As far as I know, autoconf version 2.59 or so does check various
+# command line values, but if the values are of type --enable-*,
+# --disable-*, or --with-* it does no further checking.  This can
+# cause problems when you misspell an option, so I'm including this
+# second-level error checking routine.  If someone knows how to make
+# autoconf check --enable- etc. automatically (I don't think it will)
+# or has a better way of error checking, please update this code, or
+# let me know and I'll try to do it.
+while test $# -gt 0
+do
+#    echo "$1"
+    case $1 in --enable-* ) 
+	    case $1 in
+		--enable-no-cygwin | --enable-general-tagging | --enable-debug | \
+		    --enable-debug-verbose | --enable-debug-vm | --enable-debug-assertions | \
+		    --enable-dwarf-debug | --enable-oracle-debug | --enable-profile | \
+		    --enable-batched-scheduling | --enable-batched | --enable-gc-test | --enable-demand | \
+		    --enable-mt | --enable-fast-floats | --enable-ccmpl | --enable-profiling | \
+		    --enable-electric-fenct | --enable-optimization | --enable-jumptable )
+                    ;;
+		*)
+                    echo "configure: error: uncecognized option: $1"
+                    echo "Try 'configure --help' for more information."
+                    rm -f  buildxsb.lock
+                    exit 1 ;;
+	    esac ;;
+	    --disable-* )
+	    case $1 in
+		--disable-no-cygwin | --disable-general-tagging | --disable-debug | \
+		    --disable-debug-verbose | --disable-debug-vm | --disable-debug-assertions | \
+		    --disable-dwarf-debug | --disable-oracle-debug | --disable-profile | \
+		    --disable-batched-scheduling | --disable-batched | --disable-gc-test | --disable-demand | \
+		    --disable-mt | --disable-fast-floats | --disable-ccmpl | --disable-profiling | \
+		    --disable-electric-fenct | --disable-optimization | --disable-jumptable )
+		    ;;
+		*)
+                    echo "configure: error: uncecognized option: $1"
+                    echo "Try 'configure --help' for more information."
+                    rm -f  buildxsb.lock
+                    exit 1 ;;
+	    esac ;;
+	    --with-* )
+	    case $1 in
+		--with-gcc | --with-cc* | --with-cilk | --with-acc | \
+		--with-bits64 | --with-bits32 | --with-aout | \
+		--with-optimization* | --with-config-tag* | --with-site-prefix* | --with-includes* | \
+		--with-static-libraries* | --with-dynamic-libraries* | --with-xpath* | \
+		--with-curl* | --with-pcre* | --with-mysql* | \
+		--with-dbdrivers | --with-oracle | --with-odbc* | --with-iodbc* | \
+		--with-smodels* | --with-itkwish* | --with-pita* )
+		    ;;
+	    *)
+                    echo "configure: error: uncecognized option: $1"
+                    echo "Try 'configure --help' for more information."
+                    rm -f  buildxsb.lock
+                    exit 1 ;;
+	    esac ;;
+    esac
+    shift
+done
+
+
+if test "${with_debug}" = "yes" ; then
+   enable_debug=yes
+fi
+
+if test "${with_debugging}" = "yes" ; then
+   enable_debug=yes
+fi
+
+if test "${enable_dwarf_debug}" = "yes" ; then
+   with_dwarf_debug=yes
+fi
+
+if test "${with_dwarf_debug}" = "yes" ; then
+   enable_debug=yes
+   enable_dwarf_debug=yes
+fi
+
+if test "${enable_mt}" = "yes" -o "${enable_ccmpl}" = "yes" ; then
+   engine_mode="multi-threading"
+else
+   engine_mode="slg-wam"
+fi
+
+# ---------------------- start testing inconsistencies  ---------------------- 
+
+#echo "bits 32 $bits32 bits 64 $bits64"
+
+if test "$bits64" = "yes" &&  test "$bits32" = "yes"; then 
+    echo ""
+    echo "*** ABORTING!!! Cannot force both 32 and 64 bits!!!"
+    echo ""
+    rm -f  buildxsb.lock
+    exit 1
+fi
+
+# ---------------------- end testing inconsistencies  ---------------------- 
+
+# make sure new files are readable
+umask 022
+
+
+. ./version.sh
+
+
+if test -n "$xsb_beta_version" ; then
+    xsb_version=$xsb_major_version.${xsb_minor_version}-b${xsb_beta_version}
+else
+    xsb_version=$xsb_major_version.${xsb_minor_version}.${xsb_patch_version}
+fi
+
+xsb_full_version_name="${xsb_version} (${xsb_codename})"
+
+AC_DEFINE_UNQUOTED(XSB_VERSION, "${xsb_full_version_name}")
+
+release_year=`echo ${xsb_release_date} \
+          | sed 's,^\([[0-9]][[0-9]][[0-9]][[0-9]]\)[[-/.]].*$,\1,'`
+release_month=`echo ${xsb_release_date} \
+          | sed 's,^[[0-9]]*[[-/.]]\([[0-9]][[0-9]]\)[[-/.]].*$,\1,'`
+release_day=`echo ${xsb_release_date} \
+          | sed 's,^[[0-9]]*[[-/.]][[0-9]]*[[-/.]]\([[0-9]][[0-9]]\)$,\1,'`
+
+if test "$release_year" = "${xsb_release_date}" ; then
+   echo "configure: error:"
+   echo "   XSB release date in "$build_dir"/version.sh"
+   echo "   is not Y2K compliant!"
+   echo "   Please specify the date as yyyy/mm/dd or yyy-mm-dd."
+   echo ""
+   rm -f  buildxsb.lock
+   exit 1
+elif test "$release_month" = "${xsb_release_date}" ; then
+   echo "configure: error:"
+   echo "   XSB release date in "$build_dir"/version.sh"
+   echo "   must have the form yyyy/mm/dd, yyyy-mm-dd, or yyyy.mm.dd"
+   echo ""
+   rm -f  buildxsb.lock
+   exit 1
+elif test "$release_day" = "${xsb_release_date}" ; then
+   echo "configure: error:"
+   echo "   XSB release date in "$build_dir"/version.sh must have the form"
+   echo "   must have the form yyyy/mm/dd, yyyy-mm-dd, or yyyy.mm.dd"
+   echo ""
+   rm -f  buildxsb.lock
+   exit 1
+fi
+
+release_month=`echo ${release_month} | sed 's/^0//'`
+release_day=`echo ${release_day} | sed 's/^0//'`
+
+# get the name of the month: is there an easier way in sh?
+case ${release_month} in
+ 1) release_monthname=January ;;
+ 2) release_monthname=February ;;
+ 3) release_monthname=March ;;
+ 4) release_monthname=April ;;
+ 5) release_monthname=May ;;
+ 6) release_monthname=June ;;
+ 7) release_monthname=July ;;
+ 8) release_monthname=August ;;
+ 9) release_monthname=September ;;
+ 10) release_monthname=October ;;
+ 11) release_monthname=November ;;
+ 12) release_monthname=December ;;
+esac
+
+dnl XSB release date
+AC_DEFINE_UNQUOTED(RELEASE_DATE, ${xsb_release_date})
+AC_DEFINE_UNQUOTED(RELEASE_YEAR, ${release_year})
+AC_DEFINE_UNQUOTED(RELEASE_MONTH, ${release_month})
+AC_DEFINE_UNQUOTED(RELEASE_DAY, ${release_day})
+
+
+# set architecture-dependent directories
+dnl orig_prefix is used only for site-prefix. It contains the value of
+dnl prefix given by the user. The prefix variable will later get
+dnl the <xsb-version> subdirectory added in.
+orig_prefix=
+if test "$prefix" = "NONE" -o -z "$prefix" ; then
+    prefix=$topdir
+    orig_prefix=$prefix
+else
+    dnl strip any trailing slashes in prefix
+    prefix=`echo "${prefix}" | sed 's,\([[^/]]\)/*$,\1,'`
+    orig_prefix=$prefix
+    prefix="$prefix"/xsb-"$xsb_version"
+fi
+
+if test -n "$enable_debugging" && test -n "$enable_debug" ; then
+   echo ""
+   echo "***Both --en/disable-debug and --en/disable-debugging are specified."
+   echo "***Will use the --enable-debug setting."
+fi
+
+if test -n "$enable_debugging" && test -z "$enable_debug" ; then
+   enable_debug=$enable_debugging
+fi
+
+dnl Take care of the scheduling strategy
+xsb_scheduling_strategy=local
+enable_local_scheduling=yes
+
+if test "${enable_batched_sched}" = "yes" || \
+   test "${enable_batched_schedule}" = "yes" || \
+   test "${enable_batched}" = "yes" || \
+   test "${enable_batched_scheduling}" = "yes" ; then
+   enable_local_scheduling=no
+fi
+
+if test "${enable_local_scheduling}" = "yes"; then
+   AC_DEFINE(LOCAL_EVAL)
+   xsb_scheduling_strategy=local
+else
+   xsb_scheduling_strategy=batched
+fi
+
+
+AC_DEFINE(GC)
+AC_DEFINE(SLG_GC)
+
+dnl The following is to be used only by developers for GC debugging
+gc_test=no
+
+if test "${with_gc_test}" = "yes" ; then
+   enable_gc_test=yes
+fi
+if test "${enable_gc_test}" = "yes" ; then
+   AC_DEFINE(GC_TEST)
+   gc_test=yes
+fi
+
+demand=no
+if test "${with_demand}" = "yes" ; then
+   enable_demand=yes
+fi
+if test "${enable_demand}" = "yes" ; then
+   AC_DEFINE(DEMAND)
+   demand=yes
+fi
+
+config_prefix=${topdir}/config
+install_config_prefix=${prefix}/config
+
+if test -n "$with_config_tag" ; then
+    config_tag="-$with_config_tag"
+fi
+
+if test "${with_gcc+set}" = "set" ; then
+    # allow --with-gcc=gcc-name
+    CC=${with_gcc}
+    if test "${with_gcc}" = "yes"; then
+        CC=gcc
+    fi
+elif test "${with_cc+set}" = "set" ; then
+    # allow --with-cc=compiler on cmd line
+    CC=${with_cc}
+    if test "${with_cc}" = "yes"; then
+       CC=cc
+    fi
+elif test "${with_acc+set}" = "set" ; then
+    CC=acc
+fi
+
+
+dnl Some more tags
+
+dnl If the user didn't specify --with-config-tag, check maybe -aout, -bits-64,
+dnl or -dbg are appropriate
+if test -z "${with_config_tag}" ; then
+    config_tag=
+    dnl add -bits64 to the config tag, if --with-bits64 is set on command line
+    if test "$bits64" = yes ; then
+       config_tag="${config_tag}-bits64"
+    fi
+    dnl add -cilk to the config tag, if --with-cilk is set on command line
+    if test "$cilk" = yes ; then
+       config_tag="${config_tag}-cilk"
+    fi
+    dnl add -bits32 to the config tag, if --with-bits32 is set on command line
+    if test "$bits32" = yes ; then
+       config_tag="${config_tag}-bits32"
+    fi
+    dnl add -aout to the config tag, if --with-aout is set on command line
+    if test -n "$with_aout" ; then
+       config_tag="${config_tag}-aout"
+    fi
+    dnl add -ss to config tag if compiling for simplescalar
+    if test "${CC}" = "sslittle-na-sstrix-gcc"; then
+       config_tag="${config_tag}-ss"
+    fi
+    if test "${CC}" = "arm-linux-gcc"; then
+       config_tag="${config_tag}-arm"
+    fi
+    dnl If debugging, add -dbg
+    if test "${enable_debug}" ; then
+       config_tag="${config_tag}-dbg"
+    fi
+    dnl If vm-debugging, add -vm
+    if test "${enable_debug_vm}" ; then
+       config_tag="${config_tag}-vm"
+    fi
+    dnl If verbose debugging, add -vrb
+    if test "${enable_debug_verbose}" ; then
+       config_tag="${config_tag}-vrb"
+    fi
+    dnl If compiled with assertions, add -asrt
+    if test "${enable_debug_assertions}" ; then
+       config_tag="${config_tag}-asrt"
+    fi
+    dnl If gc stress test, add -gc
+    if test "${gc_test}" = "yes" ; then
+       config_tag="${config_tag}-gc"
+    fi
+    dnl If batched scheduling, add -btc
+    if test "${xsb_scheduling_strategy}" = "batched" ; then
+       config_tag="${config_tag}-btc"
+    fi
+    if test "${enable_mt}" = "yes" ; then
+       config_tag="${config_tag}-mt"
+    fi
+    if test "${enable_ccmpl}" = "yes" ; then
+       config_tag="${config_tag}-ccmpl"
+    fi
+fi
+
+config_tag_sans_dash=`echo ${config_tag} | sed 's/^-//'`
+
+
+echo ""
+echo "Building XSB Version ${xsb_version} (${xsb_codename}) of ${xsb_release_date}"
+echo ""
+
+mno_cyg_inclib=""
+mno_cyg_lib=""
+
+config_dot_h_templ=def_config.in
+
+dnl Check configuration for a Unix variant
+AC_CANONICAL_HOST
+canonical=$host
+configuration=${host_alias-${build_alias-$host}}
+if test "$configuration" = "NONE" -o -z "$configuration" ; then
+    echo '
+- You did not tell me what kind of host system you want to configure.
+- I will attempt to guess the kind of system this is.
+' 1>&6
+    canonical=$host
+    configuration=$host_alias
+else
+    canonical=`${CONFIG_SHELL-/bin/sh} ./config.sub $configuration 2>&1`
+
+    if test -n "`echo "$canonical" | sed -e [s/${configuration}//]`" ; then
+	echo $canonical
+	echo ""
+	rm -f  buildxsb.lock
+	exit 1
+    else
+	AC_MSG_NOTICE([checking host system type... $canonical])
+    fi
+fi
+
+
+# arch-independent XSB directories
+libdir=${topdir}/lib
+syslibdir=${topdir}/syslib
+cmplibdir=${topdir}/cmplib
+emudir=${topdir}/emu
+scriptdir=${topdir}/bin   # where the xsb invocationscripts go
+pkgdir=${topdir}/packages
+etcdir=${topdir}/etc
+commonsdir=${topdir}/prolog-commons
+
+src_prolog_includes=${topdir}/prolog_includes
+
+# config-specific stuff
+full_config_name=${canonical}${config_tag}
+arch_config_prefix=${config_prefix}/${full_config_name}
+
+cache_file="${arch_config_prefix}/config.cache"
+
+dnl This is a redefined standard AC_CACHE_LOAD. The standard one is now no-op.
+dnl We do this so we could place the cache file in the configuration directory.
+if test -r "$cache_file" -a "$ac_caching" = "yes" ; then
+  echo "loading cache $cache_file"
+  . $cache_file
+elif test ! -r "$cache_file" ; then
+  echo "creating cache $cache_file"
+  dnl If this fails, the user'll see a msg later that cache file isn't found
+  (test -d $arch_config_prefix || mkdir -p ${arch_config_prefix}) 2> /dev/null
+  ./touch.sh $cache_file
+  chmod 644 "$cache_file"
+fi
+
+
+
+# where binary executables go (this is config-specific)
+arch_bindir="${arch_config_prefix}/bin"
+
+# where object code goes (we need it only for the source tree)
+arch_config_objlibdir="${arch_config_prefix}/saved.o"
+
+# where arch-specific XSB .{P,H,O} files go
+arch_config_libdir="${arch_config_prefix}/lib"
+
+arch_config_file="${arch_config_libdir}/xsb_configuration.P"
+
+# site-specific directories
+# where the site is
+if test -z "$with_site_prefix" ; then
+   site_prefix="${orig_prefix}/site"
+else
+   site_prefix="$with_site_prefix"
+fi
+
+# site-specific config-independent XSB libraries
+site_libdir="${site_prefix}/lib"
+# site-specific config-dependent stuff goes
+site_config_prefix="${site_prefix}/config/${canonical}"
+# site-specific config-dependent XSB libraries
+site_config_libdir="${site_config_prefix}/lib"
+
+# Installation directories: We only check if they exist
+install_libdir="${prefix}/lib"
+install_syslibdir="${prefix}/syslib"
+install_cmplibdir="${prefix}/cmplib"
+install_emudir="${prefix}/emu"
+install_scriptdir="${prefix}/bin"     # where the xsb invocation script goes
+install_builddir="${prefix}/build"    # where the config detection scripts go
+install_prolog_includes="${prefix}/prolog_includes"
+install_pkgdir="${prefix}/packages"
+install_pkgxmcdir="${prefix}/packages/xmc"
+install_examples="${prefix}/examples"
+install_etcdir="${prefix}/etc"
+
+arch_install_config_prefix="${install_config_prefix}/${full_config_name}"
+arch_install_bindir="${arch_install_config_prefix}/bin"
+arch_install_config_libdir="${arch_install_config_prefix}/lib"
+arch_install_objdir="${arch_install_config_prefix}/saved.o"
+
+
+dnl Find the source directory.
+
+if test ! -f "${emudir}/emuloop.h" -o ! -f "${syslibdir}/tables.P" ; then
+  echo ""
+  echo "    ******* I cannot find XSB sources!!! *******"
+  echo "    You must run \`configure' in the directory \`srcDir/build' "
+  echo "    where \`srcDir' is the top directory of the XSB source tree."
+  echo ""
+  rm -f  buildxsb.lock
+  exit 1
+fi
+
+# Test if directories exist
+echo "Checking installation directories..."
+
+(
+# clear out the dir for recording missing directories
+rm -f .missingdirs.tmp
+
+dnl The following must already exist; if not, it doesn't even make sense to try
+AC_MSG_CHECKING($libdir) && \
+     (test -d "$libdir" && AC_MSG_RESULT(OK)) \
+        || (AC_MSG_RESULT(FAILED); \
+              echo "+++Can't find $libdir" >> .missingdirs.tmp)
+AC_MSG_CHECKING($syslibdir) && \
+     (test -d "$syslibdir" && AC_MSG_RESULT(OK)) \
+        || (AC_MSG_RESULT(FAILED); \
+              echo "+++Can't find $syslibdir" >> .missingdirs.tmp)
+AC_MSG_CHECKING($cmplibdir) && \
+     (test -d "$cmplibdir" && AC_MSG_RESULT(OK)) \
+        || (AC_MSG_RESULT(FAILED); \
+              echo "+++Can't find $cmplibdir" >> .missingdirs.tmp)
+
+# test if installation should fail
+test -f .missingdirs.tmp && \
+     (cat .missingdirs.tmp; echo "***Installation failed") && exit 1
+
+
+AC_MSG_CHECKING($scriptdir) && \
+     ((test -d "$scriptdir" || mkdir -p "$scriptdir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $scriptdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($arch_bindir) && \
+     ((test -d "$arch_bindir" || mkdir -p "$arch_bindir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $arch_bindir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($arch_config_libdir) && \
+     ((test -d "$arch_config_libdir" || mkdir -p "${arch_config_libdir}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $arch_config_libdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING(${arch_config_objlibdir}) && \
+     ((test -d "${arch_config_objlibdir}" || mkdir -p "${arch_config_objlibdir}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $arch_config_objlibdir" >> .missingdirs.tmp)
+
+dnl Checking site directories
+AC_MSG_CHECKING($site_libdir) && \
+     ((test -d "$site_libdir" || mkdir -p "$site_libdir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $site_libdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($site_config_libdir) && \
+     ((test -d "$site_config_libdir" || mkdir -p "$site_config_libdir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $site_config_libdir" >> .missingdirs.tmp)
+
+dnl Checking installation directories
+AC_MSG_CHECKING($install_emudir) && \
+     ((test -d "$install_emudir" || mkdir -p "$install_emudir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_emudir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_libdir) && \
+     ((test -d "$install_libdir" || mkdir -p "$install_libdir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_libdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_syslibdir) && \
+     ((test -d "$install_syslibdir" || mkdir -p "$install_syslibdir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_syslibdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_cmplibdir) && \
+     ((test -d "$install_cmplibdir" || mkdir -p "$install_cmplibdir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_cmplibdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_scriptdir) && \
+     ((test -d "$install_scriptdir" || mkdir -p "$install_scriptdir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_scriptdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_builddir) && \
+     ((test -d "$install_builddir" || mkdir -p "$install_builddir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_builddir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($arch_install_bindir) && \
+     ((test -d "$arch_install_bindir" || mkdir -p "$arch_install_bindir") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $arch_install_bindir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($arch_install_config_libdir) && \
+     ((test -d "$arch_install_config_libdir" || mkdir -p "${arch_install_config_libdir}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $arch_install_config_libdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($arch_install_objdir) && \
+     ((test -d "$arch_install_objdir" || mkdir -p "${arch_install_objdir}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $arch_install_objdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_etcdir) && \
+     ((test -d "$install_etcdir" || mkdir -p "${install_etcdir}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_etcdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_pkgdir) && \
+     ((test -d "$install_pkgdir" || mkdir -p "${install_pkgdir}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_pkgdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_pkgxmcdir) && \
+     ((test -d "$install_pkgxmcdir" || mkdir "${install_pkgxmcdir}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_pkgxmcdir" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_examples) && \
+     ((test -d "$install_examples" || mkdir -p "${install_examples}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create: $install_examples" >> .missingdirs.tmp)
+
+AC_MSG_CHECKING($install_prolog_includes) && \
+     ((test -d "$install_prolog_includes" || mkdir -p "${install_prolog_includes}") && AC_MSG_RESULT(OK)) \
+    || (AC_MSG_RESULT(FAILED); echo "+++Can't create  $install_prolog_includes" >> .missingdirs.tmp)
+
+test -f .missingdirs.tmp && \
+    (cat .missingdirs.tmp; \
+     echo "***Make the above directories manually and rerun configure") \
+     && exit 1
+
+) 2> /dev/null
+
+# installation failed
+test -f .missingdirs.tmp && exit 1
+
+echo "Checking installation directories ... Done"
+
+
+AC_PROG_CC
+AC_PROG_CPP
+AC_PROG_INSTALL
+dnl If on AIX, define _ALL_SOURCE, which allows the use of some BSD functions
+dnl This must be AFTER AC_PROG_CC
+AC_AIX
+
+AC_CHECK_PROG(has_gcc, gcc, "yes", "no")
+
+AC_MSG_CHECKING(whether we are using SunPro C)
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([
+#ifndef __SUNPRO_C
+#error Not a  SunPro compiler :-(
+******* ======= ******** &&&&&&&&
+#endif
+])], __sunpro_c=yes, __sunpro_c=no)
+AC_MSG_RESULT($__sunpro_c)
+
+dnl set some basic flags
+# if --with-gcc, take it as a sign of trouble
+# with gcc and lower optimization levels
+if test -n "$with_gcc" ; then
+   if test "${CC}" = "sslittle-na-sstrix-gcc" ; then
+        emuloop_opt_level=-${with_optimization-"O1"}
+        trutils_opt_level=-${with_optimization-"O1"}
+        builtins_opt_level=-${with_optimization-"O1"}
+        loader_opt_level=-${with_optimization-"O1"}
+        CFLAGS=""
+        c_inline_level=""
+   else
+        emuloop_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+        trutils_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+        builtins_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+        loader_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+
+        CFLAGS="-Wall -pipe"
+   fi
+else
+    case $CC in
+        gcc)    emuloop_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+                trutils_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+                builtins_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+                loader_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+
+                CFLAGS="-Wall -pipe"
+        ;;
+        cc) if test "$__sunpro_c" = "no"; then
+                emuloop_opt_level=-${with_optimization-"O4"}
+                trutils_opt_level=-${with_optimization-"O4"}
+                builtins_opt_level=-${with_optimization-"O4"}
+                loader_opt_level=-${with_optimization-"O4"}
+            else
+                # emuloop_opt_level is the optimization level for emuloop.c
+                # Using xO4 would take SunPro more than an hour, hence xO2.
+                emuloop_opt_level=-${with_optimization-"xO2"}
+                trutils_opt_level=-${with_optimization-"xO4"}
+                builtins_opt_level=-${with_optimization-"xO4"}
+                loader_opt_level=-${with_optimization-"xO4"}
+            fi
+
+            c_inline_level=""
+            CFLAGS=""
+        ;;
+        acc) # acc also seems to choke on high optimization levels for emuloop.c
+            emuloop_opt_level=-${with_optimization-"O2"}
+            trutils_opt_level=-${with_optimization-"O4"}
+            builtins_opt_level=-${with_optimization-"O4"}
+            loader_opt_level=-${with_optimization-"O4"}
+
+            c_inline_level=""
+            CFLAGS="-Xa"
+        ;;
+    esac
+fi
+
+dnl In XSB, CC is the C compiler to be used with the C interface
+dnl Could be different from C compiler with which XSB was compiled,
+dnl if it was done with a cross-compiler.
+AC_DEFINE_UNQUOTED(CC, "${CC}")
+
+dnl Set up the additional libraries
+ld_site_libraries=
+c_site_includes=
+
+dnl --site-static-libraries (multiple dirs)
+if test -n "$with_static_libraries"; then
+    echo "    Adding static libraries to loader flags:"
+    for arg in $with_static_libraries; do
+        case "$arg" in
+            dnl If it is a loader option, just pass it on, don't add -L
+            -* ) ;;
+            dnl strip trailing slashes
+            * ) arg=`echo "-L${arg}" | sed 's,\([[^/]]\)/*$,\1,'` ;;
+        esac
+        ld_site_libraries="${ld_site_libraries} $arg"
+        echo "		$arg"
+    done
+fi
+
+dnl --with-includes (multiple dirs)
+if test -n "$with_includes"; then
+    echo "    Appending directories to the C include path:"
+    for arg in $with_includes; do
+        dnl strip trailing slashes
+        arg=`echo "-I${arg}" | sed 's,\([[^/]]\)/*$,\1,'`
+        c_site_includes="${c_site_includes} $arg"
+        echo "		$arg"
+    done
+fi
+
+
+dnl --with-pita=DIR
+if test -n "$with_pita" && test -d "$topdir/packages/pita"; then
+    cd "$topdir/packages/pita"
+    echo "***Configuring pita"
+    echo `pwd`
+    chmod 700 ./configure
+    ./configure  --with-pita="$with_pita"  > /dev/null
+    cd $build_dir
+fi
+
+if test -n "${with_dbdrivers}" && test -d "$topdir/packages/dbdrivers"; then
+    cd $topdir/packages/dbdrivers
+    echo "***Configuring DB drivers"
+    ./run_configure_scripts --with-odbc-libdir="$with_odbc_libdir" \
+                            --with-odbc-incdir="$with_odbc_incdir" \
+                            --with-mysql-libdir="$with_mysql_libdir" \
+                            --with-mysql-incdir="$with_mysql_incdir" \
+                            --with-mysqlembedded-libdir="$with_mysqlembedded_libdir" \
+                            --with-mysqlembedded-incdir="$with_mysqlembedded_incdir" \
+                            > /dev/null
+    cd $build_dir
+fi
+
+# curl package
+if test -d "$topdir/packages/curl"; then
+    cd "$topdir/packages/curl"
+    echo "***Configuring Curl (WWW protocol library)"
+    chmod 700 ./configure
+    ./configure --with-curl-libdir="$with_curl_libdir" --with-curl-incdir="$with_curl_incdir" > /dev/null
+    cd "$build_dir"
+fi
+
+
+if test -d "$topdir/packages/xpath"; then
+   cd "$topdir/packages/xpath"
+   echo "***Configuring XPath support"
+   if test -n "$with_xpath_dir" ; then
+      xpath_prefix_option="--prefix=$with_xpath_dir"
+   fi
+   chmod 700 ./configure
+    ./configure $xpath_prefix_option > /dev/null
+    cd "$build_dir"
+fi
+
+
+# pcre package
+if test -d "$topdir/packages/pcre"; then
+    cd "$topdir/packages/pcre"
+    echo "***Configuring PCRE (Perl pattern matching library)"
+    chmod 700 ./configure
+    ./configure --with-pcre-libdir="$with_pcre_libdir" --with-pcre-incdir="$with_pcre_incdir" > /dev/null
+    cd "$build_dir"
+fi
+
+
+
+dnl check for Make feature
+AC_PROG_MAKE_SET
+
+# Check if 64 bit machine
+#
+dnl We use 4 in AC_CHECK_SIZEOF, below, as the size for cross-compiling,
+dnl even though we aren't cross-compiling.
+dnl This is done in order to get rid of a warning:
+dnl	   AC_TRY_RUN called without default to allow cross compiling
+dnl This warning is really a buglet in the AC_CHECK_SIZEOF macro:
+dnl it invokes AC_TRY_RUN without specifying an action for cross-compilation,
+dnl if the second arg to AC_CHECK_SIZEOF is not given.
+AC_CHECK_SIZEOF([long int])
+if test "${ac_cv_sizeof_long_int}" = 0; then
+    echo ""
+    echo "*** PANIC!!! Configure tests are not working - compiler $CC is broken!"
+    echo "*** $CC says that sizeof(long)=0 !!!"
+    echo "*** Please check config.log for compilation errors and use a different compiler."
+    echo ""
+    rm -f  buildxsb.lock
+    exit 1
+fi
+
+if (test "${ac_cv_sizeof_long_int}" = 8 -o "$bits64" = "yes") && test "$bits32" = "no"; then
+    AC_DEFINE(BITS64)
+    machine64bit=yes
+    echo ""
+    echo "    Configuring XSB for a 64 bit machine"
+    echo ""
+fi
+
+if test "$cilk" = "yes"; then 
+   AC_DEFINE(CILK)
+    echo ""
+    echo "    Configuring XSB for a cilk compiler"
+    echo ""
+fi
+
+# Force compiler to do your will if with-bits is set -- otherwise use
+# whatever default you get
+if test "$bits32" = "yes"; then 
+   CFLAGS="-m32 ""$CFLAGS"
+   MEMFLAG=" -m32 "
+fi
+
+if test "$bits64" = "yes"; then 
+   CFLAGS="-m64 ""$CFLAGS"
+   MEMFLAG=" -m64 "
+fi
+
+if test "${machine64bit}" = "yes"; then
+   word_size="64"
+else
+   word_size="32"
+fi
+
+#TLS comment this out if you don't want fast floats automatically w. 64 bits.
+#if test "$machine64bit" = "yes"; then
+# fast_floats=yes	
+#fi
+
+if test "${fast_floats}" = "yes" ; then
+   AC_DEFINE(FAST_FLOATS)
+fi
+
+# A series of checks for essential libraries.
+AC_CHECK_LIB(m, main,, have_errors=yes)
+test -n "$have_errors" && AC_MSG_ERROR(Your system is missing library: \`m')
+
+AC_CHECK_LIB(dl, main,, have_dl=no)
+AC_CHECK_LIB(nsl, main, , have_nsl=no)
+AC_CHECK_LIB(pthread, main, , have_pthread=no)
+AC_CHECK_LIB(socket, main,, have_socket=no)
+
+AC_CHECK_LIB(readline, readline, have_readline=yes)
+if test "$have_readline" = yes ; then
+    AC_DEFINE(HAVE_READLINE)
+fi
+
+AC_CHECK_FUNC(sched_get_priority_max, [true], [AC_CHECK_LIB(rt, sched_get_priority_max,[LDFLAGS="${LDFLAGS} -lrt"])])
+
+AC_CHECK_HEADERS(stdarg.h, , have_errors=yes)
+test "${have_errors}" = "yes" &&
+    AC_MSG_ERROR([Your C compiler is not ANSI compliant: stdarg.h is missing!])
+
+# Checks for header files
+
+dnl Note, under NT, we sould include time.h instead
+AC_CHECK_HEADERS(sys/time.h)
+
+dnl defines TIME_WITH_SYS_TIME if both allowed
+AC_HEADER_TIME
+
+AC_CHECK_HEADERS(sys/resource.h, , have_errors=yes)
+test "${have_errors}" = "yes" &&
+    AC_MSG_ERROR([sys/resource.h is missing on your system])
+
+AC_CHECK_FUNCS(malloc, have_malloc=yes,have_malloc=no)
+test "${have_malloc}" = "no" &&
+    AC_MSG_ERROR([malloc() is missing on your system])
+
+AC_CHECK_HEADERS(unistd.h string.h stdlib.h, , have_errors=yes)
+test "${have_errors}" = "yes" &&
+    AC_MSG_ERROR([One of these header files is missing on your system:
+            unistd.h
+            string.h
+            stdlib.h])
+# Checks for typedefs, structures, and compiler characteristics.
+AC_C_CONST
+
+dnl Check for functions that are in standard libraries.
+dnl Functions that aren't in standard libraries should be checked after
+dnl their corresponding libraries are AC_CHECK_LIB'ed.
+AC_TYPE_SIGNAL
+AC_CHECK_FUNCS(strdup mkdir, , have_errors="yes")
+test "${have_errors}" = "yes" && \
+    AC_MSG_ERROR([One of these functions is missing on your system:
+            strdup
+            mkdir])
+
+dnl defines HAVE_GETHOSTBYNAME, HAVE_GETTIMEOFDAY, HAVE_SOCKET,
+dnl and HAVE_SNPRINTF if avail
+AC_CHECK_FUNCS(gethostbyname gettimeofday socket snprintf)
+
+AC_CHECK_FUNCS(regexec regerror regcomp, regmatch_support="yes", regmatch_support="no")
+AC_CHECK_FUNCS(fnmatch glob globfree, wildmatch_support="yes", wildmatch_support="no")
+
+dnl execvp
+AC_CHECK_FUNCS(execvp)
+
+dnl Checking for libraries that are NOT in standard places,
+dnl so they require --site-libraries
+LIBS="${ld_site_libraries} ${LIBS}"
+
+
+if test "${enable_oracle_debug+yes}" = "yes" || \
+    test "${enable_oracle_debugging+yes}" = "yes"; then
+    AC_DEFINE(ORACLE_DEBUG)
+    with_oracle=yes
+    do_debugging=yes
+fi
+
+if test "${with_oracle+set}" = "set" ; then
+    AC_DEFINE(ORACLE)
+    with_oracle=yes
+fi
+
+#if test "${with_oracle+set}" = "set" ; then
+#	cat <<EOT
+#
+#    Checking whether XSB can be compiled with Oracle support.
+#    If this fails, you will have to use the --site-libraries option
+#    of \`configure' to specify the directory where Oracle libraries live.
+#
+#EOT
+#
+#	dnl If any library here is missing, set oracle_error
+#	dnl `thread' is a standard library. The others come from Oracle.
+#	dnl Therefore, must use --site-libraries
+#	AC_CHECK_LIB(thread, main, , oracle_error=yes)
+#
+#	AC_CHECK_LIB(c3v6, main, , oracle_error=yes)
+#	AC_CHECK_LIB(client, main, , oracle_error=yes)
+#	AC_CHECK_LIB(clntsh, main, , oracle_error=yes)
+#	AC_CHECK_LIB(common, main, , oracle_error=yes)
+#	AC_CHECK_LIB(core, main, , oracle_error=yes)
+#	AC_CHECK_LIB(core3, main, , oracle_error=yes)
+#
+#	AC_CHECK_LIB(epc, main, , oracle_error=yes)
+#	AC_CHECK_LIB(generic, main, , oracle_error=yes)
+#	AC_CHECK_LIB(nlsrtl, main, , oracle_error=yes)
+#	AC_CHECK_LIB(nlsrtl3, main, , oracle_error=yes)
+#
+#	AC_CHECK_LIB(sql, main, , oracle_error=yes)
+#	AC_CHECK_LIB(sqlnet, main, , oracle_error=yes)
+#	AC_CHECK_LIB(cv6, main, , oracle_error=yes)
+#	AC_CHECK_LIB(ncr, main, , oracle_error=yes)
+#
+#	dnl If oracle_error=yes, give up on oracle
+#	if test "$oracle_error" = "yes" ; then
+#	    echo ""
+#	    AC_MSG_WARN([ ****Your system is missing a library that Oracle needs
+#		     ****XSB will be built WITHOUT the Oracle support])
+#	    echo ""
+#	    with_oracle=no
+#	    have_warnings=yes
+#	else
+#	    AC_DEFINE(ORACLE)
+#	    cat <<EOT
+#
+#    Building with support for Oracle
+#
+#EOT
+#	    with_oracle=yes
+#	fi
+#    fi
+#fi
+
+ODBCSRC=""
+ODBCOBJ=""
+
+if test "${with_odbc+set}" = "set"; then
+   cat <<EOT
+
+Building with support for ODBC
+
+EOT
+
+    ODBCSRC="odbc_xsb.c"
+    ODBCOBJ="odbc_xsb.o"
+    AC_DEFINE(XSB_ODBC)
+    with_odbc=yes
+fi
+
+
+# Need to re-state the trap since configure resets it occasionally
+trap 'rm buildxsb.lock; exit 1' 1 2 3 15
+
+AC_SUBST(regmatch_support)
+AC_SUBST(wildmatch_support)
+
+
+
+# profiling implies debug
+if test "${enable_profile}" = "yes"; then
+    AC_DEFINE(DEBUG)
+    AC_DEFINE(PROFILE)
+    do_debugging=yes
+fi
+
+if test "${enable_debug}" = "yes"; then
+    AC_DEFINE(NON_OPT_COMPILE)
+    AC_DEFINE(DEBUG)
+dnl    AC_DEFINE(CP_DEBUG)
+    do_debugging=yes
+fi
+
+if test "${enable_debug_verbose}" = "yes"; then
+   AC_DEFINE(DEBUG_VERBOSE)
+fi
+
+if test "${enable_debug_vm}" = "yes"; then
+   AC_DEFINE(DEBUG_VM)
+fi
+
+if test "${enable_debug_assertions}" = "yes"; then
+   AC_DEFINE(DEBUG_ASSERTIONS)
+   AC_DEFINE(CP_DEBUG)
+fi
+
+
+jumptable=no
+if test "${CC}" = "gcc" -o "${with_gcc+set}" = "set"; then
+   if test "${disable_jumptable}" != "yes"; then
+        AC_DEFINE(JUMPTABLE_EMULOOP)
+        jumptable=yes
+        CFLAGS=`echo ${CFLAGS} | sed -e "s/-ansi//"`
+        CFLAGS=`echo ${CFLAGS} | sed -e "s/-pedantic//"`
+   fi
+fi
+
+AC_DEFINE(INSN_BLOCKS)
+
+#AC_ARG_ENABLE(insn-blocks,
+#[  --enable-insn-blocks       Make temp variables local to wam insns])
+#insn_blocks=no
+#if test "${enable_insn_blocks}" = "yes" ; then
+#	AC_DEFINE(INSN_BLOCKS)
+#	insn_blocks=yes
+#fi
+
+if test "${enable_mt}" = "yes" -o "${enable_ccmpl}" = "yes" ; then
+    AC_DEFINE(MULTI_THREAD)
+
+    if test "${host_os}" = "cygwin"; then
+        LDFLAGS="${LDFLAGS} -lpthreadVSE1"
+    else
+	LDFLAGS="${LDFLAGS} -lpthread"
+    fi
+
+    CFLAGS="${CFLAGS} -D_GNU_SOURCE"
+fi
+
+if test "${enable_ccmpl}" = "yes" ; then
+    AC_DEFINE(CONC_COMPL)
+fi
+
+if test "${enable_mt}" = "yes" ; then
+    AC_DEFINE(SHARED_COMPL_TABLES)
+fi
+
+if test "${with_profiling}" = "yes" ; then
+    enable_profiling=yes
+fi
+if test "${enable_profiling}" = "yes" ; then
+    CFLAGS="-pg -ggdb -a ${CFLAGS}"
+    LDFLAGS="-pg ${LDFLAGS}"
+fi
+
+if test "${with_electric_fence}" = "yes" ; then
+    enable_electric_fence=yes
+fi
+if test "${enable_electric_fence}" = "yes" ; then
+    echo "enabling electric fence..."
+    LDFLAGS="${LDFLAGS} -lefence"
+    AC_DEFINE(ELECTRIC_FENCE)
+fi
+
+dnl Check for Incr Tcl (used in the XMC gui)
+
+AC_PATH_PROG(itkwish_path, itkwish, no, $PATH:$with_itkwish)
+if test "${itkwish_path}" = "no"; then
+   echo "XMC GUI not supported due to failure to find Incr Tcl/Tk"
+fi
+
+AC_SUBST(itkwish_path)
+
+dnl experimental: use bp register for lpcreg
+dnl lfcastro
+#AC_ARG_ENABLE(bp-lpcreg,
+#[  --enable-bp-lpcreg		put local pcreg into BP register on x86s])
+#bp_free=no
+#if test "${enable_bp_lpcreg}" = "yes" ; then
+#   bp_free=`echo ${emuloop_opt_level} | \
+#	sed 's/.*\(-fomit-frame-pointer\).*/yes/'`
+#   if test "${bp_free}" = "yes" ; then
+#	AC_DEFINE(USE_BP_LPCREG)
+#  else
+#    AC_MSG_ERROR(Cannot use BP without -fomit-frame-pointer)
+#   fi
+#fi
+
+
+# Normally, the optimization level will be O4.
+# SGI64 must have O1 and 32 bit SGI's can have O2
+if test "$__sunpro_c" = "no"; then
+    if test "$CC" = "gcc" ; then
+        c_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+    else
+        c_opt_level=-${with_optimization-"O4"}
+    fi
+else
+    c_opt_level=-${with_optimization-"xO4"}
+fi
+
+
+####### Test for -export-dynamic option of ld
+TEMP_LDFLAGS=$LDFLAGS
+LDFLAGS="-Wl,-export-dynamic"
+AC_MSG_CHECKING([whether loader understands -Wl,-export-dynamic])
+# Ideally we should use AC_LINK_IFELSE instead of the obsolete AC_TRY_LINK
+#AC_TRY_LINK([],[], __export_dynamic=yes, __export_dynamic=no)
+AC_LINK_IFELSE([AC_LANG_SOURCE([[main(){return 0;}]])], __export_dynamic=yes, __export_dynamic=no)
+AC_MSG_RESULT($__export_dynamic)
+LDFLAGS=$TEMP_LDFLAGS
+####### End of test for -export-dynamic option of ld
+
+if test "${enable_no_cygwin}" != "yes" -o \( "${host_os}" != "cygwin" -a "${host_os}" != "windows" \); then
+    LDFLAGS="$LDFLAGS -lm"
+fi
+
+
+# these are used to set up the xsbdynmod parameters under Unixes and MacOS X
+DYNMOD_LDFLAGS=-shared
+DYNMOD_SHAREDLIB_EXTENSION=so
+
+# Normally we link Makefiles, *o etc in emu/ symbolically.
+# But some CYGWIN versions running on virtual machines
+# do not work right with symlinks. So, for CYGWIN we use cp -pf
+config_ln_command="ln -s "
+
+# Set OS-specific variables for XSB
+case "$canonical" in
+    *alpha*)    AC_DEFINE(FOREIGN_ELF)
+        ;;
+    *hpux*)     AC_DEFINE(HP700)
+                AC_DEFINE(_HPUX_SOURCE)
+        ;;
+    *linux*)    AC_DEFINE(LINUX)
+                AC_DEFINE(_GNU_SOURCE)
+
+                case "${canonical}" in
+                    *ppc* | *powerpc* | *m68k* ) AC_DEFINE(MKLINUX_PPC)
+                    ;;
+                    dnl Linux a.out
+                    *)
+                    if test "${with_aout+set}" = "set" ; then
+                        AC_DEFINE(LINUX_AOUT)
+                    else
+                        dnl Linux ELF
+                        AC_DEFINE(LINUX_ELF)
+#			            if test "${CC}" = "gcc" -o "${with_gcc+set}" = "set"; then
+#			              CFLAGS="-m486 ${CFLAGS}"
+#			              AC_DEFINE(USE_BP_LPCREG)
+#			            fi
+
+                        if test "${have_dl}" != "no" ; then
+                            AC_DEFINE(FOREIGN_ELF)
+                            LDFLAGS="${LDFLAGS} -ldl"
+
+                            if test "$__export_dynamic" = "yes" ; then
+                                LDFLAGS="${LDFLAGS} -Wl,-export-dynamic"
+                            fi
+                        fi
+
+                        if test "${have_pthread}" != "no" ; then
+                            LDFLAGS="${LDFLAGS} -lpthread"
+                        fi
+                    fi
+                ;;
+                esac
+        ;;
+    *freebsd* ) AC_DEFINE(FREEBSD)
+                AC_DEFINE(FOREIGN_ELF)
+                if test "$__export_dynamic" = "yes" ; then
+                    LDFLAGS="${LDFLAGS} -Wl,-export-dynamic"
+                fi
+
+                if test "${have_dl}" = yes ; then
+                    LDFLAGS="${LDFLAGS} -ldl"
+                fi
+
+                if test "${have_pthread}" != "no" ; then
+                    LDFLAGS="${LDFLAGS} -lpthread"
+                fi
+        ;;
+#    *-rhapsody* | *-darwin* )
+#                CFLAGS="-faltivec -fPIC ${CFLAGS} "
+#                AC_DEFINE(DARWIN)
+#                AC_DEFINE(FOREIGN_ELF)
+#        	DYNMOD_LDFLAGS="-dynamiclib -single_module -nostartfiles"
+#        	DYNMOD_SHAREDLIB_EXTENSION=jnilib
+#        ;;
+    *-darwin* )
+                CFLAGS=" -fPIC ${CFLAGS} "
+                AC_DEFINE(DARWIN)
+                AC_DEFINE(FOREIGN_ELF)
+        	DYNMOD_LDFLAGS="-dynamiclib -single_module -nostartfiles -faltivec"
+        	DYNMOD_SHAREDLIB_EXTENSION=jnilib
+        ;;
+    *sgi* )     AC_DEFINE(FOREIGN_ELF)
+                if test "${machine64bit}" = yes ; then
+                    AC_DEFINE(SGI64)
+                    c_opt_level=-${with_optimization-"O1"}
+                    emuloop_opt_level=-${with_optimization-"O1"}
+                    trutils_opt_level=-${with_optimization-"O1"}
+                    builtins_opt_level=-${with_optimization-"O1"}
+                    loader_opt_level=-${with_optimization-"O1"}
+
+                    if test ! "$CC" = gcc ; then
+                        CFLAGS="${CFLAGS} -64 -OPT:Olimit=9500"
+                        LDFLAGS="-64 -lm"
+                        XSBMOD_LDFLAGS="-64"
+                        GPPCFLAGS="-64"
+                    fi
+                else
+                    AC_DEFINE(SGI)
+                    c_opt_level=-${with_optimization-"O2"}
+                    emuloop_opt_level=-${with_optimization-"O2"}
+                    trutils_opt_level=-${with_optimization-"O2"}
+                    builtins_opt_level=-${with_optimization-"O2"}
+                    loader_opt_level=-${with_optimization-"O1"}
+
+                    if test ! "$CC" = gcc ; then
+                        CFLAGS="${CFLAGS} -OPT:Olimit=7500"
+                        GPPCFLAGS="-OPT:Olimit=7500"
+                    fi
+                fi
+                trutils_opt_level=${c_opt_level}
+        ;;
+    *-solaris* | *-sunos5* )
+                AC_DEFINE(SOLARIS)
+                LDFLAGS="${LDFLAGS} -lnsl -ldl"
+
+                if test "${have_dl}" = "no" ; then
+                    AC_MSG_ERROR(Your system is missing library: \`dl')
+                fi
+                if test "${have_nsl}" = "no" ; then
+                    AC_MSG_ERROR(Your system is missing library: \`nsl')
+                fi
+
+                if test "${have_pthread}" != "no" ; then
+                    LDFLAGS="${LDFLAGS} -lpthread"
+                fi
+
+                AC_DEFINE(BIG_MEM)
+                AC_DEFINE(FOREIGN_ELF)
+
+                case "${canonical}" in
+                    *i*86-*-*) AC_DEFINE(SOLARIS_x86)
+                    ;;
+                    *)
+                    ;;
+                esac
+
+                LDFLAGS="-lsocket ${LDFLAGS}"
+                if test "$__export_dynamic" = "yes" ; then
+                    LDFLAGS="${LDFLAGS} -Wl,-export-dynamic"
+                fi
+                if test "${have_socket}" = "no" ; then
+                    AC_MSG_ERROR(Your system is missing library: \`socket')
+                fi
+        ;;
+    *-aix*)     AC_DEFINE(IBM)
+        ;;
+    *-sunos4*)  AC_DEFINE(SUN)
+                AC_DEFINE(FOREIGN_AOUT)
+                CFLAGS="${CFLAGS} -DBIG_MEM"
+                LDFLAGS="${LDFLAGS} -N"
+        ;;
+    *-cygwin*)  AC_DEFINE(CYGWIN)
+                real_host_os=cygwin
+
+                builtins_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+                loader_opt_level=-${with_optimization-"O3 -fno-strict-aliasing"}
+
+                if test "${enable_no_cygwin}" = "yes"; then
+                    echo 'Configuring for host system type... no-cygwin'
+                    host_os=windows
+                    os_type=windows
+                    os_version=
+                    host_vendor=pc
+                    host_cpu=x86
+                    config_dot_h_templ=def_config_mnoc.in
+                    GPPWNTFLAG="-D WIN_NT"
+
+#                    if test "${xsb_scheduling_strategy}" = "local" ; then
+#                        emuloop_opt_level=-${with_optimization-"O1 -fomit-frame-pointer"}
+#                    fi
+
+                    LDFLAGS="$LDFLAGS -lwsock32 -luser32"
+                    XSBMOD_LDFLAGS="$LDFLAGS"
+                fi
+
+                config_ln_command="cp -fp "
+        ;;
+esac
+
+if test "${general_tagging}" = "yes" ; then
+   AC_DEFINE(GENERAL_TAGGING)
+fi
+
+AC_SUBST(DYNMOD_SHAREDLIB_EXTENSION)
+AC_SUBST(DYNMOD_LDFLAGS)
+AC_SUBST(config_ln_command)
+
+# check for MIPS
+case "$canonical" in
+    *mips*) AC_DEFINE(MIPS_BASED)
+    ;;
+esac
+
+dnl test for inlining only on Unix
+dnl hard-coded it in windows\xsb_config.h on windows
+AC_C_INLINE
+
+# Don't optimize and inline if debugging!!
+if test "${do_debugging}" = "yes"  -o "${disable_optimization}" = "yes" ; then
+    c_opt_level=
+    emuloop_opt_level=
+    trutils_opt_level=
+    builtins_opt_level=
+    loader_opt_level=
+    c_inline_level=
+fi
+if test "${do_debugging}" = "yes" ; then
+    if test "${enable_dwarf_debug}" = "yes" ; then
+        CFLAGS="${CFLAGS} -gdwarf-2 -g3"
+    else
+        CFLAGS="${CFLAGS} -g"
+        LDFLAGS=" -g ${LDFLAGS}"
+        XSBMOD_LDFLAGS=" -g ${XSBMOD_LDFLAGS}"
+    fi
+fi
+
+if test "${CC}" = "gcc" -a "${host_os}" != "windows"  ; then
+    dnl gcc is smarter when creating dynamic libraries in Unix
+    LD=gcc
+    XSBMOD_LDFLAGS="-nodefaultlibs -nostartfiles ${XSBMOD_LDFLAGS}"
+else
+    LD=ld
+fi
+
+dnl special flags for simplescalar
+if test "${CC}" = "sslittle-na-sstrix-gcc"; then
+    AC_DEFINE(SIMPLESCALAR)
+    CROSS_SIMULATOR="sim-fast"
+    c_opt_level=-${with_optimization-"O1"}
+    LD=sslittle-na-sstrix-ld
+fi
+
+if test "${CC}" = "arm-linux-gcc"; then
+    LD=arm-linux-ld
+fi
+
+#dnl Prepend Oracle tricky library list
+#if test "${with_oracle}" = yes ; then
+#   LDFLAGS="-lclntsh -lsql -lsqlnet -lncr \
+#		-lsqlnet -lclient -lcommon -lgeneric -lsqlnet \
+#		-lncr -lsqlnet -lclient -lcommon -lgeneric \
+#		-lepc -lnlsrtl3 -lc3v6 -lcore3 -lnlsrtl3 -lcore3 \
+#		-lnlsrtl3 -lsocket -lnsl -lm -ldl -lm -lthread \
+#		${LDFLAGS}"
+#fi
+
+# dnl ODBC library
+if test "${with_odbc}" = yes ; then
+   case "$canonical" in
+    *-cygwin*)  LDFLAGS="-lodbc32 ${LDFLAGS}"
+                XSBMOD_LDFLAGS="-lodbc32 ${XSBMOD_LDFLAGS}"
+		ODBC_CFLAGS=
+        ;;
+    *)          if test -n "${with_iodbc}"; then
+		    ODBC_CFLAGS="$(iodbc-config --cflags)"
+		    LDFLAGS="$(iodbc-config --libs) ${LDFLAGS}" || \\
+			LDFLAGS="-L/usr/lib -liodbc ${LDFLAGS}"
+		    XSBMOD_LDFLAGS="$(iodbc-config --libs) ${XSBMOD_LDFLAGS}" || \
+			XSBMOD_LDFLAGS="-L/usr/lib -liodbc ${XSBMOD_LDFLAGS}"
+                else
+		    ODBC_CFLAGS="$(odbc_config --cflags)"
+                    LDFLAGS="$(odbc_config --libs) ${LDFLAGS}" || \
+			LDFLAGS="-L/usr/lib -lodbc ${LDFLAGS}"
+                    XSBMOD_LDFLAGS="$(odbc_config --libs) ${XSBMOD_LDFLAGS}" || \
+			XSBMOD_LDFLAGS="-L/usr/lib -lodbc ${XSBMOD_LDFLAGS}"
+                fi
+    esac
+fi
+
+# this is needed for -mno-cygwin dll compilation
+DLLTYPE=nodll
+
+if test "${enable_no_cygwin}" = "yes" -a "${real_host_os}" = "cygwin"; then
+    CC="${CC} -mno-cygwin"
+    DLLTYPE=cygdll
+fi
+
+#These are used to compile the interface with sModels
+if test "x${with_smodels}" = "x"; then
+    echo "    Not using SMODELS"
+    smodels_goal=nope
+else
+    AC_PROG_CXX
+    smodels_goal=all
+    if test  "$os_type" = "windows"; then
+        XASPLIBNAME=xasppkg.dll
+        XASPDEFFILE=xasppkg.def
+        smoCFLAGS="-I${arch_config_prefix} -I${with_smodels}"
+        smoLDFLAGS="-L${arch_config_prefix}/bin -L${with_smodels}"
+        smoLIB="-lsmodels -lxsb"
+        if test "${enable_no_cygwin}" = "yes"; then
+            CXX="${CXX} -mno-cygwin"
+        fi
+    else
+        XASPLIBNAME=xasppkg.so
+        XASPDEFFILE=
+        smoCFLAGS="-I${arch_config_prefix} -I${with_smodels}"
+        smoLDFLAGS="-L${arch_config_prefix}/bin"
+        smoLIB="${with_smodels}/.libs/libsmodels.a"
+    fi
+
+    AC_SUBST(XASPLIBNAME)
+    AC_SUBST(XASPDEFFILE)
+    AC_SUBST(smoCFLAGS)
+    AC_SUBST(smoLDFLAGS)
+    AC_SUBST(smoLIB)
+fi
+
+AC_SUBST(with_smodels)
+AC_SUBST(smodels_goal)
+
+
+if test "${c_opt_level}" = "-"; then
+   c_opt_level=
+fi
+if test "${loader_opt_level}" = "-"; then
+   loader_opt_level=
+fi
+if test "${builtins_opt_level}" = "-"; then
+   builtins_opt_level=
+fi
+if test "${emuloop_opt_level}" = "-"; then
+   emuloop_opt_level=
+fi
+if test "${trutils_opt_level}" = "-"; then
+   trutils_opt_level=
+fi
+loaderCFLAGS="${c_site_includes} ${loader_opt_level} ${c_inline_level} ${CFLAGS}"
+builtinsCFLAGS="${c_site_includes} ${builtins_opt_level} ${c_inline_level} ${CFLAGS}"
+emuloopCFLAGS="${c_site_includes} ${emuloop_opt_level} ${c_inline_level} ${CFLAGS}"
+trutilsCFLAGS="${c_site_includes} ${trutils_opt_level} ${c_inline_level} ${CFLAGS}"
+dnl Set CFLAGS **after** emuloopCFLAGS, trutilsCFLAGS
+CFLAGS="${c_site_includes} ${c_opt_level} ${c_inline_level} ${CFLAGS}"
+LDFLAGS="${ld_site_libraries} ${LDFLAGS}"
+XSBMOD_LDFLAGS="${ld_site_libraries} ${XSBMOD_LDFLAGS}"
+
+
+####### Java support
+java_compiler=
+interprolog_native_engine=
+JAVA_HEADER_PATH=
+JAVA_PLATFORM_HEADER_PATH=
+
+if test -z "$JAVA_HOME"; then
+    dnl try to see if we can derive the java home dir from javac's full name
+    AC_PATH_PROG(java_path,javac,no)
+    java_path=`dirname "$java_path"`   # strip /javac
+    java_path=`dirname "$java_path"`   # strip /bin
+    java_compiler="$java_path/javac"
+    java_path="$java_path/include"
+else
+    java_path="$JAVA_HOME/include"
+    java_compiler="$JAVA_HOME/bin/javac"
+fi
+
+java_platform_specific_hdr_path="`ls "${java_path}/"*/jni_md.h`"
+java_platform_specific_hdr_path="`dirname "${java_platform_specific_hdr_path}"`"
+java_platform_specific_hdr_path_alt="`ls "${java_path}/"jni_md.h`"
+java_platform_specific_hdr_path_alt="`dirname "${java_platform_specific_hdr_path_alt}"`"
+
+if test -f "$java_path/jni.h" -a -f "$java_platform_specific_hdr_path/jni_md.h" ; then
+    interprolog_native_engine=yes
+    JAVA_HEADER_PATH="${java_path}"
+    JAVA_PLATFORM_HEADER_PATH="${java_platform_specific_hdr_path}"
+    echo "Obtaining Java header files form ${JAVA_HEADER_PATH} and ${JAVA_PLATFORM_HEADER_PATH}"
+elif test -f "$java_path/jni.h" -a -f "$java_platform_specific_hdr_path_alt/jni_md.h" ; then
+    interprolog_native_engine=yes
+    JAVA_HEADER_PATH="${java_path}"
+    JAVA_PLATFORM_HEADER_PATH="${java_platform_specific_hdr_path_alt}"
+    echo "Obtaining Java header files form ${JAVA_HEADER_PATH} and ${JAVA_PLATFORM_HEADER_PATH}"
+fi
+
+# If interprolog_native_engine still empty,
+# try to find jni.h and jni_md.h using AC_CHECK_HEADERS
+if test -z "${interprolog_native_engine}" ; then
+    AC_CHECK_HEADERS([jni.h jni_md.h], interprolog_native_engine=yes, interprolog_native_engine=)
+    java_compiler=`which javac 2> /dev/null`
+    if test -n "${interprolog_native_engine}" ; then
+	echo "Found Java header files using CFLAGS"
+    fi
+fi
+
+AC_SUBST(java_compiler)
+
+INTERPROLOGSRC=""
+INTERPROLOGOBJ=""
+
+if test "$interprolog_native_engine" = "yes"; then
+    AC_DEFINE(XSB_INTERPROLOG)
+    AC_SUBST(XSB_INTERPROLOG,1)
+    INTERPROLOGSRC="interprolog_callback.c"
+    INTERPROLOGOBJ="interprolog_callback.o"
+    
+    if test -n "$JAVA_HEADER_PATH" ; then
+	loaderCFLAGS=" -I${JAVA_HEADER_PATH} ${loaderCFLAGS}"
+	builtinsCFLAGS=" -I${JAVA_HEADER_PATH} ${builtinsCFLAGS}"
+	emuloopCFLAGS=" -I${JAVA_HEADER_PATH} ${emuloopCFLAGS}"
+	trutilsCFLAGS=" -I${JAVA_HEADER_PATH} ${trutilsCFLAGS}"
+	CFLAGS=" -I${JAVA_HEADER_PATH} $CFLAGS"
+    fi
+fi
+
+AC_SUBST(JAVA_HEADER_PATH)
+AC_SUBST(JAVA_PLATFORM_HEADER_PATH)
+
+####### end of Java support
+
+
+os_version=`echo $host_os | sed -e 's/[[^0-9]]*//'`
+os_type=`echo $host_os | sed -e 's/[[0-9]].*$//'`
+
+dnl Some more #define symbols
+AC_DEFINE_UNQUOTED(CONFIGURATION, "${canonical}")
+AC_DEFINE_UNQUOTED(FULL_CONFIG_NAME, "${full_config_name}")
+
+if test "${enable_profile+yes}" = "yes"; then
+    compile_mode=profile
+elif test "${enable_debug+yes}" = "yes"; then
+    compile_mode=debug
+elif test "$disable_optimization" = "yes"; then
+    compile_mode=normal
+else
+    compile_mode=optimal
+fi
+
+### Specify what will be substituted into Makefile, xsb_config.h, etc.
+AC_SUBST(xsb_version)
+AC_SUBST(canonical)
+AC_SUBST(full_config_name)
+AC_SUBST(topdir)
+AC_SUBST(prefix)
+AC_SUBST(mt_mode)
+
+AC_SUBST(CROSS_SIMULATOR)
+AC_SUBST(LD)
+
+AC_SUBST(arch_config_prefix)
+AC_SUBST(arch_install_config_prefix)
+AC_SUBST(arch_config_file)
+AC_SUBST(config_tag)
+
+AC_SUBST(arch_bindir)
+
+AC_SUBST(CFLAGS)
+AC_SUBST(loaderCFLAGS)
+AC_SUBST(builtinsCFLAGS)
+AC_SUBST(emuloopCFLAGS)
+AC_SUBST(trutilsCFLAGS)
+AC_SUBST(GPPCFLAGS)
+AC_SUBST(GPPWNTFLAG)
+AC_SUBST(CC)
+AC_SUBST(MEMFLAG)
+AC_SUBST(CXX)
+AC_SUBST(LDFLAGS)
+dnl used for SGIs only
+AC_SUBST(XSBMOD_LDFLAGS)
+
+# Just something so we won't forget to set it in the future
+emumake_goal=doodledandy
+
+if test "${with_oracle}" = "yes" ; then
+    emumake_goal=xsbora
+else
+    emumake_goal=xsb
+fi
+AC_SUBST(emumake_goal)
+
+# These are used in xsb_configuration.in
+AC_SUBST(xsb_build_date)
+AC_SUBST(host_os)
+AC_SUBST(os_version)
+AC_SUBST(os_type)
+AC_SUBST(host_vendor)
+AC_SUBST(host_cpu)
+AC_SUBST(compile_mode)
+AC_SUBST(xsb_major_version)
+AC_SUBST(xsb_minor_version)
+AC_SUBST(xsb_patch_version)
+AC_SUBST(xsb_beta_version)
+AC_SUBST(xsb_codename)
+AC_SUBST(release_year)
+AC_SUBST(release_month)
+AC_SUBST(release_monthname)
+AC_SUBST(release_day)
+AC_SUBST(xsb_patch_date)
+AC_SUBST(xsb_scheduling_strategy)
+AC_SUBST(site_prefix)
+
+AC_SUBST(xsb_release_date)
+AC_SUBST(xsb_full_version_name)
+AC_SUBST(engine_mode)
+AC_SUBST(word_size)
+
+AC_SUBST(ODBCSRC)
+AC_SUBST(ODBCOBJ)
+AC_SUBST(ODBC_CFLAGS)
+AC_SUBST(INTERPROLOGSRC)
+AC_SUBST(INTERPROLOGOBJ)
+AC_SUBST(mno_cyg_inclib)
+AC_SUBST(mno_cyg_lib)
+AC_SUBST(DLLTYPE)
+
+## XSB file extensions
+xsb_obj_extension=.xwam
+AC_SUBST(xsb_obj_extension)
+
+dnl When running autoheader, uncoment these 2 lines and comment the next 2.
+dnl Then move xsb_config.h.in to def_config.in.
+dnl There probably will be no need to run autoheader any more!
+dnl AC_CONFIG_HEADER(${arch_config_prefix}/xsb_config.h:def_config.in
+dnl ${arch_config_prefix}/xsb_debug.h:def_debug.in])
+
+AC_CONFIG_HEADERS(['"${arch_config_prefix}/xsb_config.h"':${config_dot_h_templ}
+windows/xsb_config.h:windows/def_config.in
+windows/xsb_debug.h:def_debug.in
+windows64/xsb_config.h:windows64/def_config.in
+windows64/xsb_debug.h:def_debug.in
+'"${arch_config_prefix}/xsb_debug.h"':def_debug.in])
+
+
+AC_OUTPUT([ '"${arch_config_prefix}/topMakefile"':topMakefile.in
+        '"${arch_config_prefix}/emuMakefile"':emuMakefile.in
+        '"${arch_config_prefix}/modMakefile"':modMakefile.in
+        '"${arch_config_prefix}/gppMakefile"':gppMakefile.in
+        '"${arch_config_prefix}/smoMakefile"':smoMakefile.in
+        '"${arch_config_prefix}/makedef.sh"':makedef.sh.in
+        '"${arch_config_file}"':xsb_configuration.in
+	windows/xsb_configuration.P:windows/xsb_configuration.in
+	windows64/xsb_configuration.P:windows64/xsb_configuration.in
+        makexsb:makexsb.in
+        '"${scriptdir}/chr_pp${config_tag}"':chr_pp.in
+        '"${scriptdir}/xsb${config_tag}"':xsb.in
+        '"${arch_config_prefix}/banner.msg"':banner.in
+        windows/banner.msg:windows/banner.in
+        windows64/banner.msg:windows64/banner.in
+        windows/MSVC_mkfile.mak:windows/MSVC_mkfile.in
+        windows64/MSVC_mkfile.mak:windows64/MSVC_mkfile.in
+        '"${prefix}/packages/xmc/xmc-gui"':xmc-gui.in
+        ])
+
+chmod 644 "${arch_config_file}"
+
+# Need to re-state the trap since configure resets it occasionally
+trap 'rm buildxsb.lock; exit 1' 1 2 3 15
+
+############ End of configuration -- the rest is mostly cosmetic ##############
+###############################################################################
+
+
+#### Report on what we decided to do.
+dnl Start redirection to | tee Installation_summary
+
+install_date=`date`
+
+(
+echo "
+
+            INSTALLATION SUMMARY
+            --------------------
+
+XSB Version:	   ${xsb_version}
+Code name:	   ${xsb_codename}
+Release date:	   ${xsb_release_date}
+Configuration:	   ${canonical}
+Installation date: ${install_date}
+
+  Build process is looking for XSB sources in:	  ${topdir}
+  XSB should be installed in:			  ${prefix}
+  Configuration-specific executables go in:	  ${arch_bindir}
+  Configuration-specific libraries go in:	  ${arch_config_libdir}
+  Object code goes in:				  ${arch_config_objlibdir}
+  Site-specific code goes in:			  ${site_prefix}
+  Site configuration-specific code goes in:	  ${site_config_prefix}
+  XSB will be built with:			  ${CC} ${CFLAGS}
+  builtin.c will be built with: 		  ${CC} ${builtinsCFLAGS}
+  loader_xsb.c will be built with: 		  ${CC} ${loaderCFLAGS}
+  emuloop.c will be built with: 		  ${CC} ${emuloopCFLAGS}
+  tr_utils.c will be built with:		  ${CC} ${trutilsCFLAGS}
+  Loader flags: 				${LDFLAGS}
+  Compilation mode:				  ${compile_mode}
+  XSB abstract machine: 			  ${engine_mode}
+  XSB scheduling strategy:			  ${xsb_scheduling_strategy}
+  Garbage Collection Stress-Test:		  ${gc_test}
+  Jumptable-based emulator loop:		  ${jumptable}
+  Demand support:                                 ${demand}"
+
+
+if test -n "${with_dbdrivers}" && test -f "$topdir/packages/dbdrivers/Installation_summary" ; then
+    	  echo ""
+    	  echo "  Details of support for modular database drivers:"
+          cat $topdir/packages/dbdrivers/Installation_summary
+else
+    	  echo ""
+          echo "  Support for modular database drivers: 	  no"
+    	  echo "  -- These drivers can also be configured later."
+fi
+
+
+case "$with_oracle" in
+   "yes") echo "  Native support for Oracle:			  yes"
+    ;;
+   *)     echo "  Native support for Oracle:			  no"
+    ;;
+esac
+case "$with_odbc" in
+   "yes") echo "  Support for the old ODBC driver:		  yes"
+          echo "      ODBC_CFLAGS:                                $ODBC_CFLAGS"
+    ;;
+   *)     echo "  Support for the old ODBC driver:		  no"
+    ;;
+esac
+
+echo ""
+
+if test -n "$java_compiler"; then
+   cat <<EOT
+  Java compiler:                                  $java_compiler
+EOT
+fi
+
+case "$interprolog_native_engine" in
+   "yes") echo "  Support for InterProlog's native engine:	  yes"
+    ;;
+   *)     echo "  Support for InterProlog's native engine:   	  no"
+          echo "  -- JDK may not have been installed or"
+          echo "  -- JAVA_HOME not set. You will still be able"
+	  echo "  -- to use InterProlog's subprocess engine."
+    ;;
+esac
+
+if test -n "$with_dynamic_libraries" ; then
+   echo "  Configured with dynamic libraries:"
+   for arg in $with_dynamic_libraries ; do
+    dnl Strip the trailing slashes
+    arg=`echo "${arg}" | sed 's,\([[^/]]\)/*$,\1,'`
+    echo "			      $arg"
+   done
+fi
+echo ""
+echo "  POSIX regexp matching libraries:                $regmatch_support"
+echo "  POSIX wildcard matching libraries:              $wildmatch_support"
+echo ""
+
+if test -f "$topdir/packages/curl/Installation_summary" ; then
+    cat "$topdir/packages/curl/Installation_summary"
+fi
+
+if test -f "$topdir/packages/xpath/Installation_summary" ; then
+    cat "$topdir/packages/xpath/Installation_summary"
+fi
+
+if test -f "$topdir/packages/pcre/Installation_summary" ; then
+    cat "$topdir/packages/pcre/Installation_summary"
+fi
+
+
+echo ""
+echo ""
+) | tee Installation_summary
+
+
+
+# This is needed so that *after* XSB is installed in a common directory,
+# users could compile packages that produce arch-specific code.
+chmod 777 "${site_config_libdir}" ;
+chmod a+t "${site_config_libdir}" ;
+chmod 777 "${arch_install_config_libdir}" ;
+chmod a+t "${arch_install_config_libdir}" ;
+
+
+dnl Add site dynamic libraries to XSB library path
+if test -n "$with_dynamic_libraries"; then
+  tempfile=/tmp/libpath.$$
+  echo ""
+  echo "Appending dynamic libraries to the XSB library search path:"
+  echo "" > $tempfile
+  echo "%% ---	DO NOT EDIT THIS LINE AND BELOW: reserved for the configure script" >> $tempfile
+  echo "" >> $tempfile
+  for arg in $with_dynamic_libraries; do
+    dnl Strip the trailing slashes
+    arg=`echo "${arg}" | sed 's,\([[^/]]\)/*$,\1,'`
+    echo ":- assert(library_directory('${arg}'))." >> ${tempfile}
+    echo "		$arg"
+  done
+  echo ""
+
+  dnl Append to siteinitrc.P and create it, if necessary
+  test -f "${site_prefix}/siteinitrc.P" || ./touch.sh "${site_prefix}/siteinitrc.P"
+
+  dnl delete below the magic line
+  sed '/%%[[ \t]]*-[[-]]*[[ \t]]*DO NOT EDIT THIS LINE/,$ d' \
+    "${site_prefix}/siteinitrc.P" | \
+        cat - ${tempfile} > ${tempfile}1
+
+  mv -f ${tempfile}1 "${site_prefix}/siteinitrc.P"
+  rm -f ${tempfile}
+fi
+
+dnl produce MSVC.dep
+./MSVC.sh
+
+
+# Now set modes, copy some files
+chmod 555 "${scriptdir}/xsb${config_tag}"  "${scriptdir}/chr_pp${config_tag}"  makexsb
+
+# These files should really be read-only, but this causes problems when
+# configuring for Windows over Samba, NFS, etc.
+chmod 644 "${arch_config_file}" \
+      "${arch_config_prefix}/xsb_config.h" \
+      "${arch_config_prefix}/xsb_debug.h" \
+      "${arch_config_prefix}"/*Makefile
+
+
+# phantom private_builtin.c file
+# this is duplicated in makexsb. We still keep it here so that makedepend will
+# see private_builtin.c in emu and will generate the right dependencies
+test -f "${emudir}/private_builtin.c" || \
+   cp "${build_dir}/private_builtin.in" "${emudir}/private_builtin.c"
+
+dnl Copying to the installation directory ($prefix) is done in the top
+dnl makefile now!
+echo ""
+echo "XSB is configured for installation in ${prefix}"
+echo "Site libraries are to be found in ${site_prefix}"
+
+
+echo "Configuration report is saved in ./Installation_summary"
+
+if test "$have_warnings" = "yes"; then
+    echo ""
+    echo "PLEASE SCAN THE ABOVE MESSAGES FOR CONFIGURATION WARNINGS"
+    echo ""
+fi
+
+
+echo ""
+if test -z "$config_tag" ; then
+    echo "***Now compile XSB with:   \`./makexsb'"
+else
+    echo "***Now compile XSB with:   \`./makexsb --config-tag=${config_tag_sans_dash}'"
+fi
+
+echo ""
+
+rm -f  buildxsb.lock
+

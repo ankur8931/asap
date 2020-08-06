@@ -1,0 +1,58 @@
+%%% Wrappers for usual Prolog builtins ( Version 1.0/October 2003)
+%%% XSB Version
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%%
+%%%
+
+:- export operating_system_type/1.
+:- export x_time/1.
+:- export absolute_filename/2.
+:- export append/3.
+:- export reverse/2.
+:- export member/2.
+:- export memberchk/2.
+:- export append_atom/3.
+
+:- import xsb_configuration/2 from usermod.
+:- import expand_filename/2 from machine.
+
+% Gets operating system type
+% Should return windows for any OS of Windows family.
+operating_system_type( OS ) :- xsb_configuration( os_type, OS ).
+
+x_time(T) :- cputime(T).
+
+% Expands relative file names into absolute ones.
+absolute_filename( Path, AbsPath ) :- expand_filename( Path, AbsPath ).
+
+% The append/3 predicate
+append([],L,L).
+append([X|Xs],Ys,[X|Zs]) :- append(Xs,Ys,Zs).
+
+
+% Implementation of reverse with accumulator
+reverse( Ls, Rs ) :- reverse( Ls, [], Rs ).
+
+reverse( [], Rs, Rs ).
+reverse( [X|Xs], As, Rs ) :- reverse( Xs, [X|As], Rs ).
+
+member( X, [X|_] ).
+member( X, [_|Ys] ) :- member( X, Ys ).
+
+memberchk( X, [X|_] ) :- !.
+memberchk( X, [_|Ys] ) :- memberchk( X, Ys ).
+
+
+% Atom concatenation:
+append_atom( Atom1, Atom2, Atom ) :-
+	name( Atom1, Atom1Codes ),
+	name( Atom2, Atom2Codes),
+	append( Atom1Codes, Atom2Codes, AtomCodes ),
+	name( Atom, AtomCodes ).

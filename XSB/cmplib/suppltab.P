@@ -1,0 +1,385 @@
+/* File:      suppl_tab.P
+** Author(s): Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: suppltab.P,v 1.6 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/* supplementary_tabling(+Module, -ModuleOut)				*/
+/*	ModuleOut is ModuleIn after performing supplementary tabling.	*/
+/*	Supplementary tabling is performed in two steps:		*/
+/*	  1. The predicates that depend in more than the allowed number	*/
+/*	     of edb predicates are identified and are tabled.		*/
+/*	  2. Supplementary folding is applied to the clauses of the	*/
+/*	     above set of predicates.					*/
+/*	NOTE: The first step requires that all loops in the predicate	*/
+/*	      dependency graph are already broken.			*/
+/*======================================================================*/
+
+supplementary_tabling(module(SymTab,DL,CL,QR), module(SymTab,DL,CL1,QR)) :-
+	( ( option(auto_table)	% This breaks all loops
+	  ; call_themselves(CL, LoopPreds, CL), LoopPreds == []
+	  ) ->
+		'supplementary tabling'(CL, CL),
+		( option(suppl_fold_off) -> CL1 = CL
+		; 'supplementary folding'(CL, SymTab, CL1, [])
+		),
+		retractall(edb_dep(_,_,_)), retractall(suppl_folding(_,_,_))
+	; error('Unbroken loops detected in the predicate dependency graph'),
+	  message(('         Supplementary tabling cannot be performed ',
+			    ' (use option "auto_table")'))
+	).
+
+/*----------------------------------------------------------------------*/
+/* 'supplementary tabling'(+Preds, +AllPreds)				*/
+/*	Performs the first step of supplementary tabling.  The use of	*/
+/*	assert(edb_dep/3) is only for efficiency; so that already	*/
+/*	computed results are not forgotten (kind of tabling).  The use	*/
+/*	of assert(suppl_folding/3) is so that supplementary folding is	*/
+/*	independent of the first step, and so that ModuleOut is only	*/
+/*	computed once, saving some unnecessary copying of intermediate	*/
+/*	results (also, a garbage collector would be welcome).		*/
+/*----------------------------------------------------------------------*/
+
+:- mode 'supplementary tabling'(+,+).
+
+'supplementary tabling'([], _).
+'supplementary tabling'([Pred|Preds], AllPreds) :-
+	pred_edb_dependency(Pred, AllPreds),
+	'supplementary tabling'(Preds, AllPreds).
+
+:- mode pred_edb_dependency(+,+).
+
+pred_edb_dependency(Pred, AllPreds) :-
+	Pred = pred(Sym,Cls,_Prag),
+	sym_name(Sym, Name, Arity),
+	( edb_dep(Name, Arity, _) -> true	% already computed
+	; sym_prop(tabled(_,_), Sym) -> assert(edb_dep(Name,Arity,1))
+	; sym_prop((edb), Sym) -> assert(edb_dep(Name,Arity,1))
+	; sym_prop(defined, Sym),
+	  ( nonvar(Cls) ; memberchk(Pred, AllPreds) ) ->
+		edb_dependencies(Cls, Sym, AllPreds, 0, MaxD, Deps),
+		conget('EDB Dep #', EDB_Dep),
+		( MaxD >= EDB_Dep -> table_it(Sym), Dep = 1 ; Dep = MaxD ),
+		assert(edb_dep(Name,Arity,Dep)),
+		/*------ Record info for supplementary folding ------*/
+		( MaxD > EDB_Dep -> assert(suppl_folding(Name,Arity,Deps))
+		; true
+		)
+	; assert(edb_dep(Name,Arity,0))
+	).
+
+:- mode edb_dependencies(+,+,+,+,-,-).
+
+edb_dependencies([], _, _, Dep,Dep, []).
+edb_dependencies([Cl|Cls], Sym, Preds, DepIn,DepOut, [CD|CDs]) :-
+	Cl = clause(_,Body,_),
+	clause_dependency(Body, Sym, Preds, CD),
+	max(DepIn, CD, DepMid),
+	edb_dependencies(Cls, Sym, Preds, DepMid,DepOut, CDs).
+
+:- mode clause_dependency(+,+,+,-).
+
+clause_dependency(and(G1,G2), Sym, Preds, Dep) :-
+	clause_dependency(G1, Sym, Preds, D1),
+	clause_dependency(G2, Sym, Preds, D2),
+	Dep is D1 + D2.
+clause_dependency(or(G1,G2), Sym, Preds, Dep) :-
+	clause_dependency(G1, Sym, Preds, D1),
+	clause_dependency(G2, Sym, Preds, D2),
+	max(D1,D2,Dep).
+clause_dependency(if(G1,G2), Sym, Preds, Dep) :-
+	clause_dependency(G1, Sym, Preds, D1),
+	clause_dependency(G2, Sym, Preds, D2),
+	Dep is D1 + D2.
+clause_dependency(not(G), Sym, Preds, Dep) :-
+	clause_dependency(G, Sym, Preds, Dep).
+clause_dependency(inlinegoal(_,_,_), _, _, 0).
+clause_dependency(goal(GoalSym,_), Sym, Preds, Dep) :-
+	( GoalSym == Sym -> Dep = 0
+	; sym_name(GoalSym, Name, Arity),
+	  ( edb_dep(Name, Arity, Dep) -> true
+	  ; pred_edb_dependency(pred(GoalSym,_,_), Preds),
+	    edb_dep(Name, Arity, Dep)
+	  )
+	).
+
+/*======================================================================*/
+/* 'supplementary folding'(+Preds, #SymTab, +NPin, -NPout)		*/
+/*	Performs the second step of supplementary tabling.  The		*/
+/*	predicates whose clauses require folding are already recorded	*/
+/*	(using assert/1) in the database.  This allows the operation to	*/
+/*	be performed in only one pass of Preds, and does not require	*/
+/*	any copying of intermediate results.				*/
+/*	  NOTES: 1. Currently supplementary folding should better be	*/
+/*		 performed only if EDB_Dep =:= 2, but the underlying	*/
+/*		 algorithm is (or should be) very general.		*/
+/*		 2. The predicate is an apotheosis of the use of	*/
+/*		 difference lists (especially in suppl_fold/8).		*/
+/*======================================================================*/
+
+:- mode 'supplementary folding'(+,#,#,#).
+
+'supplementary folding'([], _, NP, NP).
+'supplementary folding'([Pred|Preds], SymTab, NPin, NPout) :-
+	Pred = pred(Sym,Cls,Prag),
+	sym_name(Sym, Name, Arity),
+	( suppl_folding(Name, Arity, Deps) ->
+		conget('EDB Dep #', EDB_Dep),
+		suppl_fold(Cls, Deps, EDB_Dep, Name,
+			   SymTab, NewCls, NewPreds, NPmid),
+		NPin = [pred(Sym,NewCls,Prag)|NewPreds]
+	; NPin = [Pred|NPmid]
+	),
+	'supplementary folding'(Preds, SymTab, NPmid, NPout).
+
+
+/*======================================================================*/
+/* suppl_fold(+ClausesIn, +Dependencies, +EDB_Dep, +Name, #SymTab,	*/
+/*	      -ClausesOut, #NewPredsIn, #NewPredsOut)			*/
+/*======================================================================*/
+
+:- mode suppl_fold(+,+,+,+,#,-,#,#).
+
+suppl_fold([], _, _, _, _, [], NP, NP).
+suppl_fold([Cl|Cls], [CD|CDs], EDB_Dep, Name, SymTab,
+	   [NewCl|NewCls], NPin, NPout) :-
+	Cl = clause(HeadArgs,Body,Prag),
+	( CD > EDB_Dep, can_be_folded(Body) ->
+		fold_clause(Body, HeadArgs, CD, EDB_Dep, Name,
+			    SymTab, NewBody, NPin, NPmid),
+		NewCl = clause(HeadArgs,NewBody,Prag)
+	; NewCl = Cl, NPmid = NPin
+	),
+	suppl_fold(Cls, CDs, EDB_Dep, Name, SymTab, NewCls, NPmid, NPout).
+
+:- mode fold_clause(+,+,+,+,+,#,-,+,-).
+
+fold_clause(Body, HeadArgs, CD, EDB_Dep, Name,
+	    SymTab, NewBody, NewPredsIn, NewPredsOut) :-
+	pieces(Body, CD, EDB_Dep, Pieces, GoalSyms, GoalArgs),
+	cv(Pieces, HeadArgs, CV),
+	args_of_new_goals(CV, GoalArgs),
+	new_preds(Pieces, GoalArgs, GoalSyms, Name,
+		  SymTab, NewPredsIn, NewPredsOut, NewBody).
+
+/*----------------------------------------------------------------------*/
+/* new_preds(+Pieces, +GoalArgs, +NewSyms, +Name,			*/
+/*	     #SymTab, +NewPredsIn, -NewPredsOut, -NewBody)		*/
+/*----------------------------------------------------------------------*/
+
+:- mode new_preds(+,+,+,+,#,+,-,-).
+
+new_preds([P], _, _, _, _, NP, NP, P).
+new_preds([P1,P2|Ps], [GA|GAs], [Sym|Syms], Name,
+	  SymTab, [Pred|NPmid], NPout, NewBody) :-
+	new_pred(GA, HeadArgs, 0, Arity, P1, Body),
+	gensym_pred(Name, NewName),
+	Properties = [pred,defined,used,tabled],
+	sym_insert(NewName, Arity, Properties, SymTab, Sym),
+	Pred = pred(Sym,[clause(HeadArgs,Body,_)],_Prag),
+	new_preds([P2|Ps], GAs, Syms, Name, SymTab, NPmid, NPout, NewBody).
+
+:- mode new_pred(+,-,+,-,+,-).
+
+new_pred([], [], A,A, P,P).
+new_pred([Arg|Args], [HeadArg|HeadArgs], Ain,Aout, Pin,Pout) :-
+	Arg = varocc(Id), HeadArg = varocc(NewId),
+	name(Id, L), NL = [0'_,0'v|L], name(NewId, NL),
+	Amid is Ain+1,
+	Pmid = and(inlinegoal(=,2,[HeadArg,Arg]),Pin),
+	new_pred(Args, HeadArgs, Amid,Aout, Pmid,Pout).
+
+/*----------------------------------------------------------------------*/
+/* pieces(+Body, +ClauseDepedency, +EDB_Dep,				*/
+/*	  -PieceList, -GoalSymList, -GoalArgsList)			*/
+/*	Cuts the Body in pieces P_1,...,P_n such that the edb depedency	*/
+/*	of each piece is (at most) EDB_Dep-1.  A (new) goal having a	*/
+/*	symbol from GoalSymList and arguments from GoalArgsList is	*/
+/*	appended to the beginning of pieces P_2, ..., P_n.		*/
+/*	  Both PieceList, GoalSymList, and GoalArgsList are returned in	*/
+/*	reversed order to facilitate their further processing.		*/
+/*	  Also, PieceList is guaranteed to be non-empty.		*/
+/*----------------------------------------------------------------------*/
+
+pieces(Body, CD, EDB_Dep, Pieces, GoalSyms, GoalArgs) :-
+	rbl(Body, [], RevBodyList),
+	pieces(RevBodyList, CD, EDB_Dep, [],PL, [],GoalSyms, [],GoalArgs),
+	lists_to_bodies(PL, Pieces).
+
+:- mode pieces(+,+,+,+,-,+,-,+,-).
+
+pieces(BodyList, CD, EDB_Dep, Pin,Pout, GSin,GSout, GAin,GAout) :-
+	( CD > EDB_Dep ->
+		Pmid = [PL|Pin], GSmid = [GSym|GSin], GAmid = [GArgs|GAin],
+		Limit is EDB_Dep - 1, NewGoal = goal(GSym,GArgs),
+		piece(BodyList, 0, Limit, [],PL, NewGoal, PD, RestBodyList),
+		RestD is CD - PD,
+		pieces(RestBodyList, RestD, EDB_Dep,
+		       Pmid,Pout, GSmid,GSout, GAmid,GAout)
+	; reverse(BodyList, RBL), Pout = [RBL|Pin], GSout = GSin, GAout = GAin
+	).
+
+:- mode piece(+,+,+,+,-,+,-,-).
+
+piece(BodyList, D, Limit, Pin,Pout, NewGoal, PD, RestBodyList) :-
+	( D < Limit ->
+		BodyList = [GH|GT],
+		goal_dep(GH, GD),
+		Pmid = [GH|Pin],
+		Dnew is D + GD,
+		piece(GT, Dnew, Limit, Pmid,Pout, NewGoal, PD, RestBodyList)
+	; PD = D,
+/*-----	  ( D =:= Limit ->
+		add_to_piece(BodyList, Pin,Pout, NewGoal, RestBodyList)
+	  ;
+  -----*/
+	  Pout = [NewGoal|Pin], RestBodyList = BodyList
+/*-----	  )
+  -----*/
+	).
+
+/*----	This is a first attempt to add some optimisation to the
+ *	algorithm.  The issue is deciding in which piece the goals
+ *	that have 0 edb depedency should appear.  The answer has to do
+ *	with mimimising the number of variables of the supplementary
+ *	predicates.  I leave it commented out for now.
+ *
+ *:- mode add_to_piece(+,+,-,+,-).
+ *
+ *add_to_piece([GH|GT], Pin,Pout, NewGoal, RestBodyList) :-
+ *	goal_dep(GH, GD),
+ *	( GD =:= 0 ->
+ *		Pmid = [GH|Pin],
+ *		add_to_piece(GT, Pmid,Pout, NewGoal, RestBodyList)
+ *	; Pout = [NewGoal|Pin], RestBodyList = [GH|GT]
+ *	).
+  -----*/
+
+:- mode goal_dep(+,-).
+
+goal_dep(and(G1,G2), Dep) :-
+	goal_dep(G1, D1), goal_dep(G2, D2), Dep is D1 + D2.
+goal_dep(not(G), Dep) :-
+	goal_dep(G, Dep).
+goal_dep(inlinegoal(_,_,_), 0).
+goal_dep(goal(GoalSym,_), Dep) :-
+	sym_name(GoalSym, Name, Arity), edb_dep(Name, Arity, Dep).
+
+/*----------------------------------------------------------------------*/
+/*  cv(+PieceList, +HeadArgs, -CollectedVars)				*/
+/*	Collects a list of variables that are needed to construct the	*/
+/*	arguments in the heads of the (new) folded clauses.  HeadArgs	*/
+/*	are the arguments in the head of the original clause.		*/
+/*----------------------------------------------------------------------*/
+
+:- mode cv(+,+,-).
+
+cv([], HA, [CV]) :- cv1(HA, CV), closetail(CV).
+cv([P|Ps], HA, [CV|CVs]) :- cv(P, CV), closetail(CV), cv(Ps, HA, CVs).
+
+:- mode cv(+,?).
+
+cv(and(G1,G2), CV) :- cv(G1, CV), cv(G2, CV).
+cv(not(G), CV) :- cv(G, CV).
+cv(inlinegoal(_,_,Args), CV) :- cv1(Args, CV).
+cv(goal(_,Args), CV) :- var(Args) -> true ; cv1(Args, CV).
+
+:- mode cv1(+,?).
+
+cv1([], _).
+cv1([Arg|Args], CV) :- cv2(Arg, CV), cv1(Args, CV).
+
+cv2(Arg, CV):-
+	( Arg = varocc(_) -> memberchk(Arg, CV)
+	; Arg = structure(_,Args) -> cv1(Args, CV)
+	; true
+	).
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+:- mode args_of_new_goals(+,#).
+
+args_of_new_goals([_,_], []).
+args_of_new_goals([VL1,VL2,VL3|VLs], [CallVarList|CallVarLists]) :-
+	args_of_new_goal(VL1, [VL2,VL3|VLs], CallVarList),
+	merge(VL2, CallVarList, NewVL2),
+	args_of_new_goals([NewVL2,VL3|VLs], CallVarLists).
+
+:- mode args_of_new_goal(+,+,#).
+
+args_of_new_goal([], _, []).
+args_of_new_goal([Var|Vars], Vs, CallVarList) :-
+	( needed(Var, Vs) -> CallVarList = [Var|CVL] ; CallVarList = CVL ),
+	args_of_new_goal(Vars, Vs, CVL).
+
+needed(Var, VL) :- member(VarList, VL), memberchk(Var, VarList).
+
+/*----------------------------------------------------------------------*/
+/* can_be_folded(+Body)							*/
+/*	Succeeds iff Body is foldable.  Preserving Prolog's semantics	*/
+/*	(as exhibited by the handling of cuts and if-then-elses) is the	*/
+/*	main concern.  Also, disjunctions in the Body are not handled.	*/
+/*----------------------------------------------------------------------*/
+
+:- mode can_be_folded(+).
+
+can_be_folded(not(_)).
+can_be_folded(goal(_,_)).
+can_be_folded(inlinegoal(Pred,_,_)) :- Pred \== '!'.
+can_be_folded(and(G1,G2)) :- can_be_folded(G1), can_be_folded(G2).
+
+/*----------------------------------------------------------------------*/
+/* Auxiliary predicates.						*/
+/*----------------------------------------------------------------------*/
+
+max(X, Y, Max) :- ( X > Y -> Max = X ; Max = Y ).
+
+:- mode rbl(+,+,-).
+
+rbl(Body, SoFar, RBL) :-	% Makes a ReversedBodyList out of Body.
+	( Body = and(G1,G2) -> rbl(G2, [G1|SoFar], RBL) ; RBL = [Body|SoFar] ).
+
+:- mode lists_to_bodies(+,-).
+
+lists_to_bodies([], []).
+lists_to_bodies([HL|TL], [HB|TB]) :-
+	list_to_body(HL, HB), lists_to_bodies(TL, TB).
+
+:- list_to_body(+,-).
+
+list_to_body([G1,G2], and(G1,G2)).
+list_to_body([G1,G2|Gs], and(G1,AG)) :- list_to_body([G2|Gs], AG).
+
+/* --------------------- end of file suppl_tab.P ---------------------- */
+
+end_of_file.
+
+/*======================================================================*/
+/*  Debugging Predicates.						*/
+/*======================================================================*/
+
+:- import telling/1, tell/1, told/0, ttywrite/1, nl/0 from standard.
+
+typeout(M) :- telling(X), tell(userout), ttywrite(M), nl, told, tell(X).
+

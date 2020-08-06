@@ -1,0 +1,130 @@
+/* File:      asm_opt.P
+** Author(s): Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: asm_opt.P,v 1.4 2010-08-19 15:03:35 spyrosh Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/*  asm_opt(+Code, +Index, +Sym, +IsModule, -OptCode)			*/
+/*									*/
+/*	WARNING: Make sure that the size of OptCode is equal to the	*/
+/*		 size of Code.						*/
+/*======================================================================*/
+
+asm_opt(Code, Index, Sym, IsModule, OptCode) :-
+	asm_transform(Code, Index, Code1),
+	( option(optimize) -> 
+		asm_optimize(Code1, Sym, IsModule, OptCode)
+	; OptCode = Code1
+	).
+
+
+/*======================================================================*/
+/*  asm_transform(+Code, +Index, -TransformedCode)			*/
+/*									*/
+/*	NOTE: asm_pre also transformed calls to disjunctions to callds.	*/
+/*	      Since now we do not generate a call for a disjunction	*/
+/*	      Kostis (1/25/94) took out the Sym = disj(Label) cases.	*/
+/*======================================================================*/
+
+asm_transform([], _, []).
+asm_transform([Inst|Rest], Index, [NInst|NRest]) :-
+	asm_pre(Inst, Index, NInst),
+	asm_transform(Rest, Index, NRest).
+
+asm_pre(call(Sym,Npars), _Index, NInst) :-	/* Sym = sym(...) */
+	( sym_prop(internal, Sym),
+		sym_prop(ep(EP), Sym),
+		NInst = calld(EP,Npars)
+	; NInst = call(Sym,Npars)
+	).
+asm_pre(execute(Sym), _Index, NInst) :-	/* Sym = sym(...) */
+	( sym_prop(internal, Sym),
+		sym_prop(ep(EP), Sym),
+		NInst = executed(EP)
+	; NInst = execute(Sym)
+	).
+asm_pre(switchonbound(Narg,Lab,NCls), Index, switchonbound(Narg,Ino,NCls)) :-
+	member(cases(Lab,_,_,Ino), Index).
+asm_pre(Inst, _, Inst).
+
+
+/*======================================================================*/
+/*  asm_optimize(+Code, +Sym, +IsModule, -OptCode)			*/
+/*	Produces OptCode from the Code for predicate Sym.  At this	*/
+/*	point the only optimization done is changing calls and executes	*/
+/*	to direct calls and executes.  Other optimizations may be done	*/
+/*	later (subject to performing a global compilation).		*/
+/*======================================================================*/
+
+asm_optimize([], _, _, []).
+asm_optimize([Inst|Rest], Sym, IsModule, [NInst|NRest]) :-
+	asm_direct(Inst, Sym, IsModule, NInst),
+	asm_optimize(Rest, Sym, IsModule, NRest).
+
+
+/*======================================================================*/
+/*  asm_direct(+Inst, +PredSym, +IsModule, -NInst)			*/
+/*	Changes calls and executes to direct calls (calld) and direct	*/
+/*	executes (executed).  This optimization is possible under the	*/
+/*	following conditions:						*/
+/*	  - calls:							*/
+/*		1. When the call is to the symbol for which we are	*/
+/*		   generating code but it is not a tail-recursive	*/
+/*		   call to the predicate (ex. nrev/2 or qsort/2).	*/
+/*		2. Call within a module ..... (not implemented).	*/
+/*	  - executes:							*/
+/*		1. When the execute is to the symbol for which we are	*/
+/*		   generating code (i.e. tail-recursive call).		*/
+/*		2. When the execute is to a symbol which is `defined'	*/
+/*		   within the module that we are compiling.  In this	*/
+/*		   case the file MUST be a module (to avoid possible	*/
+/*		   problems with overriding the definition of		*/
+/*		   predicates by (re)loading a file/module).		*/
+/*======================================================================*/
+
+asm_direct(call(Sym,Npars), PredSym, _IsModule, NInst) :-
+	( Sym = PredSym -> sym_prop(ep(EP), Sym), NInst = calld(EP,Npars)
+	/* Add here appropriate code for calling within a module. */
+	; NInst = call(Sym,Npars)
+	).
+asm_direct(execute(Sym), PredSym, _IsModule, NInst) :-
+	( Sym = PredSym -> 
+		sym_prop(ep(EP), Sym), NInst = executed(EP)
+	/*  UNFORTUNATELY THE FOLLOWING CODE CANNOT BE INCLUDED
+	 *	; IsModule =:= 1 -> 
+	 *		( sym_prop(defined, Sym) -> 
+	 *			sym_prop(ep(EP), Sym), NInst = executed(EP) 
+	 *		; NInst = execute(Sym)
+	 *		)
+ 	 */
+	; NInst = execute(Sym)
+	).
+asm_direct(Inst, _, _, Inst).
+
+
+/*======================================================================*/
+/* --- other utilities ------------------------------------------------ */
+/*======================================================================*/
+ 
+force_asm_opt_loaded.
+

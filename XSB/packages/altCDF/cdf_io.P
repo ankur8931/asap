@@ -1,0 +1,597 @@
+:- compiler_options([xpp_on]).
+
+#include "standard.h"
+
+:- import message/1,messageln/2,call_c/1 from standard.
+
+%messageln(Message) :- messageln(Message, STDMSG).
+
+:- export load_extensional_facts/1, 
+	dump_extensional_facts/1, 
+	dump_extensional_facts_with_backup/1, 
+	dump_extensional_isa_component/3,
+	dump_extensional_isa_component_with_backup/3,
+	load_intensional_rules/1,
+	merge_intensional_rules/1,
+	dump_intensional_rules/1, 
+	write_component_intensional/1,
+	write_intensional_dlTables/0,
+	merge_intensional_rules/0,
+	retract_intensional_rules/1,
+	cdf_exists/1,
+	throw_cdf_writable/1.
+
+:- import allAttr_ext/3, isa_ext/2, hasAttr_ext/3, classHasAttr_ext/3, 
+	minAttr_ext/4, maxAttr_ext/4,
+	necessCond_ext/2, coversAttr_ext/3,
+            compdlrule/3, compdltrans/3
+		 from usermod.
+
+:- import isa_int/2, allAttr_int/3, hasAttr_int/3, classHasAttr_int/3, 
+	  minAttr_int/4, maxAttr_int/4,
+	  necessCond_int/2, coversAttr_int/3
+		 from usermod.
+
+:- import component_table_int/3 from usermod.
+:- import caching_cdf/1 from usermod.
+
+:- import pretty_print/1 from newpp.
+:- import newIntRule/3,newDLRule/3,newDLTableFact/2,
+	 newExtTermBatch/2,transform_intensional_rules/4,
+	 abolish_cdf_tables/0, cdf_id_fields/4, cdf_root/1 from cdf_init_cdf.
+
+:- import  get_intensional_mfile_expansion/2 from cdf_comps_share.
+
+:- import clause_assert/2 from cdf_utilities.
+
+:- import cdf_fix_dir/2 from cdf_utilities.
+
+:- import existence_error/4, permission_error/4 from error_handler.
+:- import member/2,reverse/2,for/3,append/3 from basics.
+:- import concat_atom/2 from string.
+%:- import load_dync/2 from consult.
+:- import path_sysop/2 from file_io.
+:- import slash/1 from machine.
+:- import variant/2 from subsumes.
+:- import write_canonical_lettervar/1 from xsb_writ.
+:- import numbervars/1 from num_vars.
+
+:- import assert_mti/1 from usermod.  % cdf_config.P  mti
+
+:- import rm/1 from shell.
+
+:- comment(module, "These routines load CDF files from a disk file
+system into memory, save them from memory to disk, and merge
+information into a CDF state.  Both intensional and extensional
+information may be dumped.  They are also used as building blocks of
+the components system.").
+
+%-----------------------------------------------------------------
+	
+dump_extensional_facts_with_backup(Dir) :-
+	throw_cdf_writable(Dir),
+	cdf_fix_dir(Dir,DirS),
+	concat_atom([DirS,'cdf_extensional.P.backup'],BackupFile),
+	(file_exists(BackupFile)
+	 ->	rm(BackupFile)
+	 ;	true
+	),
+	concat_atom([DirS,'cdf_extensional.P'],File),
+	rename(File,BackupFile),
+	tell(File),
+	dump_extensional_facts_2,
+	told.
+
+:- comment(dump_extensional_facts/1,"@tt{dump_extensional_facts(Dir)}
+writes extensional facts to the file @tt{cdf_extensional.P} in
+@tt{Directory}.  No intensional rules are dumped by this predicate.
+
+@pred{dump_extensional_facts/0} writes the @tt{cdf_extensional.P} file
+to the current directory.
+").
+
+dump_extensional_facts(Dir) :-
+	throw_cdf_writable(Dir),
+	dump_extensional_facts_1(Dir).
+
+dump_extensional_facts_1(Dir) :-
+	cdf_fix_dir(Dir,DirS),
+  	concat_atom([DirS,'cdf_extensional.P'],File),
+	tell(File),
+	dump_extensional_facts_2,
+	told.
+
+throw_cdf_writable(Dir):-
+	((slash(Slash),concat_atom([Dir,Slash,'cdf_extensional.P'],SchemaPath),
+	  file_exists(SchemaPath), path_sysop(writable, SchemaPath)) -> 
+	    true
+	 ; path_sysop(writable, Dir)
+	 ->	true
+	 ;	permission_error(write,directory,Dir,'throw_cdf_writeable/1') ).
+
+	 
+sort_and_write_terms(Terms) :-
+	sort(Terms,STerms),
+	member(Term,STerms),
+	(ground(Term) -> true ; numbervars(Term)),
+	write_canonical_lettervar(Term),writeln('.'),
+	fail.
+sort_and_write_terms(_Terms).
+
+sort_and_write_cha_terms(Terms) :-
+	sort(Terms,STerms),
+	member(Term,STerms),
+	(ground(Term) -> true ; numbervars(Term)),
+	(Term = classHasAttr_ext(cid(compName(cid(N,N),_),N), crid(hasVersion,N),  Version)
+	 ->	write_canonical_lettervar(classHasAttr_ext(cid(N,N),crid(hasVersion,N),Version)),writeln('.')
+	 ;	write_canonical_lettervar(Term),writeln('.')
+	),
+	fail.
+sort_and_write_cha_terms(_Terms).
+
+cdf_ext_inst(isa_ext(_,_)).
+cdf_ext_inst(allAttr_ext(_,_,_)).
+cdf_ext_inst(hasAttr_ext(_,_,_)).
+cdf_ext_inst(classHasAttr_ext(_,_,_)).
+cdf_ext_inst(necessCond_ext(_,_)).	     
+cdf_ext_inst(coversAttr_ext(_,_,_)).
+cdf_ext_inst(minAttr_ext(_,_,_,_)).
+cdf_ext_inst(maxAttr_ext(_,_,_,_)).
+
+dump_extensional_facts_2:- 
+	cdf_ext_inst(Term),
+	findall(Term,Term,Set),
+	(Term = classHasAttr_ext(_,_,_)
+	 ->	sort_and_write_cha_terms(Set)
+	 ;	sort_and_write_terms(Set)
+	),
+	fail.
+dump_extensional_facts_2.
+%-----------------------------------------------------------------
+
+/* TLS: Some documentation is probably worthwhile here.  When an
+intensional rule is loaded from a directory D, it is given a sort of
+multifile expansion.  I.e. if isa_int(A,B):- Body is loaded from file
+foo, two clauses are asserted:
+    isa_int(A,B):- isa_int_foo(A,B).
+and
+    isa_int_foo(A,B):- Body
+this associates each clause with the file it came from, which is
+useful for all sorts of purposes.  The problem is that foo may or may
+not be the component -- it will be if the rules have been loaded as a
+component, but not if the rules have been loaded from a file.  To
+address this, we must look through all rules and search through their
+components. 
+
+This could perhaps be optimized, so that rules loaded from an existing
+component are not checked, but I'm not doing that right now. */
+
+dump_intensional_rules(Dir) :-
+	throw_cdf_writable(Dir),
+	dump_intensional_rules_1(Dir).
+
+dump_intensional_rules_1(Dir) :-
+	cdf_fix_dir(Dir,DirS),
+  	concat_atom([DirS,'cdf_intensional.P'],File),
+	tell(File),
+	write_component_intensional(_Comp),
+	write_intensional_dlTables,  % dlTables not by component, fix if nec.
+	told.
+
+write_component_intensional(Comp):-
+	get_intensional_mfile_expansion(Head,Call),
+	component_table_int(Head,SrcArg,_Arg2),
+	Head =.. [H|_],
+	write_component_intensional_1(Comp,Call,H,SrcArg),
+	fail.
+write_component_intensional(Comp):- 
+	compdlrule(Comp,DLHead,DLBody),
+	(ground((DLHead,DLBody)) -> true ; numbervars((DLHead,DLBody))),
+	write_canonical_lettervar('<='(DLHead,DLBody)), writeln('.'),
+	fail.
+write_component_intensional(_Comp).
+
+write_intensional_dlTables :-
+	for(Arity,2,11),  %%DSW MAX dlTable
+	functor(DLTableCall,dlTable,Arity),
+	DLTableCall =.. [dlTable,Dir,Name|Args],
+	findall(p(Name,Dir),call_c(DLTableCall),Pairs),
+	sort(Pairs,SPairs),
+	(append(_,[p(N,Dir1),p(N,Dir2)|_],SPairs)
+	 ->	throw(cdf_error(component_dlTables,['Conflict in dlTable names: ',N,''(Dir1,Dir2)]))
+	 ;	true
+	),
+	DLTableWrite =.. [dlTable,Name|Args],
+	member(p(Name,_),SPairs),
+	findall(DLTableWrite,DLTableCall,DLTableEntsU),
+	sort(DLTableEntsU,DLTableEnts),
+	member(DLTableEnt,DLTableEnts),
+	(ground(DLTableEnt) -> true ; numbervars(DLTableEnt)),
+	write_canonical_lettervar(DLTableEnt),
+	writeln('.'),
+	fail.
+write_intensional_dlTables.
+
+% Comp will be var if called from dump -- so don't need to check any
+% components.  It will be an atom if called via  update components 
+write_component_intensional_1(Comp,Call,Head,SrcArg):- 
+	clause(Call,Body), 
+%	writeln('     clause'(Call,Body)), 
+	(var(Comp) -> 
+	    true
+	 ;  arg(SrcArg,Call,A),
+	    cdf_id_fields(A,_,_,Comp1),
+	    nonvar(Comp1),Comp1 = Comp),
+	Call =..[_|L],
+	NewHead =.. [Head|L],
+	\+ is_dl_rule(Comp,NewHead,Body),
+	pretty_print(clause(NewHead,Body)).
+
+
+is_dl_rule(Comp,Head,Body):- 
+	compdltrans(Comp,Head1,Body1),
+	variant(f(Head,Body),f(Head1,Body1)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(load_extensional_facts/1,
+"@tt{load_extensional_facts(DirectoryList)}: loads the file
+@tt{cdf_extensional.P} from directories in @tt{DirectoryList}.  The
+files loaded must contain extensional data.
+@pred{load_extensional_facts/1} does not abolish any extsnsional
+information already in memory; rather, it merges the information from
+the various files with that already loaded.  Intensional rules will
+not be affected by this predicate.  ").
+
+load_extensional_facts([]) :- !.
+load_extensional_facts([Dir|DirList]) :-
+	!,
+	load_extensional_facts(Dir),
+	load_extensional_facts(DirList).
+load_extensional_facts(Dir) :-
+	cdf_fix_dir(Dir,DirS),
+% TLS: use message here for testscript.
+	message('Loading '),messageln(Dir,STDMSG),
+	reload_extensional(DirS).
+
+reload_extensional(Dir):- 
+	concat_atom([Dir,'cdf_extensional.P'],File),
+	seeing(OldF),
+	see(File),
+	abolish_cdf_tables,
+%%	(Dir='C:\\XSBSYS\\XSBCVS\\lib\\cdfdb_extractor\\cv_base\\bearings_antifriction_eic/'->debugger:leash([]),debugger:show(['Call']),trace;true),
+	reload_extensional,
+	seen,
+	see(OldF).
+
+reload_extensional :-
+	caching_cdf(Flg),
+	repeat,
+	read_canonical(Term),
+%	writeln(Term),
+	(Term == end_of_file
+	 ->	!
+	 ; Term = :-(_)
+	 ->	fail
+	 ; 	newExtTermBatch(Term,Flg),
+	  	fail).
+
+%-------------------------------------------------------------- 
+
+:- comment(merge_intensional_rules/0, "@tt{merge_intensional_rules/0}:
+This utility predicate takes the current intensional rules for all
+sources and transforms them to extensional form by backtracking
+through them, and asserting them to the Prolog store.  All intensional
+information is then retracted.").
+
+/* TLS: question: should this do an assert or a newExtTerm? */
+merge_intensional_rules :-
+	 isa_int(CCid,PCid),\+ isa_ext(CCid,PCid),
+	 assert_mti(isa_ext(CCid,PCid)),
+	 fail
+	 ;
+	 retractall(isa_int(_,_)),
+
+	 allAttr_int(SCid,RCid,TCid), \+allAttr_ext(SCid,RCid,TCid),
+	 assert_mti(allAttr_ext(SCid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(allAttr_int(_,_,_)),
+
+	 classHasAttr_int(SCid,RCid,TCid), \+classHasAttr_ext(SCid,RCid,TCid),
+	 assert_mti(classHasAttr_ext(SCid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(classHasAttr_int(_,_,_)),
+
+	 hasAttr_int(SCid,RCid,TCid),  \+hasAttr_ext(SCid,RCid,TCid),
+	 assert_mti(hasAttr_ext(SCid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(hasAttr_int(_,_,_)),
+
+	 necessCond_int(Class,Form),\+ necessCond_ext(Class,Form),
+	 assert_mti(necessCond_ext(Class,Form)),
+	 fail
+	 ;
+	 retractall(necessCond_int(_,_)),
+
+	 coversAttr_int(SCid,RCid,TCid),  \+coversAttr_ext(SCid,RCid,TCid),
+	 assert_mti(coversAttr_ext(SCid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(coversAttr_int(_,_,_)),
+
+	 minAttr_int(SCid,RCid,TCid,N),  \+minAttr_ext(SCid,RCid,TCid,N),
+	 assert_mti(minAttr_ext(SCid,RCid,TCid,N)),
+	 fail
+	 ;
+	 retractall(minAttr_int(_,_,_,_)),
+
+	 maxAttr_int(SCid,RCid,TCid,N),  \+maxAttr_ext(SCid,RCid,TCid,N),
+	 assert_mti(maxAttr_ext(SCid,RCid,TCid,N)),
+	 fail
+	 ;
+	 retractall(maxAttr_int(_,_,_,_)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(load_intensional_rules/1," @tt{load_intensional_rules(Dir)}
+ynamically loads intensional rules from @tt{cdf_intensional.P} in
+@tt{Directory}.  This predicate is designed for the component system,
+but can be used outside of it.  The leaf directory name in @tt{Dir} is
+assumed to be the component name of the rules.  As the intensional
+rules are loaded, their functors are rewritten from @tt{XXX_int} to
+@tt{XXX_int_Name}, to avoid any conflicts with intensional rules
+loaded from other components or directories.").
+
+load_intensional_rules(Dir):- 
+	extract_file_name(Dir,Name),
+	load_intensional_rules(Dir,Name).	
+
+% TLS: at some point should use utility instead.
+extract_file_name(File,Name):- 
+	atom_chars(File,Flist),
+	reverse(Flist,Rlist),
+	strip_closing_slash_if_any(Rlist,Rl1),
+	read_till_slash(Rl1,Rn2),
+	reverse(Rn2,Nl),
+	atom_chars(Name,Nl).
+
+strip_closing_slash_if_any([\|L],L) :- !.
+strip_closing_slash_if_any([/|L],L) :- !.
+strip_closing_slash_if_any(L,L).
+
+% Windows allows slashes in both directions
+read_till_slash(L,L1):- 
+	((member(\,L) ; member(/,L)) -> 	
+	    read_till_slash_1(L,L1)
+	  ; L = L1).
+
+read_till_slash_1([\|_R],[]):- !.
+read_till_slash_1([/|_R],[]):- !.
+read_till_slash_1([H|R],[H|R1]):- 
+	read_till_slash_1(R,R1).
+
+merge_intensional_rules(Dir) :-
+	extract_file_name(Dir,Name),
+	writeln(userout,merging_intensional_rules(Dir,Name)),
+	merge_intensional_rules(Dir,Name).
+
+%TLS: dont know if permission error is right here.	   :	
+load_intensional_rules(Path,Name):- 
+	writeln(userout,loading_intensional_rules(Path,Name)),
+	retract_intensional_rules(Name),
+	merge_intensional_rules(Path,Name).
+
+merge_intensional_rules(Path,Name) :-
+	abolish_cdf_tables,
+	concat_atom([Path,'/cdf_intensional.P'],File),
+	seeing(OldF),
+	(file_exists(File) -> 
+   	    see(File),
+	    read_intensional_rules_1(Name),
+	    seen,
+	    see(OldF)
+	  ; existence_error(file,File,'load_intensional_rules/2',2) ).
+
+retract_intensional_rules(Name):- 
+	component_table_int(Head,_,_),
+	Head =.. [F|T],
+	concat_atom([F,'_',Name],NewF),
+	NewHead =.. [NewF|T],
+	retractall(NewHead),
+	retract((:-(Head,NewHead))),
+	fail.
+retract_intensional_rules(_).
+
+read_intensional_rules_1(Name):- 
+	repeat,
+	read(T),
+%	(T = (H :- B) -> write(true) ; write(false)),
+%	(T = (H <= B) -> write(true) ; write(false)),
+	read_intensional_rules_2(T,Name),
+	!.
+
+read_intensional_rules_2(end_of_file,_Name) :- !.
+read_intensional_rules_2('<='(Head,Body),Name):- !,
+	newDLRule(Head,Body,Name),
+	fail.
+read_intensional_rules_2((Head :- Body),Name):- !,
+	newIntRule(Head,Body,Name),
+	fail.
+% these should be executable directives ala table.
+read_intensional_rules_2((:-(Query)),_Name):- !,
+	call(Query),
+	fail.
+read_intensional_rules_2(DL_Table_Fact,Name) :-
+	functor(DL_Table_Fact,dlTable,Arity), Arity =< 11, !, % MAX dlTable
+	newDLTableFact(DL_Table_Fact,Name),
+	fail.
+read_intensional_rules_2(Head,Name):- 
+	transform_intensional_rules(Head,BlankBody,NewHead,Name),
+%	transform_intensional_rules(T,NewHead,Name),
+	functor(Head,T,A),
+	functor(BlankHead,T,A),
+	BlankHead =.. [_|Args],
+	BlankBody =.. [_|Args],
+	clause_assert(BlankHead,BlankBody),
+	assert(NewHead),
+	fail.
+%read_intensional_rules_2(auxiliary_cdf_rule(Head,Body),Name):- !,
+%	auxiliary_cdf_rule(Name,Head,Body):- !,
+%	asserta((:-(Head,Body))),
+%	fail.
+
+:- comment(cdf_exists/1, "@tt{cdf_exists(Dir)} checks whether
+@tt{cdf_extensional.P} file is present in directory @tt{Dir}").
+
+cdf_exists(Dir):-
+	concat_atom([Dir,'/cdf_extensional.P'],SchemaFile),
+	file_exists(SchemaFile).
+
+
+:- comment(dump_extensional_isa_component/3,
+"dump_extensional_isa_component(+IDList,+OutCDFDir,+Opts) dumps a
+subset of the currently loaded CDF into the cdf_extensional.P file in
+the OutCDFDir directory.  IDList is a list of CDF Ids (Cids, Rids,
+etc.).  All classes that are ancestors or descendents of these classes
+are included in the isa_ext output.  Also all hasAttr and classHasAttr
+relations with any of these classes as sources are also dumped.  If
+Opts is a list containing the atom 'connect_targets', then all classes
+that are in relations position or target position in the dumped
+elations and their ancestors are included in the dumped isa_ext
+facts.").
+
+dump_extensional_isa_component_with_backup(IDList,CDFDir,Opts) :-
+	throw_cdf_writable(CDFDir),
+	cdf_fix_dir(CDFDir,DirS),
+	concat_atom([DirS,'cdf_extensional.P.backup'],BackupFile),
+	(file_exists(BackupFile)
+	 ->	rm(BackupFile)
+	 ;	true
+	),
+	concat_atom([DirS,'cdf_extensional.P'],File),
+	(file_exists(File)
+	 ->	rename(File,BackupFile)
+	 ;	true
+	),
+	dump_extensional_isa_component(IDList,CDFDir,Opts).
+
+dump_extensional_isa_component(IDList,CDFDir,Opts) :-
+	abolish_table_pred(ancestor(_,_,_)),
+	abolish_table_pred(descendent(_,_,_)),
+	concat_atom([CDFDir,'/cdf_extensional.P'],CDFFile),
+	open(CDFFile,write,OStr),
+	findall(isa_ext(Sub,Sup),isa_anc_desc(IDList,Sub,Sup),Isas0),
+	sort(Isas0,PrimaryIsas),
+	%%(member(PI,PrimaryIsas),writeln(userout,PI),fail ; true),
+	(member(connect_targets,Opts)
+	 ->	findall(isa_ext(Sub,Sup),target_ancestors_for(PrimaryIsas,Sub,Sup),SpecIsas0),
+		append(SpecIsas0,PrimaryIsas,AllIsas0),
+		sort(AllIsas0,AllIsas)
+	 ;	AllIsas = PrimaryIsas
+	),
+	writeln(userout,call_write_cdf_list_All),
+	write_cdf_list(OStr,AllIsas),
+	writeln(userout,call_dump_attrs),
+	dump_attrs(PrimaryIsas,OStr),
+	close(OStr).
+
+dump_attrs(Isas,OStr) :-
+	(classes_from_isas(Isas,Classes),
+	 cdf_attr_ext_inst(AttrTerm,Class,_,_),
+	 findall(AttrTerm,(member(Class,Classes),call_c(AttrTerm)),AttrTerms0),
+	 sort(AttrTerms0,AttrTerms),
+	 write_cdf_list(OStr,AttrTerms),
+	 fail
+	 ;
+	 true
+	).
+
+classes_from_isas(Isas,Classes) :-
+	findall(Class,
+		(cdf_root(Class)
+		 ;	
+		 member(isa_ext(Class,_),Isas)
+		),
+		Classes0),
+	sort(Classes0,Classes).
+
+isa_anc_desc(IDList,Sub,Sup) :-
+	member(ID,IDList),
+	(ancestor(ID,Sub,Sup)
+	 ;
+	 descendent(ID,Sub,Sup)
+	).
+
+target_ancestors_for(IsaList,Sub,Sup) :-
+	classes_from_isas(IsaList,IDList),
+	member(ID,IDList),
+	cdf_attr_ext_inst(AttrTerm,ID,Rid,Tid),
+	call_c(AttrTerm),
+	(ancestor(Rid,Sub,Sup)
+	 ;
+	 cids_in_partype(Cid,Tid),
+	 ancestor(Cid,Sub,Sup)   
+	).
+
+:- table ancestor/3.
+ancestor(ID,Sub,Sup) :-
+	isa_ext(ID,IDp),
+	(Sub = ID, Sup = IDp
+	 ;
+	 ancestor(IDp,Sub,Sup)
+	).
+
+:- table descendent/3.
+descendent(ID,Sub,Sup) :-
+	isa_ext(IDd,ID),
+	(Sub = IDd, Sup = ID
+	 ;
+	 descendent(IDd,Sub,Sup)
+	).
+
+cids_in_partype(Tid,Tid).
+cids_in_partype(Cid,cid(PType,_)) :-
+	structure(PType),
+	PType =.. [_|Args],
+	cids_in_partype_list(Cid,Args).
+
+:- import isa/2 from cdf_init_cdf.
+cids_in_partype_list(Cid,[Tid|_]) :-
+	\+ isa(Tid,cid('CDF Primitive Types',cdf)),
+	cids_in_partype(Cid,Tid).
+cids_in_partype_list(Cid,[_|Tids]) :-
+	cids_in_partype_list(Cid,Tids).
+
+write_cdf_list(OStr,Terms) :-
+	(member(Term,Terms),
+	 (ground(Term)
+	  ->	 true
+	  ;	 numbervars(Term)
+	 ),
+	 write_canonical(OStr,Term),
+	 writeln(OStr,'.'),
+	 fail
+	 ;
+	 true
+	).
+
+
+cdf_attr_ext_inst(allAttr_ext(A,B,C),A,B,C).
+cdf_attr_ext_inst(hasAttr_ext(A,B,C),A,B,C).
+cdf_attr_ext_inst(classHasAttr_ext(A,B,C),A,B,C).
+
+
+end_of_file.
+
+check_intensional_head(Head,Name):- 
+	(component_table_int(Head,_,_) -> 
+	    true
+	  ; cdf_warning(component,[Head,
+			' is not an intensional rule in component ',Name])).
+
+
+
+

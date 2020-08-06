@@ -1,0 +1,117 @@
+
+example(10,A,B,C,D) :- (lf(10,A,E,F)  ','  !  ','  example(E,F,B,C,D)).
+
+example(13,A,B,C,D) :- (lf(13,A,E,F)  ','  !  ','  example(E,F,B,C,D)).
+
+example(-1,A,[],-1,A).
+
+example(A,B,[C|D],E,F) :- (item(A,B,C,G,H)  ','  !  ','  lf(G,H,I,J)  ','  example(I,J,D,E,F)).
+
+
+item(48,A,B,C,D) :- (!  ','  number(48,A,B,C,D)).
+
+item(49,A,B,C,D) :- (!  ','  number(49,A,B,C,D)).
+
+item(50,A,B,C,D) :- (!  ','  number(50,A,B,C,D)).
+
+item(51,A,B,C,D) :- (!  ','  number(51,A,B,C,D)).
+
+item(52,A,B,C,D) :- (!  ','  number(52,A,B,C,D)).
+
+item(53,A,B,C,D) :- (!  ','  number(53,A,B,C,D)).
+
+item(54,A,B,C,D) :- (!  ','  number(54,A,B,C,D)).
+
+item(55,A,B,C,D) :- (!  ','  number(55,A,B,C,D)).
+
+item(56,A,B,C,D) :- (!  ','  number(56,A,B,C,D)).
+
+item(57,A,B,C,D) :- (!  ','  number(57,A,B,C,D)).
+
+item(A,B,C,D,E) :- name(A,B,C,D,E).
+
+
+number(48,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[48|F])).
+
+number(49,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[49|F])).
+
+number(50,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[50|F])).
+
+number(51,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[51|F])).
+
+number(52,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[52|F])).
+
+number(53,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[53|F])).
+
+number(54,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[54|F])).
+
+number(55,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[55|F])).
+
+number(56,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[56|F])).
+
+number(57,[A|B],C,D,E) :- (!  ','  rest_digits(A,B,F,D,E)  ','  number_codes(C,[57|F])).
+
+
+rest_digits(48,[A|B],[48|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(49,[A|B],[49|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(50,[A|B],[50|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(51,[A|B],[51|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(52,[A|B],[52|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(53,[A|B],[53|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(54,[A|B],[54|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(55,[A|B],[55|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(56,[A|B],[56|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(57,[A|B],[57|C],D,E) :- (!  ','  rest_digits(A,B,C,D,E)).
+
+rest_digits(10,A,[],10,A).
+
+rest_digits(13,A,[],13,A).
+
+
+name(A,B,C,D,E) :- (startchar(A,B,F,G,H)  ','  !  ','  rest_name(G,H,I,D,E)  ','  atom_codes(C,[F|I])).
+
+
+rest_name(A,B,[C|D],E,F) :- (namechar(A,B,C,G,H)  ','  !  ','  rest_name(G,H,D,E,F)).
+
+rest_name(A,B,[],A,B).
+
+
+startchar(A,[B|C],A,B,C) :- (((A =< 122  ','  A >= 97  ';'  A =< 90  ','  A >= 65)  ','  true)  ','  !).
+
+
+namechar(48,[A|B],48,A,B) :- !.
+
+namechar(49,[A|B],49,A,B) :- !.
+
+namechar(50,[A|B],50,A,B) :- !.
+
+namechar(51,[A|B],51,A,B) :- !.
+
+namechar(52,[A|B],52,A,B) :- !.
+
+namechar(53,[A|B],53,A,B) :- !.
+
+namechar(54,[A|B],54,A,B) :- !.
+
+namechar(55,[A|B],55,A,B) :- !.
+
+namechar(56,[A|B],56,A,B) :- !.
+
+namechar(57,[A|B],57,A,B) :- !.
+
+namechar(A,B,C,D,E) :- startchar(A,B,C,D,E).
+
+
+lf(10,[A|B],A,B).
+
+lf(13,[A|B],A,B).
+

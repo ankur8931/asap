@@ -1,0 +1,242 @@
+%%----------------------------------------------------------------------
+%%	rtf.xl
+%%	Rether RTF version
+%%	translated to XL by Yifei Dong
+%%	October 1998
+%%----------------------------------------------------------------------
+
+%%----------------------------------------------------------------------
+%	System constants
+%	numNodes(NumberOfNodes).
+%	maxID(NumberOfNodes-1).
+%	TotalSlots(TotalTimeSlots).
+%	maxRTSlots(TotalTimeSlots-1).
+
+{*
+config(NumNodes, TotalSlots) :-
+	retractall(numNodes(_)),
+	retractall(maxID(_)),
+	retractall(totalSlots(_)),
+	retractall(maxRTSlots(_)),
+	abolish_all_tables,
+	MaxID is NumNodes-1,
+	MaxRT is TotalSlots-1,
+	assert(numNodes(NumNodes)),
+	assert(maxID(MaxID)),
+	assert(totalSlots(TotalSlots)),
+	assert(maxRTSlots(MaxRT)).
+
+numNodes(4).
+maxID(3).
+totalSlots(3).
+maxRTSlots(2).
+*}
+
+%%----------------------------------------------------------------------
+%	ID arithmetic , Prolog Term
+{*
+incID(ID, NextID) :-
+	numNodes(N),
+	NextID is (ID+1) mod N.
+*}
+
+%%----------------------------------------------------------------------
+%	Format of token
+%	token(
+%		ServingRealtimeFlag,
+%		RealtimeModeBooleanArray,
+%		RealtimeSlots,
+%		NonRealtimeSlotsRemaining,
+%		NextNonRealtimeNodeID
+%	)
+
+%%----------------------------------------------------------------------
+%	Channel convention
+%	input:	in(Port(ThisNode), Token)
+%	output:	out(Port(DestNode), Token)
+
+%%----------------------------------------------------------------------
+%	Node
+%	States:	ID
+%		RealtimeMode (stored in token?)
+
+
+node(Port, ID:integer) ::=
+	Port? (ID, Token) o
+	nodeActive(Port,ID,Token).
+
+nodeActive(Port, ID:integer,Token) ::=
+	Token = token(ServingRT, _RTMode, _RTSlots, _NRTAvail, _NextNRT) o
+	if ServingRT == 1 
+	then   {nodeRT(Port, ID,Token)}
+	else   {nodeNRT(Port, ID, Token)}.
+
+
+%%	RT action
+%	1. optionally release realtime slot
+%	2. pass token
+
+nodeRT(Port,ID:integer,Token) ::=
+	action(rt(ID)) o
+	{ releaseRT(ID,Token,Token1) 
+	# Token1 = Token
+	} o
+	findNextNodeRT(ID, Token1, Next, NewToken) o
+	if Next == ID then
+	        {% no token passing within the same node
+		nodeActive(Port,ID,NewToken)}
+	else	{Port! (Next,NewToken) o
+		node(Port,ID)}.
+
+%% Prolog Term
+{*
+releaseRT(ID, Token, NewToken) :-
+	Token = token(ServingRT, RTMode, RTSlots, NRTAvail, NextNRT),
+	( RTSlots > 1
+	->	(NewRTSlots is RTSlots-1,
+		 resetbit(RTMode, ID, NewRTMode),
+		 NewToken = token(ServingRT, NewRTMode, NewRTSlots,
+				  NRTAvail, NextNRT))
+	;	NewToken = Token).
+
+findNextNodeRT(ID,Token,Next,NewToken) :-
+	Token = token(_ServingRT, RTMode, RTSlots, NRTAvail, NextNRT),
+	ID1 is (ID + 1),
+	(0 is (RTMode >> ID1)
+	->	% no more RT node, then pass token to NRT node
+		(Next = NextNRT,
+		NewToken = token(0, RTMode, RTSlots, NRTAvail, NextNRT))
+	;	(firstTrue(RTMode,ID1,Next),
+		NewToken = Token)
+	).
+*}
+
+%%	NRT action
+%	1. optionally reserve realtime slot
+%	2. pass token
+
+
+nodeNRT(Port, ID:integer, Token) ::=
+	action(nrt(ID)) o
+	{reserveRT(Port, ID, Token, NewToken)
+	# NewToken = Token
+        } o passTokenNRT(Port,ID,NewToken).
+
+reserveRT(Port, ID:integer, Token, NewToken) ::=
+	Token = token(ServingRT, RTMode, RTSlots, NRTAvail, NextNRT) o
+	maxRTSlots(MaxRT) o
+	if (falsebit(RTMode, ID) /\ RTSlots < MaxRT) then
+		{NewRTSlots is RTSlots+1 o
+		 setbit(RTMode, ID, NewRTMode) o
+		 NewToken = token(ServingRT, NewRTMode, NewRTSlots,
+				  NRTAvail, NextNRT) o
+		 action(reserve(ID))}
+	else	{NewToken = Token}.
+
+passTokenNRT(Port, ID:integer,Token) ::=
+	Token = token(ServingRT, RTMode, RTSlots, NRTAvail, NextNRT) o
+	incID(NextNRT, NewNextNRT) o
+	NewNRTAvail is NRTAvail - 1 o
+	if NewNRTAvail > 0
+	then	% if NRT slots are available,
+		% pass the token to the next NRT ndde
+		{NewToken = token(ServingRT, RTMode, RTSlots, 
+				NewNRTAvail, NewNextNRT) o
+		Port! (NewNextNRT, NewToken) o
+		node(Port,ID)}
+	else	% if NRT slots are used up,
+		% end this cycle and start a new cycle
+		{action(endcycle) o
+		totalSlots(Slots) o
+		ResetNRTAvail is Slots - RTSlots o
+		NewToken = token(1, RTMode, RTSlots,
+				ResetNRTAvail, NewNextNRT) o
+		firstTrue(RTMode, 0, FirstRT) o
+		action(startcycle) o
+		if FirstRT == ID then
+			% no token passing within the same node
+			{nodeActive(Port,ID, NewToken)}
+		else	{Port! (FirstRT, NewToken) o
+			node(Port,ID)}
+		}.
+
+%%----------------------------------------------------------------------
+%	generator
+%	1. creates the array of nodes
+%	1. marks the starting of the first cycle
+%	2. generates the token
+/*
+generator(N:integer) ::=
+	if  N > 0 then
+		{N1 is N-1 o
+		{generator(N1) | node(Port,N1)}}
+	else	{action(startcycle) o
+		totalSlots(Slots) o
+		NRTSlots is Slots-1 o
+		out(Port(0), token(1,1,1,NRTSlots,0)) o
+		end}.
+*/
+%%----------------------------------------------------------------------
+%	System specification
+/*
+rether ::=
+	numNodes(N) o
+	(generator(N) \ { Port(_) }).
+*/
+starter(Port) ::=
+	action(startcycle) o
+	Port !(0, token(1,1,1,2,0)) o
+	end.
+
+rether ::=
+	  starter(Port)
+	| node(Port,0)
+	| node(Port,1) 
+        | node(Port,2)
+	| node(Port,3).
+
+%%----------------------------------------------------------------------
+%	Boolean array arithmetics
+
+{*
+truebit(Array, Bit) :-
+	1 is ((Array >> Bit) mod 2).
+
+falsebit(Array, Bit) :-
+	0 is ((Array >> Bit) mod 2).
+
+setbit(Array, Bit, NewArray) :-
+	truebit(Array, Bit)
+	->	NewArray = Array
+	;	NewArray is Array + (1 << Bit).
+
+resetbit(Array, Bit, NewArray) :-
+	truebit(Array, Bit)
+	->	NewArray is Array - (1 << Bit)
+	;	NewArray = Array.
+
+firstTrue(Array, Begin, Result) :-
+%	(0 is Array >> Begin
+%	 -> (write('Error parameter for firstTrue'),
+%		write(Array), writeln(Begin), halt)
+%	; true),
+	truebit(Array, Begin)
+	->	Result = Begin
+	;	(Next is Begin+1,
+		 firstTrue(Array, Next, Result)).
+*}
+%%=============================================================================
+%%	properties
+
+%% deadlock free
+
+dlf	-= [-]dlf /\ <->tt.
+
+% no starvation for NRT traffic
+
+ns(I)	-=    [{startcycle}]nsY(I)
+	   /\ [-]ns(I).
+nsY(I)	-=    [{endcycle}]nsZ(I)
+	   /\ [-{nrt(I),endcycle}]nsY(I).
+nsZ(I)	+=    <->tt
+	   /\ [-{nrt(I)}]nsZ(I).

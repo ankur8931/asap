@@ -1,0 +1,256 @@
+:- import slash/1 from machine.
+:- import load_page/5, url_properties/2, url_properties/3, encode_url/2, get_redir_url/2 from curl.
+:- import str_match/5, substring/4, str_cat/3 from string.
+:- import file_seek/4, file_getbuf/4 from file_io.
+
+?- [curl].
+
+test_all :- 
+	curldir(CurlDir), slash(Slash), 
+	fmt_write_string(OutPath, '%s%sactualoutput', f(CurlDir, Slash)), 
+	(path_sysop(isdir, OutPath); path_sysop(mkdir, OutPath)),
+	fmt_write_string(CertPath, '%s%scertificates', f(CurlDir, Slash)), 
+	write('Testing no-options...'),
+	test_no_options(OutPath), 
+	writeln('Done'),
+	write('Testing no-redir...'),
+	test_noredir(OutPath), 
+	writeln('Done'),
+	write('Testing http-redir...'),
+	test_http_redir(OutPath), 
+	writeln('Done'),
+	write('Testing html-redir...'),
+	test_html_redir(OutPath), 
+	writeln('Done'),
+	write('Testing secure-crt...'),
+	test_secure_crt(OutPath, CertPath), 
+	writeln('Done'),
+	write('Testing secure...'),
+	catch(test_secure,_,write('test_secure/0: throws error, as expected...')),
+	writeln('Done'),
+	write('Testing insecure...'),
+	test_nonsecure(OutPath), 
+	writeln('Done'),
+	write('Testing auth...'),
+	test_auth(OutPath), 
+	writeln('Done'),
+	write('Testing wrong-url...'),
+	catch(test_wrong_url,_,write('test_wrong_url/0: throws error, as expected...')),
+	writeln('Done'),
+	write('Testing timeout-fail...'),
+	catch(test_timeout_fail,_,write('test_timeout_fail/0: throws error, as expected...')),
+	writeln('Done'),
+	write('Testing properties-no-opt...'),
+	test_properties_no_opt(OutPath), 
+	writeln('Done'),
+	write('Testing properties...'),
+	test_properties(OutPath), 
+	writeln('Done'),
+	write('Testing properties-auth...'),
+	test_properties_auth(OutPath), 
+	writeln('Done'),
+	write('Testing user-agent...'),
+	test_user_agent(OutPath), 
+	writeln('Done'),
+	write('Testing post...'),
+	test_post, 
+	writeln('Done'),
+	write('Testing post2...'),
+        test_post2,
+	writeln('Done'),
+	write('Testing read-and-close...'),
+	test_read_and_close, 
+	writeln('Done'),
+	write('Testing see...'),
+	test_see, 
+	writeln('Done'),
+	write('Testing tell...'),
+	test_tell, 
+	writeln('Done'),
+	write('Testing encode-url...'),
+	test_encode_url(OutPath), 
+	writeln('Done'),
+	write('Testing timeout...'),
+	test_timeout(OutPath),
+	writeln('Done').
+
+test_no_options(OutPath) :- 
+	open(url('zend.com'),read, X), 
+	slash(Slash), fmt_write_string(OutFile, '%s%sno_options.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+test_noredir(OutPath) :- 
+	open(url('zend.com'), read, X, [redirect(false)]),
+	slash(Slash), fmt_write_string(OutFile, '%s%sno_redir.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+test_http_redir(OutPath) :- 
+	open(url('zend.com'), read, X, [redirect(true)]),
+	slash(Slash), fmt_write_string(OutFile, '%s%shttp_redir.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+test_html_redir(OutPath) :- 
+	open(url('http://www.cs.sunysb.edu/~cse532/'), read, X, [redirect(true)]),
+	slash(Slash), fmt_write_string(OutFile, '%s%shtml_redir.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+/*Always export the certificates with type set to "X.509 Certificate with chain (PEM)*/
+test_secure_crt(OutPath, CertPath) :- 
+	slash(Slash), 
+	fmt_write_string(CertFile, '%s%swww.cs.stonybrook.edu.crt', f(CertPath, Slash)), 
+	open(url('https://www.cs.stonybrook.edu'), read, X, [secure(CertFile)]),
+	fmt_write_string(OutFile, '%s%ssecure_crt.html', f(OutPath, Slash)),
+	tell(OutFile),
+	write_page(X),
+	told,  
+	close(X).
+
+test_nonsecure(OutPath) :- 
+	open(url('https://mail.google.com'), read, X, [secure(false)]),
+	slash(Slash), fmt_write_string(OutFile, '%s%snon_secure.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+test_auth(OutPath) :- 
+	open(url('http://browserspy.dk/password-ok.php'), read, X, [auth('test', 'test')]),
+	slash(Slash), fmt_write_string(OutFile, '%s%sauth.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+test_timeout(OutPath) :- 
+	open(url('http://www.xboxliveaddicts.co.uk/forums/index.php?showtopic=23902'), read, X, [timeout(150)]), 
+	slash(Slash), fmt_write_string(OutFile, '%s%stimeout.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+test_properties_no_opt(OutPath) :-
+	url_properties(url('https://mail.google.com'), [DirEnc, FileBase, Suffix, Size, ModifyTime]), 
+	slash(Slash), fmt_write_string(OutFile, '%s%sprop_no_opt.txt', f(OutPath, Slash)),
+	tell(OutFile), 
+	writeln('test_url_properties_no_opt on https://mail.google.com'), 
+	write('Directory = '), writeln(DirEnc), 
+	write('FileBase = '), writeln(FileBase), 
+	write('Suffix = '), writeln(Suffix), 
+	write('Size = '), writeln(Size), 
+	write('Modified Time = '), writeln(ModifyTime), 
+	told.
+
+test_properties(OutPath) :-
+	url_properties(url('http://www.cs.sunysb.edu/~cse532/'), [redirect(false)], [DirEnc, FileBase, Suffix, Size, ModifyTime]), 
+	slash(Slash), fmt_write_string(OutFile, '%s%sproperties.txt', f(OutPath, Slash)),
+	tell(OutFile), 
+	write(test_url_properties), writeln(' on http://www.cs.sunysb.edu/~cse532/ where url body is not loaded'), 
+	write('Directory = '), writeln(DirEnc), 
+	write('FileBase = '), writeln(FileBase), 
+	write('Suffix = '), writeln(Suffix), 
+	write('Size = '), writeln(Size), 
+	write('Modified Time = '), writeln(ModifyTime), 
+	told.
+
+test_properties_auth(OutPath) :-
+	url_properties(url('http://browserspy.dk/password-ok.php'), [auth('test', 'test')], [DirEnc, FileBase, Suffix, Size, ModifyTime]), 
+	slash(Slash), fmt_write_string(OutFile, '%s%sprop_auth.txt', f(OutPath, Slash)),
+	tell(OutFile), 
+	write(test_url_properties_auth), writeln(' on http://browserspy.dk/password-ok.php'), 
+	write('Directory = '), writeln(DirEnc), 
+	write('FileBase = '), writeln(FileBase), 
+	write('Suffix = '), writeln(Suffix), 
+	write('Size = '), writeln(Size), 
+	write('Modified Time = '), writeln(ModifyTime), 
+	told.
+
+test_get_redir_url :-
+	get_redir_url(url('http://www.cs.stonybrook.edu/~cse532/'), UrlNew1), 
+	writeln(UrlNew1), 
+	get_redir_url(file('test.html'), UrlNew2), 
+	writeln(UrlNew2).
+
+test_user_agent(OutPath) :- 
+	open(url('zend.com'),read, X, [user_agent('http://zend.com')]), 
+	slash(Slash), fmt_write_string(OutFile, '%s%suser_agent.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+test_post :- 
+	open(url('http://www.zend.com/en/'),write, X), 
+	put_char(X, 'a'), put_char(X, 'b'), 	
+	close(url('http://www.zend.com/en/')).
+
+test_read_and_close :- 
+	open(url('http://ringlord.com/latex-to-pdf-howto.html'),read, X,[secure(true)]), 
+	get_char(X, _), 
+	close(url('http://ringlord.com/latex-to-pdf-howto.html')).
+
+test_see :- 
+	see(url('http://www.zend.com/en/')), 
+	get_char(_), get_char(_), 
+	seen.
+
+test_tell :- 
+	tell(url('http://www.zend.com/en/')), 
+	put_char(a), put_char(b), 
+	told.
+
+/* This is supposed to throw an error */
+%% Not sure that posting works
+test_post2 :- 
+        %%URL = 'http://www.ibm.com/us-en/',
+        URL = 'http://httpbin.org/get',
+        %%URL = 'http://httpbin.org/post',
+	open(url(URL),write, X), 
+	write(X, aaa123), writeln(X, bbb123), 	
+	close(url(URL)).
+
+test_encode_url(OutPath) :-
+	encode_url(url('http://www.cs.sunysb.edu/~cse532/first.html'), [Dir, File, Suffix]), 
+	slash(Slash), fmt_write_string(OutFile, '%s%sencode_url.txt', f(OutPath, Slash)),
+	tell(OutFile), 
+	write(test_encode_url), writeln(' on http://www.cs.sunysb.edu/~cse532/first.html'), 
+	write('Directory = '), writeln(Dir), 
+	write('File = '), writeln(File), 
+	write('Suffix = '), writeln(Suffix), 
+	told.
+
+/*Not added to the test suite. This is supposed to throw an error*/
+test_secure :- 
+	curldir(CurlDir), slash(Slash), 
+	fmt_write_string(OutPath, '%s%sactualoutput', f(CurlDir, Slash)), 
+	(path_sysop(isdir, OutPath); path_sysop(mkdir, OutPath)),
+	open(url('https://mail.google.com/mail/u/1/#inbox'), read, X),
+	slash(Slash), fmt_write_string(OutFile, '%s%ssecure.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+/*Not added to the test suite. This is supposed to throw an error*/
+test_wrong_url :- 
+	curldir(CurlDir), slash(Slash), 
+	fmt_write_string(OutPath, '%s%sactualoutput', f(CurlDir, Slash)), 
+	(path_sysop(isdir, OutPath); path_sysop(mkdir, OutPath)),
+	open(url('wrong_url'), read, X),
+	slash(Slash), fmt_write_string(OutFile, '%s%swrong_url.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+/*Not added to the test suite. This is supposed to throw an error*/
+test_timeout_fail :- 
+	curldir(CurlDir), slash(Slash), 
+	fmt_write_string(OutPath, '%s%sactualoutput', f(CurlDir, Slash)), 
+	(path_sysop(isdir, OutPath); path_sysop(mkdir, OutPath)),
+	open(url('http://www.xboxliveaddicts.co.uk/forums/index.php?showtopic=23902'), read, X, [timeout(1)]), 
+	slash(Slash), fmt_write_string(OutFile, '%s%stimeout_fail.html', f(OutPath, Slash)),
+	tell(OutFile), write_page(X), told,  
+	close(X).
+
+write_page(X) :- file_read_line(X, Y), writeln(Y), write_page(X).
+write_page(_) :- !.
+
+curldir(CurlDir) :-
+        xsb_configuration(install_dir, PackDir),
+        slash(Slash),
+        fmt_write_string(CurlDir, '%s%sexamples%scurl',
+        f(PackDir, Slash, Slash)).
+

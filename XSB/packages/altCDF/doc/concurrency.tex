@@ -1,0 +1,106 @@
+\section{Concurrency Control in CDF} \label{sec:concurrency}
+
+Logging has multiple purposes in CDF use.  It is used to allow
+incremental checkpointing, which is faster and takes less space than
+continual saving of an entire CDF.  Logging is also used to support
+concurrent use of a CDF.
+
+Logging can be turned on and/or off.  When it is on, every update to
+the CDF is ""logged"" in an in-memory predicate.  This log can then be
+saved to disk in a ""checkpoint"" file, and later used to recreate the
+CDF state as it was at the time of the file-saving.  The checkpoint
+file contains the locations of the versions of the components needed
+to reconstruct the state.
+
+When used to support multiple concurrent use of a CDF, first logging
+is turned on, and CDF components are loaded from a stored (shared)
+CDF, and their versions are noted.  Subsequent updates to the
+in-memory CDF are logged as they are done.  Then when the in-memory
+CDF is to be written back to disk to create new versions of the
+updated components, using update\_all\_components(in\_shared\_place), the
+following is done for each component.  If the current
+most-recent-version on disk is the same as the one orginally loaded to
+memory, then update\_all\_components works normally (in\_place),
+incrementing the version number and writing out the current in-memory
+component as that new version.  Otherwise, there is a more recent
+version of the CDF on disk (written by a ""concurrent user"".)  The most
+recent version is loaded into memory, and the log is used to apply all
+the updates to that new version.  (If conflicts are detected, they
+must be resolved.  At the moment, no conflict detection is done.)
+Then update\_all\_components(in\_place) is used to store that updated
+CDF.  After update\_all\_components is run, the log is emptied, and the
+process can start again.  
+
+\begin{description}
+\ourpredmoditem{cdf\_log\_component\_dirty/1}
+This is a dynamic predicate.  After restoring a checkpoint file and
+applying the updates, {\tt cdf\_log\_component\_dirty/1} is true of all
+components that differ from their stored versions.  It is a ""local
+version"" of cdf\_flags(dirty,\_), and should be ""OR-ed"" with it to
+find the components that have been updated from last stored version.
+
+\ourpredmoditem{cdf\_set\_log\_on/2} 
+{\tt cdf\_set\_log\_on(+LogFile,+Freq)} This predicate creates a new log
+and ensures that logging will be performed for further updates until
+logging is turned off.
+
+\ourpredmoditem{cdf\_set\_log\_suspend/0} {\tt cdf\_set\_log\_suspend/0}
+temporarily turns logging off, if it is on.  It is restarted by
+{\tt cdf\_set\_log\_unsuspend/0}.
+
+\ourpredmoditem{cdf\_reset\_log/0} If logging is on, this predicate deletes
+the current log, and creates a new empty one.  If logging is off, no
+action is taken
+
+\ourpredmoditem{cdf\_log/1} 
+{\tt cdf\_log(ExtTermUpdate)} takes a term of the form assert(ExtTerm)
+or retractall(ExtTerm) and adds it to the log, if logging is on.
+ExtTerm must be a legal extensional fact in the CDF.
+
+\ourpredmoditem{cdf\_apply\_log/0}
+{\tt cdf\_apply\_log} applies the log to the current in-memory CDF.  For
+example, if the in-memory CDF has been loaded from a saved CDF
+version, and the log represents the updates made to that CDF saved in
+a checkpoint file, then this will restore the CDF to state at the time
+the checkpoint file was written.
+
+When applying the updates, it does NOT update the CDF dirty flags.
+However, it does add the name of any modified component to the
+predicate {\tt cdf\_log\_component\_dirty/1}.  This allows a user to
+determine both when a change has been made since the last checkpoint
+has been saved and since the last saved component version.  (See also
+{\tt cdf\_log\_OR\_dirty\_flags/0}.) 
+
+\ourpredmoditem{cdf\_apply\_merge\_log/0}
+{\tt cdf\_apply\_merge\_log} applies the current log to the current CDF.
+The CDF may not be the one that formed the basis for the current log.
+I.e., it may have been updated by some other process.  This function
+depends on the user-defined predicate,
+{\tt check\_log\_merge\_assert(+Term,-Action)} to provide information on
+whether the assert actions should be taken or not, and which provide a
+conflict.  (Retract actions are always assumed to be acceptable.)
+
+\ourpredmoditem{cdf\_log\_OR\_dirty\_flags/0}
+{\tt cdf\_log\_OR\_dirty\_flags} makes every component in {\tt
+cdf\_log\_component\_dirty/1} to be dirty, i.e., {\tt
+cdf\_flags(dirty,CompName)} to be made true.
+
+\ourpredmoditem{cdf\_save\_log/1}
+{\tt cdf\_save\_log(LogFile)} writes a checkpoint file into the file
+named {\tt LogFile}.  The file contains the current in-memory log and
+the components and their versions from which these updates created the
+current state.
+
+\ourpredmoditem{cdf\_remove\_log\_file/1}
+{\tt cdf\_remove\_log\_file(LogFile)} renames the indicated file to the
+name obtained by appending a \verb|~| to the file (deleting any
+previous file with this name.)  This effectively removes the indicated
+file, but allows for external recovery, if necessary.
+
+\ourpredmoditem{cdf\_restore\_from\_log/1}
+{\tt cdf\_restore\_from\_log(LogFile)} recreates the CDF state represented
+by the chekpoint file named {\tt LogFile}.  The current CDF is assumed
+initialized.  It loads the versions of the components indicated in the
+checkpoint file, and then applies the logged updates to that state.
+
+\end{description}

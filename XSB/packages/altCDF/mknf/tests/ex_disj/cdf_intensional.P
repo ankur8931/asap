@@ -1,0 +1,31 @@
+:- import ground/1 from basics.
+
+isa_int(oid(Obj,NS),cid(Class,NS1)):- 
+	ground(Obj),ground(Class),!,
+%	debug(isa_int(oid(Obj,NS),cid(Class,NS1))),
+	Call =.. [Class,Obj],
+	last_known(Call).
+isa_int(oid(Obj,NS),cid(Class,NS)):- 
+	ground(Obj),var(Class),!,
+	definedClass(Call,Class,Obj),
+	last_known(Call).
+
+hasAttr_int(oid(Obj1,NS),rid(Rel,NS),oid(Obj2,NS)):- 
+	ground(Obj1),
+	definedRole(Call,Rel,Obj1,Obj2),
+%	writeln(hasAttr_int(oid(Obj1,NS),rid(Rel,NS),oid(Obj2,NS))),
+	last_known(Call).
+
+
+/*
+necessCond_int(oid(Obj,NS),vid(not(cid(Class,NS1)))):- 
+	ground(Obj),ground(Class),!,
+	Call =.. [Class,Obj],
+	last_dlnot(Call).
+necessCond_int(oid(Obj,NS),vid(not(cid(Class,NS)))):- 
+	ground(Obj),var(Class),!,
+	definedClass(Call,Class,Obj),
+	last_dlnot(Call).
+*/
+
+

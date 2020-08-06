@@ -1,0 +1,787 @@
+/* File:      modes.P
+** Author(s): C.R. Ramakrishnan
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: modes.P,v 1.15 2010-08-19 15:03:35 spyrosh Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,optimize,spec_repr,xpp_on]).
+#include "extensions_xsb.h"
+
+ 
+/************************************************************************/
+/*									*/
+/*			Groundness Analyzer				*/
+/*									*/
+/*		( called "ma" to rhyme with "mc" )			*/
+/*									*/
+/************************************************************************/
+
+ma(File, Options) :-
+	mangle_file_names(File, SrcFile, DeclFile),
+	set_options(Options),
+	init_for_analysis,
+	mode_analyze(SrcFile, DeclFile),
+	cleanup_after_analysis.
+
+mode_analyze(InFile, DeclFile) :-
+        message(('[Analyzing ', InFile, ']')), cputime(StartTime),
+	preprocess(InFile),
+	get_init_calls,
+	analyze,
+	debug('Analysis Done'),
+	('_$analyzer_flag'(verbose)
+		->	print_stats
+		;	true
+	),
+	write_all_modes(DeclFile),
+	time_message(StartTime, (InFile, ' analyzed')).
+
+
+/************************************************************************/
+/*									*/
+/*				Analyzer Core				*/
+/*									*/
+/************************************************************************/
+
+
+analyze :- 
+	cputime(T0),
+	analyze_fail_loop,
+	cputime(T1),
+	T is T1 - T0,
+	blab('Analysis took '), blab(T), blab(' secs.'), endblab.
+
+analyze_fail_loop :-
+	'_$init_call'(Goal), 
+	analyze(Goal),
+	fail; true.
+
+analyze(Goal) :-
+	call_user(Goal), 
+	trie_assert('_$exp_return'(Goal)), 
+	fail; 
+	true.
+
+:- table call_user/1.
+:- use_variant_tabling call_user(_).
+
+call_user(Goal) :- '_$call_user'(Goal).
+
+
+/************************************************************************/
+/*									*/
+/*				Preprocessor				*/
+/*									*/
+/************************************************************************/
+
+preprocess(File) :-
+	cputime(T0),
+	seeing(OldFile),
+
+	str_cat(File, XSB_SRC_EXTENSION_ATOM, SrcFileName),
+	init_for_load(SrcFileName),
+
+	load_header_file(File),
+
+	see(SrcFileName),
+	read_flatten_and_assert,
+
+	see(OldFile),
+	cleanup_for_load,
+
+	cputime(T1), Time is T1-T0,
+	blab('['),blab(File),
+	blab(' dynamically loaded (with flattening), cpu time used: '),
+	blab(Time),blab(' seconds]'),endblab,
+	debug('End of Preprocessing'),
+	list_asserted_code(File).
+
+load_header_file(File) :-
+	str_cat(File, XSB_HDR_EXTENSION_ATOM, HdrFile),
+	(file_exists(HdrFile) ->
+		see(HdrFile),
+		flat_read_file
+	; true).
+
+init_for_load(_) :-
+	trie_assert('_$predprop'(init, unknown)),
+	conset('_$lastnegatedliteral', 0).
+
+cleanup_for_load.
+
+
+read_flatten_and_assert :-
+	flat_read_file,
+	assert_all.
+
+flat_read_file :- 
+	repeat,
+	read(Term),
+	(Term == end_of_file
+	     -> seen, !
+	     ;  (decl(Term)
+		     ->	do_declare(Term)
+		     ;	expand_term(Term, ExpTerm),
+			canonize_rule(ExpTerm)
+		),
+		fail
+	).
+
+
+assert_all :- declare_all, define_all.
+
+% hook to get all userdef preds to be tabled.
+declare_all :-
+	get_number_of_flat_rules(N),
+	blab('Number of rules = '), blab(N), endblab,
+	nearest_2n_minus_1(N, HashSize),
+	index('_$call_user'/1, 1, HashSize).
+
+define_all :-
+	declare_undefineds,
+	(trie_retract('_$flat_rule'(H, B)), 
+	do_assert(H, B), 
+	fail ; true).
+
+declare_undefineds :-
+	undefined_pred(Pred,Arity),
+	functor(OpenGoal, Pred, Arity),
+%	blab('Undefined: '), blab(OpenGoal), endblab,
+	trie_assert('_$flat_rule'(OpenGoal, true)),
+%	do_assert(OpenGoal),
+	fail; true.
+
+undefined_pred(Pred, Arity) :-
+	'_$predprop'((used), (Pred/Arity)),
+	\+ ( '_$predprop'((local), (Pred/Arity));
+	     '_$predprop'((import), (Pred/Arity))
+	).
+
+
+get_number_of_flat_rules(_) :-
+	'_$flat_rule'(_,_),
+	conget('_$number_of_rules', N),
+	N1 is N + 1,
+	conset('_$number_of_rules', N1),
+	fail.
+
+get_number_of_flat_rules(N) :-
+	conget('_$number_of_rules', N).
+
+
+
+decl(':-'(_Declaration)).
+
+%do_assert(X) :- assert('_$call_user'(X)).
+do_assert(H,B) :- assert(':-'('_$call_user'(H), B)).
+
+do_declare(':-'(Decl)) :- term2decl(Decl).
+
+term2decl( (export ExpList) ) :- !, 
+	decl_exported(ExpList).
+term2decl( (import ImpList from FromMod) ) :- !,
+	decl_imported(ImpList, FromMod).
+term2decl( (mode ModeList) ) :- !,
+	decl_modes(ModeList).
+term2decl( (op(A, B, C)) ) :- !, 	% Declare op. precedence & assoc.
+	op(A, B, C). 
+term2decl(_). % Silently drop the other declarations.
+
+
+decl_exported(','(E1,  E2)) :- !, decl_exported(E1), decl_exported(E2).
+decl_exported(Exp) :- trie_assert('_$predprop'((export), Exp)).
+
+
+decl_imported(ImpList, FromMod) :-
+	str_cat(FromMod, XSB_DCL_EXTENSION_ATOM, File),
+	cvt_to_regular_list(ImpList, Imports),
+	(expand_incl_file_name(File, FileName)
+	  ->	seeing(OldFile),
+		see(FileName),
+		load_imported_preds(Imports),
+		see(OldFile)
+	  ;	true
+	).
+%	ensure_included(Imports).
+
+decl_modes(','(M1,  M2)) :- !, decl_modes(M1), decl_modes(M2).
+decl_modes(Mode) :- trie_assert('_$predprop'(modes, Mode)).
+
+load_imported_preds(Imports) :-
+	repeat,
+	read(Term),
+	(Term == end_of_file
+	  ->	seen, !
+	  ;	Term = ':-'('_$mode_pattern'(Pat)),
+		functor(Pat, StdPred, Arity),
+		standardize_name(Pred, StdPred),
+		(member((Pred/Arity), Imports)
+		  ->	% trie_assert('_$imported_pred'(StdPred/Arity)),
+			trie_assert('_$predprop'((import), (Pred/Arity))),
+			trie_assert('_$flat_rule'(Pat, true))
+%			do_assert(Pat)
+		  ; 	true),
+		fail
+	).
+
+/** All used predicates that havent been defined will be
+    declared later; so dont bother now
+
+ensure_included([]).
+ensure_included([(Pred/Arity)|Rest]) :-
+	trie_assert('_$predprop'((import), (Pred/Arity))),
+	standardize_name(Pred, StdName),
+	('_$imported_pred'(StdName/Arity) -> true
+		% otherwise, we dont know the modes of this predicate
+		% Assume the worst: inp groundness == out groundness
+		; functor(NewOne, StdName, Arity), 
+		  trie_assert('_$flat_rule'(NewOne, true)),
+%		  do_assert(NewOne)
+	),
+	ensure_included(Rest).
+**/
+
+expand_incl_file_name(Name, ExpName) :-
+	(is_in_library(Name, ExpName) -> true;
+		(file_exists(Name) -> ExpName = Name
+			% .M file not found anywhere;
+			; fail)).
+
+is_in_library(Name, ExpName) :- 
+	libpath(LibName), 
+	str_cat(LibName, Name, ExpName),
+	file_exists(ExpName).
+
+
+
+get_init_calls :-
+	('_$predprop'((export), _)
+	  ->	get_init_calls_from_exports
+	  ;	make_exports_from_locals,
+		get_init_calls_from_exports
+	).
+
+make_exports_from_locals :-
+	'_$predprop'((local), X),
+	trie_assert('_$predprop'((export), X)),
+	fail; true.
+	
+
+get_init_calls_from_exports :-
+	'_$predprop'((export), (P/A)),
+	 functor(C, P, A),
+	 ('_$predprop'(modes, C)
+		-> get_calls_from_modes(P, A)
+		;  standardize_name(P, StdName),
+		   functor(Call, StdName, A),
+		   trie_assert('_$init_call'(Call))),
+	fail; true.
+
+get_calls_from_modes(P, A) :-
+	functor(C, P, A),
+	'_$predprop'(modes, C),
+	C =.. [_|Annotations],
+	standardize_name(P, StdName),
+	conv_modes(Annotations, Args),
+	Call =.. [StdName|Args],
+	trie_assert('_$init_call'(Call)),
+	fail; true.
+
+
+
+
+
+/************************************************************************/
+/*									*/
+/*			Result Collection/Print				*/
+/*									*/
+/************************************************************************/
+
+
+write_all_modes(File) :-
+	telling(OldFile),
+	tell(File),
+	dump_local_modes,
+	nl,
+	set_modes_for_failed_preds,
+	dump_exported_modes,
+	told,
+	tell(OldFile).
+
+dump_local_modes :-
+	'_$predprop'((local), (P/A)),
+	dump_pred_modes(P, A),
+	fail; true.
+
+set_modes_for_failed_preds :-
+	'_$init_call'(Goal),
+	( '_$exp_return'(Goal) 
+		-> true
+		;	functor(Goal, Pred, Arity),
+			construct_ground_call(Pred, Arity, GroundGoal),
+			trie_assert('_$exp_return'(GroundGoal))
+	), fail; true.
+
+
+/* Due to the iteraction of Aggregation operations, HiLog and module system, 
+   the following code needs to be in usermod. Instead of compiling it,
+   we assert it directly into usermod; ugly but works.
+*/
+
+load_into_usermod :-
+	(clause('apply'('_$returns', _), _)
+	    ->	true
+	    ;	assert((':-'(hilog( ','('_$returns', '_$subsumed'))))),
+		assert(('apply'('_$returns', X) :- '_$exp_return'(X))),
+		assert(('apply'('_$subsumed',X,Y) :- subsumes_chk(Y,X))),
+		assert((get_maximal_calls(Goal) :-
+				bagPO('_$returns', Goal, '_$subsumed')))
+	).
+
+
+
+dump_exported_modes :-
+	load_into_usermod,
+	get_maximal_calls(Goal),
+	write(':- '), write_canonical('_$mode_pattern'(Goal)),
+	write('.'), nl,
+	fail; true.
+
+dump_pred_modes(RawName, Arity) :-
+	standardize_name(RawName, PredName),
+	functor(Skel, PredName, Arity),
+	get_call_pattern(Skel),
+	findall(S, '_$local_calls'(S), RawCalls),
+	trie_retract_all('_$local_calls'(_)),
+	construct_ground_call(PredName, Arity, GroundCall),
+	find_min(RawCalls, GroundCall, Call),
+	Call =.. [_| Args],
+	conv_modes(Annotations, Args),
+	Mode =.. [RawName | Annotations],
+	write(':- mode '), write_canonical(Mode), write('.'), nl, !.
+
+construct_ground_call(P, A, C) :-
+	ground_list(A, L),
+	C =.. [P|L].
+
+ground_list(N, L) :-
+	(N =:= 0 -> L = []
+		; L = [g|L1], N1 is N - 1, ground_list(N1, L1)).
+		
+
+get_call_pattern(CallPattern) :-
+	get_calls(call_user(CallPattern), _, _),
+	trie_assert('_$local_calls'(CallPattern)),
+	fail; true.
+
+find_min([], Min, Min).
+find_min([Y|Ys], Prev, Min) :-
+	minimum(Y, Prev, Next),
+	find_min(Ys, Next, Min).
+
+minimum(Call, Prev, Min) :-
+	(var(Prev)
+	  -> 	Min = Call
+	  ;	Call =.. [F|Xa], Prev =.. [F|Ya],
+		min_all_args(Xa, Ya, Za),
+		Min =.. [F|Za]
+	).
+
+min_all_args([], [], []).
+min_all_args([X|Xs], [Y|Ys], [Z|Zs]) :-
+	min_args(X, Y, Z),
+	min_all_args(Xs, Ys, Zs).
+
+
+min_args(X, _, ng) :- var(X), !.
+min_args(_, Y, ng) :- var(Y), !.
+min_args(ng, _, ng).
+min_args(_, ng, ng).
+min_args(g, g, g).
+
+
+
+conv_modes([], []).
+conv_modes([X|Xs], [Y|Ys]) :- conv_mode(X, Y), conv_modes(Xs, Ys).
+
+
+conv_mode(X, Y) :-
+	(var(X)
+	     -> int2ext(Y, X)
+	     ;	ext2int(X, Y)
+	).
+
+int2ext(X, '++') :- X == g, !.
+int2ext(_, '?').
+
+ext2int('++', g) :- !.
+ext2int(_, _).
+
+get_new_negliteral_name(NewName) :-
+	atom_codes('_$neg_$', Prefix),
+	conget('_$lastnegatedliteral', L),
+	Sno is L + 1,
+	conset('_$lastnegatedliteral', Sno),
+	name(Sno, Suffix),
+	append(Prefix, Suffix, Name),
+	atom_codes(NewName, Name).
+
+
+/** Now that all user predicates are wrapped with '_call_user', there
+   is no need to specially standardize names; so,
+**/
+
+standardize_name(X,X).	%Leave name unchanged.
+
+/************************************************************************/
+/*									*/
+/*			Flattener (part of preproc)			*/
+/*									*/
+/************************************************************************/
+
+
+canonize_rule(':-'(H, B)) :- !,
+	canon_head_lit(H, NewH, Bh),
+	canon_lit(B, Bb),
+	and_lits(Bh, Bb, NewB),
+	trie_assert('_$flat_rule'(NewH, NewB)).
+
+canonize_rule(A) :- 
+	canon_head_lit(A, NewH, NewB),
+	trie_assert('_$flat_rule'(NewH, NewB)).
+
+
+canon_head_lit(Term, NewTerm, NewLiterals) :-
+	Term =.. [F|Args],
+	standardize_name(F, NF),
+	functor(Term, _, Arity),
+	('_$predprop'((negated), (F/Arity)) 
+		-> 	true
+		;	trie_assert('_$predprop'((local), (F/Arity)))
+	),
+	canonize_args(Args, NewArgs, NewLiterals),
+	NewTerm =.. [NF|NewArgs].
+
+
+canonize_args([], [], true).
+canonize_args([X|Xs], [Y|Ys], Lits) :-
+	(ground(X) -> Y = g, canonize_args(Xs, Ys, Lits)
+	;
+	canon_term(Y, X, P),
+	canonize_args(Xs, Ys, NewLits),
+	and_lits(P, NewLits, Lits)
+	).
+
+
+canon_lit((Lit1, Lit2), OutLit) :- !,
+	canon_lit(Lit1, P1), canon_lit(Lit2, P2),
+	and_lits(P1, P2, OutLit).
+canon_lit((Lit1 -> Lit2), OutLit) :- !,
+	canon_lit(Lit1, P1), canon_lit(Lit2, P2),
+	and_lits(P1, P2, OutLit).
+canon_lit((Lit1 ; Lit2), OutLit) :- !,
+	canon_lit(Lit1, P1), canon_lit(Lit2, P2),
+	or_lits(P1, P2, OutLit).
+canon_lit('!',  true) :- !.
+canon_lit('\+'(T), NewLit) :- !, 
+	canon_negated_lit(T, NewLit).
+canon_lit('not'(T),  NewLit) :- !, 
+	canon_negated_lit(T, NewLit).
+canon_lit('fail_if'(T), NewLit) :- !, 
+	canon_negated_lit(T, NewLit).
+canon_lit('tnot'(T),  NewLit) :- !, 
+	canon_negated_lit(T, NewLit).
+canon_lit((Term1 = Term2), OutLit) :- !,
+	(var(Term1) 
+	   ->	(var(Term2)
+		    ->	OutLit = (Term1 = Term2)
+		    ;	canon_term(Term1, Term2, OutLit)
+		)
+	   ;	(var(Term2)
+		    ->	canon_term(Term2, Term1, OutLit)
+		    ;	canon_term(Y, Term1, P1),
+			canon_term(Y, Term2, P2),
+			and_lits(P1, P2, OutLit)
+		)
+	). 
+	
+/*
+	((var(Term1), var(Term2))
+	  ->	OutLit = (Term1 = Term2)
+	  ;	canon_term(Y, Term1, P1),
+		canon_term(Y, Term2, P2),
+		and_lits(P1, P2, OutLit)
+	).
+*/
+canon_lit(Lit, NewLit) :-
+	functor(Lit, F, Arity),
+	Lit =.. [_|Args],
+	canonize_args(Args, NewArgs, NewLiterals),
+	standardize_name(F, NF),
+	trie_assert('_$predprop'((used), (F/Arity))),
+	NT =.. [NF|NewArgs],
+	( no_need_to_table(Lit)
+		->	NewTerm = '_$call_user'(NT)
+		;	NewTerm = call_user(NT)
+	),
+	and_lits(NewLiterals, NewTerm, NewLit).
+
+canon_negated_lit(Lit, '_$call_user'(NewLit)) :- 
+	listofvars(Lit, Vars, []),
+	get_new_negliteral_name(Nf),
+	length(Vars, Arity),
+	trie_assert('_$predprop'((negated), (Nf/Arity))),
+	NewLit =.. [Nf|Vars],
+	% generate the two rules for new negated literal
+	% neglit :- lit, !, fail:
+	canonize_rule(':-'(NewLit, Lit)),
+	% neglit :- true.
+	canonize_rule(NewLit).
+	
+canon_term(Y, Term, Literal) :- 
+	(var(Term)
+	 ->	(Y = Term, Literal = true)
+	 ;	listofvars(Term, Vars, []), 
+		iffify(Vars, Y, Literal)
+	 ).
+
+no_need_to_table(Lit) :-
+	functor(Lit, F, A),
+	'_$predprop'((import), (F/A)).
+%no_need_to_table(Lit) :-
+%	predicate_property(Lit, builtin).
+
+
+and_lits(true, L, L) :- !.
+and_lits(L, true, L) :- !.
+and_lits(L1, L2, (L1, L2)).
+
+or_lits(true, _L, true) :- !.
+or_lits(_L, true, true) :- !.
+or_lits(L1, L2, (L1; L2)).
+
+	
+
+listofvars(Term, Vh, Vt) :-
+	( var(Term) -> Vh = [Term | Vt]
+		    ;  Term =.. [_|Args], listofvars1(Args, Vh, Vt)
+	).
+
+listofvars1([], V, V).
+listofvars1([T|Ts], Vh, Vt) :- listofvars(T, Vh, Vm), listofvars1(Ts, Vm, Vt).
+
+iffify([],X,(X=g)). % prop_iff(X)).
+iffify([Y],X,X=Y) :- !. %prop_iff(X,Y)) :- !.
+iffify([Y1,Y2],X,prop_iff(X,Y1,Y2)) :- !.
+iffify([Y|Ys],X,(prop_iff(X,Y,Z),T)) :- iffify(Ys,Z,T).
+
+
+/************************************************************************/
+/*									*/
+/*			Trivial library functions			*/
+/*									*/
+/************************************************************************/
+
+cvt_to_regular_list(','(X1, X2), L) :- cvt_ands_to_list(','(X1, X2), L, []).
+
+cvt_ands_to_list(','(X1, X2), L1, L2) :- !,  
+	cvt_ands_to_list(X1, L1, Rest), 
+	cvt_ands_to_list(X2, Rest, L2).
+cvt_ands_to_list(T, [T | L2], L2).
+
+
+mangle_file_names(File, Src, Decls) :-
+	strip_trailing_ext(File, Src),
+	prolog_file_exists(Src),
+		str_cat(Src, XSB_DCL_EXTENSION_ATOM, Decls).
+
+strip_trailing_ext(Name, TruncName) :-
+	atom_codes(Name, L),
+	atom_codes(XSB_SRC_EXTENSION_ATOM, EL),
+	append(BL, EL, L), atom_codes(TruncName, BL),
+	!.
+strip_trailing_ext(Name, Name).
+
+prolog_file_exists(Name) :-
+	str_cat(Name, XSB_SRC_EXTENSION_ATOM, SrcName),
+	(file_exists(SrcName) -> true
+	; write('++ Unable to locate file: '), write(SrcName),nl, fail).
+	
+
+set_options([]) :- 
+	trie_assert('_$analyzer_flag'(silent)).
+set_options([Opt | Rest]) :- 
+	trie_assert('_$analyzer_flag'(Opt)),
+	set_options(Rest).
+
+blab(X) :- ('_$analyzer_flag'(verbose) -> write(X) ; true).
+endblab :- ('_$analyzer_flag'(verbose) -> nl; true).
+
+debug(X) :- ('_$analyzer_flag'(debug) -> writeln(X) ; true).
+
+nearest_2n_minus_1(N, M) :-
+	('_$analyzer_flag'(nohashsize)
+	   ->	M = N
+	   ;	nearest_2n(N, 1, M1),
+		M is M1 - 1
+	).
+
+nearest_2n(N, N1, M) :-
+	T is N + 1,
+	(N1 =< T 
+		-> 	N2 is 2 * N1,
+			nearest_2n(N, N2, M)
+		;	M = N1
+	).
+
+	
+list_asserted_code(File) :-
+	('_$analyzer_flag'(prop_dump) 
+		->	telling(OldFile),
+			str_cat(File, '.prop', Dump),
+			tell(Dump),
+			dump_asserted_code,
+			told,
+			tell(OldFile)
+		; 	true).
+
+dump_asserted_code :-
+	clause('_$call_user'(H), B),
+	(B == true
+		->	writeq('_$call_user'(H))
+		;	writeq(('_$call_user'(H) :- B))
+	), write('.'), nl,
+	fail; true.
+
+
+init_for_analysis:-
+	debug('Initializing...'),
+	declare_all_dynamic_preds,
+	conset('_$number_of_rules', 0),
+	('_$analyzer_flag'(sysmod) 
+		->	define_std_preds(sysmod)
+					% For system modules, get defns from
+					% explicit imports.
+		;	define_std_preds(std)
+	).
+
+define_std_preds(Flag) :-
+	seeing(OldFile),
+	(expand_incl_file_name('stdmodes.D', File)
+		->	see(File),
+			get_std_pred_defs(Flag),
+			see(OldFile)
+		;	write('Internal Error: '),
+			write('Modes for Standard Predicates not found.'),
+			nl,
+			abort
+	).
+
+get_std_pred_defs(Flag) :-
+	repeat,
+	read(Term),
+	(Term == end_of_file
+	  ->	seen, !
+	  ;	Term = ':-'('_$mode_pattern'(Pat)),
+		functor(Pat, Pred, Arity),
+		( default_import(Flag, Pred, Arity)
+		    ->	trie_assert('_$predprop'((import), Pred/Arity)),
+			trie_assert('_$flat_rule'(Pat, true))
+		    ;	true
+		),
+		fail
+	).
+
+
+default_import(std, _P, _A).
+default_import(sysmod, P, A) :-	inline_predicate(P,A).
+
+
+
+declare_all_dynamic_preds :-
+	trie_dynamic('_$local_calls'/1),
+ 	trie_dynamic('_$exp_return'/1),
+	trie_dynamic('_$predprop'/2),
+	trie_dynamic('_$init_call'/1),
+	trie_dynamic('_$analyzer_flag'/1).
+
+cleanup_after_analysis :-
+	remove_tabled_stuff,
+	remove_asserted_stuff,
+	true.
+
+remove_tabled_stuff :-
+	abolish_table_pred('call_user'(_)),
+	abolish_table_pred('bagPO1'(_,_,_)).
+
+
+remove_asserted_stuff :-
+%	trie_retract_all('_$imported_pred'(_)),
+	trie_retract_all('_$exp_return'(_)),
+	trie_retract_all('_$predprop'(_,_)),
+	trie_retract_all('_$init_call'(_)),
+	trie_retract_all('_$analyzer_flag'(_)),
+	retractall(':-'('_$call_user'(_), _)),
+	retractall('_$call_user'(_)).
+
+
+print_stats :-
+	count_answers(get_calls(call_user(_), _, _), N),
+	write('Number of calls: '), writeln(N),
+	count_answers(get_all_returns(_), N1),
+	write('Number of returns: '), writeln(N1),
+	statistics.
+
+get_all_returns(X) :-
+	get_calls(call_user(_X1), Skel, X),
+	get_returns(Skel , X).
+
+count_answers(_C, _N) :-
+	conset('_$count', 0), fail.
+count_answers(C, _N) :-
+	call(C),
+	conget('_$count', N),
+	N1 is N + 1,
+	conset('_$count', N1), fail.
+count_answers(_C, N) :-
+	conget('_$count', N).
+
+/************************************************************************/
+/*									*/
+/*			Propositions for =/2				*/
+/*									*/
+/************************************************************************/
+
+prop_iff(g, g, g).
+prop_iff(ng, g, ng).
+prop_iff(ng, ng, g).
+prop_iff(ng, ng, ng).
+
+/*
+prop_iff(g, g).
+prop_iff(ng, ng).
+
+prop_iff(g).
+
+prop_iff.
+*/
+

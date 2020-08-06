@@ -1,0 +1,273 @@
+\section{Inheritance} \label{sec:inheritance}
+
+Example~\ref{ex:hasAttr} indicates that each object in the class of
+{\tt cid(absorbableSutures)} has a {\tt rid(hasPointStyle)} relation
+to an object in the domain {\tt cid(pointStyle)}.  Thus, if no
+stronger information were provided for, say, part {\tt
+oid(sutureU245H)}, then
+%--------------------------
+{\small 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> {\tt hasAttr(oid(sutureU245H),rid(hasPointStyle),cid(pointStyle))}$^{\cI}$
+\end{tabbing} } 
+%--------------------------
+\noindent would be true in any model of the CDF instance.  This
+consequence can be seen as a primitive form of ``default'', or more
+precisely indefinite, reasoning that is provided by CDF.  Indeed,
+%--------------------------
+{\small 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> {\tt
+hasAttr(cid(suture547466),rid(hasPointStyle),cid(pointStyle))$^{\cI}$} 
+\end{tabbing} } 
+%--------------------------
+\noindent would also be true, but would be of less interest, since
+Example~\ref{ex:hasAttr} specifically indicates that {\tt
+oid(suture547466)} is related to a subclass of {\tt cid(pointStyle)},
+namely {\tt cid(regularCuttingEdge)}.  In contrast to {\tt
+rid(endType)} the relation {\tt rid(suturesRusMatch)} was defined via
+the {\tt allAttr/3} predicate.  
+However the constraint that any {\tt rid(suturesRusMatch)} must be to
+a {\tt cid(suturesRusPart)} holds for members of the class {\tt
+cid(sutures)}, just as it holds for subclasses of {\tt
+cid(sutures)}. 
+The following formulas summarize inheritance in the
+first argument of Type-0 relations.
+
+%{\sc TLS: coversAttr}
+
+\begin{proposition}[First Argument Inheritance Propagation] \label{prop:inh1}\rm
+Let $\cM$ be an ontology model.
+\begin{enumerate}
+\item If $\cM \models {\tt hasAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+						{\tt isa(Id_0,Id_1)}^{\cI}$ 
+	then $\cM \models  {\tt hasAttr(Id_0,Id_2,Id_3)}^{\cI}$
+%
+\item If $\cM \models {\tt allAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+					    {\tt isa(Id_0,Id_1)}^{\cI}$ 
+		then $\cM \models {\tt allAttr(Id_0,Id_2,Id_3)}^{\cI}$ 
+\item If $\cM \models {\tt minAttr(Id_1,Id_2,Id_3,N)}^{\cI} \wedge
+						{\tt isa(Id_0,Id_1)}^{\cI}$ 
+	then $\cM \models  {\tt minAttr(Id_0,Id_2,Id_3,N)}^{\cI}$
+%
+\item If $\cM \models {\tt maxAttr(Id_1,Id_2,Id_3,N)}^{\cI} \wedge
+					    {\tt isa(Id_0,Id_1)}^{\cI}$ 
+		then $\cM \models {\tt maxAttr(Id_0,Id_2,Id_3,N)}^{\cI}$ 
+%
+%\item If $\cM \models {\tt coversAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+%					    {\tt isa(Id_0,Id_1)}^{\cI}$ 
+%		then $\cM \models {\tt coversAttr(Id_0,Id_2,Id_3)}^{\cI}$ 
+%
+\end{enumerate}
+\end{proposition}
+
+
+
+There is inheritance also in the third argument of relations.
+Consider again the {\tt hasAttr/3} facts of Example~\ref{ex:hasAttr}
+that states that any element of {\tt cid(absorbableSutures)} is
+related via {\tt rid(hasPointStyle)} to an element or subclass of {\tt
+cid(pointStyle)}.  By this definition, it also holds that {\tt
+rid(hasPointStyle)} constrains any element of {\tt rid(absorbaleSutures)}
+to an element or subclass of any {\em superclass} of {\tt
+cid(pointStyle)} so that
+%--------------------------
+{\small 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> 
+{\tt hasAttr(cid(absorbableSutures),rid(hasPointStyle),cid('CDF Classes'))}$^{\cI}$
+\end{tabbing} }
+%--------------------------
+\noindent
+should also hold in any model of the CDF instance.  
+%-----------------------
+Similiarly,
+{\small 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> 
+{\tt allAttr(cid(dlaPart),rid(suturesRusMatch),id('CDF Classes'))$^{\cI}$}
+\end{tabbing} }
+%-----------------------
+\noindent
+should also hold.  In English, every member or subclass of {\tt
+cid(sutures)} that has a relation {\tt rid(suturesRusMatch)} has the
+same relation to a member or subclass of {\tt \cid{'CDF Classes'}}.
+{\tt minAttr/4} and {\tt classHasAttr/4} behave similarly with regards
+to third argument inheritance.
+
+Third argument inheritance is different for {\tt maxAttr/4}, however.
+The fact
+%-----------------------
+{\small 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> 
+{\tt maxAttr(cid(person),rid(hasGeneticRelation),cid(mother))}
+\end{tabbing} }
+%-----------------------
+\noindent
+states that each person has at most one genetic mother.  If {\tt
+cid(mother)} is a subclass of {\tt cid(parent)}, then it is not true
+that each person has at most one genetic parent.  On the other hand,
+if {\tt cid(elderlyMother)} is a subclass of {\tt cid(mother)} then it
+is true that each person has at most one genetic elderly mother.  The
+behavior of {\tt maxAttr/4} in models of CDF instances accords with
+this intuition.
+%-----------------------
+
+\begin{proposition}[Third-Argument Inheritance Propagation] \rm
+\label{prop:inh3} 
+\end{proposition} 
+\begin{enumerate}
+\item If $\cM \models {\tt hasAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+					{\tt isa(Id_3,Id_4)}^{\cI}$
+					then $\cM \models {\tt
+					hasAttr(Id_0,Id_2,Id_4)}^{\cI}
+					$
+%
+\item If $\cM \models {\tt allAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+					{\tt isa(Id_3,Id_4)}^{\cI}$ 
+	then $\cM \models {\tt allAttr(Id_0,Id_2,Id_4)}^{\cI} $ 
+%
+\item If $\cM \models {\tt minAttr(Id_1,Id_2,Id_3,N)}^{\cI} \wedge
+					{\tt isa(Id_3,Id_4)}^{\cI}$ 
+	then $\cM \models {\tt minAttr(Id_0,Id_2,Id_4,N)}^{\cI} $ 
+%
+\item If $\cM \models {\tt classHasAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+			  {\tt isa(Id_3,Id_4)}^{\cI}$ 
+	then $\cM \models {\tt classHasAttr(Id_0,Id_2,Id_4)}^{\cI} $ 
+%
+\item If $\cM \models {\tt maxAttr(Id_1,Id_2,Id_3,N)}^{\cI} \wedge
+			  {\tt isa(Id_4,Id_3)}^{\cI}$ 
+	then $\cM \models {\tt maxAttr(Id_0,Id_2,Id_4,N)}^{\cI} $ 
+
+\end{enumerate}
+
+%-------------------------------
+\mycomment{
+\footnote{One can define a relational inverse $Rid^-$ for any relation
+identifier $Rid$ as
+%
+\[ (forall X,Y)[ rel(X,Rid^-,Y) \leftrightarrow rel(Y,Rid,X) ] \]
+%
+The binary relations $Rid$ and $Rid^-$ can be extended into a Galois
+connection between sets of object identifiers using a standard
+construction (e.g. \cite{Ore62} Section 11.2).  This connection is
+reflected in the two foregoing inheritance propositions.}}
+%-------------------------------
+
+In CDF, the inheritance in the second argument of relations
+generalizes or specializes relations.  For instance, the relation {\it
+parent} can be generalized to {\it ancestor} or specialized to {\it
+mother}.  Thus, if {\it Abraham} is the {\it parent} of {\it Isaac},
+it is true that he is the {\it ancestor\ } of {\it Isaac\ } but not
+necessarily the {\it mother} of {\it Isaac}.  It follows from the
+semantics of CDF that {\tt hasAttr/3}, {\tt classHasAttr/3}, and {\tt
+minAttr/4} all propigate inheritance in their second argument from
+relations to the super-relations that contain them.  {\tt allAttr/3}
+works differently, however.  Any {\it mother} of {\it Isaac} is
+female, but any {\it parent} is not.  Second argument inhertiance
+propagates from relations to subrelations both in {\tt allAttr/3} and
+{\tt maxAttr/3}.
+
+\begin{proposition}[Second-Argument Inheritance Propagation]
+\label{prop:inh2} \rm 
+\end{proposition} 
+\begin{enumerate}
+\item If $\cM \models {\tt hasAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+				{\tt isa(Id_2,Id_4)}^{\cI}$ 
+	then $\cM \models {\tt hasAttr(Id_0,Id_4,Id_3)}^{\cI} $ 
+%
+\item If $\cM \models {\tt classHasAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+				{\tt isa(Id_2,Id_4)}^{\cI}$ 
+	then $\cM \models {\tt classHasAttr(Id_0,Id_4,Id_3)}^{\cI} $ 
+%
+\item If $\cM \models {\tt minAttr(Id_1,Id_2,Id_3,N)}^{\cI} \wedge
+				{\tt isa(Id_2,Id_4)}^{\cI}$ 
+	then $\cM \models {\tt minAttr(Id_0,Id_4,Id_3,N)}^{\cI} $ 
+%
+\item If $\cM \models {\tt allAttr(Id_1,Id_2,Id_3)}^{\cI} \wedge
+				{\tt isa(Id_4,Id_2)}^{\cI}$ 
+	then $\cM \models {\tt allAttr(Id_0,Id_4,Id_3)}^{\cI} $ 
+\item If $\cM \models {\tt maxAttr(Id_1,Id_2,Id_3,N)}^{\cI} \wedge
+				{\tt isa(Id_4,Id_2)}^{\cI}$ 
+	then $\cM \models {\tt maxAttr(Id_0,Id_4,Id_3,N)}^{\cI} $ 
+\end{enumerate}
+
+We conclude this chapter with a discussion of irredundant sets and
+principle classes, both of which are used in the operational semantics
+of the Type-0 interface in \refchap{sec:impl}.
+
+\index{{\sc inh} proof}
+The above inheritance propositions can be made into a simple proof
+system, {\sc inh}, by considering the facts themselves rather than
+their interpretations into an ontology theory.  For instance, give a
+CDF instance $\cO$ containing {\tt hasAttr(Id1,Id2,Id3)} and {\tt
+isa(Id3,Id4)} then {\tt hasAttr(Id1,Id2,Id4)} can be deduced.  In
+other words, {\sc inh} contains an inference rule,
+\[
+\frac{{\tt hasAttr(Id1,Id2,Id3)},{\tt isa(Id3,Id4)}}{{\tt hasAttr(Id1,Id2,Id4)}}
+\]
+based on Proposition~\ref{prop:inh3}.1.  The {\sc inh} proof system
+contains similar inference rules obtained from Proposition
+Proposition~\ref{prop:inh1}.(1-2), Proposition~\ref{prop:inh3}.(2-3),
+Proposition~\ref{prop:inh2}.(1-3), and the transitive reflexive
+closure of the {\tt isa/2} facts, and forms the main reasoning
+mechanism for Type-0 instances.
+
+%-------------------------------------------------------------------------------
+\mycomment{
+When making use of Propositions~\ref{prop:inh1}-\ref{prop:inh1} on
+facts in a CDF instance, we slightly abuse terminology by saying that
+a fact $F$ is implied by a set of facts $\cF$ via
+Propositions~\ref{prop:inh1}-\ref{prop:inh1}, rather than the more
+cumbersome statement that the translation of $F$ is implied by the set
+of translations of each fact in $\cF$.  }
+%-------------------------------------------------------------------------------
+
+%-------------------------------------------------------------------------------
+\index{class!principle} \index{irredundant set} \index{irredundant basis}
+\index{irredundant set!more specific} \index{$\succ_{spec}$}
+\begin{definition} \label{def:redund} \index{irredundant}
+Let $\cO$ be a Type-0 CDF instance, $\cS \subseteq \cO$, and
+$\cO_{isa}$ be the set of {\tt isa/2} facts in $\cO$.  Then a fact $f
+\in \cS$ is {\em irredundant in $\cS$} if there is no other $f' \in
+\cS, f' \not= f$ such that
+\[
+\cO_{isa},f' \inhdash f
+\]
+$\cS$ is irredundant if each fact in it is irredundant.  An
+irredundant basis for $\cS$ is a irredundant $\cS' \subseteq \cS$ such
+that for all $f \in \cS$, 
+\[
+(\cS' \cup \cO_{isa}) \inhdash f
+\]
+
+Given an identifier $I$, a class $C$ is a {\em principle class for
+$I$} if $\cO_{isa} \inhdash I \not= C \wedge isa(I,C)$, but $\cO_{isa}
+\not \inhdash isa(I,C') \wedge (C' \not = C) \wedge isa(C',C)$.  Similarly
+a relation identifier $R$ is a {\em principle relation for object
+identifiers $O_1$ and $O_2$} if $\cO_{isa} \inhdash rel(O_1,R,O_1)$
+but $\cO_{isa} \not \inhdash rel(O_1,R',O_2) \wedge (R \not = R')
+\wedge isa(R',R)$
+
+Finally, if $\cS, \cS' \subseteq \cO$, and $\cS$ and $\cS'$ are both
+irredundant sets, then {\em $\cS$ is more specific than $\cS'$ in
+$\cO$}, $\cS \succ_{spec} \cS'$ if there is a $f \in \cS$ and $f' \in
+\cS'$, $f \not= f'$ such that $\cO_{isa},f \inhdash f'$, but there is
+no $g' \in \cS'$ $g \in \cS$, $g \not = g$ such that $\cO_{isa},g
+\inhdash g'$.
+%
+\end{definition}
+%-----------------------------------------------------------------------------
+\noindent
+It is straightforward that any $\cS \subseteq \cO$ contains an
+irredundant basis (recall that $\cO$ is finite).  Furthermore, $\cS$
+contains a unique irredundant basis if the {\tt isa/2} facts in $\cO$
+are ``acyclic'', i.e. if there are no two non-identical identifiers
+$I,I' \in \cO$ such that $\inhdash isa(I,I')$ and $\inhdash isa(I',I)$
+

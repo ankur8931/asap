@@ -1,0 +1,38 @@
+
+%
+% compute_gcd(L) finds greatest common divisior
+% for the natural numbers collected in list L
+%
+% equivalent to: 'gcd(N_1), ..., gcd(N_k).'
+% where L = [N_1, ..., N_k]
+%
+% program manually extended with the global-store variable
+%
+
+:- chr_module(gcd2).
+
+
+%% top level
+
+test(L) :-
+	compute_gcd(L,X),
+	writeln(X).
+
+
+compute_gcd([],0).
+compute_gcd([X|Xs],N) :-
+	l_gcd(V,[X|Xs]),
+	get_gcd_atts(V,[attr(N)],_).
+
+l_gcd(_,[]).
+l_gcd(V,[X|Xs]) :-
+	gcd(V,X),
+	l_gcd(V,Xs).
+
+
+
+:- constraints gcd/2.
+
+gcd(_,0) <=> true.
+gcd(V,N) \ gcd(V,M) <=> N=<M | L is M mod N, gcd(V,L).
+

@@ -1,0 +1,96 @@
+\subsection{Type-0 CDF Instances and and Description Logics}
+\label{sec:comp} 
+
+Clearly Type-1 CDF instances are at least as expressive as ${\cal
+ALCQ}$ description logics, since any ${\cal ALCQ}$ class expression
+can be used directly in a {\tt necessCond/2} fact.  To formalize the
+relation between Type-0 class expressions and description logics, we
+use the definition of an {\em atomic relational CDF instance}.
+\begin{definition}
+Let $\cO$ be a CDF intance.  $\cO$ is {\em atomic} if it contains no
+product identifiers.  $\cO$ is a {\em relational instance} if it
+contains no object identifiers, and no {\tt classHasAttr/3}
+predicates.
+\end{definition}
+
+We also need to formalize the language of class expressions that we
+will use.
+
+\begin{definition}
+The syntax of an \omsdl{} class expression has the following form, in
+which $A$ is an atomic class identifier, $R$ a relation identifer, $N$
+a non-negative integer, and $C_1$ and $C_2$ \omsdl{} class expressions.
+\[ C \leftarrow A | C_1 \sqcap C_2 | all(R,C_1) | exists(R,C_1) 
+	| atLeast(N,R,C) | atMost(N,R,C) \]
+\end{definition}
+
+%--------------------------------------------------------------------------
+\mycomment{
+If $C$ is an \omsdl{} class expression, it can be translated according
+to Definition~\ref{def:fot}, into a first order sentence (denoted as
+$C^{\cT}$) over an ontology language.}
+
+\mycomment{
+TLS: dont think this is needed anymore, but check: 
+These languages contain slightly different predicate
+symbols from $\cL$, so we make use of a function $f$ from structures
+over ontology languages to structures over first-order description
+logic languages~\footnote{Given a structure $\cM$ over an ontology
+language, $\cL_{CDF}$, we construct a language $f(\cL_{CDF})$ by
+setting the set of atomic class names in $f(\cL_{CDF})$ equal to the
+class identifiers in $\cL_{CDF}$, and the atomic relation names in
+$\cL'_D$ equal to the relation identifiers in $\cL_{CDF}$.  A new
+structure $f(\cM)$ is constructed by restricting $\cM$ to $elt/2$
+and $rel/3$ predicates.}.
+}
+%--------------------------------------------------------------------------
+We turn to a closer view on the relation between models of class
+expressions and those of Type-0 instances.  A model $\cM$ is
+$C$-reified for a class expression $C$ if for each sub-expression $C'$
+of $C$,
+\begin{itemize}
+\item there is a constant $c'$ such that $isClass(c')$;  and 
+\item $\cM \models (\exists X)[elt(X,c')]$;  and 
+\item $C'^{\cI}[d]$ holds for all $d$ such that $\cM \models elt(d,c)$
+\end{itemize}
+$c'$ is called a witnessing constant for $C$.
+
+In the following theorem, $TH(\cO)/4$ denotes $TH(\cO)$ minus Core
+Axiom~\ref{ax:contained} (Domain Containment).  
+\begin{theorem} \label{thm:type0dl}
+Let $C$ be an \omsdl{} class expression.  Then 
+\begin{enumerate}
+\item There exists a $C$-reified model $f(\cM)$ for $C$.  
+\item There is an atomic CDF instance $\cO$ such that 
+\begin{enumerate}
+\item For any $C$-reified model $f(\cM)$ of $C$, there is a CDF instance
+$\cO$ such that $\cM \models TH(\cO)/4$
+\item For any model $\cM$ of $TH(\cO)/4$, $f(\cM) \models (\exists X)
+				[C^{\cI}[X]] $.
+\end{enumerate}
+\end{enumerate}
+\end{theorem}
+\begin{proof}
+The proof is contained in the appendix.
+\end{proof}
+
+Atomic Type-0 CDF class instances thus have an expressive power that
+is equivalent to a weak description logic, and be considered as
+``special-cases'' of class descriptions that can be extended into
+Type-1 instancs if needed, but otherwise are efficient for consistency
+checking, subsumption checking and other operations.  
+
+Due to Theorem~\ref{thm:type0dl}, we sometimes call an \omsdl{} class
+expression a {\em Type-0 class expression}.
+
+%-----------------------------------------------------------------------------------
+\mycomment{
+However, CDF can be compared to FLORA facts, for which it is somewhat
+simpler.  CDF does not provide for a constraint that a given attribute
+is functional as is allowed in FLORA, although this extension can be
+provided if CDF instances are extended to have unqualified number
+restrictions
+
+Also, CDF does not provide for non-monotonic inheritance, but
+substitutes the monotonic inheritances described in
+Section~\ref{sec:inheritance}.  }

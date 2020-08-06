@@ -1,0 +1,17 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : s = http://description.org/schema/,xmlns : v = http://description.org/view/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://mycollege.edu/courses/6.001],[element(http://description.org/schema/ : students,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Bag,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://mycollege.edu/students/Amy],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://mycollege.edu/students/Tim],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://mycollege.edu/students/John],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://mycollege.edu/students/Mary],[]),element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : li,[resource = http://mycollege.edu/students/Sue],[])])])])])
+
+----------RDF----------
+
+[description(description,about(http://mycollege.edu/courses/6.001),[http://description.org/schema/ : students = description(http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag,_h715,[rdf : li = description(description,about(http://mycollege.edu/students/Amy),[]),rdf : li = description(description,about(http://mycollege.edu/students/Tim),[]),rdf : li = description(description,about(http://mycollege.edu/students/John),[]),rdf : li = description(description,about(http://mycollege.edu/students/Mary),[]),rdf : li = description(description,about(http://mycollege.edu/students/Sue),[])])])]
+
+--------Triples--------
+
+{__Description540, http://www.w3.org/1999/02/22-rdf-syntax-ns#type, http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag}
+{__Description540, http://www.w3.org/1999/02/22-rdf-syntax-ns#_1, http://mycollege.edu/students/Amy}
+{__Description540, http://www.w3.org/1999/02/22-rdf-syntax-ns#_2, http://mycollege.edu/students/Tim}
+{__Description540, http://www.w3.org/1999/02/22-rdf-syntax-ns#_3, http://mycollege.edu/students/John}
+{__Description540, http://www.w3.org/1999/02/22-rdf-syntax-ns#_4, http://mycollege.edu/students/Mary}
+{__Description540, http://www.w3.org/1999/02/22-rdf-syntax-ns#_5, http://mycollege.edu/students/Sue}
+{http://mycollege.edu/courses/6.001, http://description.org/schema/students, __Description540}

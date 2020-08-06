@@ -1,0 +1,839 @@
+
+:- import str_length/2, substring/4, string_substitute/4 from string.
+:- import ith/3, length/2, member/2, append/3 from basics.
+:- import lookup_eq/3,pairup/3,translate/3 from pairlist.
+:- import delete_ith/4 from listutil.
+
+:- op(1150,fx,constraints).
+
+:- debug_ctl(hide,[read_chr/2,
+		   split_clauses/6,
+		   get_constr_terms/4,
+		   remove_reps/2,
+		   find_terms_positions_arities/4,
+		   get_head_term_constr_occurrences/3,
+		   build_flattening_function_rules/3,
+		   build_flattening_correspondence_rules/2,
+		   flatten_rules/3,
+		   and2list/2,
+		   list2and/2,
+		   length/2,
+		   list_copies/3,
+		   unfold_body_calls/3,
+		   get_unflatten_calls/2,
+		   get_flatten_calls/3
+		  ]).
+
+
+flatten_chr(In,Out) :-
+	str_length(In,L),
+	SuffixOffset is L - 4,
+	string_substitute(In,[s(SuffixOffset,-1)],['_flat.chr'],Out),
+	flatten_file(In,Out).
+
+
+
+flatten(Mod) :-
+	str_cat(Mod,'.',Mod_),
+	str_cat(Mod_,chr,CHR),
+	str_cat(Mod,'_flat.',Flat_),
+	str_cat(Flat_,chr,FLAT),
+	flatten_file(CHR,FLAT).
+
+
+flatten_file(From,To) :-
+	read_chr(From,CHR),
+	flatten(CHR,Flat),
+	write_chrd(Flat,To).
+
+
+write_chrd(Attv,To) :-
+	tell(To),
+	write_content(Attv),
+	told.
+
+
+
+flatten(CHR,Flat) :-
+	split_clauses(CHR,Declarations,NeverStored,Rules,Other,Mod),
+	get_constr_terms(Declarations,Rules,ConstrTermDecls,ConstrTerms),
+	remove_reps(ConstrTermDecls,ConstrTermDeclarations),
+	find_terms_positions_arities(ConstrTermDeclarations,ConstrTerms,[],TermPAs),
+	get_head_term_constr_occurrences(Rules,ConstrTermDeclarations,HeadConstrTerms),
+	build_flattening_function_rules(TermPAs,HeadConstrTerms,FlatteningFunctionRules),
+	build_flattening_correspondence_rules(TermPAs,FlatteningMapRules),
+	% Uncomment the following line for flattening WITHOUT post-processing
+%	flatten_rules(TermPAs,Rules,PPRules),
+	% Uncomment the following two lines for flattening WITH post-processing
+	flatten_rules(TermPAs,Rules,FlatRules),
+	post_process_rules(FlatRules,FlatteningMapRules,PPRules),
+	flatten_constr_declaration(TermPAs,FlatConstrList,FlatDeclaration),
+	declare_flattening_functions(TermPAs,FunctionList,FunctionDecl),
+	reconstruct_declarations(constraints,Declarations,ConstrDecl),
+	flatten_never_stored_declarations(NeverStored,FlatConstrList,FlatNeverStored),	
+	append_lists([FlatNeverStored,ConstrTermDeclarations,FunctionList],NeverStoredAll),
+	reconstruct_declarations(never_stored,NeverStoredAll,NeverStoredDecl),
+	append_lists([[( :- chr_module(Mod))],
+		      ConstrDecl,
+	              FlatDeclaration,
+		      FunctionDecl,
+		      NeverStoredDecl,
+		      Other,
+		      FlatteningFunctionRules,
+		      FlatteningMapRules,
+		      PPRules],
+		     Flat).
+
+
+
+get_constr_terms(_,[],[],[]).
+get_constr_terms(Declarations,[R|Rs],ConstrTermDeclarations,ConstrTerms) :-
+	get_constr_terms_1(Declarations,R,CD,CT),
+	get_constr_terms(Declarations,Rs,CDs,CTs),
+	append(CD,CDs,ConstrTermDeclarations),
+	append(CT,CTs,ConstrTerms).
+
+
+get_constr_terms_1(Declarations,Rule,ConstrTermDeclarations,ConstrTerms) :-
+	Rule = pragma(rule(Head1,Head2,Guard,Body),_IDs,_Pragmas),
+	get_terms(Declarations,Head1,CD1,CT1),
+	get_terms(Declarations,Head2,CD2,CT2),
+	and2list(Guard,GuardList),
+	get_terms(Declarations,GuardList,CDG,CTG),
+	and2list(Body,BodyList),
+	get_terms(Declarations,BodyList,CDB,CTB),
+	append_lists([CD1,CD2,CDG,CDB],ConstrTermDeclarations),
+	append_lists([CT1,CT2,CTG,CTB],CTs),
+	copy_term(CTs,ConstrTerms).
+
+
+get_terms(_,[],[],[]).
+get_terms(Declarations,[C|Cs],CDs,CTs) :-
+	get_terms(Declarations,Cs,Ds,Ts),
+	C =.. [F|Args],
+	length(Args,A),
+	(member(F/A, Declarations),
+	 term_args(Args)
+	 -> CDs = [F/A|Ds], CTs = [C|Ts]
+	  ; CDs = Ds, CTs = Ts).
+
+
+term_args([A|As]) :-
+	compound(A)
+	-> true
+	 ; term_args(As).
+
+
+find_terms_positions_arities([],[],[],[]).
+find_terms_positions_arities([C|Cs],ConstrTermsIn,ConstrTermsOut,[PA|PAs]) :-
+	find_term_pa(C,ConstrTermsIn,CT,PA),
+	find_terms_positions_arities(Cs,CT,ConstrTermsOut,PAs).
+
+find_term_pa(F/A,ConstrTermsIn,ConstrTermsOut,F/A-FPA) :-
+	findall(CT, (member(CT,ConstrTermsIn),
+		     CT =.. [F|TArgs],
+		     length(TArgs,A)),
+		CTs),
+	get_pa(CTs,PAs),
+	remove_reps(PAs,PA1s),
+	get_max_arity_for_pos(PA1s,FPA),
+	list_diff(ConstrTermsIn,CTs,ConstrTermsOut).
+
+
+get_pa([],[]).
+get_pa([T|Ts],PAs) :-
+	T =..[_|Args],
+	get_pa_1(Args,1,PA1s),
+	get_pa(Ts,PA2s),
+	append(PA1s,PA2s,PAs).
+
+get_pa_1([],_,[]).
+get_pa_1([X|Xs],PX,PAs) :-
+	(compound(X)
+	 -> X =.. [_|Args],
+	    length(Args,AX),
+	    PAs = [PX-AX|PAXs]
+	  ; PAs = PAXs
+	),
+	P1 is PX + 1,
+	get_pa_1(Xs,P1,PAXs).
+
+
+get_max_arity_for_pos(L,PA) :-
+	sort(L,L1),
+	get_max_arity_for_pos_(L1,PA).
+
+get_max_arity_for_pos_([P-A],[P-A]).
+get_max_arity_for_pos_([P1-A1|PAs],MPAs) :-
+	(PAs = [P1-_|_]
+	 -> get_max_arity_for_pos_(PAs,MPAs)
+	  ; get_max_arity_for_pos_(PAs,MPA1s),
+	    append([P1-A1],MPA1s,MPAs)
+	).
+%get_max_arity_for_pos_([P-A|PAs],PA) :-
+%	(PAs = []
+%	 -> PA = P-A
+%	  ; get_max_arity_for_pos_(PAs,PA)
+%	).
+
+
+get_all_term_constr_occurrences([],_,[]).
+get_all_term_constr_occurrences([R|Rs],Declarations,TermConstrs) :-
+	get_all_term_constr_occurrences_1(R,Declarations,TC),
+	get_all_term_constr_occurrences(Rs,Declarations,TCs),
+	append(TC,TCs,TermConstrs).
+
+get_all_term_constr_occurrences_1(Rule,Decls,TermConstrs) :-
+	Rule = pragma(rule(Head1,Head2,Guard,Body),_IDs,_Pragmas),
+	get_term_constrs(Decls,Head1,TC1),
+	get_term_constrs(Decls,Head2,TC2),
+	and2list(Guard,GuardList),
+	get_term_constrs(Decls,GuardList,TCG),
+	and2list(Body,BodyList),
+	get_term_constrs(Decls,BodyList,TCB),
+	append_lists([TC1,TC2,TCG,TCB],TermConstrs).
+
+get_head_term_constr_occurrences([],_,[]).
+get_head_term_constr_occurrences([R|Rs],Declarations,TermConstrs) :-
+	get_head_term_constr_occurrences_1(R,Declarations,TC),
+	get_head_term_constr_occurrences(Rs,Declarations,TCs),
+	append(TC,TCs,TermConstrs).
+
+get_head_term_constr_occurrences_1(Rule,Decls,TermConstrs) :-
+	Rule = pragma(rule(Head1,Head2,_Guard,_Body),_IDs,_Pragmas),
+	get_term_constrs(Decls,Head1,TC1),
+	get_term_constrs(Decls,Head2,TC2),
+	append(TC1,TC2,TermConstrs).
+
+
+get_term_constrs(_,[],[]).
+get_term_constrs(Declarations,[C|Cs],TCs) :-
+	get_term_constrs(Declarations,Cs,Ts),
+	C =.. [F|Args],
+	length(Args,A),
+	(member(F/A, Declarations)
+	 -> TCs = [C|Ts]
+	  ; TCs = Ts).
+
+
+
+flatten_rules(_,[],[]).
+flatten_rules(TermPAs,[R|Rs],[FlatR|FRs]) :-
+	R = pragma(rule(Head1,Head2,Guard,Body),IDs,Pragmas),
+	flatten_list(TermPAs,Head1,FHead1,UGuards1),
+	flatten_list(TermPAs,Head2,FHead2,UGuards2),
+	and2list(Guard,LGuard),
+	append_lists([UGuards1,UGuards2,LGuard],FLGuard),
+	list2and(FLGuard,FGuard),
+	FBody = Body,
+	FR = pragma(rule(FHead1,FHead2,FGuard,FBody),IDs,Pragmas),
+	copy_term(FR,FlatR),
+	flatten_rules(TermPAs,Rs,FRs).
+
+
+% flatten list & generate unflatten guard for each flattened argument
+flatten_list(_,[],[],[]).
+flatten_list(TermPAs,[T|Ts],[FT|FTs],UnflattenGuards) :-
+	T =.. [F|Args],
+	length(Args,A),
+	(member(F/A-PAs,TermPAs)
+	 -> flatten_args(PAs,1,Args,FlatArgs,UG),
+	    str_cat(F,'_flat',FlatF),
+	    FT =.. [FlatF|FlatArgs],
+	    append(UG,UGs,UnflattenGuards)
+	  ; FT = T,
+	    UnflattenGuards = UGs
+	),
+	flatten_list(TermPAs,Ts,FTs,UGs).
+
+
+flatten_args([],_,Args,Args,[]).
+flatten_args([P-A|PAs],N,[Arg|Args],FlatArgs,UnflattenGuards) :-
+	N1 is N+1,
+	(P = N
+         -> (var(Arg)
+             -> A1 is A+1,
+		length(NewArgs,A1),
+	        append(NewArgs,FArgs,FlatArgs),
+		append(NewArgs,[Arg],GuardArgs),
+		UG =.. [unflatten|GuardArgs]
+	      ; Arg =.. [Term|TermArgs],
+	        length(TermArgs,TermA),
+		ExtraArgsA is A-TermA,
+		length(ExtraArgs,ExtraArgsA),
+		append([Term|TermArgs],ExtraArgs,NewArgs),
+		append(NewArgs,FArgs,FlatArgs),
+		build_unflatten_guard(NewArgs,UG)
+	    ),
+	    flatten_args(PAs,N1,Args,FArgs,UGs),
+	    UnflattenGuards = [UG|UGs]
+	  ; flatten_args([P-A|PAs],N1,Args,FArgs,UnflattenGuards),
+	    FlatArgs = [Arg|FArgs]
+	).
+	
+
+build_unflatten_guard(Args,Guard) :-
+	append(Args,[_],GArgs),
+	Guard =.. [unflatten|GArgs].
+
+
+
+post_process_rules([],_,[]).
+post_process_rules([R|Rs],FlatteningMapRules,[PPR|PPRs]) :-
+	unfold_body_calls(R,FlatteningMapRules,UR),
+	flatten_unifications(UR),
+	drop_unused_unflatten_guards(UR,CR),
+	refold_body_calls(CR,PPR),
+	post_process_rules(Rs,FlatteningMapRules,PPRs).
+
+unfold_body_calls(Rule,FlatteningMapRules,URule) :-
+	Rule = pragma(rule(Head1,Head2,Guard,Body),IDs,Pragmas),
+	and2list(Body,BL),
+	and2list(Guard,GL),
+	get_unflatten_calls(GL,UnflattenCalls),
+	unfold_body_calls_(BL,UnflattenCalls,FlatteningMapRules,UBL),
+	list2and(UBL,UBody),
+	copy_term(pragma(rule(Head1,Head2,Guard,UBody),IDs,Pragmas),URule).	
+
+unfold_body_calls_([],_,_,[]).
+unfold_body_calls_([C|Cs],UnflattenCalls,FlatteningMapRules,Calls) :-
+	unfold_body_call(C,FlatteningMapRules,UC),
+	apply_equivalence(UC,UnflattenCalls,EqC),
+	unfold_body_calls_(Cs,UnflattenCalls,FlatteningMapRules,EqCs),
+	append(EqC,EqCs,Calls).
+
+unfold_body_call(Call,[],[Call]).
+unfold_body_call(Call,[R|Rs],FlatCall) :-
+	Call =.. [CF|CArgs],
+	length(CArgs,CA),
+	
+	R = pragma(rule([Constr],[],true,(Flatten,FlatConstr)),_,_),
+	Constr =.. [F|Args],
+	length(Args,A),
+	
+	(CF/CA = F/A
+	 -> pairup(Args,CArgs,Dict),
+	    list_copies([Flatten,FlatConstr],Dict,[FlattenCp,FlatConstrCp]),
+	    FlatCall = [FlattenCp,FlatConstrCp]
+	  ; unfold_body_call(Call,Rs,FlatCall)
+	).
+
+
+apply_equivalence(C,UnflattenCalls,EqC) :-
+	(C = [FlattenCall,FlatConstr],
+	 arg(1,FlattenCall,X),
+	 member(unflatten(X1,X1s),UnflattenCalls),
+	 X == X1
+	 -> FlattenCall =.. [flatten,X|Xs],
+	    pairup(Xs,X1s,Dict),
+	    term_map(FlatConstr,Dict,FlatConstrCp),
+	    EqC = [FlatConstrCp]
+	  ; EqC = C
+	).
+
+
+get_unflatten_calls([],[]).
+get_unflatten_calls([C|Cs],UnflattenCalls) :-
+	(C =.. [unflatten|Args]
+	 -> pick_last(Args,Arg,Rest),
+	    UC = unflatten(Arg,Rest),
+	    UnflattenCalls = [UC|UCs]
+	  ; UnflattenCalls = UCs
+	),
+	get_unflatten_calls(Cs,UCs).
+
+% same, but saving the other guard calls in a separate list
+get_unflatten_calls([],[],[]).
+get_unflatten_calls([C|Cs],UnflattenCalls,OtherCalls) :-
+	(C =.. [unflatten|Args]
+	 -> pick_last(Args,Arg,Rest),
+	    UC = unflatten(Arg,Rest),
+	    UnflattenCalls = [UC|UCs],
+	    OtherCalls = OCs
+	  ; UnflattenCalls = UCs,
+	    OtherCalls = [C|OCs]
+	),
+	get_unflatten_calls(Cs,UCs,OCs).
+
+pick_last([X|Xs],Last,Rest) :-
+	(Xs = []
+	 -> Last = X,
+	    Rest = []
+	  ; pick_last(Xs,Last,Rest1),
+	    Rest = [X|Rest1]
+	).
+
+
+
+
+flatten_unifications(Rule) :-
+	Rule = pragma(rule(_Head1,_Head2,Guard,_Body),_IDs,_Pragmas),
+	and2list(Guard,GL),
+	get_unflatten_calls(GL,UnflattenCalls),
+	get_unifications(GL,Unifications),
+	flatten_unifications(UnflattenCalls,Unifications).
+
+flatten_unifications([],_).
+flatten_unifications([C|Cs],Unifications) :-
+	flatten_unifications(C,Cs,Unifications),
+	flatten_unifications(Cs,Unifications).
+
+flatten_unifications(unflatten(Arg,Args),Calls,Unifications) :-
+	(Calls = []
+	 -> true
+	  ; get_unified_vars(Arg,Unifications,Vs),
+	    get_unified_calls(Arg,Vs,Calls,UCalls),
+	    pairwise_unify(Args,UCalls)
+	).
+
+get_unified_vars(_,[],[]).
+get_unified_vars(X,[Y=Z|YZs],Vs) :-
+	(X == Y
+	 -> Vs = [Z|Ws]
+	  ; (X == Z
+	     -> Vs = [Y|Ws]
+	      ; Vs = Ws
+	    )
+	),
+	get_unified_vars(X,YZs,Ws).
+
+get_unified_calls(_,_,[],[]).
+get_unified_calls(X,Vs,[unflatten(Y,Zs)|Cs],UCalls) :-
+	(var_member(Y,[X|Vs])
+	 -> UCalls = [unflatten(Y,Zs)|UCs]
+	  ; UCalls = UCs
+	),
+	get_unified_calls(X,Vs,Cs,UCs).
+
+
+pairwise_unify(_,[]).
+pairwise_unify(Args,[unflatten(_,Args1)|Cs]) :-
+	pairwise_unify_(Args,Args1),
+	pairwise_unify(Args,Cs).
+
+pairwise_unify_([],[]).
+pairwise_unify_([X|Xs],[Y|Ys]) :-
+	X = Y,
+	pairwise_unify_(Xs,Ys).
+	
+
+get_unifications([],[]).
+get_unifications([T|Ts],Us) :-
+	(T = (_=_)
+	 -> Us = [T|U1s]
+	  ; Us = U1s
+	),
+	get_unifications(Ts,U1s).
+
+
+
+
+
+
+drop_unused_unflatten_guards(Rule,NewRule) :-
+	Rule = pragma(rule(Head1,Head2,Guard,Body),IDs,Pragmas),
+	and2list(Guard,GL),
+	get_unflatten_calls(GL,UnflattenCalls,OtherCalls),
+	get_term_vars(OtherCalls,OtherCallsVs),
+	check_used(UnflattenCalls,OtherCallsVs,GuardUsedUCs,GuardUnusedUCs),
+	and2list(Body,BL),
+	get_term_vars(BL,BodyVs),
+	check_used(GuardUnusedUCs,BodyVs,BodyUsedUCs,_),
+	append(GuardUsedUCs,BodyUsedUCs,UsedUCs),
+	reconstruct_unflatten_calls(UsedUCs,NewUCs),
+	append(NewUCs,OtherCalls,NewGL),
+	list2and(NewGL,NewGuard),
+	copy_term(pragma(rule(Head1,Head2,NewGuard,Body),IDs,Pragmas),NewRule).
+
+check_used([],_,[],[]).
+check_used([unflatten(X,Xs)|Cs],Vars,UsedCs,UnusedCs) :-
+	(var_member(X,Vars)
+	 -> UsedCs = [unflatten(X,Xs)|UCs],
+	    UnusedCs = NCs
+	  ; UsedCs = UCs,
+	    UnusedCs = [unflatten(X,Xs)|NCs]
+	),
+	check_used(Cs,Vars,UCs,NCs).
+			    
+
+
+get_term_vars(X,[X]) :-
+	var(X), !.
+get_term_vars(A,[]) :-
+	atomic(A), !.
+get_term_vars([X|Xs],Vars) :-
+	!,
+	get_term_vars(X,VX),
+	get_term_vars(Xs,VXs),
+	append(VX,VXs,Vars).
+get_term_vars(T,Vars) :-
+	T =.. [_|Args],
+	get_term_vars(Args,Vars).
+
+
+
+reconstruct_unflatten_calls([],[]).
+reconstruct_unflatten_calls([unflatten(X,Xs)|Ts],[NewT|NewTs]) :-
+	append(Xs,[X],NewXs),
+	NewT =.. [unflatten|NewXs],
+	reconstruct_unflatten_calls(Ts,NewTs).
+
+
+
+refold_body_calls(Rule,NewRule) :-
+	Rule = pragma(rule(Head1,Head2,Guard,Body),IDs,Pragmas),
+	and2list(Body,BL),
+	refold_calls(BL,NewBL),
+	list2and(NewBL,NewBody),
+	copy_term(pragma(rule(Head1,Head2,Guard,NewBody),IDs,Pragmas),NewRule).
+
+
+refold_calls([],[]).
+refold_calls([C|Cs],[Call|Calls]) :-
+	(functor(C,flatten,_)
+	 -> select_unfolding(Cs,UnfoldingCalls,FlatCall,OtherCalls),
+	    refold_call([C|UnfoldingCalls],FlatCall,Call),
+	    refold_calls(OtherCalls,Calls)
+%	 -> Cs = [FlatC|C1s],
+%	    refold_call(C,FlatC,Call),
+%	    refold_calls(C1s,Calls)
+	  ; Call = C,
+	    refold_calls(Cs,Calls)
+	).
+
+select_unfolding([C|Cs],UnfoldingCalls,FlatCall,OtherCalls) :-
+	(functor(C,flatten,_)
+	 -> select_unfolding(Cs,UnfoldingCs,FlatCall,OtherCalls),
+	    UnfoldingCalls = [C|UnfoldingCs]
+	  ; UnfoldingCalls = [],
+	    FlatCall = C,
+	    OtherCalls = Cs
+	).
+
+/*
+refold_call(Flatten,Flat,Call) :-
+	Flatten =.. [flatten,Arg,Arg1|Args],
+	Flat =.. [FlatFunctor|FlatArgs],
+	ith(BeginOff,FlatArgs,Arg1),
+	length([Arg1|Args],EndOff),
+	list_replace(FlatArgs,[s(BeginOff,EndOff)],[[Arg]],NewArgs),
+
+	str_length(FlatFunctor,L),
+	Offset is L-5,
+	substring(FlatFunctor,0,Offset,NewFunctor),
+	Call =.. [NewFunctor|NewArgs].
+*/
+
+
+refold_call(FlattenCs,Flat,Call) :-
+	Flat =.. [FlatFunctor|FlatArgs],
+	refold_args(FlattenCs,FlatArgs,NewArgs),
+
+	str_length(FlatFunctor,L),
+	Offset is L-5,
+	substring(FlatFunctor,0,Offset,NewFunctor),
+	Call =.. [NewFunctor|NewArgs].
+
+refold_args([],Args,Args).
+refold_args([FlattenCall|FlattenCs],FlatArgs,NewArgs) :-
+	FlattenCall =.. [flatten,Arg,Arg1|Args],
+	ith(BeginOff,FlatArgs,Arg1),
+	length([Arg1|Args],Length),
+	EndOff is BeginOff+Length-1,
+	list_replace(FlatArgs,[s(BeginOff,EndOff)],[[Arg]],FlatArgs1),
+	refold_args(FlattenCs,FlatArgs1,NewArgs).
+
+
+list_replace(List,[],[],List).
+list_replace(ListIn,[IndexTerm|ITs],[ReplacementList|RLs],ListOut) :-
+	list_replace_one(ListIn,IndexTerm,ReplacementList,List),
+	list_replace(List,ITs,RLs,ListOut).
+
+list_replace_one(ListIn,IndexTerm,ReplacementList,ListOut) :-
+	split_list_3(ListIn,IndexTerm,List1,_List2,List3),
+	append(List1,ReplacementList,List),
+	append(List,List3,ListOut).
+
+split_list_3(List,IndexTerm,List1,List2,List3) :-
+	IndexTerm =.. [_,Begin,End],
+	split_list_2(List,1,Begin,List1,RestList),
+	End1 is End+1,
+	split_list_2(RestList,Begin,End1,List2,List3).
+
+split_list_2(List,From,To,List1,List2) :-
+	(From = To
+	 -> List1 = [],
+	    List2 = List
+	  ; Next is From+1,
+	    List = [X|Xs],
+	    split_list_2(Xs,Next,To,L1,List2),
+	    List1 = [X|L1]
+	).
+	
+
+	
+% term copies with one dictionary:
+% if a var is not Dict, it remains unchanged
+term_map(X,Dict,Y) :-
+	(var(X)
+	 -> (lookup_eq(Dict,X,Y)
+	     -> true
+	      ; Y = X
+	    )
+	  ; functor(X,XF,XA),
+	    functor(Y,XF,XA),
+	    X =.. [_|XArgs],
+	    Y =.. [_|YArgs],
+	    term_map_list(XArgs,Dict,YArgs)
+	).
+
+term_map_list([],_Dict,[]).
+term_map_list([X|Xs],Dict,[Y|Ys]) :-
+   term_map(X,Dict,Y),
+   term_map_list(Xs,Dict,Ys).
+
+
+
+
+
+flatten_constr_declaration([],[],[]) :- !.
+flatten_constr_declaration(TermPAs,FlatConstrList,[Decl]) :-
+	flatten_declarations(TermPAs,FlatConstrList),
+	list2and(FlatConstrList,FlatCs),
+	Decl = (:- constraints FlatCs).
+
+flatten_declarations([],[]).
+flatten_declarations([D|Ds],[FD|FDs]) :-
+	flatten_declaration(D,FD),
+	flatten_declarations(Ds,FDs).
+
+flatten_declaration(F/A-PAs,FlatF/FlatA) :-
+	str_cat(F,'_flat',FlatF),
+	count_extra_args(PAs,N),
+	FlatA is A+N.
+
+reconstruct_declarations(_Mod,[],[]) :- !.
+reconstruct_declarations(Mod,Constrs,[(:- Decl)]) :-
+        list2and(Constrs,ConstrL),
+        Decl =.. [Mod,ConstrL].
+
+
+flatten_never_stored_declarations([],_,[]).
+flatten_never_stored_declarations([C/A|Cs],CFs,[D|Ds]) :-
+	str_cat(C,'_flat',CF),
+	(member(CF/AF,CFs)
+	 -> D = CF/AF
+	  ; D = C/A
+	),
+	flatten_never_stored_declarations(Cs,CFs,Ds).
+
+
+declare_flattening_functions(TermPAs,FunctionList,DeclList) :-
+	declare_flattening_functions_(TermPAs,AllFunctionList),
+	remove_reps(AllFunctionList,FunctionList),
+	(FunctionList = []
+	 -> DeclList = []
+	  ; list2and(FunctionList,Functions),
+	    DeclList = [(:- constraints Functions)]
+	).
+
+declare_flattening_functions_([],[]).
+declare_flattening_functions_([_F/_A-PAs|TermPAs],Functions) :-
+        declare_flattening_functions_one(PAs,FL),
+	declare_flattening_functions_(TermPAs,FLs),
+	append(FL,FLs,Functions).
+
+declare_flattening_functions_one([],[]).
+declare_flattening_functions_one([_P-A|PAs],FunctionDecls) :-
+	A1 is A+2,
+	declare_flattening_functions_one(PAs,FDs),
+	append([flatten/A1,unflatten/A1],FDs,FunctionDecls).
+	
+
+
+
+build_flattening_function_rules(TermPAs,Ts,Rs) :-
+	remove_reps(Ts,UniqueTs),
+	build_flattening_function_rules_(TermPAs,UniqueTs,FRs,UFRs),
+	append(FRs,UFRs,AllRs),
+	remove_reps(AllRs,Rs).
+
+build_flattening_function_rules_(_,[],[],[]).
+build_flattening_function_rules_(TermPAs,[T|Ts],FlattenRules,UnflattenRules) :-
+	T =.. [F|Args],
+	length(Args,A),
+	(member(F/A-PAs,TermPAs)
+	 -> build_flattening_function_rules_1(PAs,1,Args,FR,UFR),
+	    append(FR,FRs,FlattenRules),
+	    append(UFR,UFRs,UnflattenRules)
+	  ; FlattenRules = FRs,
+	    UnflattenRules = UFRs
+	),
+	build_flattening_function_rules_(TermPAs,Ts,FRs,UFRs).
+
+build_flattening_function_rules_1([],_,_,[],[]).
+build_flattening_function_rules_1([P-A|PAs],N,[Arg|Args],FlattenRules,UnflattenRules) :-
+	A1 is A+1,
+	N1 is N+1,
+	(P = N
+         -> (var(Arg)
+             -> build_const_list(A,ExtraArgs),
+		FlattenArgs = [Arg|ExtraArgs],
+		length(HeadArgs,A1),
+		FHead =.. [flatten,Arg|HeadArgs],
+		pair_assign(HeadArgs,FlattenArgs,FBody),
+		copy_term(pragma(rule([FHead],[],true,FBody),[],[]),FR),
+
+		length(NewArgs,A),
+		append([Arg|NewArgs],[NewArg],UnflattenArgs),		
+		UHead =.. [unflatten|UnflattenArgs],
+		UBody = (NewArg = Arg),
+		copy_term(pragma(rule([UHead],[],true,UBody),[],[]),UFR)
+	    
+	      ; Arg =.. [Term|TermArgs],
+	        length(TermArgs,TermA),
+		ExtraArgsA is A-TermA,		       
+		build_const_list(ExtraArgsA,ExtraArgs),
+		append([Term|TermArgs],ExtraArgs,FlattenArgs),
+		length(HeadArgs,A1),
+		FHead =.. [flatten,Arg|HeadArgs],
+		pair_assign(HeadArgs,FlattenArgs,FBody),
+		copy_term(pragma(rule([FHead],[],true,FBody),[],[]),FR),
+
+		length(NewArgs,ExtraArgsA),
+		append_lists([[Term|TermArgs],NewArgs,[NewArg]],UnflattenArgs),
+		UHead =.. [unflatten|UnflattenArgs],
+		UBody = (NewArg = Arg),
+		copy_term(pragma(rule([UHead],[],true,UBody),[],[]),UFR)
+	    ),
+	    build_flattening_function_rules_1(PAs,N1,Args,FRs,UFRs),
+	    FlattenRules = [FR|FRs],
+	    UnflattenRules = [UFR|UFRs]
+	  ; build_flattening_function_rules_1([P-A|PAs],N1,Args,FlattenRules,UnflattenRules)
+	).
+	
+
+build_const_list(N,L) :-
+	(N = 0
+	 -> L = []
+	  ; N1 is N-1,
+	    build_const_list(N1,L1),
+	    L = [e|L1]
+	).
+	
+
+pair_assign(Heads1,Heads2,Body) :-
+	pair_assign_(Heads1,Heads2,BodyList),
+	list2and(BodyList,Body).
+
+pair_assign_([],[],[]).
+pair_assign_([H1|H1s],[H2|H2s],[H1=H2|Hs]) :-
+	pair_assign_(H1s,H2s,Hs).
+
+
+
+build_flattening_correspondence_rules([],[]).
+build_flattening_correspondence_rules([F/A-PA|PAs],[FMR|FMRs]) :-
+	 build_flattening_correspondence_rule(F,A,PA,FMR),
+	 build_flattening_correspondence_rules(PAs,FMRs).
+
+
+build_flattening_correspondence_rule(F,A,PAs,FMR) :-
+	length(HeadArgs,A),
+	Head =.. [F|HeadArgs],
+
+	flatten_var_list(PAs,HeadArgs,FlatArgs,FlattenCalls),
+
+	str_cat(F, '_flat', FlatCallName),
+	replace_flattened_args(HeadArgs,FlatArgs,FlatCallArgs),
+	FlatCall =.. [FlatCallName|FlatCallArgs],
+
+	copy_term(pragma(rule([Head],[],true,(FlattenCalls,FlatCall)),[],[]),FMR).
+
+
+flatten_var_list(PAs,Args,FlatArgs,FlattenCalls) :-
+	flatten_var_list(PAs,1,Args,FlatArgs,FlattenCallList),
+	list2and(FlattenCallList,FlattenCalls).
+
+flatten_var_list([],_,[],[],[]).
+flatten_var_list([],N,[_Arg|Args],[[]|FAs],[]) :-
+	flatten_var_list([],N,Args,FAs,[]).
+flatten_var_list([P-A|PAs],N,[Arg|Args],[FlatArgs|FAs],FlattenCalls) :-
+	N1 is N+1,
+	(P = N
+	 -> A1 is A+1,
+	    length(FlatArgs,A1),
+	    FC =.. [flatten,Arg|FlatArgs],
+	    flatten_var_list(PAs,N1,Args,FAs,FCs),
+	    FlattenCalls = [FC|FCs]
+	  ; FlatArgs = [],
+	    flatten_var_list([P-A|PAs],N1,Args,FAs,FlattenCalls)
+	).
+	
+
+replace_flattened_args([],[],[]).
+replace_flattened_args([A|As],[AL|ALs],FlattenedArgs) :-
+	replace_flattened_args(As,ALs,FAs),
+	(AL = []
+	 -> FlattenedArgs = [A|FAs]
+	  ; append(AL,FAs,FlattenedArgs)
+	).
+
+
+count_extra_args([],0).
+count_extra_args([_-A|PAs],N) :-
+	count_extra_args(PAs,N1),
+	N is N1+A.
+
+
+remove_reps([],[]).
+remove_reps([X|Xs],Ys) :-
+	remove_reps(Xs,Zs),
+	(term_arg_member(X,Zs)
+	 -> Ys = Zs
+	  ; Ys = [X|Zs]
+	).
+
+
+term_arg_member(X,Xs) :-
+	var(X),
+	var_in_list(Xs).
+term_arg_member(X,[Y|Ys]) :-
+	compound(X),
+	(compound(Y),
+	 X =.. [F|ArgsX],
+	 Y =.. [F|ArgsY],
+	 same_term_structure(ArgsX,ArgsY)
+	 -> true
+	  ; term_arg_member(X,Ys)
+	).
+
+%term_arg_member(X,[Y|Ys]) :-
+%	(X =.. [F|ArgsX],
+%	 Y =.. [F|ArgsY],
+%	 same_term_structure(ArgsX,ArgsY)
+%	 -> true
+%	  ; term_arg_member(X,Ys)
+%	).
+
+same_term_structure([],[]).
+same_term_structure([X|Xs],[Y|Ys]) :-
+	same_term_structure_1(X,Y),
+	same_term_structure(Xs,Ys).
+
+same_term_structure_1(X,Y) :-
+	(var(X)
+	 -> var(Y)
+	  ; nonvar(Y),
+	    X =.. [F|ArgsX],
+	    Y =.. [F|ArgsY],
+	    same_term_structure(ArgsX,ArgsY)
+	).
+
+list_diff([],_,[]).
+list_diff([X|Xs],Ys,Zs) :-
+	list_diff(Xs,Ys,Vs),
+	(member(X,Ys)
+	 -> Zs = Vs
+	  ; Zs = [X|Vs]
+	).

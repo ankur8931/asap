@@ -1,0 +1,1699 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en">
+<meta name="GENERATOR" content="Microsoft FrontPage 5.0">
+<meta name="ProgId" content="FrontPage.Editor.Document">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>W4 Project</title>
+</head>
+
+<body>
+
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber1">
+    <tr>
+      <td><a href="w4small.GIF">
+      <img border="0" src="w4small.GIF" width="101" height="101"></a></td>
+      <td>
+      <p align="center"><span lang="pt"><font face="Arial" size="7">Module XML 
+      DOM</font></span></td>
+    </tr>
+    <tr>
+      <td><span lang="pt">The W4 project</span></td>
+      <td>
+      <p align="center">&nbsp;</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center"><font face="Arial">(c)
+      <a href="http://centria.di.fct.unl.pt/~cd">Carlos Viegas Damásio</a>,
+      <span lang="pt">November </span>2003</font></td>
+    </tr>
+  </table>
+  </center>
+</div>
+<p align="left">&nbsp;</p>
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="5" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber2">
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF"><span lang="pt">1.
+      </span>Description</font></td>
+    </tr>
+    <tr>
+      <td width="100%"><span lang="en-us">This  </span><span lang="pt">module 
+      supports the construction of the W4 XML term representation, according to
+      <a href="http://www.w3.org/TR/xml-infoset">XML Info Sets</a>. XML 
+      Namespaces and XML Base are fully supported.</span><p><span lang="pt">The 
+      fundamental implementations decisions are the following:</span></p>
+      <ul>
+        <li><span lang="pt">All names occurring in a XML document are 
+        represented by Prolog constants, in UTF-8 encoding.</span></li>
+        <li><span lang="pt">All text content and attribute values are 
+        represented by lists of Unicode character codes.</span></li>
+        <li>The properties which involve referencing other information items are 
+        not implemented<span lang="pt"> ( <b>[parent],</b> <b>[references], 
+        [notation] </b>and<b> [owner element]</b>)</span>.<span lang="pt">
+        </span>This is motivated by the fact that some Prolog system<span lang="pt">s</span> do not give 
+        support <span lang="pt">to</span> cyclic terms. <br>
+        However, <span lang="pt">it is planned </span>an extension to this 
+        module <span lang="pt">conformant with </span>&nbsp;the full 
+        recommendation<span lang="pt">.</span></li>
+        <li><span lang="pt">XML Base and SystemID URIs (and IRIs) have a special 
+        internal structure, as defined in module <a href="iri.htm">IRI</a>, in 
+        order to optimize resolution of relative references.</span></li>
+        <li>In most situations unknown or no value properties are represented by 
+        empty lists. </li>
+      </ul>
+      <p>In order to maintain compatibility for subsequent versions of our 
+      parser, all applications should use the <span lang="pt">described </span>
+      predicates to extract properties from the information items<span lang="pt">. 
+      For examples, the reader is referred to the implementation of XML 
+      Exclusive Canonicalization and XML Term NS. </span></td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">2. 
+      Representation of a XML document</font></span><p><span lang="pt">The W4 
+      parser creates a term structure containing the full representation of the 
+      read XML document. This information is stored in a term of the form <b>
+      document/10</b>, from which every information item in the XML is 
+      accessible. The constructed representation differs in some minor aspects 
+      from the XML Info Sets, in particular by constructing an internal 
+      representation for the DTD. The documentation is adapted from the 
+      specification of XML Info Sets. In the following tables, text in bold face 
+      represents items or properties according to the XML Info Sets.</span></p>
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">2.1 
+      The document and its content</font></span></p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber3">
+        <tr>
+          <td width="100%" colspan="2"><b><span lang="pt">The Document 
+          Information Item</span></b></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">document(</span>Children,DocumentElement,Notations,Unparsed,BaseURI,CharacterEncoding,Standalone,Version,<span lang="pt">All,</span>DTD<span lang="pt">)</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Children:</span></b></td>
+          <td width="84%">An ordered <span lang="pt">NodeL</span>ist of child 
+          information items, in document order.<span lang="pt"> There is only 
+          one element information item in this list (the Document Element). This 
+          list also contains all processing instruction items, comment items, 
+          and Document Type Declaration item occuring in the Prolog and Epilog 
+          of the XML document.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">DocumentElement:</span></b></td>
+          <td width="84%">The element information item corresponding to the 
+          document element<span lang="pt">.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Notations:</span></b></td>
+          <td width="84%"><span lang="pt">An ordered NamedMap </span>of notation information 
+          items, one for each notation declared in the DTD. <br>
+          <span lang="pt">The ordering key is the notation name.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Unparsed:</span></b></td>
+          <td width="84%"><span lang="pt">An ordered NamedMap</span> of<span lang="pt">
+          </span>unparsed entity 
+          information items, one for each unparsed entity declared in the DTD.
+          <br>
+          <span lang="pt">The ordering key is the name of the unparsed entity.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">BaseURI:</span></b></td>
+          <td width="84%">The base URI <span lang="pt">term </span>of the 
+          document entity<span lang="pt">, according to the <a href="iri.htm">
+          IRI term</a> representation.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">CharacterEncoding:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the </span>name of the 
+          character encoding scheme in which the document entity is expressed</td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Standalone:</span></b></td>
+          <td width="84%">An indication of the standalone status of the 
+          document, either <span lang="pt">the constant </span><b>yes</b> or <b>no</b>.<span lang="pt">
+          <br>
+          If there is no standalone document declaration, then this argument is 
+          set to the empty list.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Version:</span></b></td>
+          <td width="84%"><span lang="pt">A constant representing the XML version 
+          of the document (currently, only '1.0'). <br>
+          The empty list [] if there is no XML declaration.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">All:</span></b></td>
+          <td width="84%"><span lang="pt">The constant <b>yes</b> or <b>no</b>
+          </span>indicati<span lang="pt">ng</span> 
+          whether the processor has read the complete DTD.<br>
+          <span lang="pt">The empty list [] if there is no DTD.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">DTD:</span></td>
+          <td width="84%"><span lang="pt">The Document Type Declaration term 
+          representing the full DTD.<br>
+          The empty list [] if there is no DTD.</span></td>
+        </tr>
+      </table>
+      <p><br>
+&nbsp;</p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber4">
+        <tr>
+          <td width="100%" colspan="2"><b><span lang="pt">Element Information 
+          Items</span></b></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2">element(NamespaceURI,<span lang="pt">
+          </span>LocalName,<span lang="pt"> </span>Prefix,<span lang="pt">
+          </span>Attributes,<span lang="pt">
+          </span>NameAttributes,<span lang="pt"> </span>Children,<span lang="pt"> </span>InScope,<span lang="pt">
+          </span>BaseURI,<span lang="pt"> </span>Lang)</td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>NamespaceURI</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">A<span lang="pt"> constant with the </span>namespace 
+          name, if any, of the element type<span lang="pt">. <br>
+          The empty constant '' if </span>the element does not belong to a 
+          namespace. </td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>LocalName</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A constant representing the local part 
+          of the element-type name.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Prefix</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">The namespace prefix part of the element-type name<span lang="pt">.
+          <br>
+          The empty constant '' if the name is unprefixed.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Attributes</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">An ordered NamedMap of attribute 
+          information items, one for each </span>of the attributes (specified or 
+          defaulted from the DTD) of this element<span lang="pt">.<br>
+          The map is ordered by the key&nbsp; <i>ename(NamespaceURI,LocalName)</i> 
+          obtained from the NamespaceURI and LocalName of each attribute.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>NameAttributes</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">An ordered NamedMap of attribute 
+          information items, </span>one for each of the namespace declarations 
+          (specified or defaulted from the DTD) of this element.<span lang="pt">
+          </span>A declaration of the form xmlns=&quot;&quot;, which undeclares the 
+          default namespace, counts as a namespace declaration. By definition, 
+          all namespace attributes have a namespace URI of 
+          http://www.w3.org/2000/xmlns/<span lang="pt"><br>
+          The map is ordered by the key 
+          ename('http://www.w3.org/2000/xmlns/',Prefix), where Prefix is the 
+          constant corresponding to the declared prefix by the namespace attribute. 
+          Prefix is the empty constant '' if the declaration is of the form 
+          xmlns=&quot;[SOME URI]&quot;.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Children</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">An ordered <span lang="pt">Node L</span>ist of child 
+          information items, in document order. This list contains element, 
+          processing instruction, unexpanded entity reference, character, and 
+          comment information items, one for each element, processing 
+          instruction, reference to an unprocessed external entity, data 
+          character, and comment appearing immediately within the current 
+          element.</td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>InScope</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">An <span lang="pt">ordered NamedMap of namespace URIs,
+          </span>one for each of the namespaces in effect for this element.<span lang="pt"> 
+          The map is ordered by Prefix, and maps the Prefix to the namespace URI 
+          (a namespace information item). The map always contains and item with
+          </span>prefix xml which is implicitly bound to the namespace name<span lang="pt">
+          </span>http://www.w3.org/XML/1998/namespace.<br>
+          <span lang="pt">Furthermore, and deviating from XML Info Sets, the map 
+          also contains a value for the empty prefix '', corresponding to the 
+          default namespace. If there is no default namespace declared the value 
+          for '' is also the empty constant.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>BaseURI</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">The base URI <span lang="pt">term </span>of the
+          <span lang="pt">element, according to the <a href="iri.htm">IRI term</a> 
+          representation.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">Lang:</span></td>
+          <td width="84%"><span lang="pt">The language tag in effect for the 
+          element, represented by a list of Unicode character codes. This might have 
+          been declared in the element or inherited from an ancestor element 
+          declaration.</span></td>
+        </tr>
+      </table>
+      <p><span lang="pt">The current implementation does not support the <b>
+      [parent]</b> propery of Element Information Items.</span> </p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber6">
+        <tr>
+          <td width="100%" colspan="2"><b><span lang="pt">Attribute Information 
+          Items</span></b></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2">attribute(NamespaceURI,<span lang="pt">
+          </span>LocalName,<span lang="pt"> </span>Prefix,<span lang="pt">
+          </span>Value,<span lang="pt"> </span>Specified,<span lang="pt"> </span>
+          Type)</td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>NamespaceURI</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">A<span lang="pt"> constant with the </span>namespace 
+          name, if any, of the <span lang="pt">attribute. <br>
+          The empty constant '' if </span>the <span lang="pt">attribute</span> does 
+          not belong to a namespace. </td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>LocalName</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A constant representing the local part 
+          of the attribute name.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Prefix</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">The namespace prefix part of the <span lang="pt">
+          attribute</span> name<span lang="pt">. <br>
+          The empty constant '' if the name is unprefixed.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Value:</span></b></td>
+          <td width="84%"><span lang="pt">A list of Unicode character codes with the 
+          normalized attribute value.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Specified</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">The constant <b>yes</b> if this attribute 
+          was </span>actually specified in the start-tag of its element<span lang="pt">; 
+          the constant <b>no</b> if it was defaulted from the DTD.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Type</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">The type declared for this attribute 
+          in the DTD. Currently, it is always set to the empty list. <br>
+          The efficiency impact of supporting this property for documents 
+          without DTDs is being evaluated.</span></td>
+        </tr>
+      </table>
+      <p><span lang="pt">The current implementation does not support the <b>
+      [references]</b> and <b>[owner element]</b> properties of Attribute 
+      Information Items.</span> </p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber7">
+        <tr>
+          <td width="100%" colspan="2"><b><span lang="pt">Processing Instruction 
+          Information Items</span></b></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">
+          pi(Target,Content,BaseURI)</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Target:</span></b></td>
+          <td width="84%">A<span lang="pt"> constant </span>representing the target 
+          part of the processing instruction<span lang="pt">.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Content</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A list of Unicode character codes </span>
+          representing the content of the processing instruction, excluding the 
+          target and any white space immediately following it. </td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>BaseURI</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%">The base URI <span lang="pt">term </span>of the PI<span lang="pt">, 
+          according to the <a href="iri.htm">IRI term</a> representation.</span></td>
+        </tr>
+      </table>
+      <p><span lang="pt">The current implementation does not support the <b>
+      [notation]</b> and <b>[parent]</b> properties of Processing Instruction 
+      Information Items.</span> </p>
+      <font SIZE="2">
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber8">
+        <tr>
+          <td width="100%" colspan="2"><b><span lang="pt">Comment Information 
+          Items</span></b></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">comment(Content)</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Content</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A list of Unicode character codes </span>
+          representing the content of the <span lang="pt">comment</span>. </td>
+        </tr>
+      </table>
+      </font>
+      <p><span lang="pt">The current implementation does not support the <b>
+      [parent]</b> property of Comment Information Items.</span> </p>
+      <font SIZE="2">
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber9">
+        <tr>
+          <td width="100%" colspan="2"><b><span lang="pt">Character Information 
+          Items</span></b></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">pcdata(Content) or 
+          whitespace(Content)</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Content</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A list of Unicode character codes </span>
+          representing <span lang="pt">text content</span>. <span lang="pt">If 
+          content </span>is white space appearing within element content<span lang="pt">, 
+          then the function symbol is <i>whitespace</i>; otherwise is <i>pcdata</i>.</span></td>
+        </tr>
+      </table>
+      </font>
+      <p><span lang="pt">The current implementation does not support the <b>
+      [parent]</b> property of Character Information Items.</span> </p>
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">
+      <a name="sec2.2"></a>2.2 
+      The Document Type Declaration</font></span></p>
+      <p><span lang="pt">In this section we describe the Document Type 
+      Information Item and the representation of element specifications and 
+      attribute declarations. Notice that XML Info Sets does not specify items 
+      for the representation of information inside DTD, besides PIs.</span></p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber10">
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt"><b>Document Type 
+          Declaration Information Item</b></span></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2">documenttype(QName,<span lang="pt">
+          </span>PublicId,<span lang="pt"> </span>SystemId,<span lang="pt">
+          </span>ElemDecl, AttDecl<span lang="pt">, Children</span> ) </td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">QName:</span></td>
+          <td width="84%"><span lang="pt">A term of the form <i>
+          qname(Prefix,LocalName)</i> representing the document element 
+          qualified name, as it appears in the DOCTYPE declaration.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>PublicId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the </span>public 
+          identifier of the external subset<span lang="pt">, as it appears in 
+          the DOCTYPE declaration. </span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>SystemId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">An IRI ref term with the system </span>
+          identifier of the external subset<span lang="pt">, as it appears in 
+          the DOCTYPE declaration.The empty list if a system identifier is not 
+          provided.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">ElemDecl:</span></td>
+          <td width="84%"><span lang="pt">An ordered NamedMap of element content 
+          specification items, one for each element type declaration found in 
+          the internal subset of the Document Type Declaration.<br>
+          The map is ordered by the key <i>qname(Prefix,LocalName)</i> obtained 
+          from the element's qualified name being declared.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">AttDecl:</span></td>
+          <td width="84%"><span lang="pt">An ordered NamedMap of attribute list 
+          declarations, one for each element with declared attributes found in the 
+          internal subset of the DTD.<br>
+          The map is ordered by the key <i>qname(Prefix,LocalName)</i> obtained 
+          from the element's qualified name.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>Children</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">An ordered NodeList of processing 
+          instruction information items appearing in the DTD, in document order.
+          </span></td>
+        </tr>
+      </table>
+      <p><span lang="pt">The current implementation does not support the <b>
+      [parent]</b> property of the Document Type Declaration Information Item.</span>
+      </p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber11">
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">Element Content 
+          Specification Items</span></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">spec(ContenSpec)</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">ContentSpec:</span></td>
+          <td width="84%"><span lang="pt">A term representing the 
+          ContentSpecification of an element. This term has the following form:</span><ul>
+            <li><span lang="pt">the constant <i>empty</i></span></li>
+            <li><span lang="pt">the constant <i>any</i></span></li>
+            <li><span lang="pt">the constant <i>'#pcdata'</i></span></li>
+            <li><span lang="pt">the term <i>times( seq(['#pcdata']) )</i></span></li>
+            <li><span lang="pt">the term <i>times( choice( ['#pcdata'|Names]))</i>, 
+            where Names is a non-empty list of qualified names of the form <i>
+            qname(Prefix,LocalName)</i>.</span></li>
+            <li><span lang="pt">a term<i> CP, times(CP)</i>, <i>plus(CP)</i>, <i>
+            opt(CP)</i>, where CP is a CP Term of the form <i>choice(CP)</i> or
+            <i>seq(CP)</i>, as described below.</span></li>
+          </ul>
+          <p><span lang="pt">The CP Term represents a choice or a sequence in 
+          the content specification with the following form:</span></p>
+          <ul>
+            <li><span lang="pt">a qualified name term <i>qname(Prefix,LocalName)</i>.</span></li>
+            <li><span lang="pt">a term <i>choice(ListOfCP) </i>or<i> 
+            seq(ListOfCp),</i> where ListOfCP is a list of CP terms.</span></li>
+            <li><span lang="pt">a term <i>seq(ListOfCp)</i>,where ListOfCP is a 
+            list of CP terms.</span></li>
+            <li><span lang="pt">a term of the form<i> times(CP)</i>, <i>plus(CP)</i>,
+            <i>opt(CP)</i>, where CP is a CP term.</span></li>
+          </ul>
+          </td>
+        </tr>
+      </table>
+      <p><span lang="pt">The attribute list declaration items collects in the 
+      same structure all the attribute declarations found in the DTD for a given 
+      element. Notice that it is allowed to have an attribute declaration 
+      without an element type declaration. However, the converse means that no 
+      attributes may appear in an element.</span></p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber12">
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">Attribute List 
+          Declaration Items</span></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">attlist(AttDecl)</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">AttDecl:</span></td>
+          <td width="84%"><span lang="pt">AttDecl is an ordered NamedMap of 
+          terms of the form <i>attribute_decl(Type,Default)</i>. The map is 
+          ordered by the key <i>qname(Prefix,LocalPart)</i> obtained from the 
+          attribute qualified name in the DTD.</span><p><span lang="pt">The Type 
+          argument is a term of the form:</span></p>
+          <ul>
+            <li><span lang="pt"><i>&nbsp;</i>constant<i> cdata, id, idref, 
+            idrefs, entity, entities, nmtoken, nmtokens</i></span></li>
+            <li><span lang="pt"><i>enum(ListOfNmtokens)</i>, where <i>
+            ListOfNmtokens</i> is a list of constants correspoding to the name 
+            tokens (constants in UTF-8 encoding) found in the attribute 
+            declaration.</span></li>
+            <li><span lang="pt"><i>notations(ListOfNCNames)</i>, where <i>ListOfNames</i> 
+            is a list of NCNames (constants in UTF-8 encoding).</span></li>
+          </ul>
+          <p><span lang="pt">The Default argument is a term of the form:</span></p>
+          <ul>
+            <li><span lang="pt">the constants <i>required, </i>or<i> implied</i></span></li>
+            <li><span lang="pt">the term <i>fixed(Value)</i>, where <i>Value </i>
+            is a list of Unicode character codes representing the fixed attribute 
+            value.</span></li>
+            <li><span lang="pt">the term <i>default(Value)</i>, where <i>Value
+            </i>is a list of Unicode character codes representing the default 
+            attribute value.</span></li>
+          </ul>
+          </td>
+        </tr>
+      </table>
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">2.3 
+      Entities and Notations</font></span></p>
+      <p><span lang="pt">The XML Info Sets requires only to store the unparsed 
+      entities and notations declared in the DTD. The internal parsed entities 
+      and parameter entities are properly dealt with by the XML Parser, but it 
+      is not provided any representation accessible to the user.</span></p>
+      <p>There is a<span lang="pt"> notation information item </span>for each 
+      notation declared in the DTD.</p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber13">
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt"><b>Notation Information 
+          Items</b></span></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">notation</span>(Name,<span lang="pt">
+          </span>PublicId,<span lang="pt"> </span>SystemId,<span lang="pt"> 
+          BaseURI</span>) </td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Name:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the XML Name of the 
+          notation.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>PublicId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the </span>public 
+          identifier of <span lang="pt">notation. <br>
+          The empty list if the public identifier is not provided.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>SystemId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">The system </span>identifier
+          <span lang="pt">URI, </span>a<span lang="pt">ccording to the IRI term 
+          representation.<br>
+          The empty list if a system identifier is not provided.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">BaseURI:</span></b></td>
+          <td width="84%">The base URI relative to which the system identifier 
+          should be resolved<span lang="pt">, according to the <a href="iri.htm">
+          IRI term</a> representation.</span></td>
+        </tr>
+      </table>
+      <p><span lang="pt">Unparsed entity information items are stored in the 
+      document information item. There is one </span>for <span lang="pt">
+      unparsed entity information item for </span>each unparsed general entity 
+      declared in the DTD.<span lang="pt">Unparsed entities are not expanded in 
+      attribute values since they are not read. The <b>[notation]</b> property 
+      of Unparsed Entity Information Items is not supported.</span></p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber14">
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt"><b>Unparsed Entity 
+          Information Items</b></span></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">unparsed_entity</span>(Name,<span lang="pt">
+          </span>PublicId,<span lang="pt"> </span>SystemId,<span lang="pt"> 
+          BaseURI,NotationName</span>) </td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Name:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the XML Name of the 
+          unparsed entity.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>PublicId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the </span>public 
+          identifier of <span lang="pt">the unparsed entity. <br>
+          The empty list if the public identifier is not provided.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>SystemId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">The system </span>identifier
+          <span lang="pt">URI, </span>a<span lang="pt">ccording to the IRI term 
+          representation.<br>
+          The empty list if a system identifier is not provided.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">BaseURI:</span></b></td>
+          <td width="84%">The base URI relative to which the system identifier 
+          should be resolved<span lang="pt">, according to the <a href="iri.htm">
+          IRI term</a> representation.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">NotationName:</span></b></td>
+          <td width="84%">The notation name associated with the entity<span lang="pt">.</span></td>
+        </tr>
+      </table>
+      <p>A unexpanded entity reference information item serves as a placeholder 
+      by which <span lang="pt">the </span>XML processor indicate<span lang="pt">s</span> 
+      that it has not expanded an external parsed entity. There is such an 
+      information item for each unexpanded reference to an external general 
+      entity within the content of an element. <span lang="pt">It is not 
+      supported the <b>[parent]</b> property of Unexpanded Entity Reference 
+      Information Items.</span></p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber15">
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt"><b>Unexpanded Entity 
+          ReferenceInformation Items</b></span></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">unexpanded_entity</span>(Name,<span lang="pt">
+          </span>PublicId,<span lang="pt"> </span>SystemId,<span lang="pt"> 
+          BaseURI</span>) </td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">Name:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the XML Name of the 
+          external parsed entity.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>PublicId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">A constant with the </span>public 
+          identifier of <span lang="pt">the external parsed entity. <br>
+          The empty list if the public identifier is not provided.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt"><b>SystemId</b></span><b><span lang="pt">:</span></b></td>
+          <td width="84%"><span lang="pt">The system </span>identifier
+          <span lang="pt">URI, </span>a<span lang="pt">ccording to the IRI term 
+          representation.<br>
+          The empty list if a system identifier is not provided.</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><b><span lang="pt">BaseURI:</span></b></td>
+          <td width="84%">The base URI relative to which the system identifier 
+          should be resolved<span lang="pt">, according to the <a href="iri.htm">
+          IRI term</a> representation.</span></td>
+        </tr>
+      </table>
+      <p>&nbsp;</p>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">3. Usage 
+      of the XML DOM Module</font></span><p><span lang="pt">The XML DOM module 
+      is expected to be used in connection with W4 XML Parser. Currently, it is 
+      not the intent of the XML DOM module to define an API for dynamically 
+      constructing XML terms.&nbsp; Therefore, only inspection predicates are 
+      described in this section, even though the current implementation exports 
+      &quot;low-level&quot; predicates for constructing XML DOM terms. These are for 
+      internal use of the XML Parser and should not be used in applications. A 
+      full blown API is being devised.</span></p>
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">3.1 
+      Working with the document and its content</font></span></p>
+      <p><span lang="pt">The following predicates allow the users to perform 
+      most of the tasks required in applications. The typical application 
+      extracts the document (or root) element from the document term and starts 
+      processing. The first set of predicates implement operations to </span>
+      </p>
+      <p><b><font color="#0000FF"><span lang="pt">Document Item Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isDocument</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a document item term.
+        <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentChildren</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, ChildList</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        ChildList</font><font SIZE="2">
+      </font>
+        argument an ordered NodeList containing the</span> child information 
+        item<span lang="pt"> terms</span>, in document order<span lang="pt">, of 
+        the XML Document term <font face="Courier New">XMLDoc</font></span>.<span lang="pt"> 
+        There is only one element information item term in this list (the 
+        Document Element). This list also contains all processing instruction 
+        items, comment items, and Document Type Declaration item occuring in the 
+        Prolog and Epilog of the XML document.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getDocumentElement</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, Element</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument </span>
+        <font face="Courier New" SIZE="2"><span lang="pt">Element</span></font><span lang="pt">
+        </span>t<span lang="pt">he </span>element information item
+        <span lang="pt">term </span>corresponding to the document element<span lang="pt"> 
+        of the given <font face="Courier New">XMLDoc</font> document item term.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentNotation</font></span><font SIZE="2"><font face="Courier New">s(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, NotationMap</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument </span><font face="Courier New" SIZE="2"><span lang="pt">
+        NotationMap</span></font><span lang="pt"> an ordered Named Map 
+        contatining the declared notation information items of the given
+        <font face="Courier New">XMLDoc</font> document item term. This map is 
+        ordered by the name of the notation, a NCName, which is a constant in 
+        UTF-8. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentUnparsedEntities</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, UnparsedMap</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument </span>
+        <font face="Courier New" SIZE="2"><span lang="pt">UnparsedMap</span></font><span lang="pt"> 
+        an ordered Named Map contatining the declared unparsed external entity 
+        information items of the given <font face="Courier New">XMLDoc</font> 
+        document item term. This map is ordered by the name of the unparsed 
+        entity, a NCName, which is a constant in UTF-8. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getDocumentBaseURI</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, BaseURI</span> )</font><br>
+        <br>
+      </font>
+        <span lang="pt">Obtains the <font face="Courier New">BaseURI</font> of 
+        the the given <font face="Courier New">XMLDoc</font> document item 
+        term.The value of argument <font face="Courier New">BaseURI</font> is an 
+        IRI reference term.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentEncoding</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, Encoding</span> )</font><br>
+        <br>
+      </font>
+        <span lang="pt">Obtains the <font face="Courier New">Encoding</font> of 
+        the the given <font face="Courier New">XMLDoc</font> document item term. 
+        Argument <font face="Courier New">BaseURI</font> is </span>constant with 
+        the name of the character encoding scheme in which the document entity 
+        is expressed </li>
+      </ul>
+      <ul>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentStandalone</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, </span>S<span lang="pt">tandalone </span>
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">Standalone</font> the</span> indication of the 
+        standalone status of the <span lang="pt">given the given
+        <font face="Courier New">XMLDoc</font> document item term. Argument</span>
+        <span lang="pt"><font face="Courier New">Standalone</font> </span>i<span lang="pt">s
+        </span>the constant <b>yes</b> or <b>no</b><span lang="pt">, or the 
+        empty list if such information was not provided in the XML declaration.</span></li>
+      </ul>
+      <ul>
+        <li><span lang="pt"><font face="Courier New" size="2">getDocumentVersion</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, Version</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument </span><font face="Courier New">
+        <span lang="pt">Version</span></font><span lang="pt"> </span>t<span lang="pt">he 
+        constant with the XML version of the given <font face="Courier New">
+        XMLDoc</font> document item term. </span>The empty list <span lang="pt">
+        is returned </span>[] if there is no XML declaration. <span lang="pt">
+        Currently, we only support only XML 1.0.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentAllProcessed</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, All</span>P<span lang="pt">rocessed
+        </span>)</font></font><p>This predicate <span lang="pt">returns in 
+        argument <font face="Courier New">AllProcessed</font> the</span> 
+        constant <b>yes</b> or <b>no</b> indicating whether the processor has 
+        read the complete DTD<span lang="pt"> of </span>the <span lang="pt">
+        given the given <font face="Courier New">XMLDoc</font> document item 
+        term. The empty list is returned if there is no DTD.</span></li>
+      </ul>
+      <ul>
+        <li><span lang="pt"><font face="Courier New" size="2">getDocumentDTD</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">XMLDoc, DTD </span>)</font></font><p>This 
+        predicate <span lang="pt">returns in argument DTD the</span>
+        <span lang="pt">Document Type Declaration item term of </span>the
+        <span lang="pt">given the given <font face="Courier New">XMLDoc</font> 
+        document item term. The empty list is returned if there is no DTD.</span></li>
+      </ul>
+      <p><span lang="pt"><font color="#0000FF"><b>Element</b></font></span><b><font color="#0000FF"><span lang="pt"> 
+      Item Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isElement</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a XML element item 
+        term. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">ElementName</span>(<span lang="pt">
+        </span>+<span lang="pt">EltItem, NamespaceURI</span><span lang="pt">, 
+        Local, Prefix</span></font><font SIZE="2"><font face="Courier New"> )</font><br>
+        <br>
+      </font>
+        <span lang="pt">Given an element item tem in the argument
+        <font face="Courier New">EltItem</font>, this predicate returns the
+        <font face="Courier New">NamespaceURI</font>, the
+        <font face="Courier New">Local</font> part, and the
+        <font face="Courier New">Prefix</font> of the element's qualified name. 
+        The <font face="Courier New">NamespaceURI</font> and
+        <font face="Courier New">Local</font> identify the element.&nbsp; The
+        <font face="Courier New">NamespaceURI</font> should be an absolute URI, 
+        while <font face="Courier New">Local</font> and <font face="Courier New">
+        Prefix</font> are NCNames. The last three arguments are constants in 
+        UTF-8 encoding. Both <font face="Courier New">Prefix</font> and
+        <font face="Courier New">NamespaceURI</font> are the empty constant
+        <font face="Courier New">''</font> whenever the element does not belong 
+        to a namespace. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">ElementChildren</span>(<span lang="pt">
+        </span>+<span lang="pt">EltItem, ChildList</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        ChildList</font><font SIZE="2">
+      </font>
+        argument an ordered NodeList containing the</span> child information 
+        item<span lang="pt"> terms</span>, in document order<span lang="pt">, of 
+        the XML element item term <font face="Courier New">EltItem</font></span>.<span lang="pt"> 
+        Notice that no two character data items may appear consecutively, and 
+        that </span>reference<span lang="pt">s</span> to unprocessed external 
+        entity<span lang="pt"> also appear in the node list.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">ElementAttributes</span>(<span lang="pt">
+        </span>+<span lang="pt">EltItem, Attributes, NSAttributes</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        <span lang="pt">P</span>redicate<span lang="pt"> </span>&nbsp;<span lang="pt"><font face="Courier New">getElementAtttibutes/3</font> 
+        returns the two ordered Named Maps <font face="Courier New">Attributes</font> 
+        and <font face="Courier New">NSAttributes</font> of the of the XML 
+        element item term <font face="Courier New">EltItem</font></span>.<span lang="pt"> 
+        Map <font face="Courier New">Attributes</font> contains all </span>
+        attribute information items, one for each of the attributes (specified 
+        or defaulted from the DTD) of this element.<span lang="pt"> </span>The 
+        map is ordered by the key <i>ename(NamespaceURI,LocalName)</i> obtained 
+        from the NamespaceURI and LocalName of each attribute. <span lang="pt">
+        Map <font face="Courier New">NSAttributes</font> contains </span>
+        attribute information items, one for each of the namespace declarations 
+        (specified or defaulted from the DTD) of this element.<span lang="pt">
+        </span>The map is ordered by the key <i>ename('http://www.w3.org/2000/xmlns/',Prefix)</i>, 
+        where Prefix is the constant corresponding to the declared prefix by the 
+        namespace attribute. Prefix is the empty constant
+        <font face="Courier New">''</font> if the declaration is of the form
+        <font face="Courier New">xmlns=&quot;[SOME URI]&quot;</font>. <br>
+&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">ElementInScopeNamespaces</span>(<span lang="pt">
+        </span>+<span lang="pt">EltItem, Namespaces</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        Namespaces</font><font SIZE="2">
+      </font>
+        argument an ordered Named Map </span>of namespace URIs, one for each of 
+        the namespaces in effect for <span lang="pt">the </span>element<span lang="pt"> 
+        item term <font face="Courier New">EltItem</font></span>. The map is 
+        ordered by Prefix, and maps the Prefix to the namespace URI (a namespace 
+        information item). The map always contains and item with prefix
+        <font face="Courier New">xml</font> which is implicitly bound to the 
+        namespace name http://www.w3.org/XML/1998/namespace. <span lang="pt">T</span>he 
+        map also contains a value for the empty prefix <font face="Courier New">
+        ''</font>, corresponding to the default namespace. If there is no 
+        default namespace declared<span lang="pt">,</span> the value for
+        <font face="Courier New">''</font> is also the empty constant.
+        <span lang="pt"><br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">ElementBaseURI</span>(<span lang="pt">
+        </span>+<span lang="pt">EltItem, BaseURI</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        BaseURI</font><font SIZE="2">
+      </font>
+        argument an IRI reference term with the Base URI of the element item in 
+        the given <font face="Courier New">EltItem</font> argument.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">ElementLang</span>(<span lang="pt">
+        </span>+<span lang="pt">EltItem, Lang</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This <span lang="pt">predicate</span> <span lang="pt">returns in the
+        <font face="Courier New">Lang</font><font SIZE="2">
+      </font>
+        argument a list of Unicode character codes with the language tag for the 
+        element item in the given <font face="Courier New">EltItem</font> 
+        argument.</span></li>
+      </ul>
+      <p><span lang="pt"><font color="#0000FF"><b>Attribute</b></font></span><b><font color="#0000FF"><span lang="pt"> 
+      Item Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isAttribute</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a XML attribute item 
+        term. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getAttribute</font></span><font face="Courier New" SIZE="2"><span lang="pt">Name</span>(<span lang="pt">
+        </span>+<span lang="pt">AttItem, NamespaceURI, Local, Prefix</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        <span lang="pt">Given an attribute item tem in the argument
+        <font face="Courier New">AttItem</font>, this predicate returns the
+        <font face="Courier New">NamespaceURI</font>, the
+        <font face="Courier New">Local</font> part, and the
+        <font face="Courier New">Prefix</font> of the qualified name. The
+        <font face="Courier New">NamespaceURI</font> and
+        <font face="Courier New">Local</font> identify univocally this 
+        attribute.&nbsp; The <font face="Courier New">NamespaceURI</font> should 
+        be an absolute URI, while <font face="Courier New">Local</font> and
+        <font face="Courier New">Prefix</font> are NCNames. The last three 
+        arguments are constants in UTF-8 encoding. Both <font face="Courier New">
+        Prefix</font> and <font face="Courier New">NamespaceURI</font> are the 
+        empty constant <font face="Courier New">''</font> whenever the attribute 
+        does not belong to a namespace.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">AttributeValue</span>(<span lang="pt">
+        </span>+<span lang="pt">AttItem, Value</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        Value</font> argument the list of Unicode character codes corresponding 
+        to the <b>normalized</b> value of the attribute item given in argument
+        <font face="Courier New">AttItem</font>. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">AttributeSpecified</span>(<span lang="pt">
+        </span>+<span lang="pt">AttItem, Specified</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns the <font face="Courier New">
+        Specified</font> flag of the attribute item in argument
+        <font face="Courier New">AttItem</font>. The <font face="Courier New">
+        Specified</font> argument can take the values&nbsp; <b>yes</b> if this 
+        attribute was </span>actually specified in the start-tag of its element<span lang="pt">; 
+        or <b>no</b> if it was defaulted from the DTD.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">AttributeType</span>(<span lang="pt">
+        </span>+<span lang="pt">AttItem, </span></font>
+      <font SIZE="2">
+        <font face="Courier New">T<span lang="pt">ype </span>)</font><br>
+        <br>
+      </font>
+        <span lang="pt">Obtains the <font face="Courier New">Type</font> of the 
+        attribute item term <font face="Courier New">AttItem</font>, as declared 
+        in the DTD, or the empty list if the attribute was not declared.</span>
+        <span lang="pt"><br>
+        <font color="#FF0000"><b>Currently, it always returns the empty list.</b></font></span></li>
+      </ul>
+      <p><b><font color="#0000FF"><span lang="pt">Processing Instruction Item 
+      Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isPI</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a XML processing 
+        instruction item term. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">PITarget</span>(<span lang="pt">
+        </span>+<span lang="pt">PIItem, </span></font><span lang="pt">
+        <font face="Courier New" size="2">Target</font></span><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        Target</font><font SIZE="2">
+      </font>
+        argument a constant with the target of the processing instruction item 
+        provided in the <font face="Courier New">PIItem</font> argument.The 
+        target constant is a NCName in UTF-8 encoding. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">PIContent</span>(<span lang="pt">
+        </span>+<span lang="pt">PIItem, Content</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        Content</font> argument a list of Unicode character codes of the 
+        processing instruction content in the given <font face="Courier New">
+        PIItem</font> term, excluding the mandatory whitespace after the target 
+        and th final ?&gt; delimiter.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getPIBaseURI</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">PIItem, BaseURI</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        BaseURI</font><font SIZE="2">
+      </font>
+        argument an IRI reference term with the Base URI of the processing 
+        instruction item in the given <font face="Courier New">PIItem</font> 
+        term.</span></li>
+      </ul>
+      <p><b><font color="#0000FF"><span lang="pt">Comment Item Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isComment</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a XML comment item 
+        term. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getCommentContent</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">CommItem, </span></font>
+      <font SIZE="2">
+        <font face="Courier New">C<span lang="pt">ontent </span>)</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        Content</font> argument a list of Unicode character codes of the comment 
+        content in the given <font face="Courier New">CommItem</font> term.This 
+        does not include the starting &lt;!-- and finishing --&gt; comment delimiters.</span></li>
+      </ul>
+      <p><b><font color="#0000FF"><span lang="pt">Character Information Items</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isCharData</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a XML Character Data 
+        Information item, including whitespace.<br>
+&nbsp;</span></li>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isWhiteSpace</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        </font><span lang="pt"><br>
+        Succeeds if the argument is whitespace.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">CharData</span>(<span lang="pt">
+        </span>+<span lang="pt">CharItem, </span></font>
+      <font SIZE="2">
+        <font face="Courier New">C<span lang="pt">ontent </span>)</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">Content</font> a list of Unicode character 
+        codes of the text content in the <font face="Courier New">CharItem</font> 
+        term. </span></li>
+      </ul>
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">3.2 
+      Working with the Document Type Declaration</font></span></p>
+      <p><span lang="pt">The XML DOM module provides basic support of DTDs. The 
+      user is able to obtain all the properties of Document Type Declaration 
+      information items, plus the specification of attributes and elements. 
+      Currently, it is not kept any information about internal entitities and 
+      therefore one cannot &quot;regenerate&quot; the original document. </span></p>
+      <p><b><font color="#0000FF"><span lang="pt">Document Type Declaration Item 
+      Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isDocumentType</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a Document Type 
+        Declaration item term. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentTypeChildren</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span>+<span lang="pt">DTDItem, ChildList</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        ChildList</font><font SIZE="2">
+      </font>
+        argument an ordered NodeList of processing instruction information items 
+        appearing in the DTD, in document order. For future compatibility, the 
+        users should guarantee that they are processing PIs. This property might 
+        be extended to contain all the markup declaration the DTD. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getDocumentType</font></span><font face="Courier New" SIZE="2"><span lang="pt">QualifiedName</span>(<span lang="pt">
+        </span>+<span lang="pt">DTDItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        QName</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">QName</font> a </span>term of the form <i>
+        qname(Prefix,LocalName)</i> representing the document element qualified 
+        name, as it appears in the <span lang="pt">Document Type Declaration 
+        item term <font face="Courier New">DTDItem</font>.</span> <br>
+&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentTypePublicId</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span></font>
+      </font>
+        <font face="Courier New" SIZE="2">+<span lang="pt">DTDItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        PublicId</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">PublicId</font> a </span>constant with 
+        the public identifier of the external subset,<span lang="pt"> </span>as 
+        it appears in the <span lang="pt">Document Type Declaration item term
+        <font face="Courier New">DTDItem</font>. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentTypeSystemId</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span></font>
+      </font>
+        <font face="Courier New" SIZE="2">+<span lang="pt">DTDItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">,
+        </span>S<span lang="pt">ystemId </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">SystemId</font> a</span>n IRI ref term 
+        with the system identifier of the external subset,<span lang="pt">
+        </span>as it appears in the <span lang="pt">Document Type Declaration 
+        item term <font face="Courier New">DTDItem</font>. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getDocumentTypeElementDeclarations</font></span><font SIZE="2"><font face="Courier New">(<span lang="pt">
+        </span></font>
+      </font>
+        <font face="Courier New" SIZE="2">+<span lang="pt">DTDItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        ElemDecl</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">ElemDecl</font> </span>ordered 
+        NamedMap of element content specification items, one for each element 
+        type declaration found in the the <span lang="pt">Document Type 
+        Declaration item term <font face="Courier New">DTDItem</font>. </span>
+        The map is ordered by the key <i>qname(Prefix,LocalName)</i> obtained 
+        from the element's qualified name being declared. <span lang="pt"><br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getDocumentType</font></span><font SIZE="2"><font face="Courier New"><span lang="pt">AttributeDeclarations</span>(<span lang="pt">
+        </span></font>
+      </font>
+        <font face="Courier New" SIZE="2">+<span lang="pt">DTDItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        AttDecl</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">AttDecl</font> </span>ordered NamedMap 
+        of attribute list declarations<span lang="pt">, one for each element 
+        with declared attributes found </span>in<span lang="pt"> </span>the
+        <span lang="pt">Document Type Declaration item term
+        <font face="Courier New">DTDItem</font>. </span>The map is ordered by 
+        the key <i>qname(Prefix,LocalName)</i> obtained from the<span lang="pt"> 
+        element's </span>qualified name. </li>
+      </ul>
+      <p><span lang="pt">Additionally, the following predicates can be used to 
+      obtain directly the element and attribute declarations from the DTD.</span></p>
+      <ul>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">ElementSpecificationFromDTD</span>(<span lang="pt">
+        </span>+<span lang="pt">DTDItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        +ElemQName, ElemSpec </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">ElemSpec</font> a</span>n
+        <span lang="pt">element specificaton term describing the content of 
+        element with the qualified name <font face="Courier New">ElemQName</font>,
+        </span>as it appears in the <span lang="pt">Document Type Declaration 
+        item term <font face="Courier New">DTDItem</font>. The element qualified 
+        name must be a term of the form <i>qname(Prefix,Local)</i>.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getAttributeDeclaration</font></span><font face="Courier New" SIZE="2"><span lang="pt">FromDTD</span>(<span lang="pt">
+        </span>+<span lang="pt">DTDItem, +ElemQName,</span> <span lang="pt">
+        +AttQName, Type, Default</span></font><font SIZE="2"><font face="Courier New"> 
+        )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        arguments <font face="Courier New">Type</font> a</span>n<span lang="pt">d
+        <font face="Courier New">Default</font></span> <span lang="pt">the 
+        declaration of attribute <font face="Courier New">AttQName</font> in 
+        element <font face="Courier New">ElemQName</font>, </span>as it appears 
+        in the <span lang="pt">Document Type Declaration item term
+        <font face="Courier New">DTDItem</font>. The element and attribute's 
+        qualified names must be terms of the form <i>qname(Prefix,Local)</i>.<br>
+        </span>&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">DefaultAttributesFromDTD</span>(<span lang="pt">
+        </span>+<span lang="pt">DTDItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        +QName,</span> <span lang="pt">Attributes, NSAttributes </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns the </span>
+        ordered NamedMap <span lang="pt">with the default attributes and 
+        Namespace attributes obtained from </span>the <span lang="pt">Document 
+        Type Declaration item term <font face="Courier New">DTDItem</font>, for 
+        element <font face="Courier New">QName</font>. The element qualified 
+        name must be a term of the form <i>qname(Prefix,Local)</i>.<br>
+        </span>&nbsp;</li>
+      </ul>
+      <p><span lang="pt"><font color="#0000FF"><b>Element Specification</b></font></span><b><font color="#0000FF"><span lang="pt"> 
+      Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">
+        isElementSpecification</span>(<span lang="pt"> </span>+<span lang="pt">Item</span> 
+        )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is an Element 
+        Specification item. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font SIZE="2"><font face="Courier New"><span lang="pt">ElementSpecification</span>(<span lang="pt">
+        </span>+<span lang="pt">ElemSpec, Content</span>S<span lang="pt">pec
+        </span>)</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in the <font face="Courier New">
+        ContentSpec</font><font SIZE="2">
+      </font>
+        the content specification term of the element specification item
+        <font face="Courier New">ElemSpec</font>. The structure of content 
+        specification terms is described in <a href="#sec2.2">Section 2.2</a> 
+        above. <br>
+&nbsp;</span></li>
+      </ul>
+      <p><span lang="pt"><font color="#0000FF"><b>Attribute List Declaration</b></font></span><b><font color="#0000FF"><span lang="pt"> 
+      Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">
+        isAttributeListDeclaration</span>(<span lang="pt"> </span>+<span lang="pt">Item</span> 
+        )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is an Attribute List 
+        Declaration item.<br>
+&nbsp;</span></li>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">
+        getAttributeListDeclaration</span>(<span lang="pt"> </span>+<span lang="pt">AttList, 
+        AttMap</span> )<br>
+        <br>
+        </font><span lang="pt">Obtains the ordered NamedMap AttMap of 
+          terms of the form <i>attribute_decl(Type,Default)</i>. The map is 
+          ordered by the key <i>qname(Prefix,LocalPart)</i> obtained from the 
+          attribute qualified name in the DTD.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font SIZE="2"><font face="Courier New"><span lang="pt">AttributeDeclaration</span>(<span lang="pt">
+        </span>+<span lang="pt">AttDecl, Type, Default </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        arguments <font face="Courier New">Type</font> a</span>n<span lang="pt">d
+        <font face="Courier New">Default</font></span> <span lang="pt">the 
+        declaration extracted from a term of the form <i>attribute_decl(Type,Default) </i>
+        in <font face="Courier New">AttDecl</font>.&nbsp; The structure of type 
+        and default value terms are described in <a href="#sec2.2">Section 2.2</a> 
+        above. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font SIZE="2"><font face="Courier New"><span lang="pt">AttributeDeclaration</span>(<span lang="pt">
+        </span>+<span lang="pt">AttList, +AttQName, Type, Default </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        arguments <font face="Courier New">Type</font> a</span>n<span lang="pt">d
+        <font face="Courier New">Default</font></span> <span lang="pt">the 
+        declaration of attribute <font face="Courier New">AttQName</font> in the 
+        attribute list declaration item provided in argument
+        <font face="Courier New">AttList</font>. The element and attribute's 
+        qualified names must be terms of the form <i>qname(Prefix,Local)</i>. 
+        The structure of type and default value terms are described in
+        <a href="#sec2.2">Section 2.2</a> above. <br>
+&nbsp;</span></li>
+      </ul>
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">3.3 
+      Working with Entities and Notation</font></span></p>
+      <p><span lang="pt">The document item iterm keeps ordered Named Maps 
+      containing the notation and unparsed entities declared in the internal 
+      part of the DTD. Furthermore, external parsed entity references are 
+      substituted by </span></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isExternalEntity</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a (unexpanded) 
+        external parsed entity reference. <br>
+&nbsp;</span></li>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isUnparsedEntity</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        </font>
+      <font SIZE="2">
+        <br>
+      </font>
+        <span lang="pt">Succeeds if the argument is a unparsed entity 
+        declaration item. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getEntity</font></span><font face="Courier New" SIZE="2"><span lang="pt">Name</span>(<span lang="pt">
+        </span>+<span lang="pt">EntItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        NCName</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">NCName</font> the name of the (unparsed or 
+        unxpanded) entity item given in argument <font face="Courier New">
+        EntItem</font>.</span> <br>
+&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">getEntityPublicId</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">EntItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        PublicId</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">PublicId</font> a </span>constant with 
+        the public identifier <span lang="pt">of the (unparsed or unxpanded) 
+        entity item given in argument <font face="Courier New">EntItem</font>.
+        <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getEntitySystemId</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">EntItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">,
+        </span>S<span lang="pt">ystemId </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">SystemId</font> a</span>n IRI ref term 
+        with the public identifier <span lang="pt">of the (unparsed or 
+        unxpanded) entity item given in argument <font face="Courier New">
+        EntItem</font>. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getEntityBaseURI</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">EntItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        BaseURI </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">BaseURI</font> a</span>n IRI ref term 
+        with the <span lang="pt">base </span>URI relative to which the system 
+        identifier <span lang="pt">of <font face="Courier New">EntItem</font> 
+        term </span>should be resolved<span lang="pt">.<br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getEntity</font></span><font face="Courier New" SIZE="2"><span lang="pt">NotationName</span>(<span lang="pt">
+        </span>+<span lang="pt">EntItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        NotName </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">NotName</font> the NCName </span>notation name associated with the entity<span lang="pt"> 
+        term <font face="Courier New">EntItem</font>. </span></li>
+      </ul>
+      <p><span lang="pt"><br>
+      <font color="#0000FF"><b>Notation Item </b></font></span><b>
+      <font color="#0000FF"><span lang="pt">Terms</span></font></b></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isNotation</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a Notation item term.
+        <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">NotationName</span>(<span lang="pt">
+        </span>+<span lang="pt">NotItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        NCName</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">NCName</font> the name of the notation item 
+        given in argument <font face="Courier New">NotItem</font>.</span> <br>
+&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getNotationPublicId</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">NotItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        PublicId</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">PublicId</font> a </span>constant with 
+        the public identifier of the <span lang="pt">notation item term
+        <font face="Courier New">NotItem</font>. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">
+        getNotationSystemId</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">NotItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">,
+        </span>S<span lang="pt">ystemId </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">SystemId</font> a</span>n IRI ref term 
+        with the public identifier of the <span lang="pt">notation item term
+        <font face="Courier New">NotItem</font>. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getNotationBaseURI</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span>+<span lang="pt">NotItem</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        BaseURI </span>)</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">BaseURI</font> a</span>n IRI ref term 
+        with the <span lang="pt">base </span>URI relative to which the system 
+        identifier <span lang="pt">of <font face="Courier New">NotItem</font> 
+        term </span>should be resolved<span lang="pt">. <br>
+&nbsp;</span></li>
+      </ul>
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">3.4 
+      Working with Node lists and Named Maps</font></span></p>
+      <p><span lang="pt">The XML DOM representation uses node lists and named 
+      maps to represent several properties of the XML Info Sets. Node Lists are 
+      used to repre. Even though, both Node Lists and Named Maps are ordinary 
+      lists, we suggest to use the following predicates to traverse them in 
+      order to guarantee compatibility with future version of the XML DOM 
+      Module.</span></p>
+      <p><span lang="pt"><font color="#0000FF"><b>Node Lists</b></font></span></p>
+      <p><span lang="pt">Node lists are used in the XML DOM module to represent 
+      Children of the Document Item, Element Item, and Document Type Definition 
+      items. The iterations are programmed using the predicates
+      <font face="Courier New">getHeadNodeList/2</font>,
+      <font face="Courier New">getTailNodeList/2</font> and
+      <font face="Courier New">isEmptyNodeList/1</font>.</span></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isNodeList</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is a Node List term. <br>
+&nbsp;</span></li>
+        <li>
+      <font SIZE="2">
+        <font face="Courier New"><span lang="pt">isEmptyNodeList</span>(<span lang="pt"> 
+        +NodeList </span>)</font><br>
+        <br>
+      </font>
+        <span lang="pt">Succeeds if the argument is an empty Node List term. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">HeadNodeList</span>(<span lang="pt">
+        </span>+</font><font SIZE="2"><font face="Courier New"><span lang="pt">NodeList, 
+        Item</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">Item</font> the first element of&nbsp;
+        <font face="Courier New">NodeList</font>. Fails if
+        <font face="Courier New">NodeList</font> is empty. </span>&nbsp;<br>
+&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">TailNodeList</span>(<span lang="pt">
+        </span>+</font><font SIZE="2"><font face="Courier New"><span lang="pt">NodeList, 
+        Tail</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">Tail</font> the node list obtained by 
+        removing the first element in <font face="Courier New">NodeList</font>. 
+        Fails if <font face="Courier New">NodeList</font> is empty.&nbsp; </span>
+        </li>
+      </ul>
+      <p><span lang="pt"><font color="#0000FF"><b>Ordered Named Maps</b></font></span></p>
+      <p><span lang="pt">Ordered Named Mape are used in the XML DOM module to 
+      represent ordered list of unparsed entities and notation items in the 
+      Documen item; Attributes, Namespace attributes and in scope namespace 
+      items in element items; and element and attribute list declarations in 
+      document type definition items. The iterations are programmed using the 
+      predicates <font face="Courier New">getFirstNamedMap/3</font>,
+      <font face="Courier New">getRestNamedMap/2</font> and
+      <font face="Courier New">isEmptyNamedMap/1</font>. The Named Map is 
+      ordered by a complex term key, using the usual Prolog
+      <font face="Courier New">@&lt;</font> term ordering. Additionally, it is 
+      provided a predicate for searching the named map.</span></p>
+      <ul>
+        <li><font face="Courier New" SIZE="2"><span lang="pt">isNamedMap</span>(<span lang="pt">
+        </span>+<span lang="pt">Item</span> )<br>
+        <br>
+        </font><span lang="pt">Succeeds if the argument is an ordered Named Map.
+        <br>
+&nbsp;</span></li>
+        <li>
+      <font SIZE="2">
+        <font face="Courier New"><span lang="pt">isEmptyNamedMap</span>(<span lang="pt"> 
+        +NamedMap </span>)</font><br>
+        <br>
+      </font>
+        <span lang="pt">Succeeds if the argument is an empty Named Map. <br>
+&nbsp;</span></li>
+        <li><span lang="pt"><font face="Courier New" size="2">getFirstNamedMap</font></span><font face="Courier New" SIZE="2">(<span lang="pt"> 
+        +NamedMap</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        Item</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">Item</font> the first element of&nbsp;
+        <font face="Courier New">NamedMap</font>. Fails if
+        <font face="Courier New">NamedMap</font> is empty. </span>&nbsp;<br>
+&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">getFirstNamedMap</font></span><font face="Courier New" SIZE="2">(<span lang="pt">
+        </span></font><font face="Courier New" SIZE="2"><span lang="pt">
+        +NamedMap</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        Key, Item</span> )</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">Item</font> the first element of&nbsp;
+        <font face="Courier New">NamedMap</font>, and the corresponding key in 
+        the second argument. Fails if <font face="Courier New">NamedMap</font> 
+        is empty. </span>&nbsp;<br>
+&nbsp;</li>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">RestNamedMap</span>(<span lang="pt">
+        </span></font><font face="Courier New" SIZE="2"><span lang="pt">
+        +NamedMap</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        Tail</span> )</font><br>
+        <br>
+      </font>
+        This predicat<span lang="pt">e</span> <span lang="pt">returns in 
+        argument <font face="Courier New">Tail</font> the ordered map obtained 
+        by removing the first element in <font face="Courier New">NamedMap</font>. 
+        Fails if&nbsp; <font face="Courier New">NamedMap</font> is empty.&nbsp;
+        </span></li>
+      </ul>
+      <ul>
+        <li><span lang="pt"><font face="Courier New" size="2">get</font></span><font face="Courier New" SIZE="2"><span lang="pt">NamedItem</span>(<span lang="pt">
+        </span></font><font face="Courier New" SIZE="2"><span lang="pt">
+        +NamedMap</span></font><font SIZE="2"><font face="Courier New"><span lang="pt">, 
+        + </span>K<span lang="pt">ey, Item </span>)</font><br>
+        <br>
+      </font>
+        This predicate <span lang="pt">returns in argument
+        <font face="Courier New">Item</font> the element of&nbsp;
+        <font face="Courier New">NamedMap</font> with the key provided in the 
+        second argument. Fails if <font face="Courier New">NamedMap</font> does 
+        not contain an element with this key. </span></li>
+      </ul>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">4. 
+      Sample Code</font></span></p>
+      <p><span lang="pt">&nbsp;The processing of XML documents in Prolog is 
+      rather straightforward, but sometimes boresome. In this section, it is 
+      presented sample code for writing a XML document term to a stream. The 
+      user can easily adapt the code for iterating over the several item term 
+      types. This sample code is a subset of our module XML Write, which might 
+      be used as a general template for XML Document term processing. The code 
+      below must be complemented with the definition of predicates <b>
+      writeString/2</b>, <b>writeEscapedString/2</b> and <b>
+      writeEscapedAttributedValue/2</b>.<br>
+&nbsp;</span></p>
+      <pre>write<span lang="pt">Simple</span>XML( Stream, Item ) :-
+	isDocument( Item ), !,
+	writeXMLDocumentItem( Stream, Item ).
+	
+% <span lang="pt">Only </span>Writes the document item <span lang="pt">children</span>. 
+<span lang="pt">%T</span>he XML Declaration<span lang="pt"> and </span>the DTD<span lang="pt"> are ignored</span>.
+writeXMLDocumentItem( Stream, Doc ) :-
+	getDocumentChildren( Doc, Children ),
+	writeXMLNodeList( Stream, Children ).
+</pre>
+      <pre><span lang="pt">% Iterates over the items in the NodeList
+</span>writeXMLNodeList( Stream, NodeList ) :- 
+	getHeadNodeList( NodeList, Item ), !,
+	( isElement( Item )       -&gt; writeXMLElement( Stream, Item )
+	; isCharData( Item )      -&gt; writeXMLCharData( Stream, Item )
+	; isComment( Item )       -&gt; writeXMLComment( Stream, Item )
+	; isPI( Item )            -&gt; writeXMLPI( Stream, Item )
+      <span lang="pt">  </span>; isExternalEntity( Item )-&gt; writeXMLEntityReference( Stream, Item )
+	; otherwis<span lang="pt">e               </span>-&gt; true
+	),
+	getTailNodeList( NodeList, RestNodeList ), !,
+	writeXMLNodeList( Stream, RestNodeList ).
+writeXMLNodeList( _, NodeList ) :- 
+<span lang="pt">        </span>isEmptyNodeList( NodeList ).
+
+<span lang="pt">% Writes an element</span>
+writeXMLElement( Stream, EltItem) :- 
+	getElementName( EltItem, _, Local, Prefix ),
+	write( Stream, '&lt;' ),
+	writeQName( Stream, Prefix, Local ),
+
+	getElementAttributes( EltItem, Attributes, NSAttributes ),
+	writeXMLAttributes( Stream, NSAttributes ),
+	writeXMLAttributes( Stream, Attributes ),
+	write( Stream, '&gt;' ),
+
+	getElementChildren( EltItem, Children ),
+	writeXMLNodeList( Stream, Children ),
+
+	write( Stream, '&lt;/' ),
+	writeQName( Stream, Prefix, Local ),
+	write( Stream, '&gt;' ).
+
+<span lang="pt">% Iterates over the atrtibutes and writes them</span>
+writeXMLAttributes( Stream, NamedMap ) :- 
+	getFirstNamedMap( NamedMap, _, Att ), !,
+	writeXMLAttribute( Stream, Att ),
+	getRestNamedMap( NamedMap, RestNamedMap ), !,
+	writeXMLAttributes( Stream, RestNamedMap ).
+writeXMLAttributes( _, NamedMap ) :- 
+<span lang="pt">        </span>isEmptyNamedMap( NamedMap ).
+
+writeXMLAttribute( Stream, Att ) :- 
+	getAttributeName( Att, _, Local, Prefix ),
+	write( Stream, ' ' ),
+	writeQName( Stream, Prefix, Local ),
+
+	getAttributeValue( Att, NormValue ),
+	write( Stream, '=&quot;' ),
+	writeEscapedAttributeValue( Stream, NormValue ),
+	write( Stream, '&quot;' ).
+
+writeXMLCharData( Stream, CharData ) :- 
+	getCharData( CharData, Content ),
+	writeEscapedString( Stream, Content ).
+
+writeXMLComment( Stream, Comment ) :-
+	getCommentContent( Comment, Text ),
+	write( Stream, '&lt;!--' ), 
+	writeString( Stream, Text ),
+	write( Stream, '--&gt;' ).
+
+writeXMLPI( Stream, PI ) :- 
+	getPITarget( PI, Target ),
+	getPIContent( PI, Content ),
+	write( Stream, '&lt;?' ),
+	writeNCName( Stream, Target ),
+	( Content \= [] -&gt; write( Stream, ' ' ), 
+<span lang="pt">                           </span>writeString( Stream, Content ) 
+<span lang="pt">        </span>; <span lang="pt">                 </span>true 
+<span lang="pt">        </span>),
+	write( Stream, '?&gt;' ).
+
+writeXMLEntityReference( Stream, EntityRef ) :-
+	getEntityName( EntityRef, EntName ),
+	write( Stream, '&amp;' ),
+	writeNCName( Stream, EntName ),
+	write( Stream, ';' ).
+</pre>
+      <pre>% NCNames are already in UTF-8 encoding
+writeNCName( Stream, Name ) :-
+	write( Stream, Name ).
+
+% The prefix and local parts of a qualified name are already in UTF-8 encoding.
+<span lang="pt">% Notice how the mepty prefix is tested.</span>
+writeQName( Stream, Prefix, Local ) :- 
+	( Prefix = '' -&gt; 
+		write( Stream, Local ) 
+	; 	write( Stream, Prefix ), 
+		write( Stream, ':' ), 
+		write( Stream, Local )
+	).
+</pre>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">5. 
+      Limitations</font></span></p>
+      <ul>
+        <li><span lang="pt">The type of attributes declared in the DTD is not 
+        introduced in the XML DOM representation.</span></li>
+        <li><span lang="pt">Internal and parameter entities are not kept in the 
+        representation. </span></li>
+        <li>The properties which involve referencing other information items are 
+        not implemented<span lang="pt"> ( <b>[parent],</b> <b>[references], 
+        [notation] </b>and<b> [owner element]</b>)</span>.<span lang="pt"> <br>
+        </span>This is motivated by the fact that some Prolog system<span lang="pt">s</span> do not give 
+        support <span lang="pt">to</span> cyclic terms. </li>
+      </ul>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      <p><span lang="pt"><font face="Arial Black" size="4" color="#0000FF">5. 
+      Copyright</font></span></p>
+      <span lang="pt">(c) Carlos Viegas Damásio
+      <a href="mailto:(cd@di.fct.unl.pt">(cd@di.fct.unl.pt</a>)<br>
+      CENTRIA - Centro de Inteligência Artificial da Universidade Nova de Lisboa<br>
+      <br>
+      This software is distributed under the GNU Library General Public License.</span></td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      <b>Last update: <span lang="pt">November 9th</span>, 2003</b></td>
+    </tr>
+  </table>
+  </center>
+</div>
+
+</body>
+
+</html>

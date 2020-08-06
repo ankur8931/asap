@@ -1,0 +1,179 @@
+
+:- ensure_loaded( iri ).
+
+:- import atom2iriref/2 from iri.
+:- import iriref2atom/2 from iri.
+:- import resolveIRIref/3 from iri.
+
+
+testiri( '' ).
+testiri( 'http://www.ics.uci.edu/pub/ietf/uri/historical.html#WARNING' ).
+testiri( 'http://www.example.com&story=breaking_news@10.0.0.1/top_story.htm' ).
+testiri( 'http://a/b/c/d;p?q' ).
+testiri( 'g:h' ).
+testiri( 'g' ).
+testiri( './g' ).
+testiri( 'g/h' ).
+testiri( '/g' ).
+testiri( '//g' ).
+testiri( '?y' ).
+testiri( 'g?y' ).
+testiri( '#s' ).
+testiri( 'g#s' ).
+testiri( 'g?y#s' ).
+testiri( ';x' ).
+testiri( 'g;x' ).
+testiri( 'g;x?y#s' ).
+testiri( '.' ).
+testiri( './' ).
+testiri( '..' ).
+testiri( '../' ).
+testiri( '../g' ).
+testiri( '../..' ).
+testiri( '../../' ).
+testiri( '../../g' ).
+testiri( 'g.' ).
+testiri( '.g' ).
+testiri( 'g..' ).
+testiri( '..g' ).
+
+
+testiri( 'example://a/b/c/%7A' ).
+testiri( 'eXAMPLE://a/./b/../b/c/%7a' ).
+testiri( 'http://10.10.0.1:123@254.104.560.0:5' ).
+
+
+testiri( 'http://10.10.0.1:123@[1]:5' ).
+testiri( 'http://10.10.0.1:123@[1ABC::1DEF]:5' ).
+testiri( 'http://10.10.0.1:123@www.example.com:5' ).
+testiri( 'http://10.10.0.1:123@:5' ).
+testiri( 'http://10.10.0.1' ).
+testiri( 'http://www.example.com' ).
+
+testresolution( '//g' , 'http://a/b/c/d;p?q' ).
+
+testresolution( 'g:h' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g' , 'http://a/b/c/d;p?q' ).
+testresolution( './g' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g/' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g/h' , 'http://a/b/c/d;p?q' ).
+testresolution( '/g' , 'http://a/b/c/d;p?q' ).
+testresolution( '?y' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g?y' , 'http://a/b/c/d;p?q' ).
+testresolution( '#s' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g#s' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g?y#s' , 'http://a/b/c/d;p?q' ).
+testresolution( ';x' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g;x' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g;x?y#s' , 'http://a/b/c/d;p?q' ).
+
+testresolution( '.' , 'http://a/b/c/d;p?q' ).
+testresolution( './' , 'http://a/b/c/d;p?q' ).
+testresolution( '..' , 'http://a/b/c/d;p?q' ).
+testresolution( '../' , 'http://a/b/c/d;p?q' ).
+testresolution( '../g' , 'http://a/b/c/d;p?q' ).
+testresolution( '../..' , 'http://a/b/c/d;p?q' ).
+testresolution( '../../' , 'http://a/b/c/d;p?q' ).
+testresolution( '../../g' , 'http://a/b/c/d;p?q' ).
+testresolution( '../../../g' , 'http://a/b/c/d;p?q' ).
+testresolution( '../../../../g' , 'http://a/b/c/d;p?q' ).
+testresolution( '../../../../g/../..' , 'http://a/b/c/d;p?q' ).
+
+testresolution( '', 'http://a/b/c/d;p?q' ).
+
+testresolution( '/./g' , 'http://a/b/c/d;p?q' ).
+testresolution( '/../g' , 'http://a/b/c/d;p?q' ).
+testresolution( '.g' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g.' , 'http://a/b/c/d;p?q' ).
+testresolution( '.g' , 'http://a/b/c/d;p?q' ).
+testresolution( 'g..' , 'http://a/b/c/d;p?q' ).
+testresolution( '..g' , 'http://a/b/c/d;p?q' ).
+
+testresolution( './../g', 'http://a/b/c/d;p?q' ).
+testresolution( './g/.', 'http://a/b/c/d;p?q' ).
+testresolution( 'g/./h', 'http://a/b/c/d;p?q' ).
+testresolution( 'g/../h', 'http://a/b/c/d;p?q' ).
+testresolution( 'g;x=1/./y', 'http://a/b/c/d;p?q' ).
+testresolution( 'g;x=1/../y', 'http://a/b/c/d;p?q' ).
+
+
+
+testresolution( 'g?y/./x', 'http://a/b/c/d;p?q' ).
+testresolution( 'g?y/../x', 'http://a/b/c/d;p?q' ).
+testresolution( 'g#s/./x', 'http://a/b/c/d;p?q' ).
+testresolution( 'g#s/../x', 'http://a/b/c/d;p?q' ).
+
+testresolution( 'http:g', 'http://a/b/c/d;p?q' ).
+
+/*
+
+
+
+      ""              =  "http://a/b/c/d;p?q"
+
+   Parsers must be careful in handling the case where there are more
+   relative path ".." segments than there are hierarchical levels in the
+   base URI's path.  Note that the ".." syntax cannot be used to change
+   the authority component of a URI.
+
+      "../../../g"    =  "http://a/g"
+      "../../../../g" =  "http://a/g"
+
+   Similarly, parsers must remove the dot-segments "." and ".." when
+   they are complete components of a path, but not when they are only
+   part of a segment.
+
+      "/./g"          =  "http://a/g"
+      "/../g"         =  "http://a/g"
+      "g."            =  "http://a/b/c/g."
+      ".g"            =  "http://a/b/c/.g"
+      "g.."           =  "http://a/b/c/g.."
+      "..g"           =  "http://a/b/c/..g"
+
+   Less likely are cases where the relative URI uses unnecessary or
+   nonsensical forms of the "." and ".." complete path segments.
+
+      "./../g"        =  "http://a/b/g"
+      "./g/."         =  "http://a/b/c/g/"
+      "g/./h"         =  "http://a/b/c/g/h"
+      "g/../h"        =  "http://a/b/c/h"
+      "g;x=1/./y"     =  "http://a/b/c/g;x=1/y"
+      "g;x=1/../y"    =  "http://a/b/c/y"
+
+   Some applications fail to separate the reference's query and/or
+   fragment components from a relative path before merging it with the
+   base path and removing dot-segments.  This error is rarely noticed,
+   since typical usage of a fragment never includes the hierarchy ("/")
+   character, and the query component is not normally used within
+   relative references.
+
+      "g?y/./x"       =  "http://a/b/c/g?y/./x"
+      "g?y/../x"      =  "http://a/b/c/g?y/../x"
+      "g#s/./x"       =  "http://a/b/c/g#s/./x"
+      "g#s/../x"      =  "http://a/b/c/g#s/../x"
+*/
+
+testiris :-
+	testiri( IRIAtom ),
+	writeq( IRIAtom ), nl,
+	( ( atom2iriref( IRIAtom, IRI ), iriref2atom(IRI,IRIAtom) ) -> writeq( IRI ), nl ; write( 'Failed' ) ),
+	nl,
+	fail.
+testiris.
+
+testresolution :-
+	testresolution( Ratom, Batom ),
+	atom2iriref( Ratom, IRI_R ),
+	atom2iriref( Batom, IRI_B ),
+	resolveIRIref( IRI_R, IRI_B, IRI_T ),
+	iriref2atom( IRI_T, Tatom ),
+	writeq( res( Ratom, Batom ) = Tatom ), nl,
+	fail.
+testresolution.
+	
+
+
+
+
+
+

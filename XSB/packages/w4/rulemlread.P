@@ -1,0 +1,393 @@
+%%% RuleML compiler ( Version 1.0/December 2002)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/projectos/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% This modules implements the RuleML compiler for the hornlog sub-language.
+%%% The language is extended with default and explicit negation, which can
+%%% be applied to every atom in the language, as well as EVOLP assert rules. 
+%%% The combinations allowed are:
+%%%
+%%% - Atom
+%%% - neg Atom
+%%% - not Atom
+%%% - not neg Atom
+%%%
+%%% All names in the language are converted to Prolog atoms in UTF-8 encoding.
+%%%
+
+:- op( 600, xfx, '@' ).
+:- op( 900, fy, not ).
+:- op( 900, fy, neg ).
+
+
+:- import xml2term/2 from xml2termns.
+:- import parse_xml_document/3 from xml.
+:- import member/2 from basics.
+
+:- export readRuleML/2.
+:- export isRuleBase/1.
+
+:- ensure_loaded( xml2termns ).
+:- ensure_loaded( xml ).
+
+
+% The main predicate for reading Rule ML files
+readRuleML( InFile, RuleBase ) :-
+	parse_xml_document( stream(InFile), _, XMLTerm ),
+	xml2term( XMLTerm, PTerm ),
+	compileRuleML( urgenhornlog, PTerm, RuleBase ).
+
+% The main predicate for compiling Rule ML
+compileRuleML( urgenhornlog, Term, Rules ) :-
+	compRuleML( Term, Rules ).
+
+
+%%% Checks whether a term is a proper rulebase
+isRuleBase( rulebase( _, _, _, _ ) ).
+
+
+%%% <!ELEMENT rulebase (((_rbaselab, (imp | fact | query)*) | ((imp | fact | query)+, _rbaselab?))?)>
+
+compRuleML( rulebase( Attributes, RuleBaseContent ), rulebase( Label, Direction, Rules, Queries ) ) :-
+	rulebaseAttribs( Attributes, Direction ),
+	compileRulebase( RuleBaseContent, Label, Rules, Queries ).
+
+	
+%%% <!ATTLIST rulebase direction (forward | backward | bidirectional) "bidirectional">
+%%% <!ATTLIST rulebase xsi:noNamespaceSchemaLocation CDATA #IMPLIED xmlns:xsi CDATA #IMPLIED>
+
+rulebaseAttribs( [], bidirectional ) :- !.
+rulebaseAttribs( [Attrib|RestAttribs], Direction ) :-
+	processRulebaseAttrib( Attrib, Direction ), !,
+	( var( Direction ) -> rulebaseAttribs( RestAttribs, Direction ) ; rulebaseAttribs( RestAttribs, _ ) ). 
+%rulebaseAttribs( [Attrib|_], _) :-
+%	throw( ruleml( invalid_attribute( rulebase, Attrib ) ) ).
+
+processRulebaseAttrib( direction( "bidirectional" ), bidirectional ) :- !.
+processRulebaseAttrib( direction( "forward" ), forward ) :- !.
+processRulebaseAttrib( direction( "backward" ), backward ) :- !.
+processRulebaseAttrib( '<http://www.w3.org/2001/XMLSchema-instance noNamespaceSchemaLocation>'( _ ), _ ) :- !.
+processRulebaseAttrib( '<http://www.w3.org/2000/xmlns/ xsi>'( "http://www.w3.org/2001/XMLSchema-instance" ), _ ) :- !.
+
+
+%%% <!ELEMENT rulebase (((_rbaselab, (imp | fact | query)*) | ((imp | fact | query)+, _rbaselab?))?)>
+
+compileRulebase( [], [], [], [] ) :- !.
+compileRulebase( ['_rbaselab'( [], LabelContent )|RestRulebase], Label, Rules, Queries ) :- !,
+	compileLabel( LabelContent, Label, [], [] ),				% rule base labels must be ground
+	compileRulebase1( RestRulebase, Rules, Queries ).
+compileRulebase( RuleBase, Label, Rules, Queries ) :- !,
+	compileRulebase2( RuleBase, Label, Rules, Queries ).
+	
+
+compileRulebase1( [], [], [] ) :- !.
+compileRulebase1( [ImpFactQuery|RestRulebase], Rules, Queries ) :- 
+	compileImpFactQuery( ImpFactQuery, Rules, RestRules, Queries, RestQueries ), !,
+	compileRulebase1( RestRulebase, RestRules, RestQueries ).
+
+compileRulebase2( [], [], [], [] ) :- !.
+compileRulebase2( ['_rbaselab'( [], IndCTerm )], Label, [], [] ) :- !,
+	compileLabel( IndCTerm, Label, [], [] ).					% rule base labels must be ground
+compileRulebase2( [ImpFactQuery|RestRulebase], Label, Rules, Queries ) :- 
+	compileImpFactQuery( ImpFactQuery, Rules, RestRules, Queries, RestQueries ), !,
+	compileRulebase2( RestRulebase, Label, RestRules, RestQueries ).
+
+ 
+compileImpFactQuery( query( [], QueryContent ), Rules, Rules, [Query|RestQueries], RestQueries ) :- !,
+	compileQuery( QueryContent, Query ), write_rule( Query ).
+compileImpFactQuery( ImpFactTag, [Rule|RestRules], RestRules, Queries, Queries ) :- !,
+	compileImpFact( ImpFactTag, Rule, [], _ ), write_rule( Rule ).
+%compileImpFactQuery( Error, _, _, _, _ ) :- 
+%	throw( ruleml( invalid_content( rulebase, Error ) ) ).
+
+write_rule( _ ) :- !.	% Only For debugging
+write_rule( rule( Head, true, _, Vars ) ) :- !,
+	writeq( Head ), write('. %' ), write( Vars ), nl.
+write_rule( rule( Head, Body, _, Vars ) ) :- !,
+	writeq( Head ), write( ' <- ' ), writeq( Body ), write('. %' ), write( Vars ), nl.
+write_rule( query( Body, _, Vars ) ) :- !,
+	writeq( ' ?- ' ), writeq( Body ), write('. %' ), write( Vars ), nl.
+
+
+compileImpFact( imp( [], ImpContent ), Imp, PrevVars, NextVars  ) :- !,
+	compileImp( ImpContent, Imp, PrevVars, NextVars ).
+compileImpFact( fact( [], FactContent ), Fact, PrevVars, NextVars) :- !,
+	compileFact( FactContent, Fact, PrevVars, NextVars ).
+
+% <!ELEMENT imp ((_rlab, ((_head, _body) | (_body, _head))) | (_head, ((_rlab, _body) | (_body, _rlab?))) | (_body, ((_rlab, _head) | (_head, _rlab?))))>
+
+compileImp( ImpContent, rule( Head, Body, Label, HeadVars ), PrevVars, NextVars ) :-
+	compileImpContent( ImpContent, HeadContent, BodyContent, LabContent ), !,
+	compileHead( HeadContent, Head, HeadVars ),
+	compileBody( BodyContent, Body, HeadVars, AllVars ),
+	compileLabel( LabContent, Label, [], LabVars ),
+	checkLabelVars( LabVars, AllVars ),				% Rule label vars should be contained in HeadVars \/ BodyVars
+	add_vars( AllVars, PrevVars, NextVars ).
+
+%compileImp( ImpContent, _, _, _ ) :-
+%	throw( ruleml( invalid_content( imp, ImpContent ) ) ).
+
+compileImpContent( ['_head'( [], Head ), '_body'( [], Body ) ], Head, Body, [] ) :- !.
+compileImpContent( ['_body'( [], Body ), '_head'( [], Head ) ], Head, Body, [] ) :- !.
+
+compileImpContent( ['_head'( [], Head ), '_rlab'( [], Label ), '_body'( [], Body ) ], Head, Body, Label ) :- !.
+compileImpContent( ['_head'( [], Head ), '_body'( [], Body ), '_rlab'( [], Label ) ], Head, Body, Label ) :- !.
+
+compileImpContent( ['_rlab'( [], Label), '_head'( [], Head ), '_body'( [], Body ) ], Head, Body, Label ) :- !.
+compileImpContent( ['_rlab'( [], Label), '_body'( [], Body ), '_head'( [], Head ) ], Head, Body, Label ) :- !.
+
+compileImpContent( ['_body'( [], Body ), '_rlab'( [], Label ), '_head'( [], Head ) ], Head, Body, Label ) :- !.
+compileImpContent( ['_body'( [], Body ), '_head'( [], Head ), '_rlab'( [], Label ) ], Head, Body, Label ) :- !.
+
+
+compileFact( ['_head'( [], HeadContent )], rule( Head, true, [], HeadVars ), PrevVars, NextVars ) :- 
+	!, compileHead( HeadContent, Head, HeadVars ),
+	add_vars( HeadVars, PrevVars, NextVars ).
+compileFact( ['_head'( [], HeadContent ),'_rlab'( [], LabContent)], rule( Head, true, Label, HeadVars ), PrevVars, NextVars ) :-
+	!, compileHead( HeadContent, Head, HeadVars ), 
+	   compileLabel( LabContent, Label, [], LabVars ), 
+	   checkLabelVars( LabVars, HeadVars ),
+	   add_vars( HeadVars, PrevVars, NextVars ).
+compileFact( ['_rlab'( [], LabContent),'_head'( [], HeadContent )], rule( Head, true, Label, HeadVars ), PrevVars, NextVars ) :-
+	!, compileHead( HeadContent, Head, HeadVars ), 
+         compileLabel( LabContent, Label, [], LabVars ), 
+         checkLabelVars( LabVars, HeadVars ),
+	   add_vars( HeadVars, PrevVars, NextVars ).
+
+compileQuery( ['_body'( [], BodyContent )], query( Body, [], Vars ) ) :- 
+	!, compileBody( BodyContent, Body, [], Vars ). 
+compileQuery( ['_body'( [], BodyContent ),'_rlab'([], LabContent)], query( Body, Label, Vars ) ) :- 
+	!, compileBody( BodyContent, Body, [], Vars ), 
+	   compileLabel( LabContent, Label, [], LabVars ), 
+         checkLabelVars( LabVars, Vars ).
+compileQuery( ['_rlab'([], LabContent),'_body'( [], BodyContent )], query( Body, Label ) ) :-
+	!, compileBody( BodyContent, Body, [], Vars ), 
+         compileLabel( LabContent, Label, [], LabVars ), 
+         checkLabelVars( LabVars, Vars ).
+
+compileHead( [LitContent], Literal, Vars ) :-  !,
+	compileLiteral( LitContent, Literal, [], Vars ).
+
+compileBody( [and( [], AndContent)], And, HeadVars, Vars ) :- !,
+	compileAnd( AndContent, And, HeadVars, Vars ).
+compileBody( [LitContent], Literal, HeadVars, Vars ) :- !,
+	compileLiteral( LitContent, Literal, HeadVars, Vars ).
+
+compileAnd( [], true, HeadVars, HeadVars ) :- !.
+compileAnd( Atoms, Conjunction, HeadVars, Vars ) :- !,
+	compileConjunction( Atoms, Conjunction, HeadVars, Vars ).
+
+compileConjunction( [LitContent], Literal, PrevVars, Vars ) :- !,
+	compileLiteral( LitContent, Literal, PrevVars, Vars ).
+compileConjunction( [LitContent|RestLiteral], (Literal,RestConj), PrevVars, Vars ) :-
+	compileLiteral( LitContent, Literal, PrevVars, AuxVars ), !,
+	compileConjunction( RestLiteral, RestConj, AuxVars, Vars ).
+
+%%% Extends the syntax of urhornlog with default and explicit negation operators
+compileLiteral( not( [], [LitTag]), not ObjLiteral, PrevVars, Vars ) :- !,
+	compileObjectiveLiteral( LitTag, ObjLiteral, PrevVars, Vars ).
+compileLiteral( LitTag, ObjLiteral, PrevVars, Vars ) :- !,
+	compileObjectiveLiteral( LitTag, ObjLiteral, PrevVars, Vars ).
+
+compileObjectiveLiteral( assert( [], [RuleContent] ), assert( Rule ), PrevVars, NextVars ) :- !,
+	compileImpFact( RuleContent, Rule, PrevVars, NextVars ).
+compileObjectiveLiteral( neg( [], [AtomTag]), neg Atom, PrevVars, Vars ) :- !,
+	compileAtomTag( AtomTag, Atom, PrevVars, Vars ).
+compileObjectiveLiteral( AtomTag, Atom, PrevVars, Vars ) :- !,
+	compileAtomTag( AtomTag, Atom, PrevVars, Vars ).
+
+%%% <!ELEMENT atom ((_opr, (ind | var | cterm | tup | roli)*) | ((ind | var | cterm | tup | roli)+, _opr))>
+
+compileAtomTag( atom( [], AtomContent), Atom, HeadVars, Vars ) :- !,
+	compileAtom( AtomContent, Atom, HeadVars, Vars ).
+
+compileAtom( [OprTag|ArgSequence], URAtom, PrevVars, Vars ) :- 
+	compileOpr( OprTag, Name, URI ), !,
+	compileArgs2list( ArgSequence, [], Args, PrevVars, Vars ),
+	Atom =.. [Name|Args],
+	compileUR( URI, Atom, URAtom ).
+compileAtom( ArgSequence, URAtom, PrevVars, Vars ) :- !,
+	compileArgs2list( ArgSequence, [OprTag], Args, PrevVars, Vars ),
+	compileOpr( OprTag, Name, URI ),
+	Atom =.. [Name|Args],
+	compileUR( URI, Atom, URAtom ).
+
+%%% <!ELEMENT _opr (rel)>
+
+compileOpr( '_opr'( [], [RelTag] ), RelName, URI ) :- !,
+	compileRel( RelTag, RelName, URI ).
+
+%%% <!ELEMENT rel (#PCDATA)>
+%%% <!ATTLIST rel href %URI; #IMPLIED>
+
+compileRel( rel( Href, RelText ), RelName, URI ) :- !,
+	compileURName( Href, RelText, RelName, URI ).
+
+compileURName( [], [], _, _ ) :- !, fail.	% Names must have at least href or text
+compileURName( [], Text, Name, [] ) :- !,
+	Text \= [],
+	compileName( Text, Name ).
+compileURName( Href, [], Name, [] ) :- !,
+	compileHref( Href, Name ),
+	Href \= [].
+compileURName( Href, Text, Name, URI ) :- 
+	compileHref( Href, URI ),
+	compileName( Text, Name ).
+	
+compileHref( [href(URIText)], URI ) :-
+	text2name( URIText, URI ).
+
+compileName( [pcdata(Text)], Name ) :-
+	text2name( Text, Name ).
+
+text2name( Text, Name ) :-
+	text2utf8( Text, TextUTF8 ),
+	( number_codes( Name, TextUTF8 ) ; atom_codes( Name, TextUTF8 ) ), !.
+
+compileUR( [], Name, Name ) :- !.
+compileUR( URI, Name, Name @ URI ) :- !.
+
+%%% (ind | var | cterm | tup | roli)*
+
+compileArgs2list( [Arg|Args], RestArgs, [CArg|CArgs], PrevVars, Vars ) :-
+	compileArg( Arg, CArg, PrevVars, AuxVars ), !,
+	compileArgs2list( Args, RestArgs, CArgs, AuxVars, Vars ).
+compileArgs2list( Args, Args, [], Vars, Vars ).
+
+compileArg( ind( Href, IndText ), URInd, Vars, Vars ) :- !,
+	compileURName( Href, IndText, Ind, URI ),
+	compileUR( URI, Ind, URInd ).
+
+compileArg( var( [], VarText ), Var, Vars, NewVars ) :- !,
+	compileName( VarText, VarName ),
+	( VarName = '' -> NewVars = Vars ; add_var( Vars, VarName, Var, NewVars ) ).	% Take care of anonymous variables
+	
+compileArg( cterm( [], TermContent ), CTerm, Vars, NewVars ) :- !,
+	compileCTerm( TermContent, CTerm, Vars, NewVars ).
+	
+compileArg( tup( [], TupContent ), Tup, Vars, NewVars ) :- !,
+	compileTup( TupContent , Tup, Vars, NewVars ).
+
+compileArg( roli( [], RoliContent ), Roli, Vars, NewVars ) :- !,
+	compileRoleList( RoliContent, Roli, Vars, NewVars ).
+
+%%% <!ELEMENT cterm ((_opc, (ind | var | cterm | tup | roli)*) | ((ind | var | cterm | tup | roli)+, _opc))>
+ 
+compileCTerm( [OpcTag|ArgSequence], URCterm, PrevVars, Vars ) :- 
+	compileOpc( OpcTag, Name, URI ), !,
+	compileArgs2list( ArgSequence, [], Args, PrevVars, Vars ),
+	Cterm =.. [Name|Args],
+	compileUR( URI, Cterm, URCterm ).
+compileCTerm( ArgSequence, URCterm, PrevVars, Vars ) :- !,
+	compileArgs2list( ArgSequence, [OpcTag], Args, PrevVars, Vars ),
+	compileOpc( OpcTag, Name, URI ),
+	Cterm =.. [Name|Args],
+	compileUR( URI, Cterm, URCterm ).
+
+%%% <!ELEMENT _opc (ctor)>
+
+compileOpc( '_opc'( [], [CtorTag]), CtorName, URI ) :- !,
+	compileCtor( CtorTag, CtorName, URI ).
+
+%%% <!ELEMENT ctor (#PCDATA)>
+
+compileCtor( ctor( Href, CtorText ), CtorName, URI ) :- !,
+	compileURName( Href, CtorText, CtorName, URI ).
+
+
+
+%%% <!ELEMENT tup ((ind | var | cterm | tup | roli)*)>
+
+compileTup( ArgSequence, Tup, PrevVars, Vars ) :- 
+	compileArgs2list( ArgSequence, [], Args, PrevVars, Vars ),
+	Tup =.. [','|Args].
+
+%%% <!ELEMENT roli ((_arv)*)>
+
+compileRoleList( Content, {Roli}, PrevVars, Vars ) :-
+	compileRoli( Content, Arvs, PrevVars, Vars ),
+	sort( Arvs, RoliList ),
+	list2sequence( RoliList, Roli ).
+
+compileRoli( [], [], Vars, Vars ).
+compileRoli( ['_arv'( [], ArvContent )|RestContent], [Arv|RestArvs], PrevVars, Vars ) :-
+	compileArv( ArvContent, Arv, PrevVars, AuxVars ), !,
+	compileRoli( RestContent, RestArvs, AuxVars, Vars ).
+	
+list2sequence( [], '' ).
+list2sequence( [Element], Element ) :- !.
+list2sequence( [Element|RestElements], (Element,RestSeq) ) :- 
+	!, list2sequence( RestElements, RestSeq ).
+
+
+%%% <!ELEMENT _arv ((arole, (ind | var | cterm | tup | roli)) | ((ind | var | cterm | tup | roli), arole))>
+
+compileArv( [AroleTag,ArgTag], (Name -> Arg), PrevVars, Vars ) :- 
+	compileArole( AroleTag, Name ), !,
+	compileArg( ArgTag, Arg, PrevVars, Vars ).
+compileArv( [ArgTag,AroleTag], (Name -> Arg), PrevVars, Vars ) :- !,
+	compileArg( ArgTag, Arg, PrevVars, Vars ),
+	compileArole( AroleTag, Name ).
+
+
+%%% <!ELEMENT arole (#PCDATA)>
+
+compileArole( arole( Href, AroleText ), URArole ) :- !,
+	compileURName( Href, AroleText, Arole, URI ),
+	compileUR( URI, Arole, URArole).
+
+%%% <!ELEMENT _rbaselab (ind | cterm)>
+%%% <!ELEMENT _rlab (ind | cterm)>
+
+compileLabel( [], [], Vars, Vars ).
+compileLabel( [LabelTag], Label, PrevVars, Vars ) :-
+	( LabelTag = ind( _, _) ; LabelTag = cterm( _, _ ) ), !,
+	compileArg( LabelTag, Label, PrevVars, Vars ).
+	
+
+%%% Convers PCDATA to UTF8 code list
+text2utf8( [], [] ).
+text2utf8( [Code|RestCodes], CodesUTF8 ) :-
+	code2utf8( Code, CodesUTF8, RestCodesUTF8 ), !,
+	text2utf8( RestCodes, RestCodesUTF8 ).
+
+code2utf8( Code, [Code|RestCodes], RestCodes ) :- 
+	Code < 16'80, !.
+code2utf8( Code, [Byte1,Byte2|RestCodes], RestCodes ) :- 
+	Code < 16'07FF, !, 
+	Byte1 is 16'C0 \/ ( Code >> 6 ),
+	Byte2 is 16'80 \/ ( Code /\ 16'3F ).
+code2utf8( Code, [Byte1,Byte2,Byte3|RestCodes], RestCodes ) :- 
+	Code < 16'FFEF, !, 
+	Byte1 is 16'E0 \/ ( Code >> 12 ),
+	Byte2 is 16'80 \/ ( ( Code >> 6 ) /\ 16'3F),
+	Byte3 is 16'80 \/ ( Code /\ 16'3F).
+code2utf8( Code, [Byte1,Byte2,Byte3,Byte4|RestCodes], RestCodes ) :- 
+	Code < 16'10FFFF, !,
+	Byte1 is 16'F0 \/ ( Code >> 18 ),
+	Byte2 is 16'80 \/ ( ( Code >> 12 ) /\ 16'3F),
+	Byte3 is 16'80 \/ ( ( Code >>  6 ) /\ 16'3F),
+	Byte4 is 16'80 \/ ( Code /\ 16'3F).
+
+
+add_vars( [], Vars, Vars ) :- !.
+add_vars( [VarName = Var|RestVars], OldVars, NewVars ) :- 
+	add_var( OldVars, VarName, Var, AuxVars ), !,
+	add_vars( RestVars, AuxVars, NewVars ).
+
+add_var( [], VarName, Var, [VarName=Var] ).
+add_var( [VarName = Var|RestVars], VarName, Var, [VarName = Var|RestVars] ) :- !.
+add_var( [VarEq|RestVars], VarName, Var, [VarEq|NewVars] ) :- 
+	!, add_var( RestVars, VarName, Var, NewVars ).
+
+checkLabelVars( [], _ ).
+checkLabelVars( [VarName = _|RestVars], AllVars ) :-
+	member( VarName = _, AllVars ), !,
+	checkLabelVars( RestVars, AllVars ).

@@ -1,0 +1,405 @@
+/* File:      basics.P
+** Author(s): David S. Warren, Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: basics.P,v 1.23 2010/01/19 22:42:56 dwarren Exp $
+** 
+*/
+
+
+/*----------------------------------------------------------------------*/
+/* NOTE: This file needs compilation with the "sysmod" option.  	*/
+/*----------------------------------------------------------------------*/
+
+:- compiler_options([sysmod,xpp_on]).
+#include "builtin.h"
+
+/*----------------------------------------------------------------------*/
+
+% append! ta-da!
+append([],L,L).
+append([X|L1],L2,[X|L3]) :- append(L1,L2,L3).
+
+%---
+/* copy_term is an inlined builtin */
+copy_term(Term, Result) :- copy_term(Term, Result).
+
+%---
+:- export copy_term_nat/2.
+copy_term_nat(Term,Result):- copy_term(Term,Result,_).
+
+/* copy_term is an inlined builtin */
+copy_term(_Term, _Result,_) :- '_$builtin'(COPY_TERM_3).
+
+
+%---
+ground(X) :- ground(X).
+
+%---
+flatten([],[]).
+flatten([H|T],Flatlist):-
+	flatten1([H|T],Flatlist,[]).
+
+flatten1([],Var,Var).
+flatten1([H|T],Flatlist,Flatout):-
+	is_list(H) -> flatten1(H,Flatlist,Flatmid),
+		      flatten1(T,Flatmid,Flatout)
+		; 	Flatlist = [H|Flatmid],
+			flatten1(T,Flatmid,Flatout).
+
+%---
+% ith/3 that works both ways
+% ith(Index,List,Element)
+ith(Index,List,Element) :-
+	( integer(Index) -> ith0(Index,List,Element)
+	;   ith1(List,1,Index,Element)
+	).
+
+ith0(I,[X|L],Y) :-
+	I > 0,
+	(I =< 1
+	 ->	Y=X
+	 ;	I1 is I-1,
+		ith0(I1,L,Y)
+	).
+
+ith1([X|_],I,I,X).
+ith1([_|L],I1,I,X) :- I2 is I1+1, ith1(L,I2,I,X).
+
+%---
+% log_ith/3 is a variant of ith, in which the ``list'' argument is a 
+% tree, which is a list of full binary trees, each having depth one
+% greater than the previous.  This guarantees log time access to any
+% element in the ``list''
+
+% Like ith/3, log_ith/3 works in both directions.  The major advantage
+% is that when using log_ith with its first argument bound, the access
+% time is (2)log, instead of linear.  Also, log_ith/3 only instantiates
+% the portion of the list-tree structure it needs, so much of it can
+% remain unbound.  For example, after inserting a value into the Kth
+% location in a completely unbound list-tree, the structure constructed
+% is of size of order log K.
+
+% log_ith(Index,ListStr,Element)
+log_ith(K,T,E) :- 
+	term_type(K,Ty),
+	(Ty =:= 2	% integer
+	 ->	log_ith0(K,T,E,1)
+	 ;	log_ith1(K,T,E,1)
+	).
+
+% K is bound
+log_ith0(K,[L|R],E,N) :-
+	(K < N
+	 ->	bintree0(K,L,E,N)
+	 ;	K1 is K-N,
+		N2 is N+N,
+		log_ith0(K1,R,E,N2)
+	).
+
+% First arg (K) is bound
+bintree0(K,T,E,N) :- 
+	(N > 1
+	 ->	T = [L|R],
+		N2 is N // 2,
+		(K < N2
+		 ->	bintree0(K,L,E,N2)
+		 ;	K1 is K - N2,
+			bintree0(K1,R,E,N2)
+		)
+	 ;      K =:= 0,
+		T = E
+	).
+
+
+% K is unbound
+log_ith1(K,[L|_R],E,N) :-
+	bintree1(K,L,E,N).
+log_ith1(K,[_L|R],E,N) :-
+	N1 is N + N,
+	log_ith1(K1,R,E,N1),
+	K is K1 + N.
+
+% First arg (K) is unbound
+bintree1(0,E,E,1).
+bintree1(K,[L|R],E,N) :- 
+	N > 1,
+	N2 is N // 2,
+	(bintree1(K,L,E,N2)
+	 ;
+	 bintree1(K1,R,E,N2),
+	 K is K1 + N2
+	).
+
+% log_ith_bound(Index,ListStr,Element) is like log_ith, but only
+% succeeds if the Index_th element of ListStr is nonvariable and equal
+% to Element.  This can be used in both directions, and is most useful
+% with Index unbound, since it will then bind Index and Element for each
+% nonvariable element in ListStr (in time proportional to N*logN, for N
+% the number of nonvariable entries in ListStr.)
+
+log_ith_bound(K,T,E) :- 
+	nonvar(T),
+	term_type(K,Ty),
+	(Ty =:= 2	% integer
+	 ->	log_ith2(K,T,E,1)
+	 ;	log_ith3(K,T,E,1)
+	).
+
+log_ith2(K,[L|R],E,N) :-
+	(K < N
+	 ->	nonvar(L),bintree2(K,L,E,N)
+	 ;	nonvar(R),
+		K1 is K-N,
+		N2 is N+N,
+		log_ith2(K1,R,E,N2)
+	).
+
+bintree2(0,E,E,1) :- !.
+bintree2(K,[L|R],E,N) :- 
+	N > 1,
+	N2 is N // 2,
+	(K < N2
+	 ->	nonvar(L),
+		bintree2(K,L,E,N2)
+	 ;	nonvar(R),
+		K1 is K - N2,
+		bintree2(K1,R,E,N2)
+	).
+
+log_ith3(K,[L|_R],E,N) :-
+	nonvar(L),
+	bintree3(K,L,E,N).
+log_ith3(K,[_L|R],E,N) :-
+	nonvar(R),
+	N1 is N + N,
+	log_ith3(K1,R,E,N1),
+	K is K1 + N.
+
+bintree3(0,E,E,1).
+bintree3(K,[L|R],E,N) :- 
+	N > 1,
+	N2 is N // 2,
+	(nonvar(L), 
+	 bintree3(K,L,E,N2)
+	 ;
+	 nonvar(R),
+	 bintree3(K1,R,E,N2),
+	 K is K1 + N2
+	).
+
+%% convert a log_ith structure to a list of nonempty elements
+log_ith_to_list(T,L) :- log_ith_to_list(T,0,L,[]).
+
+log_ith_to_list(T,K,L0,L) :-
+	(var(T)
+	 ->	L = L0
+	 ;	T = [F|R],
+		log_ith_to_list_btree(F,K,L0,L1),
+		K1 is K+1,
+		log_ith_to_list(R,K1,L1,L)
+	).
+
+log_ith_to_list_btree(T,K,L0,L) :-
+	(var(T)
+	 ->	L = L0
+	 ; K =:= 0
+	 ->	L0 = [T|L]
+	 ;	T = [TL|TR],
+		K1 is K-1,
+		log_ith_to_list_btree(TL,K1,L0,L1),
+		log_ith_to_list_btree(TR,K1,L1,L)
+	).
+
+	
+	
+
+
+/* logk_ith(+KBase,+Index,?ListStr,?Element) is similar log_ith/3
+except it uses a user specified base of KBase, which must be between 2
+and 255.  log_ith uses binary trees with a list cons at each node;
+logk_ith uses a term of arity KBase at each node.  KBase and Index
+must be bound to integers. */
+
+logk_ith(K,I,T,E) :- 
+	integer(K),
+	integer(I),	% integer
+	logk_ith0(K,I,T,E,K).
+
+% I is bound
+logk_ith0(K,I,[L|R],E,N) :-
+	(I < N
+	 ->	ktree0(K,I,L,E,N)
+	 ;	I1 is I - N,
+		N2 is K*N,
+		logk_ith0(K,I1,R,E,N2)
+	).
+
+% First arg (I) is bound
+ktree0(K,I,T,E,N) :- 
+	(var(T)
+	 ->	functor(T,n,K)
+	 ;	true
+	),
+	(N > K
+	 ->	N2 is N // K,
+		N3 is I // N2 + 1,
+		I1 is I rem N2,  %  mod overflows?
+		arg(N3,T,T1),
+		ktree0(K,I1,T1,E,N2)
+	 ;	I1 is I+1,
+		arg(I1,T,E)
+	).
+
+
+%---
+% length/2 that works both ways
+length(L,N) :-
+	(var(N)
+	 ->	length1(L,0,N)
+	 ;	check_nonneg_integer(N,length/2,2),
+		length2(L,N)
+	).
+
+length1([],N,M) :-
+	(var(M)
+	 ->	N=M
+	 ;	check_nonneg_integer(M,length/2,2),
+		N=M
+	).
+length1([_|R],N0,N) :- N1 is N0+1, length1(R,N1,N).
+
+length2(L,N) :-
+	N =< 0
+	 ->	L=[]
+	 ;	N1 is N-1, L=[_|L1],
+		length2(L1,N1).
+
+%---
+% good ole member
+member(X,[X|_]).
+member(X,[_|L]) :- member(X,L).
+
+:- export '_$member'/2.
+'_$member'(X,[X|_]).
+'_$member'(X,[_|L]) :- '_$member'(X,L).
+
+%---
+memberchk(X,[X|_]) :- !.
+memberchk(X,[_|L]) :- memberchk(X,L).
+
+%---SW
+% subset
+subset([],_).
+subset([H|T],List) :-
+	memberchk(H,List),
+        subset(T,List).
+
+%---
+% subseq
+subseq([],[],[]).
+subseq([H|T],[H|S],C) :- subseq(T,S,C).
+subseq([H|T],S,[H|C]) :- subseq(T,S,C).
+
+%---
+% A not so naive reverse
+reverse(L, R) :- nonvar(L), !, reverse_acc(L, [], R).
+reverse(L, R) :- reverse_acc(R, [], L).
+
+reverse_acc([], Acc, Acc).
+reverse_acc([Head|Tail], Acc, Reversed) :-
+	reverse_acc(Tail, [Head|Acc], Reversed).
+
+%---
+% Some Prologs like to call this delete!
+select(Element, [Element|Rest_Elements], Rest_Elements).
+select(Element, [Element1|Rest_L1], [Element1|Rest_L2]) :-
+	select(Element, Rest_L1, Rest_L2).
+
+%%% for(?I,+B1,+B2) nondeterministically binds I to all integer values
+%%% from B1 to B2 inclusive.  B1 and B2 must be integers, but either
+% may be larger.  
+for(I,B1,B2) :-
+	(B1 =< B2
+	 ->	forup(I,B1,B2)
+	 ;	fordown(I,B1,B2)
+	).
+
+forup(L,L,H) :- L =< H.
+forup(I,L,H) :- L < H, L1 is L+1, forup(I,L1,H).
+
+fordown(H,H,L) :- H >= L.
+fordown(I,H,L) :- H > L, H1 is H-1, fordown(I,H1,L).
+
+% Compatability w. SWI and others (also error checking)
+% add check on third argument, if bound as non-integer
+between(L,U,B) :-
+	check_nonvar(L,between/3,1),
+	check_nonvar(U,between/3,2),
+	check_integer(L,between/3,1),
+	check_integer(U,between/3,2),
+	(	nonvar(B) ->
+		check_integer(B,between/3,3)
+	;	true
+	),
+	L =< U,
+	between_1(L,U,B).
+
+between_1(L,_U,L).
+between_1(L,U,Res) :- L < U, L1 is L + 1, between_1(L1,U,Res).
+
+/* --------------------- end of file basics.P ------------------------- */
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Commautils.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+comma_to_list((One,Two),[One|Twol]):- !,
+	comma_to_list(Two,Twol).
+comma_to_list(One,[One]).
+
+% warning: may bind variables.
+comma_member(A,','(A,_)).
+comma_member(A,','(_,R)):- 
+	comma_member(A,R).
+comma_member(A,A):- \+ (functor(A,',',_)).
+
+comma_memberchk(A,','(A,_)):- !.
+comma_memberchk(A,','(_,R)):- 
+	comma_memberchk(A,R).
+comma_memberchk(A,A):- \+ (functor(A,',',_)).
+
+abscomma_memberchk(A,A1):- A == A1,!.
+abscomma_memberchk(','(A,_),A1):- A == A1,!.
+abscomma_memberchk(','(_,R),A1):- 
+	abscomma_memberchk(R,A1).
+
+comma_length(','(_L,R),N1):- !,
+	comma_length(R,N),
+	N1 is N + 1.	
+comma_length(true,0):- !.
+comma_length(_,1).
+
+comma_append(','(L,R),Cl,','(L,R1)):- !,
+	comma_append(R,Cl,R1).
+comma_append(true,Cl,Cl):- !.
+comma_append(L,Cl,Out):- 
+	(Cl == true -> Out = L ; Out = ','(L,Cl)).
+

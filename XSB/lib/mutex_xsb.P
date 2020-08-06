@@ -1,0 +1,379 @@
+/* File:      xsb_mutex.P
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod]).
+
+#include "thread_defs_xsb.h"
+#include "io_defs_xsb.h"
+
+% How do you check for the validity of pointers to dynamically created
+% C structures like mutexes?  I make sure that if they
+% arent created wdith an explicit alias, an alias of the form
+% Ptr,Type,Ptr is created, so that I can check the alias for validity
+% no matter what.
+
+add_dyn_struct_aliases(Alias,Type,Ptr,Error):- 
+	(Alias == [] -> 
+	    add_alias(Ptr,Type,Ptr,Error)
+	  ; 	   
+	    add_aliases(Alias,Type,Ptr,Error) ).
+
+/* ==================================================================  */
+/* Proto-ISO Mutexes: see manual for documentation. */
+
+mutex_create(Mut):- 
+	(var(Mut) -> 
+	    thread_request( XSB_MUTEX_INIT,Mut,_,_,_,_,_,_,_),
+	    add_alias(Mut,MUTEX_ALIAS,Mut,mutex_create/1)
+	  ; type_error(mutex_or_alias,Mut,mutex_create/1,1) ).
+
+mutex_create(Mut,Options):- 
+	(var(Mut) -> 
+	    check_mutex_options_list(Options,Aliases),
+	    check_aliases(Aliases,mutex_create/2),
+	    thread_request( XSB_MUTEX_INIT,Mut,_,_,_,_,_,_,_),
+	    add_dyn_struct_aliases(Aliases,MUTEX_ALIAS,Mut,mutex_create/2)
+	  ; type_error(mutex_or_alias,Mut,mutex_create/2,1) ).
+
+check_mutex_options_list(Options,Alias):- 
+	check_nonvar(Options,mutex_create/2,2),
+	check_mutex_options_list_1(Options,Alias).
+
+check_mutex_options_list_1([],[]):- !.
+check_mutex_options_list_1([Option|Rest],Alias):- !,
+	(Option @= alias(_) -> 
+	    Option = alias(A),check_atom(A,mutex_create/2,2),Alias = [A|R]
+	     ; 	domain_error(thread_option,Option,mutex_create/2,2,'') ),
+       check_mutex_options_list_1(Rest,R).
+check_mutex_options_list_1(Culprit,_Alias):- 
+	type_error(list,Culprit,mutex_create/2,2).
+
+%---------------------------
+% direct calls to save some time for mutexes.
+:- import '_$alias_dynamic'/3 from file_io.
+
+/*
+Old style
+mutex_lock(Mutex):- 
+	(integer(Mutex) -> 
+   	   ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,_) -> true ; existence_error(mutex, Mutex,mutex_lock/1,1)),
+	   thread_request( XSB_MUTEX_LOCK,Mutex,_,_,_,_,_,_,_)
+        ;  (atom(Mutex) -> 
+   	       ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,Mid) -> true ; existence_error(mutex, Mutex,mutex_lock/1,1)),
+	       thread_request(XSB_MUTEX_LOCK,Mid,_,_,_,_,_,_,_)
+           ;  (var(Mutex) -> 
+	         instantiation_error(mutex_lock/1,1,ground)
+	      ;  domain_error(mutex_or_alias,Mutex,mutex_lock/1,1,'')))).
+
+*/
+
+mutex_lock(Mutex):- 
+	(nonvar(Mutex) -> 
+   	   ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,Mid) -> true ; mutex_error(Mutex,mutex_lock/1)),
+	   thread_request( XSB_MUTEX_LOCK,Mid,_,_,_,_,_,_,_)
+          ;     instantiation_error(mutex_lock/1,1,ground)).
+
+%---------------------------
+
+mutex_unlock(Mutex):- 
+	(nonvar(Mutex) -> 
+   	   ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,Mid) -> true ; mutex_error(Mutex,mutex_unlock/1)),
+	   thread_request( XSB_MUTEX_UNLOCK,Mid,_,_,_,_,_,_,_)
+          ;     instantiation_error(mutex_unlock/1,1,ground)).
+
+%---------------------------
+
+mutex_trylock(Mutex):- 
+	(nonvar(Mutex) -> 
+   	   ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,Mid) -> true ; mutex_error(Mutex,mutex_trylock/1)),
+	   thread_request( XSB_MUTEX_TRYLOCK,Mid,_,_,_,_,_,_,_)
+          ;     instantiation_error(mutex_trylock/1,1,ground)).
+
+%---------------------------
+
+mutex_destroy(Mutex):- 
+	(nonvar(Mutex) -> 
+   	   ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,Mid) -> true ; mutex_error(Mutex,mutex_destroy/1)),
+	   remove_alias(_,MUTEX_ALIAS,Mid),
+	   thread_request( XSB_MUTEX_DESTROY,Mid,_,_,_,_,_,_,_)
+          ;     instantiation_error(mutex_destroy/1,1,ground)).
+
+%---------------------------
+
+mutex_error(Mutex,Pred):- 
+	( (atom(Mutex) ; integer(mutex)) -> 
+	    existence_error(mutex_or_alias, Mutex,Pred,1)
+	      ;  domain_error(mutex_or_alias,Mutex,Pred,1,'')).
+
+%---------------------------
+
+with_mutex(Mutex,Goal):- 
+	(nonvar(Mutex) -> 
+   	   ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,Mid) -> true ; mutex_error(Mutex,with_mutex/2)),
+	   with_mutex_1(Mid,Goal)
+          ;     instantiation_error(with_mutex/2,1,ground)).
+
+% No need for mutex existence rechecks.
+with_mutex_1(Mutex,Goal):- 
+	thread_request(XSB_MUTEX_LOCK,Mutex,_,_,_,_,_,_,_),
+	catch(Goal,Ball,with_mutex_handler(Ball,Mutex)),
+	!,
+	thread_request(XSB_MUTEX_UNLOCK,Mutex,_,_,_,_,_,_,_).
+with_mutex_1(Mutex,_Goal):- 
+	thread_request(XSB_MUTEX_UNLOCK,Mutex,_,_,_,_,_,_,_),
+	fail.
+
+with_mutex_handler(Ball,Mutex):- 
+	thread_request(XSB_MUTEX_UNLOCK,Mutex,_,_,_,_,_,_,_),
+	throw(Ball).
+
+%-----------------------------
+
+mutex_unlock_all:- 
+	thread_request( MUTEX_UNLOCK_ALL,_,_,_,_,_,_,_,_).
+
+%-----------------------------
+
+mutex_property(Mutex, Property) :-
+	(nonvar(Mutex) -> 
+   	   ('_$alias_dynamic'(Mutex,MUTEX_ALIAS,Mid) -> true ; mutex_error(Mutex,mutex_property/2)),
+	   bound_mutex_property(Mid, Property)
+          ;     mutex_property_list(Mutex, Property) ).
+
+get_first_mutex_property(This,Locks,Owner,Next):-
+	thread_request( GET_FIRST_MUTEX_PROPERTY,This,Locks,Owner,Next,_,_,_,_).
+
+get_next_mutex_property(Ptr,Locks,Owner,Next):-
+	thread_request( GET_NEXT_MUTEX_PROPERTY,Ptr,Locks,Owner,Next,_,_,_,_).
+
+/* Could optimize away a CP, but I dont think this pred will be used much...
+   (famous last words) */
+mutex_property_list(Mutex, Property):-
+	valid_mutex_property(Property),
+	get_first_mutex_property(This,Locks,Owner,Next),
+	This \== 0,
+	(   This = Mutex,
+	    form_mutex_property(Mutex,Owner,Locks,Property)
+          ; 
+	    Next \== 0,
+	    mutex_property_list_1(Next,Mutex,Property) ).
+
+form_mutex_property(Mutex,_Owner,_Locks,alias(Alias)):- 
+	get_alias(Alias, MUTEX_ALIAS, Mutex),
+	Alias \== Mutex.
+form_mutex_property(_Mutex,Owner,Locks,Prop):- 
+	(Owner == -1 -> 
+	    Prop = status(unlocked)
+	 ;  Prop = status(locked(Owner,Locks)) ).
+
+bound_mutex_property(Mutex, Property):-
+	valid_mutex_property(Property),
+	get_next_mutex_property(Mutex, Locks, Owner, _Next),
+	form_mutex_property(Mutex, Owner, Locks, Property).
+
+mutex_property_list_1(This,Mutex,Property):- 
+	get_next_mutex_property(This,Locks,Owner,Next),
+	(   This = Mutex,
+	    form_mutex_property(Mutex,Owner,Locks,Property)
+          ; 
+	    Next \== 0,
+	    mutex_property_list_1(Next,Mutex,Property) ).
+
+valid_mutex_property(Property) :-
+	nonvar(Property),
+	Property \= alias(_),
+	Property \= status(unlocked),
+	Property \= status(locked(_, _)),
+	domain_error(mutex_property, Property, mutex_property/2, 2).
+valid_mutex_property(_).
+
+/* ==================================================================  */
+/* ISO Message Queues. */
+
+/* For right now, I'm not trying to make the optioned version as fast as possible. */
+message_queue_create(Queue,Options):-
+	check_var(Queue,message_queue,2),
+	check_options_list(Options,Size,Alias),
+	check_aliases(Alias,message_queue_create/2),
+	thread_request(MESSAGE_QUEUE_CREATE,Queue,Size,_,_,_,_,_,_),
+	add_aliases(Alias,QUEUE_ALIAS,Queue,message_queue_create/2).
+
+check_options_list(Options,Size,Alias):- 
+	check_nonvar(Options,message_queue_create/2,2),
+	check_options_list_1(Options,Size,Alias).
+
+check_options_list_1([],Size,[]):- !,
+	(var(Size) -> Size = 0 ; true).
+check_options_list_1([Option|Rest],MaxTerms,Alias):- !,
+%	check_nonvar(Option,message_queue_create/2,2),
+	(Option @= max_size(_) ->  Option = max_size(N),set_queue_create_arg(N,MaxTerms,max_size), Alias = R
+	; (Option @= max_terms(_) ->  Option = max_terms(N),set_queue_create_arg(N,MaxTerms,max_size), Alias = R
+        ; (Option @= alias(_) ->  Option = alias(A),check_atom(A,message_queue_create/2,2),Alias = [A|R]
+        ; domain_error(thread_option,Option,message_queue_create/2,2,'') ) ) ),
+       check_options_list_1(Rest,MaxTerms,R).
+check_options_list_1(Culprit,_Size,_Alias):- 
+	type_error(list,Culprit,message_queue_create/2,2).
+
+set_queue_create_arg(Option,Arg,OptionName):- 
+	(\+ (Option = Arg) -> 
+	    misc_error(('Conflicting options in message_queue_create/2: ',
+	                 OptionName,' set to ',Arg,' and ',Option))
+         ; Arg = Option).
+
+check_aliases([],_).
+check_aliases([H|T],Pred):- 
+	(get_alias(H,_,_) -> 
+  	   permission_error(create,alias,H,Pred)
+         ; check_aliases(T,Pred)).
+
+message_queue_create(Queue):-
+	check_var(Queue,message_queue_create,1),
+	thread_request(MESSAGE_QUEUE_CREATE,Queue,MQ_CHECK_FLAGS,_,_,_,_,_,_),
+	add_alias(Queue,MESSAGE_QUEUE_CREATE,Queue,message_queue_create/1).
+
+%------------------------------------------------------------
+
+:- export interrupt_with_goal/1.
+interrupt_with_goal(Goal):- 
+	      code_to_buff(call(_,_,Goal),0),
+	      thread_request(INTERRUPT_WITH_GOAL,_,_,_,_,_,_,_,_).
+
+:- export handle_goal_interrupt/1.
+handle_goal_interrupt(Message):- 
+	thread_request(HANDLE_GOAL_INTERRUPT,_M1,Message,_M3,_,_,_,_,_),
+%	writeln(thread_request(HANDLE_GOAL_INTERRUPT,_,Message,_,_,_,_,_,_)),
+	thread_request(INTERRUPT_DEALLOC,_M1,_,_M3,_,_,_,_,_).
+
+thread_send_message(Message):- 
+	thread_request(XSB_THREAD_SELF, Tid, _, _, _, _, _, _ ,_),
+	thread_send_message(Tid, Message).
+
+thread_send_message(Queue,Message):- 
+	(integer(Queue) -> 
+           code_to_buff(call(_,_,Message),0),
+  	   thread_request(THREAD_SEND_MESSAGE,Queue,_,_,_,_,_,_,_)
+        ;  (atom(Queue),
+	      (get_alias(Queue,QUEUE_ALIAS,Qid) ; get_alias(Queue,THREAD_ALIAS,Qid)) -> 
+	      code_to_buff(call(_,_,Message),0),
+	      thread_request(THREAD_SEND_MESSAGE,Qid,_,_,_,_,_,_,_)
+           ;  (var(Queue) -> 
+	          instantiation_error(thread_send_message/2,1,ground)
+	      ;   domain_error(queue_or_alias,Queue,thread_send_message/2,1,'') ) ) ),!.
+
+%------------------------------------------------------------
+
+thread_get_message(Message) :-
+	thread_request(XSB_THREAD_SELF, Tid, _, _, _, _, _, _ ,_),
+	thread_get_message_1(Tid, Message).
+
+thread_get_signal(Message) :-
+	thread_request(XSB_THREAD_SELF, Tid, _, _, _, _, _, _ ,_),
+	xsb_flag(max_threads,Max),
+	NewId is Tid + Max,
+	thread_get_message_1(NewId, Message).
+
+thread_get_message(Queue,Message):-
+	(integer(Queue) -> 
+	   thread_get_message_1(Queue,Message)
+        ;  (atom(Queue),get_alias(Queue,QUEUE_ALIAS,Qid) -> 
+	       thread_get_message_1(Qid,Message)
+            ;  (var(Queue) -> 
+	          instantiation_error(thread_get_message/2,1,ground)
+	       ;  domain_error(queue_or_alias,Queue,thread_get_message/2,1,'') ) ) ).
+
+%:- import writeln/1 from standard.
+thread_get_message_1(Queue,Message):-
+%	writeln(calling(thread_get_message_1(Queue,Message))),
+	thread_request(THREAD_TRY_MESSAGE,Queue,MaybeMessage,_,_,_,_,_,_),
+	(MaybeMessage = Message ->
+%	    writeln((Queue,accepted(MaybeMessage))),
+	    thread_request(THREAD_ACCEPT_MESSAGE,Queue,_,_,_,_,_,_,_)
+	  ; 
+    	    repeat,
+%	    writeln((Queue,retrying(MaybeMessage))),
+	    thread_request(THREAD_RETRY_MESSAGE,Queue,MaybeMessage1,_,_,_,_,_,_),
+%	    writeln((Queue,got(MaybeMessage1))),
+	    MaybeMessage1 = Message,
+%	    writeln((Queue,accepted(MaybeMessage1))),
+	    thread_request(THREAD_ACCEPT_MESSAGE,Queue,_,_,_,_,_,_,_)),
+	!.
+  
+%------------------------------------------------------------
+%:- import writeln/1 from standard.
+
+thread_peek_message(Message) :-
+	thread_request(XSB_THREAD_SELF, Tid, _, _, _, _, _, _ ,_),
+	thread_peek_message_1(Tid, Message).
+
+thread_peek_signal(Message) :-
+	thread_request(XSB_THREAD_SELF, Tid, _, _, _, _, _, _ ,_),
+	xsb_flag(max_threads,Max),
+	NewId is Tid + Max,
+	thread_peek_message_1(NewId, Message).
+
+thread_peek_message(Queue,Message):-
+	(integer(Queue) -> 
+	   thread_peek_message_1(Queue,Message)
+        ;  (atom(Queue),get_alias(Queue,QUEUE_ALIAS,Qid) -> 
+	       thread_peek_message_1(Qid,Message)
+            ;  (var(Queue) -> 
+	          instantiation_error(thread_send_message/2,1,ground)
+	       ;  domain_error(queue_or_alias,Queue,thread_get_message/1,2,'') ) ) ).
+
+thread_peek_message_1(Queue,Message):-
+	thread_request(THREAD_PEEK_MESSAGE,Queue,MaybeMessage,Last,_,_,_,_,_),
+%	writeln(trying(MaybeMessage,Message)),
+	(Last == 1 ; MaybeMessage = Message ),
+	thread_request(THREAD_UNLOCK_QUEUE,Queue,_,_,_,_,_,_,_),
+	!,
+	Last = 0.
+thread_peek_message_1(Queue,Message):-
+	repeat,
+%	writeln(repeeking),
+	thread_request(THREAD_REPEEK_MESSAGE,Queue,MaybeMessage,Last,_,_,_,_,_),
+%	writeln(retrying(MaybeMessage,Message)),
+	(Last == 1 ; MaybeMessage = Message ),
+	thread_request(THREAD_UNLOCK_QUEUE,Queue,_,_,_,_,_,_,_),
+	!,
+	\+ (Last = 1).
+	     
+%---------------------------
+
+print_message_queue(Queue):- 
+	thread_request(PRINT_MESSAGE_QUEUE,Queue,_,_,_,_,_,_,_).
+
+%---------------------------
+
+message_queue_destroy(Queue):- 
+	(integer(Queue) -> 
+           remove_alias(_,MESSAGE_QUEUE_ALIAS,Queue),
+	   thread_request( XSB_MESSAGE_QUEUE_DESTROY,Queue,_,_,_,_,_,_,_)
+        ;  (atom(Queue),get_alias(Queue,MESSAGE_QUEUE_ALIAS,Qid) -> 
+	       remove_alias(_,MESSAGE_QUEUE_ALIAS,Qid),
+ 	       thread_request(XSB_MESSAGE_QUEUE_DESTROY,Qid,_,_,_,_,_,_,_)
+           ;  (var(Queue) -> 
+	         instantiation_error(message_queue_destroy/1,1,ground)
+	      ;  domain_error(queue_or_alias,Queue,message_queue_destroy/1,1,'') ) ) ).
+
+%---------------------------
+
+

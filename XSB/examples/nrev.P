@@ -1,0 +1,40 @@
+/*  The naive reverse benchmark */
+
+go :- cputime(X0), bench(500), cputime(X1), X is X1 - X0, 
+	write('cputime: '), write(X), nl.
+
+nrev([],[]).
+nrev([X|Rest],Ans) :- nrev(Rest,L), append(L,[X],Ans).
+
+append([],L,L).
+append([X|L1],L2,[X|L3]) :-
+	append(L1,L2,L3).
+
+bench(Count) :- 
+	cputime(T0), dodummy(Count), cputime(T1),
+	dobench(Count), cputime(T2),
+	report(Count,T0,T1,T2).
+
+dobench(Count) :- data(List), repeat(Count), nrev(List,_), fail.
+dobench(_).
+
+dodummy(Count) :- data(List), repeat(Count), dummy(List,_), fail.
+dodummy(_).
+
+dummy(_,_).
+
+data(X) :- data(X,30).
+data([],0).
+data([a|Y],N) :- N > 0, N1 is N-1, data(Y,N1).
+/* data([a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,aa,bb,cc,dd]). */
+
+repeat(_).
+repeat(N) :- N > 1, N1 is N-1, repeat(N1).
+
+report(Count,T0,T1,T2) :- 
+	write(T0), nl, write(T1), nl, write(T2), nl,
+	Time1 is T1 - T0, write(Time1),nl,
+	Time2 is T2 - T1, write(Time2),nl,
+	Time is Time2-Time1, write(Time),nl,
+	Lips is (496*Count)/Time,
+	write('Lips = '), write(Lips), nl.

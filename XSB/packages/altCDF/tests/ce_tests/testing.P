@@ -1,0 +1,31 @@
+
+:- [cur_tests].
+:- [altcdf].
+:- [cdftp_chkCon].
+:- import load_extensional_facts/1 from cdf_io.
+
+?- load_extensional_facts('.').
+
+%?- testall.
+
+
+testall:- 
+	testall1.
+
+testall1:- 
+	sat_test(Formula,Val),
+	writeln(sat_test(Formula,Val)),
+	testval(Formula,Val),
+	fail.
+testall1.
+
+testval(Formula,true):- 
+	(sat(Formula) -> 
+	    true 
+	  ; writeln('!!!failing'(sat_test(Formula,true)))).
+testval(Formula,false):- 
+	(\+ sat(Formula) -> 
+	    true 
+	  ; writeln('!!!failing'(sat_test(Formula,false)))).
+
+

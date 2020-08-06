@@ -1,0 +1,177 @@
+/* Transitive Closure: definite datalog example */
+
+:- import incr_assert/1, incr_assert_inval/1,
+	incr_retractall/1,
+	incr_retract_inval/1, incr_table_update/1 from increval.
+:- import member/2 from basics.
+:- import variant/2 from subsumes.
+
+
+:- use_incremental_dynamic edge/2.
+%%:- dynamic edge/2.
+
+%%:- table reach/2.
+:- use_incremental_tabling reach/2.
+reach(X,Y):- edge(X,Y).
+reach(X,Y):- edge(X,Z), reach(Z,Y).
+
+
+test :-
+	test1,
+	test2,
+	test3,
+	test4.
+
+test1 :-
+	abolish_all_tables,
+	incr_retractall(edge(_,_)),
+	incr_assert(edge(1,2)),
+	incr_assert(edge(2,3)),
+	incr_assert(edge(3,1)),
+
+	(reach(1,_X),fail
+	 ;
+	 true
+	),
+	check_curr_tables(1,[reach(1,_h245),reach(1,1),reach(1,2),reach(1,3),reach(2,_h225),reach(2,1),reach(2,2),reach(2,3),reach(3,_h205),reach(3,1),reach(3,2),reach(3,3)]),
+	abolish_table_call(reach(1,_)),
+	check_curr_tables(1,[]).	
+
+test2 :-
+	abolish_all_tables,
+	retractall(edge(_,_)),
+	assert(edge(1,2)),
+	assert(edge(5,2)),
+	assert(edge(2,3)),
+
+	(reach(1,X),fail
+	 ;
+	 reach(5,X),fail
+	 ;
+	 true
+	),
+	check_curr_tables(2,[reach(1,_h235),reach(1,2),reach(1,3),reach(2,_h225),reach(2,3),reach(3,_h220),reach(5,_h205),reach(5,2),reach(5,3)]),
+	abolish_table_call(reach(1,_)),
+	check_curr_tables(2,[reach(2,_h215),reach(2,3),reach(3,_h210),reach(5,_h195),reach(5,2),reach(5,3)]).
+
+test3 :-
+	abolish_all_tables,
+	retractall(edge(_,_)),
+	assert(edge(1,2)),
+	assert(edge(2,3)),
+	assert(edge(3,1)),
+
+	(reach(1,_X),fail
+	 ;
+	 true
+	),
+	check_curr_tables(3,[reach(1,_h245),reach(1,1),reach(1,2),reach(1,3),reach(2,_h225),reach(2,1),reach(2,2),reach(2,3),reach(3,_h205),reach(3,1),reach(3,2),reach(3,3)]),
+	abolish_table_call(reach(1,_)),
+	check_curr_tables(3,[]).
+
+test4 :-
+	abolish_all_tables,
+	retractall(edge(_,_)),
+	assert(edge(1,2)),
+	assert(edge(2,3)),
+	assert(edge(3,1)),
+	assert(edge(5,1)),
+
+	(reach(5,_X),fail
+	 ;
+	 true
+	),
+	check_curr_tables(4,[reach(1,_h262),reach(1,1),reach(1,2),reach(1,3),reach(2,_h242),reach(2,1),reach(2,2),reach(2,3),reach(3,_h222),reach(3,1),reach(3,2),reach(3,3),reach(5,_h282),reach(5,1),reach(5,2),reach(5,3)]),
+	abolish_table_call(reach(1,_)),
+	check_curr_tables(4,[reach(1,_h392),reach(1,1),reach(1,2),reach(1,3),reach(2,_h372),reach(2,1),reach(2,2),reach(2,3),reach(3,_h352),reach(3,1),reach(3,2),reach(3,3),reach(5,_h412),reach(5,1),reach(5,2),reach(5,3)]),
+	abolish_table_call(reach(5,_)),
+	check_curr_tables(4,[]).
+
+
+check_curr_tables(Case,ShouldBe) :-
+	get_current_tables([reach(_,_)],Tabs1),
+	(variant(Tabs1,ShouldBe)
+	 ->	writeln('OK'(Case))
+	 ;	writeln('ERROR'(Case,ShouldBe,Tabs1))
+	).
+	
+	
+get_current_tables(Preds,CallsAndAnswers) :-
+	findall(COA,get_call_or_answer(Preds,COA),CallsAndAnswersU),
+	sort(CallsAndAnswersU,CallsAndAnswers).
+
+get_call_or_answer(Preds,CallOrAnswer) :-
+	member(G,Preds),
+	get_calls(G,CS,Ret),
+	(CallOrAnswer = G
+	 ;
+	 get_returns(CS,Ret),
+	 CallOrAnswer = G
+	).
+
+
+
+/*
+
+Let us consider the following cases:
+
+Case 1:
+
+Facts:
+:- assert(edge(1,2)).
+:- assert(edge(5,2)).
+:- assert(edge(2,3)).
+
+We call reach(1,X).
+
+This will create call edges 
+reach(1,X)-->reach(2,X)--->reach(3,X)
+
+say we abolish tabled call reach(1,X) using
+abolish_table_call(reach(1,X)). This will abolish reach(1,X),
+reach(2,X), and reach(3,X).
+
+Case 2:
+
+Facts:
+:- assert(edge(1,2)).
+:- assert(edge(5,2)).
+:- assert(edge(2,3)).
+
+
+We call reach(1,X) and reach(5,X).
+
+say we abolish tabled call reach(1,X) using
+abolish_table_call(reach(1,X)). This will only abolish
+reach(1,X). This wont abolish reach(2,X), and reach(3,X), bcoz
+reach(2,X) is supporting reach(5,X).
+
+Case 3:
+
+Facts:
+:- assert(edge(1,2)).
+:- assert(edge(2,3)).
+:- assert(edge(3,1)).
+
+Say we call reach(1,X). call graph
+reach(1,X)-->reach(2,X)-->reach(3,X)-->reach(1,X).
+ 
+and abolish_table_call(reach(1,X)). This will delete all the three
+calls.
+
+Case 4:
+
+:- assert(edge(1,2)).
+:- assert(edge(2,3)).
+:- assert(edge(3,1)).
+:- assert(edge(5,1)).
+
+Say we call reach(5,X). call graph
+reach(5,X)-->reach(1,X)-->reach(2,X)-->reach(3,X)-->reach(1,X).
+ 
+and abolish_table_call(reach(1,X)) won't delete any call.
+
+but abolish_table_call(reach(5,X)) will delete all calls. 
+
+
+*/

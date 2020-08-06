@@ -1,0 +1,616 @@
+/* File:      string.P
+** Author(s): Kostis Sagonas, Jiyang Xu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: string.P,v 1.31 2006/05/23 21:57:45 tswift Exp $
+** 
+*/
+
+/*----------------------------------------------------------------------*/
+/* NOTE: This file HAS TO be compiled with the "sysmod" option.		*/
+/*----------------------------------------------------------------------*/
+
+:- compiler_options([sysmod,optimize]).
+
+%--- 
+
+/* 
+TLS 7/99 This version is linear rather than quadratic and seems
+much faster than the old one (which I must confess to writing).  Also,
+this is well-behaved for memory management since it no longer uses
+str_cat or str_len.
+
+TLS: 12/03 I thought this might be more useful if I added a flatten,
+	so that substrings could be passed in as lists. 
+DSW: 3/04 rewritten to single pass for efficiency
+*/
+ 
+concat_atom(L,A) :-
+	(atom(A)
+	 ->	split_atom(A,L)
+	 ;	c_atom(L,[],AC),
+		atom_codes(A,AC)
+	).
+
+c_atom(A,L0,L) :-
+	(A == []
+	 ->	L = L0
+	 ; A @= [_|_]
+	 ->	A = [A1|R],
+		(R == []
+		 ->	c_atom(A1,L0,L)
+		 ;	c_atom(R,L0,L1),
+			c_atom(A1,L1,L)
+		)
+	 ; A @= (_,_)
+	 ->	A = (A1,R),
+		c_atom(R,L0,L1),
+		c_atom(A1,L1,L)
+	 ;	(atom(A)
+		 ->	atom_codes(A,AC)
+		 ;	number(A)
+		 ->	number_codes(A,AC)
+		 ;	warning(('concat_atom failed due to element: ',A)),
+			fail
+		),
+		(L0 == []
+		 ->	L = AC
+		 ;	append(AC,L0,L)
+		)
+	).
+
+
+%---
+concat_atom(L,S,A) :-
+	atom(S),
+	atom_codes(S,St),
+	c_atom(L,St,[],AC),
+	atom_codes(A,AC).
+
+c_atom(A,S,L0,L) :-
+	(A == []
+	 ->	L = L0
+	 ; A @= [_|_]
+	 ->	A = [A1|R],
+		(R == []
+		 ->	c_atom(A1,S,L0,L)
+		 ;	c_atom(R,S,L0,L1),
+			c_atom(A1,S,L1,L)
+		)
+	 ; A @= (_,_)
+	 ->	A = (A1,R),
+		c_atom(R,S,L0,L1),
+		c_atom(A1,S,L1,L)
+	 ;	(atom(A)
+		 ->	atom_codes(A,AC)
+		 ;	number(A)
+		 ->	number_codes(A,AC)
+		),
+		(L0 == []
+		 ->	L = AC
+		 ;	append(S,L0,L1),
+			append(AC,L1,L)
+		)
+	).
+
+
+/* split_atom(Atom,AtomVarList) is the converse of concat_atom (with
+arguments in reverse order).  It takes an atom Atom and a list of
+atoms or variables AtomVarList, and binds the variables so that
+concat_atom(AtomVarList,Atom) is true.  */
+
+split_atom(Atom,AtomVarList) :-
+	atom_codes(Atom,AtomC),
+	safe_atom_codes_all(AtomVarList,AtomCList),
+	split_all_c(AtomCList,AtomC),
+	safe_atom_codes_all(AtomVarList,AtomCList).
+
+split_all_c([],[]).
+split_all_c([XC|AtomCs],AtomC) :-
+	append(XC,Rest,AtomC),
+	split_all_c(AtomCs,Rest).
+
+safe_atom_codes_all([],[]).
+safe_atom_codes_all([X|R],[Y|S]) :-
+	(var(X),var(Y)
+	 ->	true
+	 ; integer(X)
+	 ->	number_codes(X,Y)
+	 ;	atom_codes(X,Y)
+	),
+	safe_atom_codes_all(R,S).
+
+%% Get substring of String beginning at from and ending at To.
+%% Negative "To" counts from the end. Unbount "To" means use the end of string
+substring(String,From,To,Subst) :- substring(String,From,To,Subst).
+string_substitute(String,SubstSpec,SubstList,ResultStr) :-
+	string_substitute(String,SubstSpec,SubstList,ResultStr).
+str_length(Str, Len) :- str_len(Str, Len).
+
+str_cat(S1, S2, S3) :- str_cat(S1, S2, S3).
+%% Only checks the first match
+str_match(Sub,Str,Direction,Beg,End) :- str_match(Sub,Str,Direction,Beg,End).
+str_sub(S1, S2, Pos) :- str_match(S1, S2, forward, Pos, _).
+str_sub(S1, S2) :- str_match(S1, S2, forward, _, _).
+
+/***************************************************************/
+/*                                                             */
+/* term_to_codes (term_to_atom) convert a general XSB term     */
+/* into a list of codes (an atom) in canonical term form.      */
+/* (It does NOT handle floats.)                                */
+/* Terms to be converted should not contain unary function     */
+/* symbols named ' _$var$_ '.  				       */
+/*                                  */
+/***************************************************************/
+
+term_to_atom(Term,Atom) :-
+	term_to_atom(Term,Atom,[ignore_ops(canonical)]).
+
+term_to_atom(Term,Atom,OptionList) :-
+	copy_term(Term,Term1),  % protect Term's variables
+	term_to_codes(Term1,OptionList,Codes),
+	atom_codes(Atom,Codes).
+
+term_to_codes(Term,Codes) :-
+	term_to_codes(Term,[ignore_ops(canonical)],Codes).
+
+term_to_codes(Term,OptionList,Codes) :-
+	check_nonvar_list(OptionList,term_to_atom/3,3),
+	compute_options(OptionList,Structure),
+	term_to_codes(Term,Structure,0,_,Codes,[]).
+
+compute_options([],option(IgOpts,Quoted,Nvars)):- 
+	(var(Quoted) -> Quoted = false ; true),
+	(var(Nvars) -> Nvars = false ; true),
+	(var(IgOpts) -> IgOpts = canonical ; true).
+compute_options([H|T],Structure):-
+	compute_option(H,Structure),
+	compute_options(T,Structure).
+
+compute_option(ignore_ops(Flag),Structure):- 
+	(Flag = true ; Flag = canonical), !,
+	option_structure(Structure,Flag,_Quoted,_NumVars).
+compute_option(quoted(Flag),Structure):- 
+	boolean(Flag),!,
+	option_structure(Structure,_IgOpts,Flag,_NumVars).
+compute_option(numbervars(Flag),Structure):- 
+	boolean(Flag),!,
+	option_structure(Structure,_IgOpts,_Quoted,Flag).
+compute_option(Opt,_Structure):- 
+            domain_error(write_option, Opt,term_to_atom/3,3).
+
+boolean(true).
+boolean(false).
+
+option_structure(option(IgOpts,Qtd,NumVars),IgOpts,Qtd,NumVars).
+
+ignore_ops(option(V,_,_),V).
+numbervars(option(_,_,V),V).
+quoted(option(_,V,_),V).
+
+term_to_codes(Term,Structure,Var0,Var,Codes0,Codes) :-
+	(var(Term)
+	 ->	Term = ' _$var$_ '(Var0),
+		Var is Var0 + 1,
+		Codes0 = [0'_,0'h|Codes1],
+		number_codes(Var0,IntCodes),
+		append(IntCodes,Codes,Codes1)
+	 ;	get_varcode(Term,Structure,Var0,Var,VC)
+	 ->	append(VC,Codes,Codes0)
+	 ;	integer(Term)
+	 ->	Var = Var0,
+		number_codes(Term,IntCodes),
+		append(IntCodes,Codes,Codes0)
+	 ;	atom(Term)
+	 ->	Var = Var0,
+		extern_atom_codes(Term,Structure,Codes0,Codes)
+	 ;	float(Term)
+	 ->	Var = Var0,
+		extern_float_codes(Term,Codes0,Codes)
+	 ;	is_list(Term)
+         ->	Term=[Term1|Terms],
+	        get_listcode(Term1,Terms,Structure,Var0,Var,Codes0,Codes)
+	 ;	structure(Term)
+	 ->	Term =.. List,
+	 	(List = [Fun,Arg1|Args] ->
+	 		extern_atom_codes(Fun,Structure,Codes0,[0'(|Codes2]),
+			term_to_codes(Arg1,Structure,Var0,Var1,Codes2,Codes3),
+			cvt_termlist_to_codes(Args,Structure,Var1,Var,Codes3,[0')|Codes])
+			; 
+			List = [Fun],
+			extern_atom_codes(Fun,Structure,Codes0,[0'(,0')|Codes]))
+	).
+
+cvt_termlist_to_codes([],_Structure,Var,Var,Codes,Codes).
+cvt_termlist_to_codes([Arg|Args],Structure,Var0,Var,[0',|Codes0],Codes) :-
+	term_to_codes(Arg,Structure,Var0,Var1,Codes0,Codes1),
+	cvt_termlist_to_codes(Args,Structure,Var1,Var,Codes1,Codes).
+
+% Called in a context in which a var check has already been made.
+get_varcode(' _$var$_ '(N), _Struct,Vin,Vin,Codes) :-
+	Codes = [0'_,0'h|IntCodes],
+	number_codes(N,IntCodes).
+get_varcode('$VAR'(N), OptStruct,Vin,Vout,Codes) :-
+	(numbervars(OptStruct,true) -> 
+	    get_varcode_1(N, OptStruct,Vin,Vout,Codes)
+	 ;  
+	    term_to_codes(N,OptStruct,Vin,Vout,Codes1,[41]),
+	    (quoted(OptStruct,true) -> 
+	         append("'$VAR'(",Codes1,Codes)
+	      ;  append("$VAR(",Codes1,Codes) ) ).
+
+get_varcode_1(N, _Opt,Vin,Vin,[Code|Rest]):- 
+	integer(N), N >= 0, !,
+	Code is N mod 26 + 0'A,
+	(   N>=26 ->
+	    N1 is N//26, get_varcode_1(N1,_opt,_,_, Rest)
+	;   Rest = []
+             ).
+get_varcode_1(N, _Opt,Vin,Vin,[95]) :-       % _
+	integer(N), N < 0,!.
+get_varcode_1(A,_Opt,Vin,Vin,Codes):- 
+	atom(A), !,
+	atom_codes(A,Codes).
+get_varcode_1([H|T],_Opt,Vin,Vin,[H|T]):- 
+	is_numeric_list([H|T]), !.
+get_varcode_1(N, Opt,Vin,Vout,Codes):- 
+	    term_to_codes(N,Opt,Vin,Vout,Codes,[]).
+
+is_numeric_list([]).
+is_numeric_list([H|T]):-
+	integer(H),
+	is_numeric_list(T).
+
+get_listcode(Term1,Terms,Struct,Var0,Var,Codes0,Codes):-
+	(ignore_ops(Struct,canonical) ->
+   	    Codes0 = [0'[|Codes1],
+	    term_to_codes(Term1,Struct,Var0,Var1,Codes1,Codes2),
+	    cvt_termlist_to_codes(Terms,Struct,Var1,Var,Codes2,[0']|Codes])
+	 ;  get_listhead(Struct,Codes0,Codes1),
+	    term_to_codes(Term1,Struct,Var0,Var1,Codes1,Codes2),
+	    Codes2 = [0', | Codes3],
+	    term_to_codes(Terms,Struct,Var1,Var,Codes3,[0')|Codes]) ).
+
+get_listhead(Struct,Codes0,Codes1):- 
+	(quoted(Struct,true) ->
+	   Codes0 = [0'', 0'., 0'', 0'(|Codes1]
+             ; Codes0 = [ 0'., 0'(|Codes1] ).
+
+extern_atom_codes(Atom,Struct,Codes0,Codes) :-
+	atom_codes(Atom,AtomCodes),
+	(quoted(Struct,true) -> 
+ 	   (if_not_need_quote(AtomCodes)
+	     ->	append(AtomCodes,Codes,Codes0)
+	    ;	Codes0 = [0''|Codes1],
+		copy_double_quote(AtomCodes,Codes1,[0''|Codes])
+	   )
+            ;  append(AtomCodes,Codes,Codes0) ).
+
+if_not_need_quote([0'[,0']]) :- !.
+if_not_need_quote([C|Cs]) :-
+	C >= 0'a, C =< 0'z,
+	if_not_need_quote1(Cs).
+
+if_not_need_quote1([]).
+if_not_need_quote1([C|Cs]) :-
+	(C >= 0'a, C =< 0'z
+	 ->	true
+	 ; (C >= 0'A, C =< 0'Z)
+	 ->	true
+	 ; C =:= 0'_
+	 ->	true
+	 ; (C >= 0'0, C =< 0'9)
+	 ->	true
+	),
+	if_not_need_quote1(Cs).
+
+copy_double_quote([],Cs,Cs).
+copy_double_quote([C|Cs],[C|Cs0],Cs1) :-
+	(C =:= 0''
+	 ->	Cs0 = [0''|Cs0a],
+		copy_double_quote(Cs,Cs0a,Cs1)
+	 ;	copy_double_quote(Cs,Cs0,Cs1)
+	).
+
+%TLS: changed to avoid calling log(0) below.
+extern_float_codes(Float,Codes0,Codes) :-
+	(Float < 0.0
+	 ->	PFloat is -Float,
+		Codes0 = [0'-'|Codes1],
+		extern_float_codes1(PFloat,Codes1,Codes)
+	 ;	(Float =:= 0.0 -> 
+	           Codes0 = [48,46,48,48,48,48,48,48,48,48|Codes]
+	 	 ; extern_float_codes1(Float,Codes0,Codes) )
+	).
+
+extern_float_codes1(Float,Codes0,Codes) :-
+	Log10 is log(10),
+	Exp is floor(log(Float)/Log10-8), % to get 6 or 7 digits, Put . Exp to left from end
+	DigitsInt is floor(Float/exp(Exp*Log10)),
+	number_codes(DigitsInt,Digits),
+	length(Digits,Length),
+	Dist is Length+Exp,
+	(Dist > 0
+	 ->	place_decimal(Digits,Dist,Codes0,Codes)
+	 ;	Codes0 = [0'0,0'.|Codes1],
+		prefix_decimal(Digits,Dist,Codes1,Codes)
+	).
+
+place_decimal([],Dist,Codes0,Codes) :-
+	(Dist > 0
+	 ->	Dist1 is Dist - 1,
+		Codes0 = [0'0|Codes1],
+		place_decimal([],Dist1,Codes1,Codes)
+	 ;	Codes0 = [0'.,0'0|Codes]
+	).
+place_decimal([D|Digits],Dist,Codes0,Codes) :-
+	(Dist > 0
+	 ->	Dist1 is Dist - 1,
+		Codes0 = [D|Codes1],
+		place_decimal(Digits,Dist1,Codes1,Codes)
+	 ; 	append([0'.,D|Digits],Codes,Codes0)
+	).
+		
+prefix_decimal(Digits,Dist,Codes0,Codes) :-
+	(Dist =:= 0
+	 ->	append(Digits,Codes,Codes0)
+	 ;	Dist1 is Dist + 1,
+		Codes0 = [0'0|Codes1],
+		prefix_decimal(Digits,Dist1,Codes1,Codes)
+	).
+
+
+/***************************************************************/
+/*                                                             */
+/* codes_to_term (atom_to_term) convert a list of codes (atom) */
+/* representing a canonical term into an XSB term.             */
+/* (It handles floats only in xx.xxx form.)                    */
+/*                                                             */
+/***************************************************************/
+
+atom_to_term(Atom,Term) :-
+	atom_codes(Atom,AtomC),
+	codes_to_term(AtomC,Term).
+
+codes_to_term(Codes,Term) :- codes_to_term(Codes,[],[],_,Term).
+
+codes_to_term(Rest0,Rest,ST0,ST,Term) :-
+	scan_blanks(Rest0,Rest1),
+	codes_to_term_d(Rest1,Rest,ST0,ST,Term).
+
+codes_to_term_d([0'[|Rest0],Rest,ST0,ST,Term) :- !,
+	(Rest0 = [0']|Rest]
+	 ->	Term = [],
+		ST = ST0
+	 ;	codes_to_term(Rest0,Rest1,ST0,ST1,Tok1),
+		codes_to_term_list(Rest1,[0']|Rest2],Toks,[],ST1,ST),
+		scan_blanks(Rest2,Rest),
+		Term = [Tok1|Toks]
+	).
+codes_to_term_d(Rest0,Rest,ST0,ST,Term) :-
+	next_token(Rest0,Rest1,ST0,ST1,Tok0),
+	(Rest1 = [0'(|Rest2]
+	 ->	nonvar(Tok0),
+		codes_to_term(Rest2,Rest3,ST1,ST2,Tok1),
+		codes_to_term_list(Rest3,[0')|Rest4],Terms,[],ST2,ST),
+		scan_blanks(Rest4,Rest),
+		Term =.. [Tok0,Tok1|Terms]
+	 ;	Rest = Rest1,
+		ST = ST1,
+		Term = Tok0
+	).
+
+codes_to_term_list(Rest0,Rest,Terms0,Terms,ST0,ST) :-
+	Rest0 = [C|Rest1],
+	(C =:= 0') 
+	 ->	Rest = Rest0,
+		Terms = Terms0,
+		ST = ST0
+	 ;	C =:= 0'] 
+	 ->	Rest = Rest0,
+		Terms = Terms0,
+		ST = ST0
+	 ;	C =:= 0',,
+	        codes_to_term(Rest1,Rest2,ST0,ST1,Tok),
+		Terms0 = [Tok|Terms1],
+		codes_to_term_list(Rest2,Rest,Terms1,Terms,ST1,ST)
+	).
+	
+next_token(Rest0,Rest,ST0,ST,Tok) :-
+	Rest0 = [C|Rest1],
+	(C >= 0'0, C =< 0'9
+	 ->	Val is C - 0'0,
+		ST = ST0,
+		scan_number(Rest1,Rest,Val,Tok)
+	 ; (C =:= 0'_ ; (C >= 0'A , C =< 0'Z))
+	 ->	scan_variable([C|Rest1],Rest,ST0,ST,Tok)
+	 ; C =:= 0''
+	 ->	ST = ST0,
+		scan_quoted_con(Rest1,Rest,Codes,[]),
+		atom_codes(Tok,Codes)
+	 ; C =:= 0'.
+	 ->	ST = ST0,
+		scan_decimal(Rest1,Rest,1.0,0.0,Tok)
+	 ; (C =:= 0'- , Rest1 = [C1|Rest2], C1 >= 0'0, C1 =< 0'9)
+	 ->	Val is C1 - 0'0,
+		scan_number(Rest2,Rest,Val,MTok),
+		ST = ST0,
+		Tok is -MTok
+	 ;	ST = ST0,
+		scan_to_delim(Rest0,Rest,Codes,[]),
+		atom_codes(Tok,Codes)
+	).
+
+scan_number(Rest0,Rest,Val0,Val) :-
+	(Rest0 = [D|Rest1]
+	 ->	(D >= 0'0, D =< 0'9
+		 ->	Val1 is 10*Val0+D-0'0,
+			scan_number(Rest1,Rest,Val1,Val)
+		 ; D =:= 0'.
+		 ->	Val1 is float(Val0),
+			scan_decimal(Rest1,Rest,1.0,Val0,Val)
+		 ;	Rest = Rest0,
+			Val = Val0
+		)
+	 ;	Rest = Rest0,
+		Val = Val0
+	).
+
+scan_decimal(Rest0,Rest,Dec,Val0,Val) :-
+	(Rest0 = [D|Rest1], D >= 0'0, D =< 0'9
+	 ->	Dec1 is Dec / 10,
+		Val1 is Val0 + (D - 0'0) * Dec1,
+		scan_decimal(Rest1,Rest,Dec1,Val1,Val)
+	 ;	Rest = Rest0,
+		Val = Val0
+	).
+
+scan_variable(Rest0,Rest,ST0,ST,Var) :-
+	scan_to_delim(Rest0,Rest,Str,[]),
+	(Str == "_"
+	 ->	ST = ST0
+	 ; 	atom_codes(VName,Str),
+		(memberchk(VName=Var,ST0)
+		 ->	ST = ST0
+		 ;	ST = [VName=Var|ST0]
+		)
+	).
+
+scan_to_delim(Rest0,Rest,Str0,Str) :-
+	(Rest0 = [C|Rest1]
+	 ->	((C =:= 0'( ; C =:= 0', ; C =:= 0') ; C =:= 0'])
+		 ->	Rest = Rest0,
+			Str = Str0
+		 ; C =:= 0'  %
+		 ->	scan_to_delim(Rest1,Rest,Str0,Str)
+		 ;	Str0 = [C|Str1],
+			scan_to_delim(Rest1,Rest,Str1,Str)
+		)
+	 ;	Rest = Rest0,
+		Str = Str0
+	).
+
+scan_quoted_con([C|Rest0],Rest,Str0,Str) :-
+	(C =:= 0''
+	 ->	(Rest0 = [0''|Rest1]
+		 ->	Str0 = [0''|Str1],
+			scan_quoted_con(Rest1,Rest,Str1,Str)
+		 ;	Rest = Rest0,
+			Str = Str0
+		)
+	 ;	Str0 = [C|Str1],
+		scan_quoted_con(Rest0,Rest,Str1,Str)
+	).
+
+scan_blanks(Rest0,Rest) :-
+	(Rest0 = [0' |Rest1]
+	 ->	scan_blanks(Rest1,Rest)
+	 ;	Rest = Rest0
+	).
+
+/***************************************************************/
+/*                                                             */
+/* read_atom_to_term converts an atom containing the           */
+/* characters of a valid readable term (without a terminating  */
+/* '.') to a term (3-arg returns variable names).  It uses     */
+/* file_read_foe, using the current operators.  It fails if    */
+/* there is an error.                                          */
+/*                                                             */
+/***************************************************************/
+
+read_atom_to_term(Atom,Term) :-
+	read_atom_to_term(Atom,Term,_).
+
+read_atom_to_term(Atom,Term,Vars) :-
+	(atom(Atom)
+	 ->	true
+	 ;	type_error(atom,Atom,read_atom/2,1)
+	),
+	(Atom == [] % hack to handle [] treatment as '' ambiguity in ptoc_longstring.
+	 ->	atom_codes(Atom1,"'[]'")
+	 ;	Atom1 = Atom
+	),
+	file_open([Atom1,'.'],sr,FileDes),
+	(file_read_foe(FileDes,Term,Vars)
+	 ->	file_close(FileDes)
+	 ;	file_close(FileDes),
+		fail
+	).
+
+read_atom_to_term_print_on_error(Atom,Term,Vars) :-
+	(atom(Atom)
+	 ->	true
+	 ;	type_error(atom,Atom,read_atom_to_term_print_on_error/3,1)
+	),
+	(Atom == []  % hack to handle [] treatment as '' in ptoc_longstring.
+	 ->	atom_codes(Atom1,"'[]'")
+	 ;	Atom1 = Atom
+	),
+	file_open([Atom1,'.'],sr,FileDes),
+	(standard:catch(file_read(FileDes,Term,Vars),E,read_handler(E))
+	 ->	file_close(FileDes)
+        ;
+            file_close(FileDes),
+            standard:nl(2),
+            fail
+	).
+
+read_handler(error(_,context(Message,_Trace))) :-
+        error_writeln(Message),
+        fail.
+
+/* ---------------------- end of file string.P ------------------------ */
+
+end_of_file.
+
+term_to_codes(Term,Structure,Var0,Var,Codes0,Codes) :-
+	(var(Term)
+	 ->	Term = ' _$var$_ '(Var0),
+		Var is Var0 + 1,
+		Codes0 = [0'_,0'h|Codes1],
+		number_codes(Var0,IntCodes),
+		append(IntCodes,Codes,Codes1)
+	 ;	Term = ' _$var$_ '(I)
+	 ->	Var = Var0,
+		Codes0 = [0'_,0'h|Codes1],
+		number_codes(I,IntCodes),
+		append(IntCodes,Codes,Codes1)
+	 ;	integer(Term)
+	 ->	Var = Var0,
+		number_codes(Term,IntCodes),
+		append(IntCodes,Codes,Codes0)
+	 ;	atom(Term)
+	 ->	Var = Var0,
+		extern_atom_codes(Term,Codes0,Codes)
+	 ;	float(Term)
+	 ->	Var = Var0,
+		extern_float_codes(Term,Codes0,Codes)
+	 ;	is_list(Term)
+	 ->	Term=[Term1|Terms],
+		Codes0 = [0'[|Codes1],
+		term_to_codes(Term1,Structure,Var0,Var1,Codes1,Codes2),
+		cvt_termlist_to_codes(Terms,Structure,Var1,Var,Codes2,[0']|Codes])
+	 ;	structure(Term)
+	 ->	Term =.. [Fun,Arg1|Args],
+		extern_atom_codes(Fun,Codes0,[0'(|Codes2]),
+		term_to_codes(Arg1,Structure,Var0,Var1,Codes2,Codes3),
+		cvt_termlist_to_codes(Args,Structure,Var1,Var,Codes3,[0')|Codes])
+	).
+

@@ -1,0 +1,104 @@
+/* File:      truckload.chr
+** Author(s): Tom Schrijvers
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) ECRC 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: truckload.chr,v 1.4 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+:- chr_module(truckload).
+
+:- import merge_chr_answer_store/1, 
+          get_chr_store/1,
+          set_chr_store/1,
+          get_chr_answer_store/2
+   from chr.
+
+:- constraints leq/2.
+
+reflexivity  @ leq(X,X) <=> true.
+
+leq(N1,N2) <=> number(N1), number(N2) | N1 =< N2.
+
+leq(N1,X) \ leq(N2,X) <=> number(N1), number(N2), N1 > N2 | true.
+leq(X,N1) \ leq(X,N2) <=> number(N1), number(N2), N1 < N2 | true.
+
+antisymmetry @ leq(X,Y), leq(Y,X) <=> X = Y.
+
+idempotence  @ leq(X,Y) \ leq(X,Y) <=> true.
+
+transitivity @ leq(X,Y), leq(Y,Z) ==> leq(X,Z).
+
+truckload(I,W,D,T) :-
+	tabled_truckload(I,W,D,T1,AnswerStore),
+	merge_chr_answer_store(AnswerStore),
+	T1 = T.
+
+:- table tabled_truckload/5.
+
+tabled_truckload(I,W,D,T,AS) :-
+	get_chr_store(Store),
+	set_chr_store(_NewStore),
+	orig_truckload(I,W,D,T),
+	get_chr_answer_store(truckload,AS),
+	set_chr_store(Store).
+
+orig_truckload(0,0,_,_).
+orig_truckload(I,W,D,T) :-
+	I > 0,
+	I1 is I - 1,
+	truckload(I1,W,D,T).
+orig_truckload(I,W,D,T) :-
+	I > 0,
+	pack(I,Wi,D,Ti),
+	W1 is W - Wi,
+	W1 >= 0,
+	I1 is I - 1,
+	truckload(I1,W1,D,T), T = Ti.
+
+
+pack(30,29,chicago,T) :- leq(19,T),leq(T,29).
+pack(29,82,chicago,T) :- leq(20,T),leq(T,29).
+pack(28,24,chicago,T) :- leq(8,T),leq(T,12).
+pack(27,11,chicago,T) :- leq(21,T),leq(T,22).
+pack(26,57,chicago,T) :- leq(8,T),leq(T,28).
+pack(25,30,chicago,T) :- leq(14,T),leq(T,18).
+pack(24,71,chicago,T) :- leq(11,T),leq(T,14).
+pack(23,31,chicago,T) :- leq(10,T),leq(T,27).
+pack(22,34,chicago,T) :- leq(19,T),leq(T,20).
+pack(21,73,chicago,T) :- leq(8,T),leq(T,19).
+pack(20,83,chicago,T) :- leq(21,T),leq(T,24).
+pack(19,86,chicago,T) :- leq(10,T),leq(T,12).
+pack(18,79,chicago,T) :- leq(22,T),leq(T,24).
+pack(17,50,chicago,T) :- leq(18,T),leq(T,28).
+pack(16,58,chicago,T) :- leq(13,T),leq(T,14).
+pack(15,69,chicago,T) :- leq(4,T),leq(T,14).
+pack(14,77,chicago,T) :- leq(22,T),leq(T,28).
+pack(13,74,chicago,T) :- leq(27,T),leq(T,30).
+pack(12,65,chicago,T) :- leq(12,T),leq(T,24).
+pack(11,26,chicago,T) :- leq(12,T),leq(T,26).
+pack(10,56,chicago,T) :- leq(15,T),leq(T,16).
+pack(9,15,chicago,T) :- leq(29,T),leq(T,30).
+pack(8,81,chicago,T) :- leq(24,T),leq(T,26).
+pack(7,45,chicago,T) :- leq(2,T),leq(T,7).
+pack(6,40,chicago,T) :- leq(5,T),leq(T,21).
+pack(5,43,chicago,T) :- leq(4,T),leq(T,10).
+pack(4,22,chicago,T) :- leq(23,T),leq(T,29).
+pack(3,60,chicago,T) :- leq(4,T),leq(T,29).
+pack(2,82,chicago,T) :- leq(28,T),leq(T,29).
+pack(1,41,chicago,T) :- leq(27,T),leq(T,28).

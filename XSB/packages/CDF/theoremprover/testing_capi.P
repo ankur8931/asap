@@ -1,0 +1,22 @@
+
+:- [capi_cur_tests].
+
+testall:- 
+	interface(I),writeln(interface(I)),
+	shell(date),
+	testall1,
+	shell(date).
+
+testall1:- 
+	sat_test(Formula,Val),
+	writeln(sat_test(Formula,Val)),
+	testval(Formula,Val),
+	fail.
+testall1.
+
+?- [meta].
+
+?- use_capi.
+?- set_debug_off.
+
+?- testall.

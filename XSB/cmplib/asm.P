@@ -1,0 +1,292 @@
+/* File:      asm.P
+** Author(s): Saumya Debray, Kostis Sagonas, Terrance Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: asm.P,v 1.11 2010-08-19 15:03:35 spyrosh Exp $
+** 
+*/
+
+
+
+/*======================================================================*/
+/*  Format of the label table (refered as LabelTab):			*/
+/*	     label_tab(HashSize, LabelTabList, HashLabelTab)		*/
+/*  where: 								*/
+/*   1) HashSize is the arity of HashLabelTab  (this arity is always	*/
+/*	a prime number depending on the approximate amount of labels	*/
+/*	stored in the hash table).					*/
+/*   2) LabelTabList is a list of all label structures stored in the	*/
+/*	hash table (this list is absolutely identical with the first	*/
+/*	argument of HashLabelTab described below and can be used for	*/
+/*	a non-hashed scan of a label. The storage of this list could	*/
+/*	be avoided but we decided to store it explicitly  to avoid a	*/
+/*	costly arg/3 call every time we need access to it. This list	*/
+/*	is not copied, but unified with the 1st argument of the hash	*/
+/*	table so we get this storage almost for free).			*/
+/*   3) HashLabelTab is a structure having hash_tab as a functor and	*/
+/*	variable arity depending on the approximate amount of labels	*/
+/*	stored in it. Each argument is a open-ended list  containing	*/
+/*	labels of the form:  "((Sym, LabelId), Location)"  that  are	*/
+/*	usually	hashed on LabelId.  When all the labels are inserted	*/
+/*	the tail of the (i)-th argument is unified with the list  in	*/
+/*	the (i+1)-th argument and the 1-st argument is unified  with	*/
+/*	LabelTabList.							*/
+/*									*/
+/* NOTE: Jiyang claimed the following:					*/
+/*   1)	Sym can also be others: ....					*/
+/*	(I dunno know what else, except that sometimes instead of the	*/
+/*	 structure  "(Sym, LabelId)"  an "abs(-1)" structure appears,	*/
+/*	 that is why when the structure	does not have the form:		*/
+/*	 "(_, _)" I hash on the structure as a whole. -- Kostis).	*/
+/*	then this is an internal branch label. 				*/
+/*   2)	The EntryPoint field in symbol table is unified with the 	*/
+/*	Location field of corresponding label table entry. (right!).	*/
+/*======================================================================*/
+
+/*======================================================================*/
+/*  asm_genheader(+OStr, +ModName, +SymTab, +IsModule).			*/
+/*	Generates the header and data segment of the byte code file	*/
+/*	(OFile).  When IsModule is 0, the module is assumed to be	*/
+/*	global (No distiction again!).					*/
+/*======================================================================*/
+
+asm_genheader(OStr, ModName, SymTab, IsModule) :-
+	asm_genheader0(OStr, ModName, SymTab, IsModule), 
+	fail.	% reclaim space (remove all choice points left) and undo
+		% the binding of the tail of the hash table part of the
+		% symbol table (caused by the sorting of the symbols).
+asm_genheader(_OStr, _ModName, _SymTab, _IsModule).
+
+:- import warning/1 from standard.
+:- import conget/2 from gensym.
+asm_genheader0(OStr, ModName, SymTab, IsModule) :-
+	(conget(immutable,1) -> 
+	   (IsModule =:= 0 -> 
+	      warning('Cannot make predicates in usermod mutable.  File: '(ModName)),
+	      asm_magic(OStr,7)
+	    ; asm_magic(OStr,10))
+	 ; asm_magic(OStr,7)),	/* use magic number 17-18-19-X */
+	( IsModule =:= 0 -> file_put(OStr,0)
+	; str_len(ModName, L), file_put(OStr,L), write(OStr,ModName)
+	),
+	sym_count(SymTab, Count),
+	write_int(OStr,Count),
+        sort_by_index(SymTab, Sorted_SymList),
+	asm_gendata(OStr,Sorted_SymList),
+	!.
+
+
+/*======================================================================*/
+/* asm_PIL(+OStr, +Sym, +PilCode, +NumberOfClauses, +IsModule).		*/
+/*	Generates byte code from the PIL code of a predicate block.	*/
+/*	The magic number for the block of byte code is 17-18-19-6.	*/
+/*======================================================================*/
+
+asm_PIL(OStr, Sym, PilCode, NC, IsModule) :-
+	asm_magic(OStr,6),				% use magic number 17-18-19-6
+	sym_name(Sym, PredName, Arity), 
+	file_put(OStr,Arity), str_len(PredName, L), asm_putlength(OStr,L), write(OStr,PredName),
+	asm_get_index(PilCode, ProgramCode, Index, IndSize, 0),
+	!,
+	compute_hash_table_size(NC, HashSize),
+	LabelTab = label_tab(HashSize,_LabelTabList,HashLabelTab),
+%%	functor(HashLabelTab, hash_tab, HashSize),
+	asm_text_size(ProgramCode, 0, TxtSize, HashSize, HashLabelTab),
+	make_label_list(LabelTab),
+	number_index_block(Index, 1),		% first block has number 1. 
+	!,
+	write_int(OStr,TxtSize), write_int(OStr,IndSize),	% Generate code segment header
+	asm_opt(ProgramCode, Index, Sym, IsModule, OptProgramCode),
+	asm_gentext(OStr, OptProgramCode, LabelTab),	% Generate text  segment
+	asm_genindex(OStr, Index, LabelTab),		% Generate index segment
+	!.
+
+/*======================================================================*/
+/* asm_get_index(+PilCode, -ProgramCode, -Index, -IndexSize, +SizeIn)	*/
+/*	Splits the PilCode into the part used for indexing (Index)	*/
+/*	and the non-index part (ProgramCode).  While doing so, it also	*/
+/*	computes the size of the Index (IndexSize).			*/
+/*======================================================================*/
+
+asm_get_index([], [], [], Size, Size).
+asm_get_index([Inst|Rest], ProgramCode, Index, IndexSize, Ni) :-
+	( asm_index_inst(Inst, Size) ->
+		N is Ni + Size,
+		Index = [Inst|Rindex],
+		asm_get_index(Rest, ProgramCode, Rindex, IndexSize, N)
+	; ProgramCode = [Inst|Rprog],
+	  asm_get_index(Rest, Rprog, Index, IndexSize, Ni)
+	).
+
+
+/*======================================================================*/
+/*	This is exported because it is used in compiling foreign	*/
+/*	language files.							*/
+/*======================================================================*/
+
+asm_magic(OStr,N) :- file_put(OStr,17), file_put(OStr,18), file_put(OStr,19), file_put(OStr,N).
+
+/*======================================================================*/
+/* --- local utilities ------------------------------------------------	*/
+/*======================================================================*/
+
+asm_index_inst(cases(_,_,_,_), 10).
+asm_index_inst(arglabel(T,_,_), Size) :-
+	( asm_index_inst1(T, Size) -> true ; Size = 5 ).
+
+asm_index_inst1(i, 9).
+asm_index_inst1(c, 9).
+asm_index_inst1(s, 9).
+
+
+/*----------------------------------------------------------------------*/
+/*  compute_hash_table_size(+NumberOfClauses, -HashSize).		*/
+/*	Tries to find an optimal hash table size for a given number of	*/
+/*	clauses to be compiled.						*/
+/*----------------------------------------------------------------------*/
+
+%% with log_ith hashtable, take number of clauses as size
+compute_hash_table_size(NumberOfClauses, NumberOfClauses).
+
+/**
+compute_hash_table_size(NumberOfClauses, HashSize) :-
+	Allow_up_to_7_Scans is NumberOfClauses // 7, 
+	nearest_prime(Allow_up_to_7_Scans, HashSize).
+
+nearest_prime(Number, Prime) :-
+	prime(High, Prime), 
+	Number =< High,
+	!.
+nearest_prime(_, 251). % Bart - 4-3-1999 see last fact of prime/2
+***/
+
+/*----------------------------------------------------------------------*/
+/*  asm_text_size(+PilCode, +InitialSize, -TextSize,			*/
+/*			    +HashSize,  -HashLabelTab).			*/
+/*	Construct and fill the hash label table (HashLabelTab);		*/
+/*	Compute the size of the text segment (TextSize);  Fill in the	*/
+/*	EP field of the predicates (unified with the value in the label	*/
+/*	table).								*/
+/*----------------------------------------------------------------------*/
+
+asm_text_size([], N, N, _, _).
+asm_text_size([label(T,X)|Rest], Lc, NewLc, HashSize, HashLabelTab) :-
+	!,
+	hash_insert((X,Lc), HashSize, HashLabelTab),
+	( T == (pred) -> X = (Sym,_), sym_propin(ep(Lc), Sym) ; true ),
+	asm_text_size(Rest, Lc, NewLc, HashSize, HashLabelTab).
+asm_text_size([Inst|Rest], Lc, NLc, HashSize, HashLabelTab):-
+	asm_inst(Inst, Nbytes, _, _),	% get the size of the instruction
+	NewLc is Lc + Nbytes,
+	asm_text_size(Rest, NewLc, NLc, HashSize, HashLabelTab).
+
+hash_insert((X, Lc), HashSize, HashLabelTab) :-
+	( X = (_, LabelId) -> 
+		term_hash(LabelId, HashSize, Hash)
+	; term_hash(X, HashSize, Hash)
+	),
+	HashArg is Hash+1,
+	log_ith(HashArg, HashLabelTab, BucketList),
+	insert((X, Lc),  BucketList).
+
+
+/*----------------------------------------------------------------------*/
+/*  make_label_list(+Label_Table)					*/
+/*	Given a Label_Table having the form:				*/
+/*		label_tab(HashSize,LabelTabList,HashLabelTab)		*/
+/*	concatenates the buckets of the HashLabelTab to produce the	*/
+/*	LabelTabList.							*/
+/*----------------------------------------------------------------------*/
+
+make_label_list(label_tab(HashSize,LabelTabList,HashLabelTab)) :-
+	make_label_list1(1, HashSize, LabelTabList, HashLabelTab).
+
+make_label_list1(I, HashSize, LabelTabList, HashLabelTab) :-
+	( I =< HashSize ->
+		log_ith(I, HashLabelTab, LabelTabList),
+		scan_till_end_of_bucket(LabelTabList, NewLabelTabList),
+		NewI is I+1,
+		make_label_list1(NewI, HashSize, NewLabelTabList, HashLabelTab)
+	; true
+	).
+
+scan_till_end_of_bucket(LabelTabList, NewLabelTabList) :-
+	( var(LabelTabList) -> 
+		NewLabelTabList = LabelTabList
+	; LabelTabList = [_|More], 
+	  scan_till_end_of_bucket(More, NewLabelTabList)
+	).
+
+
+/*----------------------------------------------------------------------*/
+/*  number_index_block(+IndexList, +NumberOfFirstBlock).		*/
+/*	Number the index blocks; first block has number 1.		*/
+/*----------------------------------------------------------------------*/
+
+number_index_block([], _).
+number_index_block([cases(_,_,_,I)|Rest], I) :- 
+	J is I + 1,
+	number_index_block(Rest, J).
+number_index_block([arglabel(_T,_Val,_Label)|Rest], I) :- 
+	number_index_block(Rest, I).
+
+
+/*----------------------------------------------------------------------*/
+/*  prime(?Up_to_number, ?Nearest_Prime).				*/
+/*	Nearest_Prime is the nearest prime of a number that is not	*/
+/*	greater than number Up_to_number and not less than the same	*/
+/*	attribute of the previous prime number. For efficiency reasons	*/
+/*	not all prime numbers up to 255 (maximum arity allowed at the	*/
+/*	time when this is written) are used, but only an appropriate	*/
+/*	subset of them.							*/
+/*----------------------------------------------------------------------*/
+/***
+prime(1, 1).		% prime(2, 2).
+prime(3, 3).
+prime(6, 5).
+prime(9, 7).		% prime(12, 11).
+prime(15, 13).		% prime(18, 17).
+prime(21, 19).		% prime(26, 23).
+prime(30, 29).		% prime(34, 31).
+prime(39, 37).		% prime(42, 41).
+prime(45, 43).		% prime(50, 47).
+prime(56, 53).		% prime(60, 59).
+prime(64, 61).		% prime(69, 67).
+prime(72, 71).		% prime(76, 73).	% prime(81, 79).
+prime(86, 83).		% prime(93, 89).
+prime(99, 97).		% prime(102, 101).	% prime(105, 103).
+prime(108, 107).	% prime(111, 109).
+prime(120, 113).
+prime(129, 127).	% prime(135, 131).
+prime(138, 137).	% prime(144, 139).
+prime(150, 149).	% prime(154, 151).	% prime(160, 157).
+prime(165, 163).	% prime(170, 167).
+prime(176, 173).	% prime(180, 179).
+prime(186, 181).
+prime(192, 191).	% prime(195, 193).	% prime(198, 197).
+prime(205, 199).
+prime(217, 211).
+prime(215, 223).	% prime(228, 227).
+prime(231, 229).	% prime(236, 233).
+prime(240, 239).	% prime(246, 241).
+% prime(100000000, 251).
+***/
+
+force_asm_loaded.

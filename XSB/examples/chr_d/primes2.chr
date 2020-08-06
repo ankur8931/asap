@@ -1,0 +1,31 @@
+
+% 
+% primes(N): computes all prime numbers =< N
+% program manually extended with the global-store variable 
+% 
+
+:- chr_module(primes2).
+
+:- constraints prime/2, candidate/2.
+
+:- never_stored candidate/2.
+
+test(N) :-
+	statistics(0),
+	candidate(_,N),
+	statistics,
+	write_store(X).
+
+
+time(N) :-
+	cputime(Ts),
+	candidate(_,N),
+	cputime(Te),
+	T is Te-Ts,
+	writeln(time_chrd(N,T)).
+
+
+candidate(_,1) <=> true.
+candidate(X,N) <=> prime(X,N), N1 is N-1, candidate(X,N1).
+
+prime(X,Y) \ prime(X,Z) <=> 0 is Z mod Y | true.

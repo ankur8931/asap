@@ -1,0 +1,93 @@
+/* File:      socket.P
+** Author(s): The XSB Group
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: socket.P,v 1.12 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod]).
+#include "io_defs_xsb.h"
+#include "standard.h"
+#include "socket_defs_xsb.h"
+
+%% Socket calls with error code
+socket(Sockfd,Error) :-
+	socket_request(SOCKET_ROOT,AF_INET,Sockfd,Error,_,_,_).
+socket_bind(Sockfd,Port,Error) :-
+	socket_request(SOCKET_BIND,AF_INET,Sockfd,Port,Error,_,_).
+socket_listen(Sockfd,Length,Error) :-
+	socket_request(SOCKET_LISTEN,Sockfd,Length,Error,_,_,_).
+socket_accept(Sockfd,Sockfd_accepted,Error) :-
+	socket_request(SOCKET_ACCEPT,Sockfd,Sockfd_accepted,Error,_,_,_).
+socket_connect(Sockfd,Port,Hostname,Error) :- 
+	socket_request(SOCKET_CONNECT,AF_INET,Sockfd,Port, Hostname,Error,_).
+socket_close(Sockfd,Error) :-
+	socket_request(SOCKET_CLOSE,Sockfd,Error,_,_,_,_).
+socket_recv(Sockfd, Msg,Error) :-
+	socket_request(SOCKET_RECV,Sockfd,Msg,Error,_,_,_).
+socket_send(Sockfd, Msg,Error) :-
+	socket_request(SOCKET_SEND,Sockfd,Msg,Error,_,_,_).
+
+socket_get0(Sockfd,Char,Error) :-
+	socket_request(SOCKET_GET0,Sockfd,Char,Error,_,_,_).
+socket_put(Sockfd,Char,Error) :-
+	socket_request(SOCKET_PUT,Sockfd, Char,Error,_,_,_).
+socket_set_option(Sockfd,OptionName,Value) :-
+	socket_request(SOCKET_SET_OPTION,Sockfd, OptionName, Value,_,_,_).
+
+%% calls without the error code argument, for backward compatibility
+socket(Sockfd) :- socket(Sockfd,_).
+socket_bind(Sockfd,Port) :- socket_bind(Sockfd,Port,_).
+socket_listen(Sockfd,Length) :- socket_listen(Sockfd,Length,_).
+socket_accept(Sockfd,Sockfd_accepted) :-
+	socket_accept(Sockfd,Sockfd_accepted,_).
+socket_connect(Sockfd,Port,Hostname) :- 
+	socket_connect(Sockfd,Port,Hostname,_).
+socket_close(Sockfd) :- socket_close(Sockfd,_).
+socket_recv(Sockfd, Msg) :- socket_recv(Sockfd, Msg, _).
+socket_send(Sockfd, Msg) :- socket_send(Sockfd, Msg, _).
+
+%% socket_get0 already had Error code arg in the old days
+
+socket_put(Sockfd,Char) :- socket_put(Sockfd,Char,_).
+
+%% socket_set_option doesn't need error code.
+
+%% select calls
+socket_set_select(Symbolic_Name, R_sockfd, W_sockfd, E_sockfd) :-
+	socket_request(SOCKET_SET_SELECT, Symbolic_Name, R_sockfd, W_sockfd,
+		       E_sockfd, _, _).
+
+socket_select(SymbolicConnectionName, Timeout,
+	      Avail_rsockfds, Avail_wsockfds, Avail_esockfds,
+	      Error) :-
+	socket_request(SOCKET_SELECT, SymbolicConnectionName, Timeout,
+		       Avail_rsockfds, Avail_wsockfds, Avail_esockfds,
+		       Error).
+
+socket_select_destroy(Symbolic_Name) :-
+	socket_request(SOCKET_SELECT_DESTROY, Symbolic_Name,_,_,_,_,_).
+ 
+%% socket_flush:  for back compatibility
+socket_flush(FileDes) :-
+	obsolete('socket_flush/1 in module unix',
+		 'use file_flush/2 in module'),
+	file_function(FILE_FLUSH,FileDes,_,[],[],[],[]).
+

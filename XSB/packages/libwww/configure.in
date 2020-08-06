@@ -1,0 +1,107 @@
+## File:      configure.in
+## Author(s): kifer
+## Contact:   xsb-contact@cs.sunysb.edu
+## 
+## Copyright (C) The Research Foundation of SUNY, 2001
+## 
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+## 
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+## 
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: configure.in,v 1.5 2010-12-19 04:55:48 kifer Exp $
+## 
+##
+
+dnl  Autoconf script for XSB
+dnl  To rebuild the `configure' script from this, execute the command
+dnl	autoconf
+dnl  in the directory containing this script.
+dnl
+dnl
+
+AC_PREREQ(2.12)dnl
+
+AC_INIT(libwwwconfig.P)
+
+SHELL=/bin/sh
+
+AC_ARG_WITH(libwww,
+[  --with-libwww=DIR	   the libwww library used for Web access is at DIR]
+[  --with-config=CONFIG	   the configuration to use while configuring libwww]
+   )
+
+build_dir="`pwd`"
+# strip the last two directories and possibly trailing slashes
+topdir=`echo "${build_dir}" | sed 's,/[[^/]][[^/]]*/*/[[^/]][[^/]]*/*$,,'`
+
+
+# Tell where the autoconf scripts are
+AC_CONFIG_AUX_DIR($topdir/build)
+
+dnl Check configuration for a Unix variant
+if test -z "$with_config"; then
+echo '
+- You did not tell me what kind of host system you want to configure.
+- I will attempt to guess the kind of system this is.
+' 1>&6
+    AC_CANONICAL_HOST
+    canonical=$host
+    configuration=$host_alias
+fi
+
+
+# make sure new files are readable 
+umask 022
+
+
+
+dnl --with-libwww=DIR
+support="no"
+libdir=
+ccflags=
+ldflags=
+if test -n "$with_libwww" ; then
+   if test -x "$with_libwww/bin/libwww-config"; then
+      libwww_config_prog="$with_libwww/bin/libwww-config"
+      support="yes"
+   elif test -r "$with_libwww/libwww-config" ; then
+      libwww_config_prog="$with_libwww/libwww-config"
+      support="yes"
+   fi
+fi
+if test "$support" = "yes" ; then
+   test "${enable_debug+yes}" = "yes" && libwww_debug=" -g"
+   ccflags="$libwww_debug `sh $libwww_config_prog --cflags`"
+   ldflags=" `sh $libwww_config_prog --libs`"
+   libdir="$with_libwww"/lib
+fi
+
+AC_SUBST(support)
+AC_SUBST(ccflags)
+AC_SUBST(ldflags)
+AC_SUBST(libdir)
+
+
+(
+echo ""
+echo "  Libwww support (DEPRECATED): 		  $support"
+if test "$support" = "yes"; then
+   cat <<EOT
+    Libwww C flags:				  $ccflags
+    Libwww loader flags:			  $ldflags
+
+EOT
+fi
+) | tee Installation_summary
+
+AC_OUTPUT([libwww_init.P:libwww_init.in])

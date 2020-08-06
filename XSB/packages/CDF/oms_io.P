@@ -1,0 +1,1305 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export 
+%	load_omsext/1, 
+	load_mergeomsext/1, fast_load_mergeomsext/1,
+	dump_omsext/1,
+	merge_omsext/0, fast_merge_omsext/0,
+	load_oms/1, load_mergeoms/1, dump_oms/1, 
+	load_intensional_rules/1,
+	merge_intensional_oms/0, oms_exists/1.
+
+:- import time_message/2 from auxlry.
+:- import append/3, ground/1, member/2,reverse/2 from basics.
+:- import concat_atom/2 from string.
+:- import numbervars/3 from num_vars.
+:- import load_dync/2 from consult.
+:- import path_sysop/2 from file_io.
+:- import slash/1 from machine.
+
+:- ensure_loaded(oms_init_oms).
+
+:- comment(module, "These routines load OMS files from a disk file
+system into memory, save them from memory to disk, merge information
+into an OMS and perform conversions to and from External Format if
+necessary.
+
+Information may be loaded from or dumped to schema files and data.
+Schema files contain extensional information about classes,
+subclasses, relationships, schrels, and strels.  Data files contain
+extensional information about objects, memberof relations, attributes,
+and attribute_object relations.  The actual form of this information
+differs depending on whether the files contain data in internal or
+external Format.
+
+Files of intensional rules are not handled by these predicates, but
+may be loaded through @pred{load_component/1}").
+
+%-----------------------------------------------------------------
+	
+:- comment(dump_omsext/1, "@tt{dump_omsext(Directory)}: Translates all
+in-memory extensional facts from internal format to external format,
+and writes facts to @tt{schema_omsext.P} and @tt{data_omsext.P} files
+in @tt{Directory}.  No intensional rules are dumped.
+
+@pred{dump_omsext/0} writes the *_omsext.P files to the current
+directory.
+
+").
+
+dump_omsext :- dump_omsext('').
+
+dump_omsext(Dir) :-
+	throw_oms_writable(Dir),
+	dump_omsext_schema(Dir),	dump_omsext_data(Dir).
+
+dump_omsext_schema :- dump_omsext_schema('').
+dump_omsext_schema(Dir) :-
+	init_ext_schema_index,
+	oms_fix_dir(Dir,DirS),
+  	concat_atom([DirS,'schema_omsext.P'],File),
+	tell(File),
+	c2ce,
+	s2se,
+	r2re,
+	strel2strele,
+	schrel2schrele,
+	told.
+
+init_ext_schema_index :-
+	%% class_ext(Label,NatCId,Sou)
+	index(class_ext(_,_,_),[1,2,3]),
+	%% subclass_ext(SubNatCid,SubSource,SupNatCid,SupSource)
+	index(subclass_ext(_,_,_,_),[1+2,3+4]),
+	%% relationship_ext(SNCId,SSrc,RNCId,RSrc,TNCId,TSrc)
+	index(relationship_ext(_,_,_,_,_,_),[1+2+3]),
+	%% strel_ext(SNCId,SSrc,RNCId,RSrc,TNCId,TSrc)
+	index(strel_ext(_,_,_,_,_,_),[1+2+3]),
+	%% schrel_ext(SNCId,SSrc,RNCId,RSrc,TNCId,TSrc)
+	index(schrel_ext(_,_,_,_,_,_),[1+2+3]).
+
+dump_omsext_data :- dump_omsext_data('').
+dump_omsext_data(Dir) :-
+	init_ext_data_index,
+	oms_fix_dir(Dir,DirS),
+  	concat_atom([DirS,'data_omsext.P'],File),
+	tell(File),
+	o2oe,
+	m2me,
+	a2ae,
+	ao2aoe,
+	told.
+
+% assuming that indices do not need to be on source
+init_ext_data_index :-
+	%% object_ext(Name,Native_Id,Src)
+	index(object_ext(_,_,_),[2]),
+	%% memberof_ext(NOId,Osrc,NCId,Source)
+	index(memberof_ext(_,_,_,_),[1,3+4]),
+	%% attribute_ext(OId,Osrc,RNCId,RSrc,TNCId,TSrc)
+	index(attribute_ext(_,_,_,_,_,_),[1+3+5]),
+	%% attribute_object_ext(OId,Osrc,RNCId,RSrc,TOId,Tsrc)
+	index(attribute_object_ext(_,_,_,_,_,_),[1+3+5]).
+
+sort_and_write_terms(Terms) :-
+	sort(Terms,STerms),
+	member(Term,STerms),
+	write_ext_term(Term),
+	fail.
+sort_and_write_terms(_Terms).
+
+write_ext_term(Term):- 
+	numbervars(Term,0,_),
+	write_canonical_lettervar(Term),writeln('.').
+
+/* minor optimization of above, does not require membervars */
+sort_and_writeq_terms(Terms) :-
+	sort(Terms,STerms),
+	member(Term,STerms),
+	writeq(Term),
+	writeln('.'),
+	fail.
+sort_and_writeq_terms(_Terms).
+
+c2ce :-
+	write_hdr(class_ext(_,_,_)),
+	findall(class_ext(Label,NatCid,Sou),
+		oms_cn(_,Label,NatCid,Sou),
+		ExtClasses),
+	sort_and_write_terms(ExtClasses).
+
+s2se :-
+	write_hdr(subclass_ext(_,_,_,_)),
+	findall(subclass_ext(NSubCid,SubSrc,NSupCid,SupSrc),
+		isa_external_subclass(NSubCid,SubSrc,NSupCid,SupSrc),
+		SubClasses),
+	sort_and_write_terms(SubClasses).
+
+isa_external_subclass(NSubCid,SubSrc,NSupCid,SupSrc) :-
+	oms_sc(SubCid,SupCid),
+	cvt_cid_nid(SubCid,NSubCid,SubSrc),
+	cvt_cid_nid(SupCid,NSupCid,SupSrc).
+
+r2re :-
+	write_hdr(relationship_ext(_,_,_,_,_,_)),
+	findall(relationship_ext(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc),
+		isa_external_relationship(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc),
+		Relationships),
+	sort_and_write_terms(Relationships).
+	
+isa_external_relationship(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc) :-
+	oms_rln(SCid,RCid,TCid),
+	%% display(immediate_relationship(SCid,RCid,TCid)),
+	cvt_cid_nid(SCid,NSCid,SSrc),
+	cvt_cid_nid(RCid,NRCid,RSrc),
+	cvt_cid_nid(TCid,NTCid,TSrc).
+
+strel2strele :-
+	write_hdr(strel_ext(_,_,_,_,_,_)),
+	findall(strel_ext(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc),
+		isa_external_strel(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc),
+		Strels),
+	sort_and_write_terms(Strels).
+
+isa_external_strel(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc) :-
+	oms_strel(SCid,RCid,TCid),
+	cvt_cid_nid(SCid,NSCid,SSrc),
+	cvt_cid_nid(RCid,NRCid,RSrc),
+	cvt_cid_nid(TCid,NTCid,TSrc).
+
+schrel2schrele :-
+	write_hdr(schrel_ext(_,_,_,_,_,_)),
+	findall(schrel_ext(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc),
+		isa_external_schrel(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc),
+		Schrels),
+	sort_and_write_terms(Schrels).
+
+isa_external_schrel(NSCid,SSrc,NRCid,RSrc,NTCid,TSrc) :-
+	oms_schrel(SCid,RCid,TCid),
+	cvt_cid_nid(SCid,NSCid,SSrc),
+	cvt_cid_nid(RCid,NRCid,RSrc),
+	cvt_cid_nid(TCid,NTCid,TSrc).
+
+o2oe :-
+	write_hdr(object_ext(_,_,_)),
+	findall(object_ext(Name,NatId,Source),
+		oms_obj(_,Name,NatId,Source),
+		ExtObjects),
+	sort_and_writeq_terms(ExtObjects).
+
+m2me :-
+	write_hdr(memberof_ext(_,_,_,_)),
+	findall(memberof_ext(NativeId,OSrc,NCid,Src),
+		isa_external_memberof(NativeId,OSrc,NCid,Src),
+		Memberofs),
+	sort_and_writeq_terms(Memberofs).
+
+isa_external_memberof(NativeId,OSrc,NCid,Src) :-
+	oms_mo(Oid,Cid),
+	object(Oid,_Name,NativeId,OSrc),
+	cvt_cid_nid(Cid,NCid,Src).
+
+a2ae :-
+	write_hdr(attribute_ext(_,_,_,_,_,_)),
+	findall(attribute_ext(NOId,OSrc,NRCid,RSrc,NTCid,TSrc),
+		isa_external_attribute(NOId,OSrc,NRCid,RSrc,NTCid,TSrc),
+		Attributes),
+	sort_and_write_terms(Attributes).
+
+isa_external_attribute(NOId,OSrc,NRCid,RSrc,NTCid,TSrc) :-
+	oms_at(Oid,RCid,TCid),
+	object(Oid,_Name,NOId,OSrc),
+	cvt_cid_nid(RCid,NRCid,RSrc),
+	cvt_cid_nid(TCid,NTCid,TSrc).
+
+ao2aoe :-
+	write_hdr(attribute_object_ext(_,_,_,_,_,_)),
+	findall(attribute_object_ext(NOId,Osrc,NRCid,RSrc,NTOid,Tsrc),
+		isa_external_attribute_object(NOId,Osrc,
+		                                             NRCid,RSrc,NTOid,Tsrc),
+		AttributeObjects),
+	sort_and_writeq_terms(AttributeObjects).
+
+isa_external_attribute_object(NOId,Osrc,NRCid,RSrc,NTOid,Tsrc) :-
+	oms_ao(Oid,RCid,TOid),
+	object(Oid,_Name,NOId,Osrc),
+	cvt_cid_nid(RCid,NRCid,RSrc),
+	object(TOid,_Tname,NTOid,Tsrc).
+
+:- import '_$index'/3, '_$trie_asserted'/1 from file_op.
+write_hdr(Skel) :-
+	write_can((:- dynamic(Skel))),
+	('_$index'(Skel,A,B)
+	 ->	write_can((:- index(Skel,A,B)))
+	 ; '_$trie_asserted'(Skel)
+	 ->	write_can((:- index(Skel,trie)))
+	 ; 	true
+	).
+
+%-----------------------------------------------------------------
+
+oms_fix_dir(Dir,DirS) :-
+	(Dir == ''
+	 ->	DirS = Dir
+	 ;	friendly_atom_codes(Dir,DirC),
+		(append(_,[0'/],DirC)
+		 ->	DirS = Dir
+		 ;	append(DirC,[0'/],DirSC),
+			friendly_atom_codes(DirS,DirSC)
+		)
+	).
+
+friendly_atom_codes(A,Codes):- 
+	(atom(A) ; var(A)) -> atom_codes(A,Codes)
+	   ; writeln(non_atomic(A)),
+	     atom_codes(A,Codes) . 	% and so abort.
+
+%-----------------------------------------------------------------
+
+:- comment(dump_oms/1, "@tt{dump_oms(Directory)}: Writes in-memory
+extensional facts to @tt{schema_oms.P} and @tt{data_oms.P} files in
+@tt{Directory}, retaining their internal format.  Intensional rules
+are not dumped.
+
+@pred{dump_oms/0} writes the files to the current directory.
+").
+
+%@em{TLS: db stuff is not yet fully integrated: In addition, the call
+%dump_oms(odbc(Server,Name,Passwd)) can be used to export to an
+%external file.}
+
+dump_oms :- dump_oms('').
+
+dump_oms(odbc(Server,Name,Passwd)) :- !,
+	dump_db_oms(Server,Name,Passwd).
+dump_oms(Dir) :-
+	throw_oms_writable(Dir),
+	dump_oms_schema(Dir),
+	dump_oms_data(Dir).
+
+dump_oms_schema :- dump_oms_schema('').
+
+dump_oms_schema(odbc(Server,Name,Passwd)) :- !,
+	dump_db_schema(Server,Name,Passwd).
+dump_oms_schema(Dir) :-
+	oms_fix_dir(Dir,DirS),
+	concat_atom([DirS,'schema_oms.P'],FileName),
+	tell(FileName),
+	dump_oms_pred(oms_cn(_,_,_,_)),
+	dump_oms_pred(oms_sc(_,_)),
+	dump_oms_pred(oms_rln(_,_,_)),
+	dump_oms_pred(oms_schrel(_,_,_)),
+	dump_oms_pred(oms_strel(_,_,_)),
+	told.
+
+dump_oms_data :- dump_oms_data('').
+
+dump_oms_data(odbc(Server,Name,Passwd)) :- !,
+	dump_db_data(Server,Name,Passwd).
+dump_oms_data(Dir) :-
+	oms_fix_dir(Dir,DirS),
+	concat_atom([DirS,'data_oms.P'],FileName),
+	tell(FileName),
+	dump_oms_pred(oms_obj(_,_,_,_)),
+	dump_oms_pred(oms_mo(_,_)),
+	dump_oms_pred(oms_at(_,_,_)),
+	dump_oms_pred(oms_ao(_,_,_)),
+	told.
+
+:- import '_$index'/3, '_$trie_asserted'/1 from file_op.
+:- import write_canonical_lettervar/1 from xsb_writ.
+:- import numbervars/3 from num_vars.
+
+dump_oms_pred(Skel) :-
+	write_can((:- dynamic(Skel))),
+	('_$index'(Skel,A,B)
+	 ->	write_can((:- index(Skel,A,B)))
+	 ; '_$trie_asserted'(Skel)
+	 ->	write_can((:- index(Skel,trie)))
+	 ;	true
+	),
+	(call(Skel),
+	 write_can(Skel),
+	 fail
+	 ;
+	 true
+	).
+
+write_can(Term) :-
+	numbervars(Term,0,_),
+	write_canonical_lettervar(Term),
+	writeln('.'),
+	fail.
+write_can(_).
+
+%--------------------------------------------------------------------
+
+/* does not yet work for db.
+   also, should probably try to catch OMS errors. */
+load_one_oms_or_another(Dir):- 
+	oms_fix_dir(Dir,DirS),
+	(try_loading_oms(DirS)
+	 ; try_loading_omsext(DirS)
+         ; oms_warning(permission,('Cannot load OMS from ',DirS))),
+	 !.
+
+try_loading_oms(DirS):- 
+	file_exists(DirS,'schema_oms'),
+	file_exists(DirS,'data_oms'),
+	load_oms(DirS).
+
+try_loading_omsext(DirS):- 
+	file_exists(DirS,'schema_omsext'),
+	file_exists(DirS,'data_omsext'),
+	load_mergeomsext(DirS).
+
+file_exists(Dir,Base):- 
+	concat_atom([Dir,Base,'.P'],File),
+	file_exists(File).
+
+%--------------------------------------------------------------------
+
+:- comment(load_omsext/1, "@tt{load_omsext(Directory)}: Dynamically
+loads @tt{schema_omsext.P} and @tt{data_omsext.P} files from
+@tt{Directory} (i.e. extensional facts in external format).  This
+information will not become accessible to the Programmer's View until
+it is translated into internal format by @pred{merge_omsext/0} or
+@pred{fast_load_mergeomsext/0}.  Loading an OMS will remove any OMS
+information in external format previously asserted to the OMS
+state.").
+
+load_omsext :- load_omsext('').
+load_omsext(Dir) :-
+	oms_fix_dir(Dir,DirS),
+	dir_load_dync(DirS,schema_omsext),
+	dir_load_dync(DirS,data_omsext).
+
+dir_load_dync(Dir,Base) :-
+	concat_atom([Dir,Base,'.P'],File),!,
+	(load_dync(File,0) 		% i.e. use asserta
+              -> true
+	  ; oms_warning(permission,('File does not exist ',
+                                    'or is not readable: ',File))).
+
+%--------------------------------------------------------------------
+
+:- comment(load_oms/1, "@tt{load_oms(Directory)}: Dynamically loads
+@tt{schema_oms.P} and @tt{data_oms.P} files (i.e. extensional facts in
+internal format) from @tt{Directory}.  A side-effect of this dynamic
+load is that any extensional facts previously in the OMS state are
+removed.  If current OMS information should be saved when loading an
+OMS, use @pred{load_mergeoms/1}.  Intensional rules are not affected
+by @pred{load_oms/1}.").
+
+load_oms :- load_oms('').
+
+/* TLS 03/03 added init_oms_rels, as loading an internal OMS may
+   need to incorporate new changes to the OMS in the rels */
+load_oms(odbc(Server,Name,Passwd)) :- !,
+	retractall_oms_facts,
+	load_db_schema(Server,Name,Passwd),
+	load_db_data(Server,Name,Passwd),
+	oms_initialize_ctrs,
+	init_oms_rels.
+load_oms(Dir) :-
+	%init_ext_dynamic,		
+	% included since OMS may be init'd by load_oms/1 or oms_init_all/0
+	oms_fix_dir(Dir,DirS),
+	retractall_oms_facts,
+	dir_load_dync(DirS,schema_oms),
+	dir_load_dync(DirS,data_oms),
+	oms_initialize_ctrs,
+	init_oms_rels.
+
+% need to retract previous facts
+% otherwise if such facts do not exist
+% in newly loaded OMS they will not be retracted by load_dync
+retractall_oms_facts:-
+	retractall(oms_cn(_,_,_,_)),
+	retractall(oms_sc(_,_)),
+	retractall(oms_rln(_,_,_)),
+	retractall(oms_schrel(_,_,_)),
+	retractall(oms_strel(_,_,_)),
+	retractall(oms_obj(_,_,_,_)),
+	retractall(oms_mo(_,_)),
+	retractall(oms_at(_,_,_)),
+	retractall(oms_ao(_,_,_)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+:- comment(merge_omsext/0, "@tt{mergeomsext}: translates in-memory
+facts in External Format to Internal Format, combines these facts with
+the current store of information in Internal Format, and removes the
+External Format facts from memory once they have been merged.  Any
+information present in the OMS in Internal or External Intensional
+Format will persist after the new files have been merged.  Certain
+redundancy checks are performed -- @tt{irel/3}, @tt{schrel/3},
+@tt{attribute/3}, @tt{subclass/2}, and @tt{memberof/2} facts are not
+added if they are otherwise implied by inheritance.
+
+For now, OMS caching is turned off for the extent of
+@tt{merge_omsext/0}, so that newXXX routines can be used
+efficiently.").
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+merge_omsext :-
+	cputime(Begin),
+	caching_oms(Cache),
+	oms_dont_use_cache,
+	cp_atomic_class_extoms,
+	cp_object_extoms,
+	cp_parameterized_class_extoms,
+	cp_subclass_extoms,
+	cp_relationship_extoms,
+	cp_strel_extoms,
+	cp_schrel_extoms,
+	cp_memberof_extoms,
+	cp_attribute_extoms,
+	cp_attribute_object_extoms,
+%	(oms_checking(partial) -> true ; check_consistency),
+	(Cache =:= 1 -> oms_use_cache ; true),
+	retract_omsext,
+	time_message(Begin,('external OMS(s) merged')).
+
+/* Checks for Name,Nid,Sou are pefromed in newClass  */
+cp_atomic_class_extoms :-
+	class_ext(Name,Nid,Sou),
+	atomic(Nid),
+	newClass(Name,unk,Nid,Sou,_Cid),
+	fail.
+cp_atomic_class_extoms.
+
+/* This will abort if a primitive type is asserted as a class and give
+a warning if the same constructor is used in more than one source
+ontology.  It will also abort if it cannot intern one of the atomic
+classes.  Check on name is done in newClass.  Check on nid,source is
+done both here and in newClass -- c'est la vie.  */
+cp_parameterized_class_extoms :-
+	class_ext(Lab,NCid,Sou),
+%	writeln(class_ext(Lab,NCid,Sou)),
+	Term = 	class_ext(Lab,NCid,Sou),
+	check_new_nid(NCid,Term),
+	\+ atomic(NCid),
+	check_new_source(Sou,Term),
+	check_not_primitive_type(NCid),
+	check_source_consistency(NCid,Sou),
+	newClass(Lab,unk,NCid,Sou,_Cid),
+	fail.
+cp_parameterized_class_extoms.
+
+/* not checking for subsumption right now in immediate subclass. 
+   also, removed check of immediate_subclass(SubCid,SupCid) -- done
+   in newClass */
+cp_subclass_extoms :-
+	subclass_ext(SubNatCid,SubSource,SupNatCid,SupSource),
+	Term = subclass_ext(SubNatCid,SubSource,SupNatCid,SupSource),
+%	writeln(subclass_ext(SubNatCid,SubSource,SupNatCid,SupSource)),
+	get_cid_from_nid_src(SubNatCid,SubSource,Term,SubCid),
+	get_atomic_class(SupNatCid,SupSource,SupCid,Term),
+	newSubclass(SubCid,SupCid),
+	fail.
+cp_subclass_extoms.
+
+cp_relationship_extoms :-
+	relationship_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+	Term = relationship_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(relationship_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc)),nl,
+	get_cid_from_nid_src(SNCid,SSrc,Term,SCid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	newRelationship_omsext(SCid,RCid,TCid),
+	fail.
+cp_relationship_extoms.
+
+/* doesn't do the usual class_exists checking for new rel, unnecess. */
+newRelationship_omsext(SCid,RCid,TCid) :-
+	(relationship_inh_gen(SCid,RCid,TCid)
+	 ->   true
+	 ;    (is_an_inheritable_relationship(RCid) -> 
+   	           oms_update_list([asserta(oms_rln(SCid,RCid,TCid))])
+	        ;  oms_warning(update,('attempt to add an inheritable ',
+		    ' relationship for class that is not a ',
+		    ' relationship: ',RCid)),
+	            fail) ).
+
+cp_strel_extoms :-
+	strel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+	Term = 	strel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(strel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc)),
+	get_cid_from_nid_src(SNCid,SSrc,Term,SCid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	newStrel(SCid,RCid,TCid),
+	fail.
+cp_strel_extoms.
+
+cp_schrel_extoms :-
+	schrel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+	Term = schrel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(schrel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc)),
+	get_cid_from_nid_src(SNCid,SSrc,Term,SCid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	newSchrel(SCid,RCid,TCid),
+	fail.
+cp_schrel_extoms.
+
+/* checks on name,oid,src are done in assert object */
+cp_object_extoms :-
+	object_ext(Name,NOid,Src),
+	atomic(NOid),
+%	writeln(object_ext(Name,NOid,Src)),
+	newObject(Name,unk,NOid,Src,_Oid),   % unk means dont add mo
+	fail.
+cp_object_extoms.
+
+/* checks on name,oid,src are done in assert object */
+cp_product_object_extoms :-
+	object_ext(Name,NOid,Src),
+%	writeln(object_ext(Name,NOid,Src)),
+	\+ atomic(NOid),
+	newObject(Name,unk,NOid,Src,_Oid),   % unk means dont add mo
+        fail.
+
+/* Not allowing parameterized classes in memberof */
+cp_memberof_extoms :-
+	memberof_ext(NOid,OSrc,NCid,Src),
+%	writeln(memberof_ext(NOid,OSrc,NCid,Src)),
+	Term = memberof_ext(NOid,OSrc,NCid,Src),
+	get_oid_from_nid_src(NOid,OSrc,Term,Oid),
+	get_cid_from_nid_src(NCid,Src,Term,Cid),
+%	get_atomic_class(NCid,Src,Cid,Term),
+	newMemberof(Oid,Cid),
+	fail.
+cp_memberof_extoms.
+
+cp_attribute_extoms :-
+	attribute_ext(NOid,Osrc,RNCid,RSrc,TNCid,TSrc),
+	Term = attribute_ext(NOid,Osrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(attribute_ext(NOid,Osrc,RNCid,RSrc,TNCid,TSrc)),nl,
+	get_oid_from_nid_src(NOid,Osrc,Term,Oid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	newAttribute(Oid,RCid,TCid),
+	fail.
+cp_attribute_extoms.
+
+cp_attribute_object_extoms :-
+	attribute_object_ext(SNOid,Osrc1,RNCid,RSrc,TNOid,Osrc2),
+	Term = attribute_object_ext(SNOid,Osrc1,RNCid,RSrc,TNOid,Osrc2),
+	get_oid_from_nid_src(SNOid,Osrc1,Term,SOid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_oid_from_nid_src(TNOid,Osrc2,Term,TOid),
+	(attribute_object(SOid,RCid,TOid)
+	 ->	fail
+	 ;	newAttributeObject(SOid,RCid,TOid),
+		fail
+	).
+cp_attribute_object_extoms.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+:- comment(fast_merge_omsext/0, "@tt{mergeomsext}: translates
+in-memory facts in External Format to Internal Format, combines these
+facts with the current store of information in Internal Format, and
+removes the External Format facts from memory once they have been
+merged.  Any information present in the OMS in Internal or External
+Intensional Format will persist after the new files have been merged.
+Redundancy checks are @em{not} performed -- @tt{irel/3},
+@tt{schrel/3}, @tt{attribute/3}, @tt{subclass/2}, and @tt{memberof/2}
+facts are added even if they are otherwise implied by inheritance.
+
+For now, oms_caching is turned off for the extent of
+@tt{fast_merge_omsext/0}, so that newXXX routines can be used.").
+
+fast_merge_omsext :-
+	cputime(Begin),
+	caching_oms(Cache),
+	oms_dont_use_cache,
+	cp_atomic_class_extoms,
+	time_message(Begin,('atomic classes merged')),
+	cp_object_extoms,
+	time_message(Begin,('atomic objects merged')),
+	cp_parameterized_class_extoms,
+	time_message(Begin,('param classes merged')),
+	fast_subclass_extoms,
+	time_message(Begin,('subclass merged')),
+	fast_relationship_extoms,
+	time_message(Begin,('irels merged')),
+	fast_strel_extoms,
+	time_message(Begin,('strels merged')),
+	fast_schrel_extoms,
+	time_message(Begin,('schrels merged')),
+	fast_memberof_extoms,
+	time_message(Begin,('mos merged')),
+	fast_attribute_extoms,
+	time_message(Begin,('attrs merged')),
+	fast_attribute_object_extoms,
+%	(oms_checking(partial) -> true ; check_consistency),
+	(Cache =:= 1 -> oms_use_cache ; true),
+	retract_omsext,
+	time_message(Begin,('external OMS(s) merged')).
+
+fast_subclass_extoms :-
+	subclass_ext(SubNatCid,SubSource,SupNatCid,SupSource),
+	Term = subclass_ext(SubNatCid,SubSource,SupNatCid,SupSource),
+%	writeln(subclass_ext(SubNatCid,SubSource,SupNatCid,SupSource)),
+	get_cid_from_nid_src(SubNatCid,SubSource,Term,SubCid),
+	get_atomic_class(SupNatCid,SupSource,SupCid,Term),
+	(oms_sc(SubCid,SupCid) -> 
+	    true
+	  ; 
+	    oms_update_list([asserta(oms_sc(SubCid,SupCid))])),
+	fail.
+fast_subclass_extoms.
+
+fast_relationship_extoms :-
+	relationship_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+	Term = relationship_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(relationship_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc)),nl,
+	get_cid_from_nid_src(SNCid,SSrc,Term,SCid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	(oms_rln(SCid,RCid,TCid) -> 
+	    true
+	  ; 
+            (is_an_inheritable_relationship(RCid) -> 
+   	           oms_update_list([asserta(oms_rln(SCid,RCid,TCid))])
+	        ;  oms_warning(update,('attempt to add an inheritable ',
+		    ' relationship for class that is not a ',
+		    ' relationship: ',RCid)))),
+	fail.
+fast_relationship_extoms.
+
+fast_strel_extoms :-
+	strel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+	Term = 	strel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(strel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc)),
+	get_cid_from_nid_src(SNCid,SSrc,Term,SCid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	(oms_strel(SCid,RCid,TCid) -> 
+	    true
+	  ; 
+            (is_a_strel(RCid) -> 
+   	           oms_update_list([asserta(oms_strel(SCid,RCid,TCid))])
+	        ;  oms_warning(update,('attempt to add a',
+		    ' strel for class that is not a strel: ',RCid)))),
+	fail.
+fast_strel_extoms.
+
+fast_schrel_extoms :-
+	schrel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+	Term = schrel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(schrel_ext(SNCid,SSrc,RNCid,RSrc,TNCid,TSrc)),
+	get_cid_from_nid_src(SNCid,SSrc,Term,SCid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	(oms_schrel(SCid,RCid,TCid) -> 
+	    true
+	  ; 
+            (is_an_inheritable_relationship(RCid) -> 
+   	           oms_update_list([asserta(oms_schrel(SCid,RCid,TCid))])
+	        ;  oms_warning(update,('attempt to add an inheritable ',
+		    ' schrel for class that is not a ',
+		    ' relationship: ',RCid)))),
+	fail.
+fast_schrel_extoms.
+
+fast_memberof_extoms :-
+	memberof_ext(NOid,OSrc,NCid,Src),
+%	writeln(memberof_ext(NOid,OSrc,NCid,Src)),
+	Term = memberof_ext(NOid,OSrc,NCid,Src),
+	get_oid_from_nid_src(NOid,OSrc,Term,Oid),
+	get_cid_from_nid_src(NCid,Src,Term,Cid),
+%	get_atomic_class(NCid,Src,Cid,Term),
+	(oms_mo(Oid,Cid) -> 
+	    true
+	  ; 
+	    oms_update_list([asserta(oms_mo(Oid,Cid))])),
+	fail.
+fast_memberof_extoms.
+
+fast_attribute_extoms :-
+	attribute_ext(NOid,Osrc,RNCid,RSrc,TNCid,TSrc),
+	Term = attribute_ext(NOid,Osrc,RNCid,RSrc,TNCid,TSrc),
+%	writeq(attribute_ext(NOid,Osrc,RNCid,RSrc,TNCid,TSrc)),nl,
+	get_oid_from_nid_src(NOid,Osrc,Term,Oid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_cid_from_nid_src(TNCid,TSrc,Term,TCid),
+	(oms_at(Oid,RCid,TCid) -> 
+	    true
+	  ; 
+	    oms_update_list([asserta(oms_at(Oid,RCid,TCid))])),
+	fail.
+fast_attribute_extoms.
+
+fast_attribute_object_extoms :-
+	attribute_object_ext(SNOid,Osrc1,RNCid,RSrc,TNOid,Osrc2),
+	Term = attribute_object_ext(SNOid,Osrc1,RNCid,RSrc,TNOid,Osrc2),
+	get_oid_from_nid_src(SNOid,Osrc1,Term,SOid),
+	get_cid_from_nid_src(RNCid,RSrc,Term,RCid),
+	get_oid_from_nid_src(TNOid,Osrc2,Term,TOid),
+	(oms_ao(SOid,RCid,TOid) -> 
+	    true
+	  ; 
+	    oms_update_list([asserta(oms_ao(SOid,RCid,TOid))])),
+	fail.
+fast_attribute_object_extoms.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(load_mergeomsext/1, "@tt{load_mergeomsext(DirectoryList)}:
+loads and merges extensional facts in external format contained in
+@tt{schema_omsext.P} and @tt{data_omsext.P} files from the directories
+in @tt{DirectoryList}.  The merge called checks for redundancy: if a
+faster merge is desired use @pred{fast_load_mergeomsext/1}.
+Extensional facts from these files are translated from external to
+internal format after it is loaded, and any extensional facts is
+external format that is loaded is retracted from memory once it is
+merged.  Any extensional facts in internal format and intensional
+facts will persist after the new files have been loaded and merged.").
+
+load_mergeomsext :-
+	load_mergeomsext1('').
+
+load_mergeomsext(Dirs) :-
+	oms_initialize_ctrs,
+	load_mergeomsext1(Dirs).
+
+load_mergeomsext1([]).
+load_mergeomsext1([Dir|Dirs]) :-
+	load_mergeomsext2(Dir),
+	load_mergeomsext1(Dirs).
+load_mergeomsext1(Dir) :-
+	load_mergeomsext2(Dir).
+
+load_mergeomsext2(Dir) :-
+	oms_fix_dir(Dir,DirS),
+	dir_load_dync(DirS,schema_omsext),
+	dir_load_dync(DirS,data_omsext),
+	merge_omsext,
+	retract_omsext.
+
+retract_omsext:- 
+	retractall(class_ext(_,_,_)),
+	retractall(subclass_ext(_,_,_,_)),
+	retractall(relationship_ext(_,_,_,_,_,_)),
+	retractall(strel_ext(_,_,_,_,_,_)),
+	retractall(schrel_ext(_,_,_,_,_,_)),
+	retractall(object_ext(_,_,_)),
+	retractall(memberof_ext(_,_,_,_,_)),
+	retractall(attribute_ext(_,_,_,_,_,_)),
+	retractall(attribute_object_ext(_,_,_,_,_,_)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(fast_load_mergeomsext/1,
+"@tt{fast_load_mergeomsext(DirectoryList)}: loads and merges
+extensional facts in external format contained in @tt{schema_omsext.P}
+and @tt{data_omsext.P} files from the directories in
+@tt{DirectoryList}.  The merge called does @em{not} perform redundancy
+checks.  If this is desired, use @pred{load_mergeomsext/1}.
+Extensional facts from these files are translated from external to
+internal format after it is loaded, and any extensional facts is
+external format that is loaded is retracted from memory once it is
+merged.  Any extensional facts in internal format and intensional
+facts will persist after the new files have been loaded and merged.").
+
+fast_load_mergeomsext :-
+	fast_load_mergeomsext1('').
+
+fast_load_mergeomsext(Dirs) :-
+	oms_initialize_ctrs,
+	fast_load_mergeomsext1(Dirs).
+
+fast_load_mergeomsext1([]).
+fast_load_mergeomsext1([Dir|Dirs]) :-
+	fast_load_mergeomsext2(Dir),
+	fast_load_mergeomsext1(Dirs).
+fast_load_mergeomsext1(Dir) :-
+	fast_load_mergeomsext2(Dir).
+
+fast_load_mergeomsext2(Dir) :-
+	oms_fix_dir(Dir,DirS),
+	dir_load_dync(DirS,schema_omsext),
+	dir_load_dync(DirS,data_omsext),
+	fast_merge_omsext,
+	retract_omsext.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(load_mergeoms/1, "@tt{load_mergeoms(DirectoryList)}: loads
+@tt{schema_oms.P} and @tt{data_oms.P} files from directories in
+@tt{DirectoryList}.  The files loaded must contain extensional data in
+internal format.  Unlike @pred{load_oms/1}, @pred{load_mergeoms/1}
+does not abolish any extsnsional OMS information already in memory;
+rather, it merges the information from the various files with that
+already loaded.  Intensional rules will not be affected by this
+predicate.  ").
+
+:- dynamic a_oldnewCid/2.
+:- index(a_oldnewCid(_,_),trie).
+:- dynamic saved_parameterized_class/3.
+:- dynamic oldnewDid/2.
+:- index(oldnewDid(_,_),trie).
+:- dynamic oldnewOid/2.
+:- index(oldnewOid(_,_),trie).
+
+load_mergeoms :-
+	oms_initialize_ctrs,
+	load_mergeoms1('').
+load_mergeoms(Dirs) :-
+	oms_initialize_ctrs,
+	load_mergeoms1(Dirs).
+
+load_mergeoms1([]) :- !.
+load_mergeoms1([Dir|DirList]) :-
+	!,
+	load_mergeoms1(Dir),
+	load_mergeoms1(DirList).
+load_mergeoms1(Dir) :-
+	retractall(a_oldnewcid(_,_)),
+	retractall(saved_parameterized_class(_,_,_)),
+	retractall(oldnewDid(_,_)),
+	retractall(oldnewOid(_,_)),
+	oms_fix_dir(Dir,DirS),
+	write('Loading '),write(Dir),write(':'),
+	reload_schema(DirS),
+	reload_data(DirS).
+
+reload_schema(Dir):- 
+	concat_atom([Dir,'schema_oms.P'],File),
+	see(File),
+	reload_schema_file,
+	seen,
+	write('Loaded schema files, ').
+
+reload_data(Dir):- 
+	concat_atom([Dir,'data_oms.P'],File),
+	see(File),
+	reload_data_files,
+	seen,
+	writeln('Loaded data files.').
+
+reload_schema_file :-
+	retractall(a_oldnewCid(_,_)),
+	repeat,
+	read_canonical(Term),
+	(Term == end_of_file
+	 ->	!
+	 ; Term = :-(_)
+	 ->	fail
+	 ; Term = oms_cn(OCID,Name,NID,Source)
+	 ->	(atomic(OCID)
+		 ->	% assert_class(CID,Name,NID,Source),
+		            newClass(Name,unk,NID,Source,CID),
+			asserta(a_oldnewCid(OCID,CID)),
+			fail
+		 ;	asserta(saved_parameterized_class(Name,NID,Source)),
+			fail
+		)
+	 ; Term = oms_sc(OSubCid,OSupCid)
+	 ->	assert_saved_parameterized_classes,
+		oldnewCid(OSubCid,SubCid),
+		oldnewCid(OSupCid,SupCid),
+		assert_subclass(SubCid,SupCid),
+		fail
+	 ; Term = oms_rln(OSCid,ORCid,OTCid)
+	 ->	oldnewCid(OSCid,SCid),
+		oldnewCid(ORCid,RCid),
+		oldnewCid(OTCid,TCid),
+		newRelationship(SCid,RCid,TCid),
+		fail
+	 ; Term = oms_strel(OSCid,ORCid,OTCid)
+	 ->	oldnewCid(OSCid,SCid),
+		oldnewCid(ORCid,RCid),
+		oldnewCid(OTCid,TCid),
+		newStrel(SCid,RCid,TCid),
+		fail
+	 ; Term = oms_schrel(OSCid,ORCid,OTCid)
+	 ->	oldnewCid(OSCid,SCid),
+		oldnewCid(ORCid,RCid),
+		oldnewCid(OTCid,TCid),
+		newSchrel(SCid,RCid,TCid),
+		fail
+	).
+
+assert_saved_parameterized_classes :-
+	(saved_parameterized_class(_,_,_)
+	 ->	(saved_parameterized_class(Name,NatId,Sou),
+	             newClass(Name,unk,NatId,Sou,_Cid),
+		 fail
+		 ;
+		 retractall(saved_parameterized_class(_,_,_))
+		)
+	 ;	true
+	).
+
+reload_data_files :-
+	retractall(oldnewOid(_,_)),
+	repeat,
+	read_canonical(Term),
+	(Term == end_of_file
+	 ->	!,
+		true
+	 ; Term = oms_obj(OOID,Name,NOID,Src)
+	 ->	(object(OID,Name,NOID,Src)
+		 ->	true
+		 ;	newoid(OID),
+			assert_object(OID,Name,NOID,Src)
+		),
+		asserta(oldnewOid(OOID,OID)),
+		fail
+	 ; Term = oms_mo(OOid,OCid)
+	 ->	oldnewOid(OOid,Oid),
+		oldnewCid(OCid,Cid),
+		assert_memberof(Oid,Cid),
+		fail
+	 ; Term = oms_at(OSOid,ORCid,OTCid)
+	 ->	oldnewOid(OSOid,SOid),
+		oldnewCid(ORCid,RCid),
+		oldnewCid(OTCid,TCid),
+		assert_attribute(SOid,RCid,TCid),
+		fail
+	 ; Term = oms_ao(OSOid,ORCid,OTOid)
+	 ->	oldnewOid(OSOid,SOid),
+		oldnewCid(ORCid,RCid),
+		oldnewOid(OTOid,TOid),
+		(attribute_object(SOid,RCid,TOid)
+		 ->	true
+		 ;	assert_attribute_object(SOid,RCid,TOid)
+		),
+		fail
+	).
+
+%-------------------------------------------------------------- 
+
+:- comment(merge_intensional_oms/0, "@tt{merge_intensional_oms/0}:
+This utility predicate takes the current External Intensional Format
+for all sources and transforms them to internal form by backtracking
+through them.  All dynamic predicates for the External Format are then
+retracted.").
+
+/* TLS 8/02 fixed a bug or two */
+merge_intensional_oms :-
+	(get_class_int(Cid,Label,NatCid,Sou),
+	 \+oms_cn(Cid,Label,NatCid,Sou),
+	 asserta(oms_cn(Cid,Label,NatCid,Sou)),
+	 fail
+	 ;
+	 retractall(class_int(_,_,_)),
+	 get_object_int(Oid,Name,NatId,Sou),
+	 \+oms_obj(Oid,Name,NatId,Sou),
+	 asserta(oms_obj(Oid,Name,NatId,Sou)),
+	 fail
+	 ;
+	 retractall(object_int(_,_)),
+	 immediate_subclass_int(CCid,PCid),
+	 \+oms_sc(CCid,PCid),
+	 asserta(oms_sc(CCid,PCid)),
+	 fail
+	 ;
+	 retractall(immediate_subclass_int(_,_,_,_)),
+
+	 immediate_relationship_int(SCid,RCid,TCid),
+	 \+oms_rln(SCid,RCid,TCid),
+	 asserta(oms_rln(SCid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(immediate_relationship_int(_,_,_,_,_,_)),
+
+	 immediate_strel_int(SCid,RCid,TCid),
+	 \+oms_strel(SCid,RCid,TCid),
+	 asserta(oms_strel(SCid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(immediate_strel_int(_,_,_,_,_,_)),
+
+	 immediate_schrel_int(SCid,RCid,TCid),
+	 \+oms_schrel(SCid,RCid,TCid),
+	 asserta(oms_schrel(SCid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(immediate_schrel_int(_,_,_,_,_,_)),
+
+	 immediate_memberof_int(Oid,Cid),
+	 \+oms_mo(Oid,Cid),
+	 asserta(oms_mo(Oid,Cid)),
+	 fail
+	 ;
+	 retractall(immediate_memberof_int(_,_,_,_)),
+	 immediate_attribute_int(Oid,RCid,TCid),
+	 \+oms_at(Oid,RCid,TCid),
+	 asserta(oms_at(Oid,RCid,TCid)),
+	 fail
+	 ;
+	 retractall(immediate_attribute_int(_,_,_,_,_,_)),
+	 attribute_object_int(Oid,RCid,TOid),
+	 \+oms_ao(Oid,RCid,TOid),
+	 asserta(oms_ao(Oid,RCid,TOid)),
+	 fail
+	 ;
+	 retractall(attribute_object_int(_,_,_,_,_,_)),
+	 fail
+         ; 
+	 retractall(cn_id_map(_,_,_,_)),
+	 retractall(ob_id_map(_,_,_,_))
+	).
+	 
+%------------------------------------------------------------------
+% Supporting routines for external merge.
+
+get_oid_from_nid_src(NOid,Src,Term,Oid) :-
+	check_new_noid(NOid,Term),
+	check_new_source(Src,Term),
+	(object(Oid,_,NOid,Src)
+	 ->	true
+	 ;	oms_warning(update,('Error, missing object tuple for: ',Term)),
+		fail
+	).
+
+get_cid_from_nid_src(Nid,Sou,Term,Cid) :-
+	(class_nidbound(Cid,_,Nid,Sou) -> 
+	    true
+	  ;
+	    oms_warning(update,('Class does not exist for ',
+                               Nid,' ',Sou,' in ',Term)),
+	    fail).
+
+/* to enforce the use of atomic classes in the second arg of subclass */
+get_atomic_class(NCid,Sou,Cid,Tuple) :-
+	(atomic(NCid)
+	 ->	(class(Cid,_,NCid,Sou)
+		 ->	true
+		 ;	oms_warning(update,('Error, missing class tuple for: ',
+				  NCid,' ',Sou,' in ',Tuple)),
+
+			fail
+		)
+	 ; oms_warning(update,('Improper use of non-atomic class ',NCid,
+		    'in ',Tuple))).
+
+%------------------------------------------------------------------
+% Supporting routines for internal merge.
+
+/* Used in loading of old oms's in internal form, and remaps the CID */
+oldnewCid(OCID,CID) :-
+	(var(OCID)
+	 ->	CID = OCID
+	 ; integer(OCID)	% assume class ID
+	 ->	a_oldnewCid(OCID,CID)
+	 ; atomic(OCID)		% non-integer atoms are self-defining
+	 ->	CID = OCID
+	 ; oms_primitive_type(OCID) % primitive types are self-defining
+	 ->	CID = OCID
+	 ;	functor(OCID,Fn,Arity), % recurse for compound terms
+		functor(CID,Fn,Arity),
+		cpd_oldnewCid(0,Arity,OCID,CID)
+	).
+
+cpd_oldnewCid(ArgNo,Arity,OCID,CID) :-
+	(ArgNo < Arity
+	 ->	ArgNo1 is ArgNo + 1,
+		arg(ArgNo1,OCID,OArg),
+		arg(ArgNo1,CID,NArg),
+		oldnewCid(OArg,NArg),
+		cpd_oldnewCid(ArgNo1,Arity,OCID,CID)
+	 ;	true
+	).
+
+%--------------------------------------------------------------------
+
+/* Helpers for parameterized classes */
+
+check_not_primitive_type(Ncid):- 
+	skeleton(Ncid,Skel),
+	oms_primitive_type(Skel),!,fail.
+check_not_primitive_type(_).
+
+/* cvt_cid_nid(+Cid,-NNid,-Src) 
+ * This predicate should only be used for dumps.  It assumes that 
+ * the Cid is instantiated, and that all elements of a parameterized 
+ * class are ok.  If there is a parameterized class, we simply translate 
+ * that class'es CID into a NID, rather than checking for subsumption.
+ * eliminating this step saves significant time. */
+
+cvt_cid_nid(Cid,NNid,Src) :-
+	(integer(Cid)
+	 ->	class(Cid,_,NNid,Src)
+	 ; parameterized_int_ext(Cid,NNid,Src)
+	 ->	true
+	 ;	telling(OF),tell(user),writeln(untranslatable(Cid,Src)),
+		tell(OF),fail
+	).
+
+%--------------------------------------------------------------
+
+:- comment(oms_exists/1, "@tt{oms_exists(Dir)} checks whether
+@tt{schema_oms.P} and @tt{data_oms.P} files are present in directory
+@tt{Dir}").
+
+oms_exists(Dir):-
+	concat_atom([Dir,'/schema_oms.P'],SchemaFile),
+	file_exists(SchemaFile),
+	concat_atom([Dir,'/data_oms.P'],DataFile),
+	file_exists(DataFile).
+
+throw_oms_writable(Dir):-
+	(oms_writable(Dir) -> 
+	    true
+             ;  oms_error(permissions,['Directory is not writable: ',Dir])).
+
+:- comment(oms_writable/1, 'Checks whether schema_oms.P and data_oms.P
+files (if exist) are overwritable (not read-only)').
+oms_writable(Dir):-
+	(oms_exists(Dir)
+	 ->	concat_atom([Dir,'\schema_oms.P'],SchemaPath),
+		path_sysop(writable, SchemaPath),
+		concat_atom([Dir,'\data_oms.P'],DataPath),
+		path_sysop(writable, DataPath)
+	 ;	true
+	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(load_intensional_rules/1," @tt{load_intensional_rules(Dir)}
+ynamically loads intensional rules from @tt{oms_intensional.P} in
+@tt{Directory}.  This predicate is designed for the component system,
+but can be used outside of it.  The leaf directory name in @tt{Dir} is
+assumed to be the component name of the rules.  As the intensional
+rules are loaded, their functors are rewritten from @tt{XXX_int} to
+@tt{XXX_int_Name}, to avoid any conflicts with intensional rules
+loaded from other components or directories.").
+
+load_intensional_rules(Dir):- 
+	extract_file_name(Dir,Name),
+	load_intensional_rules(Dir,Name).	
+
+extract_file_name(File,Name):- 
+	atom_chars(File,Flist),
+	reverse(Flist,Rlist),
+	strip_extension(Rlist,Rl1),
+	read_till_slash(Rl1,Rn2),
+	reverse(Rn2,Nl),
+	atom_chars(Name,Nl).
+
+strip_extension(Rlist,Rl1):- 
+	(member('.',Rlist) -> 
+	    strip_extension_1(Rlist,Rl1) 
+	  ; Rl1 = Rlist).
+
+strip_extension_1(['.'|T],T):- !.
+strip_extension_1([_|T],Tnew):- 
+	strip_extension_1(T,Tnew).
+
+read_till_slash(L,L1):- 
+	slash(S),
+	(member(S,L) -> 	
+	    read_till_slash_1(L,L1,S)
+	  ; L = L1).
+
+read_till_slash_1([S|_R],[],S):- !.
+read_till_slash_1([H|R],[H|R1],S):- 
+	read_till_slash_1(R,R1,S).
+
+load_intensional_rules(Path,Name):- 
+	retract_intensional_rules(Name),
+	concat_atom([Path,'/oms_intensional.P'],File),
+	(file_exists(File) -> 
+   	    see(File),
+	    read_intensional_rules_1(Name),
+	    seen
+	  ; true).
+
+retract_intensional_rules(Name):- 
+	component_table_int(Head,_,_),
+	Head =.. [F|T],
+	concat_atom([F,'_',Name],NewF),
+	NewHead =.. [NewF|T],
+	retractall(NewHead),
+	retract((:-(Head,NewHead))),
+	fail.
+retract_intensional_rules(_).
+
+read_intensional_rules_1(Name):- 
+	repeat,
+	read(T),
+	(T = end_of_file -> 
+	   true 
+	 ; 
+	   T = (:-(Head,Body)),
+	   transform_intensional_rules(Head,NewHead,Name),
+	   asserta((:-(Head,NewHead))),
+	   asserta((:-(NewHead,Body))),
+	   fail),
+	!.
+
+transform_intensional_rules(Head,NewHead,Name):- 
+	component_table_int(Head,_,_),
+	Head =.. [F|T],
+	concat_atom([F,'_',Name],NewF),
+	NewHead =.. [NewF|T].
+
+check_intensional_head(Head,Name):- 
+	(component_table_int(Head,_,_) -> 
+	    true
+	  ; oms_warning(component,[Head,
+			' is not an intensional rule in component ',Name])).
+
+end_of_file.
+
+/* transforms external to internal 
+parameterized_ext_int(Term,Term):- 
+	skeleton(Term,Skel),
+	oms_primitive_type(Skel),!.
+parameterized_ext_int(Term,Newterm):- 
+	Term =.. [F|List],
+	parameterized_ext_int_1(List,Newlist,Term),
+	Newterm =.. [F|Newlist].
+*/
+
+
+get_nid_src_from_cid(Cid,NCid,Sou) :-
+	(atomic(Cid)
+	 ->	(class(Cid,_,NCid,Sou)
+		 ->	true
+		 ;	write('Error, missing class tuple for: '),
+			writeq([NCid,Sou]),nl,
+			fail
+		)
+	 ; get_non_atomic_nid_src(Cid,Sou,NCid)).
+
+get_non_atomic_nid_src(NCid,'OMS',NCid):- 
+	skeleton(NCid,Skel),
+	oms_primitive_type(Skel),!.
+get_non_atomic_nid_src(Cid,Sou,Nid):- 
+	parameterized_int_ext(Cid,Nid,Sou),!.
+get_non_atomic_nid_src(Cid,Sou,_Cid):- 
+	warning(['Error, no matching class for ',Cid,Sou]),
+	fail.
+
+/* This differs from ext_int and from class_nidbound in that the CID
+   corresponding to Nid must already exist in the 
+get_cid_from_nid_src(Nid,Sou,Term,Cid) :-
+	check_new_nid(Nid,Term),
+	check_new_source(Sou,Term),
+	(atomic(Nid)
+	 ->	(class(Cid,_,Nid,Sou)
+		 ->	true
+		 ;	warning(['Error, missing class tuple for: ',
+				  Nid,Sou,' in ',Term]),
+			fail
+		)
+	 ; get_non_atomic_class(Nid,Sou,Cid)).
+
+get_non_atomic_class(NCid,Sou,Cid):- 
+	% this call save because not primitive (first clause).
+	ext_int(Cid,_,NCid,Sou),	
+	skeleton(Cid,Skel1),
+	class(Skel1,_,_,Sou),
+	term_subclass(Cid,Skel1),!.
+get_non_atomic_class(NCid,Sou,_Cid):- 
+	warning(['Error, no matching class for ',NCid,' , ',Sou]),
+	fail.
+
+*/

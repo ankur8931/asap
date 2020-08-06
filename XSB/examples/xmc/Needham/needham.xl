@@ -1,0 +1,184 @@
+
+%Implementation of the Needham-Schroeder Protocol in XL with 'KEYS'.
+
+{*
+
+:- datatype identifier.
+identifier(a_ID).
+identifier(b_ID).
+identifier(i_ID).
+
+:- datatype nonces.
+nonces(a_nonce).
+nonces(b_nonce).
+nonces(i_nonce).
+
+:-datatype keys.
+keys(akey).
+keys(bkey).
+keys(ikey).
+
+:- datatype message.
+message(mesg1(ID, Nonce1, Key)) :- typeof(ID, identifier), typeof(Nonce1, nonces), typeof(Key, keys).
+message(mesg2(Nonce1, Nonce2, Key)) :- typeof(Nonce1, nonces), typeof(Nonce2, nonces), typeof(Key, keys).
+message(mesg3(Nonce2, Key)) :- typeof(Nonce2, nonces), typeof(Key, keys).
+message(mesg_ack(Ack)) :- typeof(Ack, integer).
+
+*}
+
+
+ns_proto ::= sender(SRin, SRout)
+           |  intruder(SRout, RSin, RSout, SRin)
+           |  reciever(RSin, RSout). 
+
+
+
+sender(In, Out) ::=
+	{	sender_ab(In, Out)
+	#	sender_ai(In, Out)
+	}.
+%	sender(In, Out).
+
+	
+sender_ab(In, Out) ::=
+	{	
+		action(send_AB);
+		Out ! mesg1(a_ID, a_nonce, bkey); 
+		In ? mesg2(S_nonce, R_nonce, Key);
+		if (S_nonce == a_nonce /\ Key == akey)
+		then 
+			{ action(commit_AB);
+			  Out ! mesg3(R_nonce, bkey);
+			  sender(In, Out)
+			}
+		else 
+			sender(In, Out)
+	}.
+	%sender_ab(In, Out).
+
+
+sender_ai(In, Out) ::=
+	{	
+		action(send_AI);
+		Out ! mesg1(a_ID, a_nonce, ikey); 
+		In ? mesg2(S_nonce, R_nonce, Key);
+		if (S_nonce == a_nonce /\ Key == akey)
+		then 
+			{ action(commit_AI);
+			  Out ! mesg3(R_nonce, ikey);
+			  sender(In, Out)
+			}
+		else 
+			sender(In, Out)
+	}.
+	%sender_ai(In, Out).
+
+
+
+
+intruder(In1, Out1, In2, Out2) ::=
+	{	In1 ? mesg1(ID, Nonce, Key);
+		{
+		if (Key == ikey) 
+		then {
+			Out1 ! mesg1(ID, Nonce, bkey)
+		     #  Out2 ! mesg2(Nonce, i_nonce, akey)
+		     }
+		else {
+			Out1 ! mesg1(ID, Nonce, Key)
+		     %#	Out1 ! mesg1(i_ID, i_nonce, bkey)
+		     }
+		%#	action(drop)		
+		};
+		intruder(In1, Out1, In2, Out2)
+	}
+	
+	#
+
+	{	In2 ? mesg2(Nonce1, Nonce2, Key);
+		{
+		if(Nonce1 == i_nonce /\ Key == ikey)
+		then { 
+			Out1 ! mesg3(Nonce2, bkey); 
+			action(commit_IB)
+		     }
+		else {
+		     	Out2 ! mesg2(Nonce1, Nonce2, Key)
+		     %#	Out2 ! mesg2(Nonce1, i_nonce, akey)
+		     }
+ 		%#	action(drop)		
+		};
+		intruder(In1, Out1, In2, Out2)
+	}
+
+	#
+
+	{	In1 ? mesg3(Nonce2, Key);
+		{
+		if (Nonce2 == i_nonce /\ Key == ikey)
+		then { 
+			action(commit_IA) 
+		     }
+		else if (Key == ikey) 
+			then {
+				Out1 ! mesg3(Nonce2, bkey)
+			     }
+			else {
+				Out1 ! mesg3(Nonce2, Key)
+			     }
+		%#	action(drop)			
+		};
+		intruder(In1, Out1, In2, Out2)	
+	}.
+
+
+
+reciever(In, Out) ::=
+	{	In ? mesg1(S_ID, S_nonce, Key);
+		
+		if(Key == bkey /\ S_ID == a_ID)
+		then  
+			reciever_ab(In, Out, S_nonce)
+		else if(Key == bkey /\ S_ID == i_ID)
+		     then  	
+			reciever_ib(In, Out, S_nonce)
+	}.
+	%reciever(In, Out).		
+
+
+reciever_ab(In, Out, S_nonce) ::=
+	{	Out ! mesg2(S_nonce, b_nonce, akey);
+		In ? mesg3(R_nonce, Key);
+		if (R_nonce == b_nonce /\ Key == bkey) 
+		then 
+			action(commit_BA);
+		reciever(In, Out)
+	}.
+	%reciever_ab(In, Out).
+
+
+reciever_ib(In, Out, S_nonce) ::=
+	{	Out ! mesg2(S_nonce, b_nonce, ikey);
+		In ? mesg3(R_nonce, Key);
+		if (R_nonce == b_nonce /\ Key == bkey) 
+		then 
+			action(commit_BI);
+		reciever(In, Out)
+	}.
+	%reciever_ib(In, Out).
+
+
+deadlock += [-] ff \/ <-> deadlock.
+
+attack  += <commit_AI> attack1 \/ <-commit_AI>attack.
+attack1 += <commit_BA> tt \/ <commit_IA> attack \/ <-{commit_IA, commit_BA}>attack1.
+
+noattack += <commit_AB> noattack1 \/ <commit_AI> noattack2 \/ <-commit_AB> noattack \/ <-commit_AI> noattack.
+noattack1 += <commit_BA> tt \/ <-commit_BA> noattack1.
+noattack2 += <commit_IA> tt \/ <-commit_IA> noattack2.
+
+atk  += (<commit_AB> atk1) \/ (<-commit_BA> atk).
+atk1 += (<commit_BA> atk)  \/ (<-commit_BA> atk1).
+
+% Added by Ping	
+attacknew += <commit_BA> tt \/ <-send_AB>attacknew. 	

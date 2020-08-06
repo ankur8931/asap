@@ -1,0 +1,6 @@
+:- ['../test'].
+:- xlc(metalock).
+
+test(Threads, Objects, Formula) :-
+	write(metalock(Threads, Objects)), write(' '), writeln(Formula),
+	check_all(metaj(Threads, Objects),Formula).

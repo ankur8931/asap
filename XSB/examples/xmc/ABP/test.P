@@ -1,0 +1,9 @@
+:- ['../test'].
+
+test(Test,File) :-
+	writeln(Test), 
+	xlc_silent(File),
+	check_all(abp,drop_packet).
+
+
+

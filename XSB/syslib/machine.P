@@ -1,0 +1,582 @@
+/* File:      machine.P
+** Author(s): Jiyang Xu, Kostis Sagonas, Terrance Swift, David S. Warren,
+**    	      Ernie Johnson 
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1999
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: machine.P,v 1.105 2009/10/19 16:56:42 dwarren Exp $
+** 
+*/
+
+/*----------------------------------------------------------------------*/
+/* NOTE: This file BETTER be always compiled with the "sysmod" option.	*/
+/*----------------------------------------------------------------------*/
+
+:- compiler_options([sysmod,optimize,xpp_on,spec_off]).
+
+#include "builtin.h"
+#include "celltags_xsb.h"
+#include "flag_defs_xsb.h"
+#include "syscall_xsb.h"
+#include "psc_defs.h"
+#include "heap_defs_xsb.h"
+#include "incr_xsb_defs.h"
+#include "table_inspection_defs.h"
+
+/*======================================================================*/
+/* This file contains definitions for predicates implemented by the	*/
+/* underlying machine (hard builtins).	For those builtins that are     */
+/* inlined by the compiler, a dummy definition of the form:             */
+/*       pred(X1,...,Xn) :- pred(X1,...,Xn).                            */
+/* appears below.  This way, the dependency between this file and       */
+/* the emulator is minimized; also this gives a way of making sure that */
+/* file cmplib/builtin.P stays up-to-date.  A side-effect of this is    */
+/* that cmplib/builtin.P needs to be updated and compiled *BEFORE* this */
+/* file.  Other builtins that are not inlined have a definition:        */
+/*      pred(_X1,...,_Xn) :- '_$builtin'(BUILTIN_NAME).                 */
+/* where BUILTIN_NAME is supposed to exist in emu/builtin.h.            */
+/* We should make sure that we have as little as possible in the later  */
+/* category by updating cmplib/builtin.P appropriately.  Currently, we  */
+/* have more such definitions than needed, probably because builtin.P   */
+/* needs an update.                                        - Kostis.    */
+/*======================================================================*/
+
+psc_name(PSC, String) :- psc_name(PSC, String).
+psc_arity(PSC, Arity) :- psc_arity(PSC, Arity).
+psc_type(PSC, Type) :- psc_type(PSC, Type).
+psc_prop(PSC, Term) :- psc_prop(PSC, Term).
+psc_mod(PSC, Term) :- psc_mod(PSC, Term).
+psc_set_type(PSC, Type) :- psc_set_type(PSC, Type).
+psc_set_prop(PSC, Term) :- psc_set_prop(PSC, Term).
+psc_set_spy(PSC, Spy) :- psc_set_spy(PSC, Spy).
+psc_ep(PSC, Term) :- psc_ep(PSC, Term).
+psc_set_ep(PSC, Term) :- psc_set_ep(PSC, Term).
+psc_data(PSC, Data) :- psc_data(PSC, Data).
+psc_init_info(_PSC) :- '_$builtin'(PSC_INIT_INFO).
+
+:- export psc_immutable/2.
+psc_immutable(Psc,Immutable):- 
+	table_inspection_function(PSC_IMMUTABLE,Psc,Immutable,_Three,_Four).
+
+
+psc_set_shared(PSC, Bool) :-
+	psc_get_env(PSC, Det, T_SHARED_DET),
+	psc_get_env(PSC, Shared, T_SHARED),
+	((Det =:= 1, Shared =\= Bool)
+	 ->	write('WARNING: Cannot change SHARED/PRIVATE status for '),
+		psc_name(PSC,Name), psc_arity(PSC,Arity),
+		writeln(Name/Arity), fail
+	 ;	psc_set_env(PSC, Bool, T_SHARED),
+		psc_set_env(PSC, 1, T_SHARED_DET)
+	).
+psc_shared(PSC, Bool) :- psc_get_env(PSC, Bool, T_SHARED).
+psc_set_private(PSC, IBool) :- RBool is \(IBool), psc_set_shared(PSC, RBool).
+psc_set_tabled(PSC, Bool) :-
+	psc_get_set_env_byte(PSC,255,0,Res),
+	(Res =:= 0 %% Do only if not yet set
+	 ->	psc_set_env(PSC, Bool, T_TABLED)
+	 ;	true
+	).
+
+% TLS: changed to return values (including variant or subsumptive).
+psc_tabled(PSC, Res) :-
+	psc_get_set_env_byte(PSC,255,0,Res). % check if either bit ot T_TABLED is on
+%	(Res /\ T_TABLED =\= 0 -> Tabled = 1 ; Tabled = 0).
+
+psc_set_env(PSC,Bool,Mask) :-
+	Or is Bool*Mask, And is \(Mask),
+	psc_get_set_env_byte(PSC,And,Or,_).
+psc_get_env(PSC,Bool,Mask) :-	% Checks if all bits of Mask are on
+	psc_get_set_env_byte(PSC,255,0,Res), Bool is (Res /\ Mask) // Mask.
+psc_get_set_env_byte(_PSC, _And, _Or, _Res) :- '_$builtin'(PSC_GET_SET_ENV_BYTE).
+
+psc_set_incr(PSC, CODE):-
+	incr_eval_builtin(PSC_SET_INCR, PSC, CODE).
+
+psc_get_incr(PSC, CODE):-
+	incr_eval_builtin(PSC_GET_INCR, PSC, CODE).
+
+psc_set_intern(PSC, CODE):-
+	incr_eval_builtin(PSC_SET_INTERN, PSC, CODE).
+
+psc_get_intern(PSC, CODE):-
+	incr_eval_builtin(PSC_GET_INTERN, PSC, CODE).
+
+term_new_mod(Mod, Term, NewTerm) :- term_new_mod(Mod, Term, NewTerm).
+term_psc(Term, PSC) :- term_psc(Term, PSC).
+term_type(Term, Type) :- term_type(Term, Type).
+term_compare(Term1, Term2, Res) :- term_compare(Term1, Term2, Res).
+term_new(PSC, Term) :- term_new(PSC, Term).
+term_arg(Term, Index, Arg) :- term_arg(Term, Index, Arg).
+term_set_arg(Term, Index, Arg, Perm) :- term_set_arg(Term, Index, Arg, Perm).
+set_arg(Term, Index, Arg) :- term_set_arg(Term,Index,Arg,-1).
+stat_flag(Flag, Value) :- stat_flag(Flag, Value).
+stat_set_flag(Flag, Value) :- stat_set_flag(Flag, Value).
+buff_alloc(Size, Buffer) :- buff_alloc(Size, Buffer).
+buff_word(Buffer, Disp, Value) :- buff_word(Buffer, Disp, Value).
+buff_set_word(Buffer, Disp, Value) :- buff_set_word(Buffer, Disp, Value).
+buff_byte(Buffer, Disp, Value) :- buff_byte(Buffer, Disp, Value).
+buff_set_byte(Buffer, Disp, Value) :- buff_set_byte(Buffer, Disp, Value).
+code_call(CodeAddr, Term, Type) :- code_call(CodeAddr, Term, Type).
+
+trie_assert_hdr_info(_Code,_Arg1,_Ret1) :- '_$builtin'(TRIE_ASSERT_HDR_INFO).
+
+substring(_String, _From, _To, _Result) :- '_$builtin'(SUBSTRING).
+str_len(String, Length) :- str_len(String, Length).
+str_cat(Str1, Str2, Str3) :- str_cat(Str1, Str2, Str3).
+str_cmp(Str1, Str2, Res) :- str_cmp(Str1, Str2, Res).
+string_substitute(_String, _SubstSpec, _SubstList, _Result) :-
+	'_$builtin'(STRING_SUBSTITUTE).
+
+parsort(_InList,_ParSpec,_ElimDupls,_OutList) :-
+	'_$builtin'(PARSORT).
+
+unify_with_occurs_check(_One,_Two):- 
+	'_$builtin'(UNIFY_WITH_OCCURS_CHECK).
+
+call0(Term) :- call0(Term).
+
+calln(_0,_Goal) :- '_$builtin'(CALLN).
+calln(_1,_A1,_Goal) :- '_$builtin'(CALLN).
+calln(_2,_A1,_A2,_Goal) :- '_$builtin'(CALLN).
+calln(_3,_A1,_A2,_A3,_Goal) :- '_$builtin'(CALLN).
+calln(_4,_A1,_A2,_A3,_A4,_Goal) :- '_$builtin'(CALLN).
+calln(_5,_A1,_A2,_A3,_A4,_A5,_Goal) :- '_$builtin'(CALLN).
+calln(_6,_A1,_A2,_A3,_A4,_A5,_A6,_Goal) :- '_$builtin'(CALLN).
+calln(_7,_A1,_A2,_A3,_A4,_A5,_A6,_A7,_Goal) :- '_$builtin'(CALLN).
+calln(_8,_A1,_A2,_A3,_A4,_A5,_A6,_A7,_A,_Goal8) :- '_$builtin'(CALLN).
+calln(_9,_A1,_A2,_A3,_A4,_A5,_A6,_A7,_A8,_A9,_Goal) :- '_$builtin'(CALLN).
+calln(_10,_A1,_A2,_A3,_A4,_A5,_A6,_A7,_A8,_A9,_A10,_Goal) :- '_$builtin'(CALLN).
+
+stat_sta(X) :- stat_sta(X).
+stat_cputime(X) :- stat_cputime(X).
+stat_walltime(X) :- stat_walltime(X).
+xwam_state(_Code,_Val) :- '_$builtin'(XWAM_STATE).  /* maybe make it inline for some values?*/
+code_load(ByteCodeFileName, InitAddr, Exp) :-
+	code_load(ByteCodeFileName, InitAddr, Exp).
+buff_set_var(Buff, Disp, BuffSize, Var) :-
+	buff_set_var(Buff, Disp, BuffSize, Var).
+buff_dealloc(Buff, OldSize, NewSize) :- buff_dealloc(Buff, OldSize, NewSize).
+buff_cell(Buff, Disp, Cell) :- buff_cell(Buff, Disp, Cell).
+buff_set_cell(Buff, Disp, Tag, Value) :- buff_set_cell(Buff, Disp, Tag, Value).
+
+/* check if Sub is a substring in Str and return the matches.
+   Also does matching from the end */
+str_match(Sub,Str,Direction,Beg,End) :- str_match(Sub,Str,Direction,Beg,End).
+
+/* If file is a directory, add slash, if needed, or strip extra slashes */
+dirname_canonic(File, Canonic) :- dirname_canonic(File, Canonic).
+/* for efficiency reasons, the following predicates are also implemented */
+psc_insert(Name, Arity, PSC, MName) :- psc_insert(Name, Arity, PSC, MName).
+psc_import(Pname, Arity, MName) :- psc_import(Pname, Arity, MName).
+psc_import_as(Psc1, Psc2) :- psc_import_as(Psc1, Psc2).
+
+psc_insertmod(ModName, Def, PSC) :- psc_insertmod(ModName, Def, PSC).
+
+file_gettoken(File, PrevCh, Type, Value, NextCh) :-
+	file_gettoken(File, PrevCh, Type, Value, NextCh).
+file_puttoken(File, Type, Value) :- file_puttoken(File, Type, Value).
+term_hash(Term, Size, Value) :- term_hash(Term, Size, Value).
+unload_seg(CodeSeg) :- unload_seg(CodeSeg).
+load_obj(FileName, Mod, LdOption, InitAddr) :-
+	load_obj(FileName, Mod, LdOption, InitAddr).
+
+getenv(EnvVar, Value) :- getenv(EnvVar, Value).
+putenv(_PutEnvString) :- '_$builtin'(PUTENV).
+
+crypto_hash(sha1,Input,Output):- !,crypto_hash(SHA1,Input,Output).
+crypto_hash(md5,Input,Output):- !,crypto_hash(MD5,Input,Output).
+crypto_hash(_Type,_Input,_Out) :- '_$builtin'(CRYPTO_HASH).
+
+sys_syscall(_CallNo, _Res, _A0,_A1, _A2,_A3,_A4,_A5,_A6) :- '_$builtin'(SYS_SYSCALL).
+sys_syscall(_CallNo, _Res, _A1, _A2,_A3) :- '_$builtin'(SYS_SYSCALL).
+sys_syscall(_CallNo, _Res, _A1, _A2) :- '_$builtin'(SYS_SYSCALL).
+sys_system(CallNo, Command, _Arg1,_Arg2,_Arg3,_Arg4,_Arg5) :-
+    sys_system(CallNo, Command, _Arg1,_Arg2,_Arg3,_Arg4,_Arg5).
+sys_gethost(Name, Buffer) :- sys_gethost(Name, Buffer).
+sys_errno(Errno) :- sys_errno(Errno).
+
+file_stat(File, Which, RetVal) :- file_stat(File, Which, RetVal).
+file_writequoted(File, Term) :- file_writequoted(File, Term).
+
+intern_string(Str, InternedStr) :- intern_string(Str, InternedStr).
+expand_filename(FileName, ExpandedFileName) :-
+	expand_filename(FileName, ExpandedFileName).
+tilde_expand_filename(FileName, ExpandedFileName) :-
+	tilde_expand_filename(FileName, ExpandedFileName).
+is_absolute_filename(FileName) :- is_absolute_filename(FileName).
+parse_filename(FileName, Dir, Basename, Extension) :-
+	parse_filename(FileName, Dir, Basename, Extension).
+almost_search_module(FileName, Dir, ModName, Extension, BaseName) :-
+	almost_search_module(FileName, Dir, ModName, Extension, BaseName).
+existing_file_extension(FileName, Extension) :-
+	existing_file_extension(FileName, Extension).
+
+conget(_Term,_Val) :- '_$builtin'(CONGET_TERM).
+conset(_Term,_Val) :- '_$builtin'(CONSET_TERM).
+
+psc_env(PSC, Env) :- psc_env(PSC, Env).
+psc_spy(PSC, Spy) :- psc_spy(PSC, Spy).
+
+is_xwammode(Flag) :- is_xwammode(Flag).
+dereference_the_bucket(Pair_Pointer, Pair) :-
+	dereference_the_bucket(Pair_Pointer, Pair).
+pair_psc(Pair, PSC) :- pair_psc(Pair, PSC).
+pair_next(Pair, Next_Pair) :- pair_next(Pair, Next_Pair).
+next_bucket(Bucket, Next_Bucket) :- next_bucket(Bucket, Next_Bucket).
+
+:- export close_open_tables/0.
+close_open_tables:- close_open_tables(non_memory_error).
+
+close_open_tables(memory_error):-!,
+%    writeln(cot(memory_error)),
+    close_open_tables_1(MEMORY_ERROR).
+close_open_tables(_non_memory_error):-
+%    writeln(cot(_non_memory_error)),
+    close_open_tables_1(NON_MEMORY_ERROR).
+
+close_open_tables_1(_Error_Type) :-    '_$builtin'(CLOSE_OPEN_TABLES).
+
+file_function(Function, A, B, C, D, E, F) :-
+	file_function(Function, A, B, C, D, E, F).
+file_function(Function, A, B) :-
+	file_function(Function, A, B).
+slash(Slash) :- slash(Slash).
+
+abolish_table_info :- '_$builtin'(ABOLISH_ALL_TABLES).
+zero_out_profile :- '_$builtin'(ZERO_OUT_PROFILE).
+write_out_profile :- '_$builtin'(WRITE_OUT_PROFILE).
+assert_code_to_buff(Clause) :- assert_code_to_buff(Clause).
+assert_buff_to_clref(Head, NAri, Prref, AZ, RInd, HashTabSize) :-
+	assert_buff_to_clref(Head, NAri, Prref, AZ, RInd, HashTabSize).
+
+file_read_canonical(_File,_Var,_Ret) :- '_$builtin'(FILE_READ_CANONICAL).
+gen_retract_all(_Buff,_PSC) :- '_$builtin'(GEN_RETRACT_ALL).
+
+db_get_last_clause(_PrRef,_Clause,_Type,_Entry) :- 
+	'_$builtin'(DB_GET_LAST_CLAUSE).
+db_retract0(_Clause,_DontReclaim,_PSC) :- '_$builtin'(DB_RETRACT0).
+db_get_clause(_CC0,_CIL,_CI,_PrRef,_Head,_Failed,_Clause,_Type,_Entry,_NCIL,_NCI) :- 
+	'_$builtin'(DB_GET_CLAUSE).
+db_build_prref(_PSC,_Tabled,_PrRef) :- '_$builtin'(DB_BUILD_PRREF).
+db_get_prref(_PSC,_PrRef) :- '_$builtin'(DB_GET_PRREF).
+db_abolish0(_Prref,_PSC) :- '_$builtin'(DB_ABOLISH0).
+db_reclaim0(_Clause,_Type) :- '_$builtin'(DB_RECLAIM0).
+
+
+:- export dynamic_code_function/6.
+dynamic_code_function(_Switch,_One,_Two,_Three,_Four,_Five):- '_$builtin'(DYNAMIC_CODE_FUNCTION).
+
+dynamic_code_function(_Switch,_One,_Two,_Three,_Four):- '_$builtin'(DYNAMIC_CODE_FUNCTION).
+
+table_inspection_function(_Switch,_One,_Two,_Three,_Four):- 
+	'_$builtin'(TABLE_INSPECTION_FUNCTION).
+
+table_inspection_function(_Switch,_One,_Two,_Three,_Four,_Five,_Six):- 
+	'_$builtin'(TABLE_INSPECTION_FUNCTION).
+table_inspection_function(_Switch,_One,_Two,_Three,_Four,_Five,_Six,_Seven):- 
+	'_$builtin'(TABLE_INSPECTION_FUNCTION).
+table_inspection_function(_Switch,_One,_Two,_Three,_Four,_Five,_Six,_Seven,_Eight):- 
+	'_$builtin'(TABLE_INSPECTION_FUNCTION).
+	
+formatted_io(_OPnumber, _FileOrString,_Format,_ArgTerm,_RetCode) :-
+	'_$builtin'(FORMATTED_IO).
+
+trimcore :- '_$builtin'(TRIMCORE).
+
+/* This is the builtin where people should put their private, experimental
+   builtin code. SEE THE EXAMPLE IN emu/private_builtin.c to UNDERSTAND HOW 
+   TO DO IT. Note: even though this is a single builtin, YOU CAN SIMULATE 
+   ANY NUMBER OF BUILTINS WITH IT. */
+private_builtin(_OpCode,_A1,_A2,_A3,_A4,_A5,_A6,_A7,_A8,_A9,_A10) :-
+	'_$builtin'(PRIVATE_BUILTIN).
+
+xsb_backtrace :- xsb_backtrace(1,_).
+xsb_backtrace(Trace) :- xsb_backtrace(2,Trace).
+
+xsb_backtrace(_Opcode,_) :- '_$builtin'(XSB_BACKTRACE).
+
+segfault_handler(_Type) :- '_$builtin'(SEGFAULT_HANDLER).
+
+is_charlist(_List, _Size) :- '_$builtin'(IS_CHARLIST).
+
+url_encode_decode(_Type,_UrlIn,_UlrOut) :- '_$builtin'(URL_ENCODE_DECODE).
+
+oracle_query(_A, _B, _C, _D, _E, _F, _G) :- '_$builtin'(ORACLE_QUERY).
+odbc_exec_query(_A, _B, _C, _D, _E, _F) :- '_$builtin'(ODBC_EXEC_QUERY).
+
+term_size_limit(_Term,_Depth):- '_$builtin'(TERM_SIZE_LIMIT).
+term_size(_Term,_Depth):- '_$builtin'(TERM_SIZE).
+term_depth(_Term,_Depth):- '_$builtin'(TERM_DEPTH).
+
+is_cyclic(_Term):- '_$builtin'(IS_CYCLIC).
+is_acyclic(_Term):- '_$builtin'(IS_ACYCLIC).
+acyclic_term(_Term) :- '_$builtin'(IS_ACYCLIC).
+ground_or_cyclic(Term):- ground_cycle_internal(Term,CYCLIC_SUCCEED).
+ground_and_acyclic(Term):- ground_cycle_internal(Term,CYCLIC_FAIL).
+
+ground_cycle_internal(_Term,_Action):- '_$builtin'(GROUND_CYC).
+
+mark_term_cyclic(_Term):- '_$builtin'(MARK_TERM_CYCLIC).
+
+intern_term(_Term,_InternedTerm) :- '_$builtin'(INTERN_TERM).
+
+'$$set_scope_marker':- '$$set_scope_marker'.
+'$$unwind_stack':- '$$unwind_stack'.
+'$$clean_up_block'(_Breg):- '_$builtin'(CLEAN_UP_BLOCK).
+%'$$clean_up_block':- '$$clean_up_block'.
+
+float_op(_Op, _L1, _L2, _L3, _R1, _R2, _R3, _Res1, _Res2, _Res3):- '_$builtin'(FLOAT_OP).
+float_op(c, _L1, _L2, _L3, _R1):- '_$builtin'(FLOAT_OP).
+expand_heap :- expand_heap.
+mark_heap(X) :- mark_heap(X).
+gc_stuff(_X,_Y) :- '_$builtin'(GC_STUFF).
+gc_heap :- gc_stuff(GC_GC_HEAP,_).
+gc_clauses:- gc_stuff(GC_GC_CLAUSES,_).
+%%gc_all :- T is GC_GC_STRINGS+GC_GC_CLAUSES+GCGC_TABLED_PREDS, gc_stuff(T,_).
+
+'$$findall_init'(_I,_C) :- '$$findall_init'(_I,_C).
+'$$findall_add'(_T,_I,_C) :- '$$findall_add'(_T,_I,_C).
+'$$findall_get_solutions'(_L,_T,_I,_C) :-
+        '$$findall_get_solutions'(_L,_T,_I,_C).
+
+socket_request(_ReqNumber,_Domain,_Sockfd,_Port,_Hostname,_Sockfptr,_Error) :-
+	'_$builtin'(SOCKET_REQUEST).
+
+/*======================================================================*/
+
+thread_request(_ReqNumber,_Arg1,_Arg2,_Arg3,_Arg4,_Arg5,_Arg6,_Arg7,_Arg8) :-
+        '_$builtin'(THREAD_REQUEST).
+
+mt_random_request(_ReqNumber,_Arg1,_Arg2):-  
+	'_$builtin'(MT_RANDOM_REQUEST).
+
+/*======================================================================*/
+
+is_charlist(List) :- is_charlist(List, _).
+
+conname(Con, Name) :-
+	term_type(Con, Type),
+	( Type =:= XSB_STRING -> Name = Con
+	; Type =:= XSB_STRUCT -> term_psc(Con, Psc), psc_name(Psc, Name)
+	).
+
+conpsc(_Con, _Psc) :- '_$builtin'(CONPSC).
+/**conpsc(Con, Psc) :-
+%%	term_psc(Con, Psc), Psc \== 0.
+	term_type(Con, Type),
+	( Type =:= XSB_STRUCT -> term_psc(Con, Psc)
+	; Type =:= XSB_STRING -> psc_insert(Con, 0, Psc, 0)
+	).***/
+
+machine_file_exists(File) :- 
+	sys_syscall(SYS_access, Res, File, 'r'), Res =:= 0.
+
+:- export epoch_seconds/1, epoch_milliseconds/2.
+epoch_seconds(Secs):- 
+	sys_syscall(SYS_epoch_seconds, _Res, Secs,_).
+epoch_milliseconds(Secs,Milli):- 
+	sys_syscall(SYS_epoch_msecs, _Res, Secs, Milli).
+
+/*======================================================================*/
+/* Some other stuff for convenience here;                               */
+/*======================================================================*/
+
+set_pil_on :- stat_set_flag(PIL_TRACE,1).
+set_pil_off :- stat_set_flag(PIL_TRACE,0).
+set_prof_off :- stat_set_flag(PROFFLAG,0).
+set_prof_on(Level) :- stat_set_flag(PROFFLAG,Level).
+
+globalvar(_Var) :-
+	'_$builtin'(GLOBALVAR).
+
+ccall_store_error(_Type,_Message) :- '_$builtin'(CCALL_STORE_ERROR).
+
+/* Prompt routines */
+
+prompt(New,Old) :- prompt(New,Old,'_$main_prompt'(_)).
+
+prompt(New,Old,Pstore) :- 
+	(Old == []
+	 ->	true
+	 ;	get_prompt(Pstore,Old)
+	),
+	(Old \== New
+	 ->	set_prompt(Pstore,New)
+	 ;	true
+	).
+
+get_prompt(Pstore,Prompt) :-
+	term_psc(Pstore, Psc),
+	psc_prop(Psc, Buff),	
+	intern_string(Buff, String),	%% temp solution, since ALIAS not work
+	Prompt = String.		%% for double word.
+
+set_prompt(Pstore,Prompt) :-
+	term_psc(Pstore, Psc),
+	psc_set_type(Psc, 8),			%% T_CSET
+	conname(Prompt, String),
+	psc_set_prop(Psc, String).
+
+get_breg(_):- '_$builtin'(GET_BREG).
+
+:- import writeln/1 from standard.
+:- export start_sleeper_thread/1.
+start_sleeper_thread(Interval):- 
+        sleeper_thread_operation(START_SLEEPER_THREAD,Interval).
+
+sleeper_thread_operation(_Type,_Interval):- 
+	'_$builtin'(SLEEPER_THREAD_OPERATION).
+
+:- export cancel_sleeper_thread/0.
+cancel_sleeper_thread:- 
+        sleeper_thread_operation(CANCEL_SLEEPER_THREAD,_).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% General Purpose Constraint Stuff
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+put_attributes(_Var, _LNew) :- '_$builtin'(PUT_ATTRIBUTES).
+get_attributes(_Var, _L) :- '_$builtin'(GET_ATTRIBUTES).
+delete_attributes(_Var) :- '_$builtin'(DELETE_ATTRIBUTES).
+
+'_$attv_unify'(_Var,_Value) :- '_$builtin'(ATTV_UNIFY).
+
+attv_unify(Var, Value) :-
+	(   is_attv(Var)
+	->  '_$attv_unify'(Var,Value)
+	;   Var = Value
+	).
+
+/* TLS: an attribute list has the form [Module1,Value1,Module2,Value2,...]
+   where there is a unique value for each module */
+
+put_attr(Var,Mod,Val) :-
+      ( get_attributes(Var,Atts) ->
+              '$put_attr'(Atts,Mod,Val,NAtts),
+              put_attributes(Var,NAtts)
+      ;
+              put_attributes(Var,[Mod,Val])
+      ).
+ 
+'$put_attr'([],Mod,Val,[Mod,Val]).
+'$put_attr'([M,A|R],Mod,Val,NAtts) :-
+      ( M == Mod ->
+              NAtts = [Mod,Val|R]
+      ;
+              NAtts = [M,A|NR],
+              '$put_attr'(R,Mod,Val,NR)
+      ).
+ 
+get_attr(Var,Mod,Attr) :-
+      get_attributes(Var,Atts),
+      '$get_attr'(Atts,Mod,Attr).
+ 
+'$get_attr'([M,A|Rest],Mod,Attr) :-
+      ( M == Mod ->
+              Attr = A
+      ;
+              '$get_attr'(Rest,Mod,Attr)
+      ).
+ 
+del_attr(Var,Mod) :-
+      ( get_attributes(Var,Atts) ->
+              '$del_attr'(Atts,Mod,NAtts),
+              ( NAtts == [] ->
+                      delete_attributes(Var)
+              ;
+                      put_attributes(Var,NAtts)
+              )
+      ;
+              true
+      ).
+ 
+'$del_attr'([],_,[]).
+'$del_attr'([M,A|R],Mod,NAtts) :-
+      ( M == Mod ->
+              NAtts = R
+      ;
+              NAtts = [M,A|NR],
+              '$del_attr'(R,Mod,NR)
+      ).
+ 
+:- dynamic verify_attribute_handler(_,_,_,_).
+%% WarningFlag=warning_on means: issue warning when replacing the
+%% verify_attribute_handler.
+install_verify_attribute_handler(Mod,Attr,Value,Handler,WarningFlag) :-
+      ( retract(verify_attribute_handler(Mod,_,_,_)),
+	  WarningFlag == warning_on
+      ->
+	  warning((' replacing previous verify_attribute_handler for module ',
+		   Mod))
+      ;
+              true
+      ),
+      assert(verify_attribute_handler(Mod,Attr,Value,Handler)).
+%% Version with warnings
+install_verify_attribute_handler(Mod,Attr,Value,Handler) :-
+	install_verify_attribute_handler(Mod,Attr,Value,Handler,warning_on).
+
+%---------------
+
+:- dynamic attribute_portray_hook(_,_,_).
+install_attribute_portray_hook(Mod,Attr,Handler) :-
+      ( retract(attribute_portray_hook(Mod,_,_)) ->
+	  warning((' replacing previous attribute_portray_hook for module ',Mod))
+      ;
+              true
+      ),
+      assert(attribute_portray_hook(Mod,Attr,Handler)).
+
+%---------------
+
+:- dynamic constraint_portray_hook(_,_,_,_).
+install_constraint_portray_hook(Mod,Vars,Names,Handler) :-
+      ( retract(constraint_portray_hook(Mod,_,_,_)) ->
+	  warning((' replacing previous constraint_portray_hook for module ',Mod))
+      ;
+              true
+      ),
+      assert(constraint_portray_hook(Mod,Vars,Names,Handler)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Stuff for aggregation
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+breg_retskel(_BregOffset,_Arity,_RetTerm,_SubgoalPtr) :- '_$builtin'(BREG_RETSKEL).
+
+
+% Stuff for modules
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+module_of_term(Term, Module) :-
+        term_psc(Term, TermPSC),
+        (TermPSC =:= 0
+	 ->	Module = unknown1
+	 ;	psc_data(TermPSC, ModulePSCorFile),
+		(integer(ModulePSCorFile)
+		 ->	(ModulePSCorFile =:= 0
+			 ->	Module = unknown2
+			 ;	psc_name(ModulePSCorFile, Module0),
+				Module = Module0
+			)
+		 ;	Module = usermod
+		)
+	).
+
+/* --------------------- end of file machine.P ------------------------ */

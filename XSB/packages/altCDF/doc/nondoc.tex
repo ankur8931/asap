@@ -1,0 +1,61 @@
+
+\chapter{Undocumented Features}
+
+\begin{itemize}
+
+\item Higher-order relations
+
+\item DL Rules
+
+\item coversAttr/3
+
+\mycomment{
+\ourpreditem{coversAttr/4}, {\tt
+coversAttr(SCid,Rid,TCid)} defines the inheritable relation predicate,
+from an object to all elements in a set.  {\tt SCid} is the source
+class or object ID, {\tt Rid} is the relation ID, and {\tt TCid} is
+the target class or object ID.  For these inheritable relations, the
+taxonomy is traversed and variables are bound only to values that
+carry the most information.
+
+It is useful to contrast \pred{coversAttr/3} to \pred{hasAttr/3}.  In
+the case where Source and Target are class ids, the semantics of
+{\tt hasAttr(Source,Relation,Target)} is
+
+\begin{center}
+forall Elt [isa(Elt,Source) implies  exists Targ [rel(X,Relation,Targ)
+and elt(Targ,Target)]] 
+\end{center}
+
+Note that from this axiom and the inheritance axioms in CDF, hasAttr/3
+inheraits "upward" in its third argument.  That is if
+{\tt isa(Target,LargerTarget)} holds, and
+{\tt hasAttr(Source,Relation,Target)}, then
+{\tt hasAttr(Source,Relation,LargerTarget)} also holds.  However,
+{\tt hasAttr(Source,Relation,SmallerTarget)} does not necessarily hold
+if SmallerTarget is a proper subset of, or object in, LargerTarget.
+
+This is not always the desired semantics for all applications.  For
+instance, if a shipper ships to anywhere in New York State, then he
+ships to Long Island, but not necessarily to anywhere in the North
+Eastern US.  If we want to make Long Island places a subclass of New
+York State places which are a subclass of North Eastern US places,
+then we need a different kind of inheritance.  This is provided for by
+{\tt coversAttr(Source,Relation,Target)} defined as 
+
+\begin{center}
+forall Elt [isa(Elt,Source) implies forall Targ [elt(Targ,Target)
+                                              implies rel(Elt,Relation,Targ) ]]
+\end{center}
+
+It is easy to see that {\tt coversAttr/3} has a form of 3rd argument
+inheritance that can properly model the above transportation example.
+In addition, it can also be seen that first and second argument
+inheritance in {\tt coversAttr/3} works in the same manner as
+{\tt hasAttr}.
+
+An index I is used only if all arguments that I uses consist of ground
+atomic identifiers.
+}
+
+\end{itemize}

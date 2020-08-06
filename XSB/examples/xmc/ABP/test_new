@@ -1,0 +1,8 @@
+ABP
+Modelcheck from TEXT MODE gives 	mck(abp,drop_packet) is false.
+Modelcheck from GUI gives false
+Justification tree has 653 nodes.
+Buggy ABP
+Modelcheck from TEXT MODE gives 	mck(abp,drop_packet) is true.
+Modelcheck from GUI gives true
+Justification tree has 46 nodes.

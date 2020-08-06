@@ -1,0 +1,325 @@
+/* Utilities for use with OMS's */
+/*
+oms_ascii_scan: replaces all non-ascii characters with blanks.
+
+oms_clean: deletes all non-connected stuff.
+*/
+
+
+/* Scan an OMS and report places where non-ascii characters appear,
+and replace them with blanks. extend to setrel and schrel */
+
+oms_ascii_scan :-
+	class(Cid,Name,NID,Source),
+	(non_ascii_chars(Name,Fixed,Chars)
+	 ->	amsg(class_name(Cid),Name,Chars),
+		retractall(oms_cn(Cid,Name,NID,Source)),
+		assert(oms_cn(Cid,Fixed,NID,Source))
+	 ;	true
+	),
+	(non_ascii_chars(NID,Fixed,Chars)
+	 ->	amsg(class_nid(Cid),NID,Chars),
+		retractall(oms_cn(Cid,Name,NID,Source)),
+		assert(oms_cn(Cid,Name,Fixed,Source))
+	 ;	true
+	),
+	(non_ascii_chars(Source,Fixed,Chars)
+	 ->	amsg(class_source(Cid),Source,Chars),
+		retractall(oms_cn(Cid,Name,NID,Source)),
+		assert(oms_cn(Cid,Name,NID,Fixed))
+	 ;	true
+	),
+	fail.
+oms_ascii_scan :-
+	immediate_relationship(Cid,Rid,atom(Atom)),
+	(non_ascii_chars(Atom,Fixed,Chars)
+	 ->	amsg(relationship(Cid,Rid),Atom,Chars),
+		retractall(oms_rln(Cid,Rid,atom(Atom))),
+		assert(oms_rln(Cid,Rid,atom(Fixed)))
+	 ;	true
+	),
+	fail.
+oms_ascii_scan :-
+	immediate_attribute(Oid,Rid,atom(Atom)),
+	(non_ascii_chars(Atom,Fixed,Chars)
+	 ->	amsg(attribute(Oid,Rid),Atom,Chars),
+		retractall(oms_at(Oid,Rid,atom(Atom))),
+		assert(oms_at(Oid,Rid,atom(Fixed)))
+	 ;	true
+	),
+	fail.
+oms_ascii_scan.
+
+non_ascii_chars(Atom,Fixed,Chars) :-
+	atom(Atom),
+	atom_codes(Atom,AtomCodes),
+	filter_nonascii(AtomCodes,FixedC,Chars),
+	Chars \== [],
+	atom_codes(Fixed,FixedC).
+
+filter_nonascii([],[],[]).
+filter_nonascii([C|Cs],Fixed,NA) :-
+	(C >= 127
+	 ->	NA = [C|NAs],
+		Fixed = [0' |Fixed1],
+		filter_nonascii(Cs,Fixed1,NAs)
+	 ;	Fixed = [C|Fixed1],
+		filter_nonascii(Cs,Fixed1,NA)
+	).
+
+amsg(Where,Source,BadChars) :-
+	write('NonAscii from '),writeln(Where),
+	write(' in: '),writeln(Source),
+	write(' bad chars: '),writeln(BadChars).
+
+
+%%% delete all unconnected stuff
+:- dynamic was_changed/1.
+:- index(was_changed/1,trie).
+
+:- set_clean_flag.
+:- dynamic clean_flag/1.
+reset_clean_flag :- retractall(clean_flag(_)),assert(clean_flag(0)).
+set_clean_flag :- retractall(clean_flag(_)),assert(clean_flag(1)).
+
+oms_clean :-
+	retractall(was_changed(_)),
+	oms_clean_loop.
+
+oms_clean_loop :-
+	oms_clean_class,
+	oms_clean_subclass,
+	oms_clean_relationship,
+	oms_clean_strel,
+	oms_clean_schrel,
+	oms_clean_object,
+	oms_clean_memberof,
+	oms_clean_attribute,
+	oms_clean_attribute_object,
+	fail.
+oms_clean_loop :-
+	(was_changed(yes)
+	 ->	retractall(was_changed(_)),
+		writeln('Changes, so iterate'),
+		oms_clean_loop
+	 ;	true
+	).
+
+oms_clean_class :-
+	class(Root,_,'OMS Root','OMS'),
+	oms_cn(A,B,C,D),
+	\+ subclass(A,Root),
+	assert(was_changed(yes)),
+	retractall(oms_cn(A,B,C,D)),
+	(clean_flag(1)
+	 ->	write('Deleted unconnected class: '),
+		writeq(class(A,B,C,D)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_class.
+
+oms_clean_subclass :-
+	oms_sc(A1,A2),
+	\+ (class_cidbound(A1,_,_,_),class_cidbound(A2,_,_,_)),
+	assert(was_changed(yes)),
+	retractall(oms_sc(A1,A2)),
+	(clean_flag(1)
+	 ->	write('Deleted: '),
+		(class_cidbound(A1,L1,N1,S1) -> Sub=class(A1,L1,N1,S1) ; Sub = class(A1,????)),
+		(class_cidbound(A2,L2,N2,S2) -> Sup=class(A2,L2,N2,S2) ; Sup = class(A2,????)),
+		writeq(subclass(Sub,Sup)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_subclass.
+
+oms_clean_relationship :-
+	oms_rln(A,B,C),
+	\+ (class_cidbound(A,_,_,_),class_cidbound(B,_,_,_),class_cidbound(C,_,_,_)),
+	retractall(oms_rln(A,B,C)),
+	(clean_flag(1)
+	 ->	write('Deleted: '),
+		(class_cidbound(A,L1,N1,S1) -> Sou=class(A,L1,N1,S1) ; Sou = class(A,????)),
+		(class_cidbound(B,L2,N2,S2) -> Rel=class(B,L2,N2,S2) ; Rel = class(B,????)),
+		(class_cidbound(C,L3,N3,S3) -> Tar=class(C,L3,N3,S3) ; Tar = class(C,????)),
+		writeq(immediate_relationship(Sou,Rel,Tar)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_relationship.
+
+oms_clean_strel :-
+	oms_strel(A,B,C),
+	\+ (class_cidbound(A,_,_,_),class_cidbound(B,_,_,_),class_cidbound(C,_,_,_)),
+	retractall(oms_strel(A,B,C)),
+	(clean_flag(1)
+	 ->	write('Deleted: '),
+		(class_cidbound(A,L1,N1,S1) -> Sou=class(A,L1,N1,S1) ; Sou = class(A,????)),
+		(class_cidbound(B,L2,N2,S2) -> Rel=class(B,L2,N2,S2) ; Rel = class(B,????)),
+		(class_cidbound(C,L3,N3,S3) -> Tar=class(C,L3,N3,S3) ; Tar = class(C,????)),
+		writeq(immediate_strel(Sou,Rel,Tar)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_strel.
+
+oms_clean_schrel :-
+	oms_schrel(A,B,C),
+	\+ (class_cidbound(A,_,_,_),class_cidbound(B,_,_,_),class_cidbound(C,_,_,_)),
+	retractall(oms_schrel(A,B,C)),
+	(clean_flag(1)
+	 ->	write('Deleted schrel with missing class: '),
+		(class_cidbound(A,L1,N1,S1) -> Sou=class(A,L1,N1,S1) ; Sou = class(A,????)),
+		(class_cidbound(B,L2,N2,S2) -> Rel=class(B,L2,N2,S2) ; Rel = class(B,????)),
+		(class_cidbound(C,L3,N3,S3) -> Tar=class(C,L3,N3,S3) ; Tar = class(C,????)),
+		writeq(immediate_schrel(Sou,Rel,Tar)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_schrel.
+
+oms_clean_object :-
+	oms_obj(A,B,C,D),
+	\+ (oms_mo(A,X),\+X=object(_),class_cidbound(X,_,_,_)),
+	assert(was_changed(yes)),
+	retractall(oms_obj(A,B,C,D)),
+	(clean_flag(1)
+	 ->	write('Deleted unconnected object: '),
+		writeq(object(A,B,C,D)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_object.
+
+oms_clean_memberof :-
+	oms_mo(A,B), \+ B=object(_),
+	\+ (oms_obj(A,_,_,_),class_cidbound(B,_,_,_)),
+	assert(was_changed(yes)),
+	retractall(oms_mo(A,B)),
+	(clean_flag(1)
+	 ->	write('Deleted: '),
+		(object(A,L1,N1,S1) -> Obj=object(A,L1,N1,S1) ; Obj = object(A,????)),
+		(class_cidbound(B,L2,N2,S2) -> Cid=class(B,L2,N2,S2) ; Cid = class(B,????)),
+		writeq(memberof(Obj,Cid)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_memberof.
+
+oms_clean_attribute :-
+	oms_at(A,B,C),
+	\+ (oms_obj(A,_,_,_),class_cidbound(B,_,_,_),class_cidbound(C,_,_,_)),
+	retractall(oms_at(A,B,C)),
+	(clean_flag(1)
+	 ->	write('Deleted: '),
+		(object(A,L1,N1,S1) -> Obj=object(A,L1,N1,S1) ; Obj = object(A,????)),
+		(class_cidbound(B,L2,N2,S2) -> Rel=class(B,L2,N2,S2) ; Rel = class(B,????)),
+		(class_cidbound(C,L3,N3,S3) -> Tar=class(C,L3,N3,S3) ; Tar = class(C,????)),
+		writeq(immediate_attribute(Obj,Rel,Tar)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_attribute.
+
+oms_clean_attribute_object :-
+	oms_ao(A,B,C),
+	\+ (oms_obj(A,_,_,_),class_cidbound(B,_,_,_),oms_obj(C,_,_,_)),
+	retractall(oms_ao(A,B,C)),
+	(clean_flag(1)
+	 ->	write('Deleted: '),
+		(object(A,L1,N1,S1) -> Obj=object(A,L1,N1,S1) ; Obj = object(A,????)),
+		(class_cidbound(B,L2,N2,S2) -> Rel=class(B,L2,N2,S2) ; Rel = class(B,????)),
+		(object(C,L3,N3,S3) -> Tar=object(C,L3,N3,S3) ; Tar = object(C,????)),
+		writeq(attribute_object(Obj,Rel,Tar)),nl,
+		fail
+	 ;	fail
+	).
+oms_clean_attribute_object.
+	 
+:- import member/2 from basics.
+
+/* check for functionality of an attribute. */
+
+oms_clean(attribute_function(RelCid),Fix) :-
+	(object(Oid,_,_,_),
+	 attribute(Oid,RelCid,Val),
+	 findall(Val1,(attribute(Oid,RelCid,Val1),Val1 \== Val),Vals),
+	 (Vals \== []
+	  ->	 write('Nonfunctional: Oid='),
+		 write(Oid),write(', Rel Cid='),
+		 write(RelCid),
+		 write(', Values='),write(Val),write(','),writeln(Vals),
+		 Fix == 1,
+		 member(Val1,Vals),
+		 retract_attribute(Oid,RelCid,Val1),
+		 fail
+	  ;	 fail
+	 )
+	 ;
+	 true
+	).
+
+
+
+:- import apply_lambda_fast/3 from stdutils.
+
+:- dynamic(bc_node(_,_)).
+:- index(bc_node(_,_),trie).
+
+:- ensure_loaded(oms_init_oms).
+
+build_taxonomy(DataAccessor,_HookCid,_RootID,_Source) :-
+	retractall(bc_node(_,_)),
+	apply_lambda_fast(DataAccessor,ID,Label),
+	atom_codes(ID,IDC),
+	assert(bc_node(IDC,Label)),
+	fail.
+build_taxonomy(_DataAccessor,HookCid,RootID,Source) :-
+%%	init_oms_rels,
+	bc_node(IDC,Label),
+	find_parent(IDC,HookCid,RootID,Source,PCid),
+	atom_codes(ID,IDC),
+	(class(Oid,OldLabel,ID,Source)
+	 ->	(OldLabel \== Label
+		 ->	updateClass(Oid,Label,ID,Source)
+		)
+	 ;	newClass(Label,PCid,ID,Source,_)
+	),
+	fail.
+build_taxonomy(_,_,_,_) :-
+	retractall(bc_node(_,_)).
+
+find_parent(IDC,HookCid,RootID,Source,PCid) :-
+	lappend(PIDC,Tl,IDC),	% find longest prefix
+	Tl \== [],		% that is proper
+	bc_node(PIDC,PLabel),	% and is id of another node
+	!,
+	atom_codes(PID,PIDC),
+	(class(PCid,_,PID,Source)
+	 ->	true
+	 ;	find_parent(PIDC,HookCid,RootID,Source,GPCid),
+		newClass(PLabel,GPCid,PID,Source,PCid)
+	).
+find_parent(_IDC,HookCid,RootID,Source,PCid) :-	% has no parent, return root
+	(class(PCid,_,RootID,Source)
+	 ->	true
+	 ;	newClass(RootID,HookCid,RootID,Source,PCid)
+	).
+
+lappend([X|L1],L2,[X|L3]) :- lappend(L1,L2,L3).
+lappend([],L,L).
+
+:- import odbc_sql/4 from odbc_call.
+:- import conset/2, conget/2, coninc/1 from gensym.
+:- resetdbctr.
+resetdbctr :- conset('_dbctr',0),conset('_duplctr',0).
+
+odbc_sql_local(Connection,Input,Statement,Output):- 
+	conget('_dbctr',DbCtr),DbCtr1 is DbCtr + 1,conset('_dbctr',DbCtr1),
+	(DbCtr1 mod 100 =:= 0 -> write(',') ; true),
+%%	writeq(sQL(Statement,Input)),nl,
+	findall(Output,odbc_sql(Connection,Input,Statement,Output),Outputs1),
+	sort(Outputs1,Outputs),
+	member(Output,Outputs).
+

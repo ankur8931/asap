@@ -1,0 +1,38 @@
+:- ensure_loaded(xasp).
+
+initProgram :-
+	smodelsInit,
+	% number of atoms
+	smodelsNumAtoms(2),
+	% names of the atoms
+	smodelsAtomName(a),
+	smodelsAtomName(b),
+	% first rule
+	% a :- not b.
+	smodelsBeginBasicRule,
+	smodelsAddHead(1),
+	smodelsAddNegBody(2),
+	smodelsEndRule,
+	% second rule
+	% b :- not a.
+	smodelsBeginBasicRule,
+	smodelsAddHead(2),
+	smodelsAddNegBody(1),
+	smodelsEndRule,
+	% end of rules
+	smodelsCommitRules,
+	% print the program
+	smodelsPrintProgram.
+
+showResults :-
+	% show all stable models
+	repeat,
+	smodelsExistsModel(Var),
+	(Var = 0 ->
+	    true
+	;
+	    smodelsPrintAnswer,
+	    fail),
+	% finishes smodel
+	smodelsClose.
+

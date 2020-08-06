@@ -1,0 +1,534 @@
+/* File:	  thread.P
+** Author(s): Rui Marques
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: thread.P,v 1.39 2008/07/17 17:41:34 tswift Exp $
+** 
+*/
+
+:- compiler_options([xpp_on,sysmod]).
+#include "standard.h"
+#include "thread_defs_xsb.h"
+#include "flag_defs_xsb.h"
+#include "io_defs_xsb.h"
+
+/* ==================================================================  */
+/* User-level API */
+/* Error checking for pthread_create() done in C -- all args are input.*/
+/* ==================================================================  */
+
+
+/* For thread aliases, need to create alias BEFORE thread, and retract
+   AFTER thread is gone.  Three cases for retract: 1) when joinable
+   thread is joined 2) when detached thread exits 3) when exited
+   thread is set to detached.
+
+   If aliases were kept in a hash table, more code could be in C,
+   rather than weaving back and forth.
+ */
+
+thread_create(Goal, ThreadId , Options) :- 
+%	check_callable(Goal,thread_create/2,1),
+%	check_var(ThreadId,thread_create/2,2),
+	check_options_list(Options,GLSize,TCSize,ComplSize,PDLSize,Detached,Alias,ExitHandler),
+	transform_goal(ExitHandler,Goal,NewGoal),
+	(Alias == [] -> 
+		thread_request( XSB_THREAD_CREATE_PARAMS, NewGoal, ThreadId, 
+					GLSize,TCSize,ComplSize,PDLSize,Detached,0)
+	 ;  thread_request( XSB_THREAD_SETUP, _Goal, ThreadId, 
+					GLSize,TCSize,ComplSize,PDLSize,Detached,Pos),
+		add_aliases_flag_error(Alias,THREAD_ALIAS,ThreadId,Flag),
+		(Flag == 1 -> 
+		thread_request( XSB_RECLAIM_THREAD_SETUP, ThreadId,_,_,_,_,_,_,_),
+		permission_error(create,alias,Alias,thread_create/3)
+		 ; 
+		thread_request( XSB_THREAD_CREATE_ALIAS, NewGoal, _ThreadId,
+					GLSize,TCSize,ComplSize,PDLSize,Detached,Pos) ) ).
+
+check_options_list(Options,GLSize,TCSize,ComplSize,PDLSize,Detached,Alias,ExitHandler) :- 
+	check_nonvar(Options,thread_create/3,3),
+	check_options_list_1(Options,GLSize,TCSize,ComplSize,PDLSize,Detached,Alias,ExitHandler).
+
+check_options_list_1([],GLSize,TCSize,ComplSize,PDLSize,Detached,[],Handler) :- !,
+	(var(GLSize) -> GLSize = 0 ; true),
+	(var(TCSize) -> TCSize = 0 ; true),
+	(var(ComplSize) -> ComplSize = 0 ; true),
+	(var(PDLSize) -> PDLSize = 0 ; true),
+	(var(Detached) -> Detached = 0 ; true),
+	(var(Handler) -> Handler = '_$no_handler' ; true).
+check_options_list_1([Option|Rest],GLSize,TCSize,ComplSize,PDLSize,Detached,Alias,Handler) :- !,
+	check_nonvar(Option,thread_create/3,3),
+	(	Option @= glsize(_) -> Option = glsize(N),set_thread_create_arg(N,GLSize,glsize), Alias = R
+	;	Option @= tcsize(_) -> Option = tcpsize(N),set_thread_create_arg(N,TCSize,tcsize), Alias = R
+	;	Option @= complsize(_) -> Option = complsize(N),set_thread_create_arg(N,ComplSize,complsize), Alias = R
+	;	Option @= pdlsize(_) -> Option = pdlsize(N),set_thread_create_arg(N,PDLSize,pdlsize), Alias = R
+	;	Option @= detached(_) -> (Option = detached(Boolean),Boolean == true -> Detached = 1 ; Detached = 0),Alias = R
+	;	Option @= on_exit(_) -> Option = on_exit(Handler)
+	;	Option @= at_exit(_) -> Option = at_exit(Handler)	% for compatibility with SWI-Prolog and YAP
+	;	Option @= alias(_) -> Option = alias(A),check_atom(A,thread_create/3,3),Alias = [A|R]
+	; 	domain_error(thread_option,Option,thread_create/3,3,'')
+	),
+	check_options_list_1(Rest,GLSize,TCSize,ComplSize,PDLSize,Detached,R,Handler).
+check_options_list_1(Culprit,_GLSize,_TCSize,_ComplSize,_PDLSize,_Detached,_Alias,_Handler) :- 
+	type_error(list,Culprit,thread_create/3,3).
+
+transform_goal('_$no_handler', Goal, Goal) :-!.
+transform_goal(Handler, Goal, thread_call(Goal,Handler)) :-!.
+
+set_thread_create_arg(Option, Arg, OptionName) :- 
+	(\+ (Option = Arg) -> 
+		misc_error(('Conflicting options in thread_create/3: ',
+					 OptionName,' set to ',Arg,' and ',Option))
+		 ; Arg = Option).
+
+/*---------------*/
+		
+thread_create(Goal, ThreadId) :- 
+%	check_callable(Goal,thread_create/2,1),
+%	check_var(ThreadId,thread_create/2,2),
+	thread_request( XSB_THREAD_CREATE_FLAGS, Goal, ThreadId, 0,0,0,0,0,0).
+
+/*---------------*/
+
+thread_create(Goal) :- 
+	thread_create(Goal, _, [detached(true)]).
+
+/*---------------*/
+
+thread_exit(Term) :- 
+	throw(thread_exit(Term)).
+
+/* Upon user-called exit, If thread is detached and aliased, remove
+   aliases.  if thread is joinable, assert an exit term; if thread is
+   detached and non-aliased, no special action is necessary */
+thread_exit_handler(ExitTerm) :- 
+	thread_request( XSB_CHECK_ALIASES_ON_EXIT,AliasedDetached,Detached,_,_,_,_,_,_),
+	(	AliasedDetached == 1 -> 
+		remove_alias(_Alias,THREAD_ALIAS,Id) 
+	;	(	Detached == 0 -> 
+			thread_self(Id),asserta('_$thread_exit_ball'(Id,exited(ExitTerm)))
+		;	true
+		)
+	),
+	thread_request( XSB_THREAD_EXIT,THREAD_EXITED,_, _, _,_,_,_,_).
+
+internal_thread_exit(ExitCode) :- 
+	thread_request( XSB_CHECK_ALIASES_ON_EXIT,AliasedDetached,_,_,_,_,_,_,_),
+	(	AliasedDetached == 1 -> 
+		thread_self(Id),remove_alias(_Alias,THREAD_ALIAS,Id) 
+	;	true
+	),
+%	  writeln(thread_exit),
+	thread_request( XSB_THREAD_EXIT, ExitCode,_, _, _,_,_,_,_).
+
+/*---------------*/
+
+/* Need to check errorval on return, as well as checking input state
+   of exitcode */
+thread_join(Input, ExitCode) :-
+%	check_var(ExitCode,thread_join/2,2),
+	(var(Input) -> 
+		instantiation_error(thread_join/2,1,ground)
+	;  (integer(Input) -> 
+		   thread_join_1(Input,ExitCode)
+		   ;  (atom(Input),get_alias(Input,THREAD_ALIAS,Tid) -> 
+			  thread_join_1(Tid,ExitCode)
+		   ;  (Input = [Id|Rest] -> 
+  				thread_join_1(Id,Return),
+				ExitCode = [Return|ERest],
+				thread_join(Rest, ERest) 
+			  ; (Input = [] -> 
+			  ExitCode = []
+			; domain_error(listof(thread_or_alias),Input,thread_join/1,2,'')
+		  ) ) ) ) ).
+
+thread_join_1(Input, Return) :-
+	thread_request( XSB_THREAD_JOIN,Input,Exit,Aliased,_,_,_,_ ,_),
+	(	Aliased == 1 ->
+		remove_alias(_Alias,THREAD_ALIAS,Id)
+	;	true
+	),
+	(	Exit == THREAD_SUCCEEDED ->
+		Return = true
+	; 	Exit == THREAD_FAILED ->
+		Return = false
+	;	'_$thread_exit_ball'(Id,Return),
+		retractall('_$thread_exit_ball'(Id,_))
+	).
+
+thread_join(ThreadId) :-
+	thread_join(ThreadId, _).
+
+
+/*---------------*/
+
+thread_self(ThreadId)		:- 
+%	check_var(ThreadId,thread_self/1,1),
+	thread_request( XSB_THREAD_SELF, Tid, _, _, _, _, _, _ ,_),
+	(	atom(ThreadId) -> 
+		get_alias(ThreadId,THREAD_ALIAS,Tid)
+	;	Tid = ThreadId
+	).
+
+/*---------------*/
+
+thread_detach(ThreadAlias) :-
+	(var(ThreadAlias) -> 
+		instantiation_error(thread_detach/1,1,ground)
+		 ;  (integer(ThreadAlias) ->
+		   thread_detach_1(ThreadAlias)
+		 ; (atom(ThreadAlias) -> 
+			  (get_alias(ThreadAlias,THREAD_ALIAS,Tid) -> 
+			 thread_detach_1(Tid)
+			   ; domain_error(thread_or_alias,ThreadAlias,thread_detach/1,1,'')
+			; domain_error(thread_or_alias,ThreadAlias,thread_detach/1,1,'') ) ) ) ).
+
+thread_detach_1(ThreadId) :- 
+	thread_request(XSB_THREAD_DETACH,ThreadId,NeedsAliasRetract,NeedsExitBallRetract,_,_,_,_,_),
+	(	NeedsAliasRetract == 0 -> 
+		true
+	;	remove_alias(_Alias,THREAD_ALIAS,ThreadId)
+	),
+	(	NeedsExitBallRetract == 0 -> 
+		true
+	;	retractall('_$thread_exit_ball'(ThreadId,_))
+	).
+
+/*---------------*/
+
+thread_property(Input, Property) :- 
+	(var(Input) -> 
+		var_thread_property(Input,Property)
+	  ; (integer(Input) ->
+				Tid = Input
+		  ; 
+				(atom(Input) ->
+					get_alias(Input,THREAD_ALIAS,Tid)
+			 ;  domain_error(listof(thread_or_alias),Input,thread_property/2,1,'') ) ),
+			 thread_property_1(Tid, Property) ).
+
+var_thread_property(ThrOrAl,Property) :- 
+	thread_request( XSB_FIRST_THREAD_PROPERTY, Old,Detchd, Status, Next, _, _, _, _ ),
+	var_thread_property_1(Old,Detchd,Status,Next,ThrOrAl,Property).
+
+var_thread_property_1(Tid,Detached,_Status,_Next,Tid,detached(Boolean)) :- 
+	(Detached == 1 -> Boolean = true ; Boolean = false).
+var_thread_property_1(Tid,_Detached,StatusNum,_Next,Tid,status(Status)) :- 
+	convert_status(StatusNum,Tid,Status).
+var_thread_property_1(Tid, _Detached,_Status,_Next,Tid,alias(Alias)) :-
+	get_alias(Alias, THREAD_ALIAS, Tid).
+var_thread_property_1(_Old,_OldDet,_OldStat,Next,ThrOrAl,Property) :- 
+	Next > 0,
+	thread_request( XSB_NEXT_THREAD_PROPERTY, Next,Detached,Status, NextNew, _, _, _, _),
+	var_thread_property_1(Next,Detached,Status,NextNew,ThrOrAl,Property).
+	
+convert_status(THREAD_RUNNING,_,running).
+convert_status(THREAD_EXITED,Tid,exited(Term)) :- 
+	'_$thread_exit_ball'(Tid,exited(Term)).
+convert_status(THREAD_EXCEPTION,Tid,exception(E)) :-
+	'_$thread_exit_ball'(Tid,exception(E)).
+convert_status(THREAD_CANCELLED,_,cancelled).
+convert_status(THREAD_SUCCEEDED,_,true).
+convert_status(THREAD_FAILED,_,false).
+
+thread_property_1(Tid, Prop) :-
+	thread_request(XSB_THREAD_PROPERTY, Tid, Detached,StatusNum, _, _, _, _,_),
+	(	(	Detached == 1 ->
+			Prop = detached(true)
+		;	Prop = detached(false)
+		)
+	;	convert_status(StatusNum, Tid, Status),
+		Prop = status(Status)
+	).
+thread_property_1(Tid, alias(Alias)) :-
+	get_alias(Alias, THREAD_ALIAS, Tid).
+
+/*---------------*/
+
+%------------------------------------------------------------
+
+:- import abort_on_thread_cancel/0 from error_handler.
+
+% The convention is that the main thread is always 0
+thread_cancel(Input) :-
+	(var(Input) -> 
+		instantiation_error(thread_cancel/1,1,ground)
+	;  (integer(Input) -> 
+		  (Input == 0 -> permission_error(cancel,main_thread,0,thread_cancel/1) ; true),
+		   thread_signal_1(Input,abort_on_thread_cancel)
+		   ;  (atom(Input),get_alias(Input,THREAD_ALIAS,Tid) -> 
+  			  (Tid == 0 -> permission_error(cancel,main_thread,0,thread_cancel/1) ; true),
+  			  thread_signal_1(Tid,abort_on_thread_cancel)
+		  ; domain_error(thread_or_alias,Input,thread_cancel/1,1,'')
+		  ) ) ).
+
+thread_signal(Input,Message) :-
+	(var(Input) -> 
+		instantiation_error(thread_signal/2,1,ground)
+	;  (integer(Input) -> 
+		   thread_signal_1(Input,Message)
+		   ;  (atom(Input),get_alias(Input,THREAD_ALIAS,Tid) -> 
+			  thread_signal_1(Tid,Message)
+		  ; domain_error(thread_or_alias,Input,thread_signal/2,1,'')
+		  ) ) ).
+
+% Sending signals (and cancel) in signal queue, rather than private message queue.
+:- import thread_send_message/2 from mutex_xsb.
+:- import xsb_flag/2 from curr_sym.
+
+thread_signal_1(Id,Message) :- 
+	xsb_flag(max_threads,Max),
+	NewId is Id + Max,
+	thread_send_message(NewId,Message),
+	thread_request( XSB_THREAD_INTERRUPT, Id,_, _, _, _, _, _ ,_).
+
+thread_enable_cancel :-
+	thread_request( THREAD_ENABLE_CANCEL, _, _, _, _, _, _, _, _ ).
+	
+thread_disable_cancel :-
+	thread_request( THREAD_DISABLE_CANCEL, _, _, _, _, _, _, _, _ ).
+
+/*---------------*/
+
+thread_yield :-
+	thread_request( XSB_THREAD_YIELD, _,_,_, _, _, _, _,_).
+
+/*---------------*/
+
+abolish_private_tables :-
+	thread_request( ABOLISH_PRIVATE_TABLES, _,_,_, _, _, _, _, _).
+
+abolish_all_private_tables :-
+	thread_request( ABOLISH_ALL_PRIVATE_TABLES, _, _, _, _, _, _, _, _).
+
+/*---------------*/
+
+abolish_shared_tables :-
+	thread_request( ABOLISH_SHARED_TABLES, _, _, _, _, _, _, _, _).
+
+abolish_all_shared_tables :-
+	thread_request( ABOLISH_ALL_SHARED_TABLES, _, _, _, _, _, _, _, _).
+
+set_xsb_ready :- 
+	thread_request( SET_XSB_READY, _,_,_, _, _, _, _, _).
+
+usleep(Miliseconds) :-
+	thread_request( XSB_USLEEP, Miliseconds, _, _, _, _, _, _, _).
+
+thread_sleep(Seconds) :-
+	Miliseconds is round(Seconds*1000), 
+	thread_request( XSB_USLEEP, Miliseconds, _, _, _, _, _, _, _).
+
+
+/* ==================================================================  */
+/* A handy predicate for cheking out which threads are running.        */
+
+:- import write/1, nl/0 from standard.
+:- import fmt_write/2 from file_io.
+
+threads :-
+	write('------------------------------------------------------------------------'), nl,
+	fmt_write("  %S\t%S\t%S\t\t%S\n", args('Thread', 'Detached', 'Status', 'Alias')),
+	write('------------------------------------------------------------------------'), nl,
+	var_thread_property(Thread, detached(Detached)),
+	thread_property(Thread, status(Status)),
+	(	thread_property(Thread, alias(Alias)) ->
+		true
+	;	Alias = Thread
+	),
+	fmt_write("  %S\t\t%S\t\t%S\t\t%S\n", args(Thread, Detached, Status, Alias)),
+	fail.
+threads :-
+	write('------------------------------------------------------------------------'), nl.
+
+
+/* ==================================================================  */
+/* Routines used internally.                                           */
+
+/* called by xsb_thread_run() in thread_xsb.c */
+'_$thread_run'( Goal ) :-
+	(	catch( thread_run0(Goal), Ball, 
+	                   (handle_thread_error(Ball),
+			    thread_exception_handler(Ball)))
+
+	;	internal_thread_exit(THREAD_FAILED)
+	).
+
+thread_run0(Goal) :- 
+	thread_enable_cancel,
+	call(Goal),
+	internal_thread_exit(THREAD_SUCCEEDED).
+
+thread_exception_handler(ErrorTerm) :- 
+	thread_request( XSB_CHECK_ALIASES_ON_EXIT,AliasedDetached,Detached,_,_,_,_,_,_),
+	(	AliasedDetached == 1 -> 
+		remove_alias(_Alias,THREAD_ALIAS,Id) 
+	;	(	Detached == 0 -> 
+			thread_self(Id),asserta('_$thread_exit_ball'(Id,exception(ErrorTerm)))
+		;	true
+		)
+	),
+	thread_request( XSB_THREAD_EXIT,THREAD_EXCEPTION,_, _, _,_,_,_,_).
+
+handle_thread_error(thread_exit(Term)) :- 
+	thread_exit_handler(Term),   
+	!.				% cut should be unnecessary, as thread should have exited by here 
+handle_thread_error(Ball) :- 
+	default_error_handler(Ball).
+
+/* This routine is called when a thread is created with the
+   on_exit(Handler) option.  Use this, rather than call_cleanup/2
+   because you want the thread to execute the handler before it exits
+   even when choicepoints have been left around.  
+*/
+
+thread_call(Goal, Handler) :-
+%	writeln(thread_call(Goal, Handler)),
+	catch(Goal,Ball,thread_call_handler(Ball,Handler)),
+	thread_request( XSB_SET_EXIT_STATUS, THREAD_SUCCEEDED, _, _, _, _, _, _ ,_),
+	catch((Handler -> true; true), _, true).
+thread_call(_Goal,Handler) :-
+	thread_request( XSB_SET_EXIT_STATUS, THREAD_FAILED, _, _, _, _, _, _ ,_),
+	catch((Handler -> true; true), _, true),
+	fail.
+
+%:- import writeln/1 from standard.
+thread_call_handler(Ball, Handler) :- 
+%	writeln(thread_call_handler(Ball, Handler)),
+	assert_status_ball(Ball),
+	catch((Handler -> true; true), _, true),
+	retract_status_ball,
+	throw(Ball).
+
+:- import get_backtrace/2 from error_handler.
+assert_status_ball(thread_exit(Term)) :-
+%	writeln(thread_exit_reached),
+	thread_request( XSB_SET_EXIT_STATUS, THREAD_EXITED, _, _, _, _, _, _ ,_),
+	thread_self(Id),asserta('_$thread_exit_ball'(Id,exited(Term))).
+assert_status_ball(error(thread_cancel,Msg,BT)) :- !,
+%	writeln(thread_cancel_reached),
+	thread_request( XSB_SET_EXIT_STATUS, THREAD_CANCELLED, _, _, _, _, _, _ ,_),
+	get_backtrace(BT,ReadBT),
+	thread_self(Id),
+	asserta('_$thread_exit_ball'(Id,cancelled(error(thread_cancel,Msg,ReadBT)))).
+assert_status_ball(error(Error,Msg,BT)) :-
+%	writeln(thread_error_reached),
+	thread_request( XSB_SET_EXIT_STATUS, THREAD_EXCEPTION, _, _, _, _, _, _ ,_),
+	get_backtrace(BT,ReadBT),thread_self(Id),
+	asserta('_$thread_exit_ball'(Id,exception(error(Error,Msg,ReadBT)))).
+assert_status_ball(Ball) :-
+%	writeln(thread_other_reached(Ball)),
+	thread_request( XSB_SET_EXIT_STATUS, THREAD_EXCEPTION, _, _, _, _, _, _ ,_),
+	thread_self(Id),
+	asserta('_$thread_exit_ball'(Id,exception(Ball))).
+
+retract_status_ball :-
+	thread_self(Id),retractall('_$thread_exit_ball'(Id,_)).
+
+/* store thread flag predicate in THREAD_RUN flag */
+
+:- init_multi_threading.
+
+init_multi_threading :- 
+	term_psc('_$thread_run'(_), PSC), 
+	stat_set_flag(THREAD_RUN, PSC).
+
+xsb_show_mutexes :- 
+	thread_request( XSB_SHOW_MUTEXES, _,_,_, _,_,_,_,_).
+
+xsb_sys_mutex_lock(Id) :- 
+	thread_request( XSB_SYS_MUTEX_LOCK, Id, _, _, _, _, _, _ ,_).
+xsb_sys_mutex_unlock(Id) :- 
+	thread_request( XSB_SYS_MUTEX_UNLOCK, Id, _, _, _, _, _, _ ,_).
+
+/* ==================================================================  */
+/* Obsolescent, but may still be used in parts of the system.  */
+xsb_thread_create(One,Two,Three) :- thread_create(One,Two,Three).
+xsb_thread_create(One,Two) :- thread_create(One,Two).
+
+xsb_thread_cancel(Id) :- thread_cancel(Id).
+
+xsb_thread_detach(ThreadId) :- thread_detach(ThreadId).
+
+xsb_thread_join(Input, ExitCode) :- thread_join(Input, ExitCode).
+xsb_thread_join(Input) :- thread_join(Input).
+
+xsb_thread_property(Id, Property) :- thread_property(Id, Property).
+
+xsb_thread_self(ThreadId) :- thread_self(ThreadId).
+
+xsb_thread_yield :- thread_yield.
+
+/**************************************************************/
+/** Higher level stuff (Rui) **/
+
+par_execute( GoalList ) :-
+	par_spawn( GoalList, ThreadList ),
+	par_wait( ThreadList ).
+
+n_par_execute( Goal, N ) :-
+	n_list( Goal, N, GoalList ),
+	par_execute( GoalList ).
+
+n_list( _, 0, [] ) :- !.
+n_list( X, N, [X|L] ) :- N1 is N - 1, n_list( X, N1, L ).
+
+
+par_spawn( [], [] ).
+par_spawn( [G|GL], [T|TL] ) :- 
+	thread_create( G, T ), par_spawn( GL, TL ).
+
+par_wait( [] ).
+par_wait( [T|L] ) :- thread_join(T), par_wait(L).
+
+end_of_file.
+
+%xsb_mutex_init_np( fast, MutexId) :-
+%	xsb_mutex_init_np0( MutexId, XSB_FAST_MUTEX).
+%xsb_mutex_init_np( recursive, MutexId) :-
+%	xsb_mutex_init_np0( MutexId, XSB_RECURSIVE_MUTEX).
+%xsb_mutex_init_np( error_check, MutexId) :-
+%	xsb_mutex_init_np0( MutexId, XSB_ERRORCHECK_MUTEX).
+
+% exmut_execute( G, M ) :-
+% 	xsb_user_mutex_lock(M), G, !, xsb_user_mutex_unlock(M).
+% exmut_execute( _, M ) :- xsb_user_mutex_unlock(M).
+
+% console_exmut( G ) :- 
+% 	xsb_user_mutex_lock(MUTEX_CONSOLE), 
+% 	G, !, xsb_user_mutex_unlock(MUTEX_CONSOLE).
+% console_exmut( _ ) :- 
+% 	xsb_user_mutex_unlock(MUTEX_CONSOLE).
+
+/* System provided mutexes for users */
+% user_mutex( N, N1, Call) :-
+% 	check_integer(N,Call,1),
+% 	(N1 is N + MUTEX_USER1 - 1,
+% 	 N1 >= MUTEX_USER1,
+% 	 N1 < MAX_SYS_MUTEXES -> 
+% 	   true
+%		  ; domain_error(user_mutex,N,Call,1,'') ).
+
+% xsb_user_mutex_lock(N) :- 
+% 	user_mutex(N,N1,xsb_user_mutex_unlock/1), 
+% 	xsb_sys_mutex_lock(N1).
+% xsb_user_mutex_unlock(N) :- 
+% 	user_mutex(N,N1,xsb_user_mutex_unlock/1), 
+% 	xsb_sys_mutex_unlock(N1).
+

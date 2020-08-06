@@ -1,0 +1,6 @@
+
+:- [neq,vc1m].
+
+test(MA,PA) :-
+	verify(cm,[_A,_V,_D, MA,_MV], error,[PA]),
+	show_atts([MA,PA]).

@@ -1,0 +1,3 @@
+test_encode_url on https://webmail.cs.sunysb.edu/cgi-bin/openwebmail/openwebmail.pl
+Directory = https%3A%2F%2Fwebmail%2Ecs%2Esunysb%2Eedu%2Fcgi%2Dbin%2Fopenwebmail
+File = openwebmail.pl

@@ -1,0 +1,203 @@
+%%
+%%  @configure_input@
+%%
+%%    THIS FILE IS FOR USE UNDER Win32  ONLY
+%%    YOU MIGHT NEED TO CHANGE SOME OF THE SETTINGS BELOW
+%%
+
+/* File:      xsb_configuration_wind.in  
+** Author(s): kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998-2011
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+
+%% The predicate "xsb_configuration" defined here offers
+%% extensive information on how XSB was built.
+%%
+
+:- export xsb_configuration/2, windows_os/0, windows_os64/0.
+
+:- import stat_flag/2, intern_string/2, slash/1
+   from machine.
+:- import fmt_write_string/3
+   from file_io.
+
+windows_os.
+windows_os64 :- fail.
+
+xsb_configuration(compiler, 'cl.exe').
+
+%% The options below cause VC++ preprocessor to omit #line numbers,
+%% undefine all symbols, preserve comments
+%% xsb_configuration(cpp, 'cl.exe /EP /u /C ').
+
+xsb_configuration(compiler_flags, '').
+xsb_configuration(loader_flags, '').
+
+%% Change these to yes, if these libs are available
+xsb_configuration(regmatch_support, 'no').
+xsb_configuration(wildmatch_support, 'no').
+
+%% Change perl support to yes, if you have perl
+xsb_configuration(perl_support, 'no').
+%% The folowing two must not be set, if perl_support=no
+xsb_configuration(perl_archlib, '').
+xsb_configuration(perl_cc_compiler, '').
+xsb_configuration(perl_ccflags, '').
+xsb_configuration(perl_libs, '').
+
+xsb_configuration(site_dir, 'C:\\xsb_site').
+xsb_configuration(srcdir, 'C:\\xsb').
+
+/* Java compiler */
+xsb_configuration(javac, '').
+
+%%%% It is UNLIKELY that you will need to change the following settings:
+%%
+xsb_configuration(os_version, '').
+xsb_configuration(host_vendor, 'pc').
+xsb_configuration(host_cpu,  'x86').
+
+%% Set the right compile mode and XSB scheduling strategy
+xsb_configuration(compile_mode, '@compile_mode@').
+xsb_configuration(scheduling_strategy, '(@xsb_scheduling_strategy@)').
+xsb_configuration(engine_mode, '@engine_mode@').
+xsb_configuration(word_size, '32').
+
+%%%%% DON'T EDIT BELOW HERE!!!!
+%%
+
+xsb_configuration(major_version, '@xsb_major_version@').
+xsb_configuration(minor_version, '@xsb_minor_version@').
+xsb_configuration(patch_version, '@xsb_patch_version@').
+xsb_configuration(beta_version, '@xsb_beta_version@').
+xsb_configuration(version, '@xsb_version@').
+
+xsb_configuration(codename, '@xsb_codename@').
+xsb_configuration(release_date,
+		  date(@release_year@, @release_month@, @release_day@)).
+
+%% Configuration looks as follows: machine-vendor-os-tag
+xsb_configuration(configuration, 'x86-pc-windows').
+%% Architecture is: machine-vendor-os (like configuration, but no tag)
+xsb_configuration(architecture, 'x86-pc-windows').
+
+xsb_configuration(host_os, 'windows').
+xsb_configuration(os_type, 'windows').
+
+/* This is where XSB is currently installed. It is not cast in stone, and
+   the whole enchelada can be moved. */
+xsb_configuration(install_dir, InstallDir) :-
+	 stat_flag(48, InstallDir1), intern_string(InstallDir1, InstallDir).
+
+/* User home directory. Usually $HOME. If that is null, then it would
+   be the directory where XSB is currently installed (install_dir) 
+   This is where we expect to find the .xsb directory */
+xsb_configuration(user_home, Home) :-
+    	 stat_flag(47, Home1), intern_string(Home1, Home).
+
+/* Where XSB scripts are residing */
+xsb_configuration(scriptdir, ScriptDir) :-
+     xsb_configuration(install_dir, InstallDir),
+     slash(Slash),
+     fmt_write_string(ScriptDir, '%s%sbin', f(InstallDir, Slash)).
+
+/* where are these dirs: emu, cmplib, syslib, lib, packages */
+xsb_configuration(emudir, EmuDir) :- 
+     xsb_configuration(install_dir, InstallDir),
+     slash(Slash),
+     fmt_write_string(EmuDir, '%s%semu', f(InstallDir, Slash)).
+xsb_configuration(cmplibdir, CmplibDir) :- 
+     xsb_configuration(install_dir, InstallDir),
+     slash(Slash),
+     fmt_write_string(CmplibDir, '%s%scmplib', f(InstallDir, Slash)).
+xsb_configuration(libdir, LibDir) :- 
+     xsb_configuration(install_dir, InstallDir),
+     slash(Slash),
+     fmt_write_string(LibDir, '%s%slib', f(InstallDir, Slash)).
+xsb_configuration(syslibdir, SyslibDir) :- 
+     xsb_configuration(install_dir, InstallDir),
+     slash(Slash),
+     fmt_write_string(SyslibDir, '%s%ssyslib', f(InstallDir, Slash)).
+xsb_configuration(packagesdir, PackDir) :- 
+     xsb_configuration(install_dir, InstallDir),
+     slash(Slash),
+     fmt_write_string(PackDir, '%s%spackages', f(InstallDir, Slash)).
+xsb_configuration(etcdir, EtcDir) :- 
+     xsb_configuration(install_dir, InstallDir),
+     slash(Slash),
+     fmt_write_string(EtcDir, '%s%setc', f(InstallDir, Slash)).
+
+/* architecture and configuration specific directories */
+xsb_configuration(config_dir, ConfigDir) :- 
+     xsb_configuration(install_dir, InstallDir),
+     xsb_configuration(configuration, Configuration),
+     slash(Slash),
+     fmt_write_string(ConfigDir, 
+		      '%s%sconfig%s%s',
+		      f(InstallDir,Slash,Slash,Configuration)).
+xsb_configuration(config_bindir, ConfigBindir) :-
+     xsb_configuration(config_dir, ConfigDir),
+     slash(Slash),
+     fmt_write_string(ConfigBindir, '%s%sbin', f(ConfigDir, Slash)).
+xsb_configuration(config_libdir, ConfigLibdir) :-
+     xsb_configuration(config_dir, ConfigDir),
+     slash(Slash),
+     fmt_write_string(ConfigLibdir, '%s%slib', f(ConfigDir, Slash)).
+
+/* site-specific directories */
+xsb_configuration(site_libdir, SiteLibdir) :-
+     xsb_configuration(site_dir, SiteDir),
+     slash(Slash),
+     fmt_write_string(SiteLibdir, '%s%slib', f(SiteDir, Slash)).
+
+/* site and configuration-specific directories */
+xsb_configuration(site_config_dir, SiteConfigDir) :-
+     xsb_configuration(site_dir, SiteDir),
+     xsb_configuration(configuration, Configuration),
+     slash(Slash),
+     fmt_write_string(SiteConfigDir,
+		      '%s%sconfig%s%s',
+		      f(SiteDir,Slash,Slash,Configuration)).
+xsb_configuration(site_config_libdir, SiteConfigLibdir) :-
+     xsb_configuration(site_config_dir, SiteConfigDir),
+     slash(Slash),
+     fmt_write_string(SiteConfigLibdir, '%s%slib', f(SiteConfigDir, Slash)).
+
+/* This is where user''s arch-specific libraries are found by default.
+   This is primarily needed when we compile an external C program and need
+   to move the *.so files out of the way.
+   The reasons are:
+       1.  This .so file can get get clobbered by a subsequent compilation
+	   for a different architecture. Then the C program would be
+	   compiled over and over again.
+       2.  Leaving the .so file in place makes all executions
+	   location-specific: since .so file is sitting in the current
+	   directory, all subsequent invocations of xsb that use this file
+	   must be done from the current directory!
+*/
+xsb_configuration(user_config_libdir, UserConfigLibdir) :-
+     xsb_configuration(user_home, UserHome),
+     xsb_configuration(configuration, Config),
+     slash(Slash),
+     fmt_write_string(UserConfigLibdir,
+		      '%s%s.xsb%sconfig%s%s',
+		      f(UserHome,Slash,Slash,Slash,Config)).

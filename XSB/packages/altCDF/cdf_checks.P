@@ -1,0 +1,1021 @@
+:- compiler_options([xpp_on]).
+
+:- comment(module,
+
+"The CDF checking system allows a user to dynamically specify
+different checks thet need to be applied at various stages of
+execution (or @em{contexts}) during the course of managing an
+ontology.  A check has two arguments that must be ground on call, the
+first argument being the context, and the second context-specific.
+The check may succeed, fail, or throw an error; and may also execute
+side-effects (e.g. printing warning messages, automatically
+classifying facts).  By making restrictions on the syntax of checks,
+it becomes easier for a given user to omit or add checks for a given
+context and even code new checks and / or new contexts.
+
+Checks are called in two ways: 
+
+@begin{enumerate} 
+@item Based on the Context.  This is done by calling
+@tt{apply_checks(Context,Argument)}
+
+as in 
+
+@begin{verbatim}
+newExtTerm(Context,Term):- 
+	apply_checks(Context,Term),
+	cdf_update_list([asserta(Term)]).
+@end{verbatim}
+
+@tt{apply_checks/2} (defined below) backtracks through all of the
+checks defined for a context and calls them in a specified order.
+@tt{apply_checks/2} checks the global table @tt{cdf_flags/2} to
+determine the checks to be done in a particular context.  Note that
+since checks depend on @tt{cdf_flags/2}, they can be dynamically
+changed, or overridden by flag definitions in a @file{.xsbrc} file.
+As indicated by the code, the checks must all be imported to
+@tt{usermod} to be called.
+
+In order for @tt{apply_checks/2} to work efficiently, the flags must
+be set up using a particular convention.  An example is
+
+@begin{verbatim}
+cdf_flags(newExtTermSingle,check(A,B,[cdf_check_ground(A),
+	  			      check_types(A,B),
+				      check_identity(A,B)]))).
+@end{verbatim}
+
+The first argument is the context, and the second two argument
+variables, along with a list of checks, each of which uses the
+argument variables.  Checks are called using the order in the list.
+Using this mechanism, a user can add her own checks by importing a
+predicate, setting the flags appropriately, and adding an
+apply_checks/2 goal to user code (if necessary).  Note that, a user
+can also write new checks for existing CDF contexts without changing
+the files in the CDF directory.
+
+@item The other way to call a check is by xxx_checkflag/2, where xxx
+is the name of a check.  These calls check whether a check is turned
+on for a given component, and calls it if so... otherwise the check is
+avoided and the predicate succeeds.
+
+The first argument of a checking routine is called the @em{context
+argument}, and the second the @em{checking argument}.  Right now, the
+checking argument can be an extensional cdf fact or a component name,
+but you could imagine others -- like intensional rules.  Thus, some
+contexts serve to check individual facts, and others information in a
+component.  The code won't run well if you put, say, a fact check in a
+component context, but I dont think I'll check the checks for now.
+Here are some examples:
+
+@begin{itemize} 
+
+@item @tt{newExtTermSingle}.  This context designates the action of
+explicitly calling @tt{newExtTerm/2} to add an extensional fact to the
+CDF store.
+@begin{itemize}
+	@item Checking Argument: Extensional CDF Fact
+	@item Default Setting: 
+cdf_flags(newExtTermSingle,check(A,B,[cdf_check_ground(A),
+	  			      check_types(A,B),
+				      check_identity(A,B)]))).
+@end{itemize}
+
+@item @tt{retractallExtTermSingle} This context designates the action
+of calling @tt{retractallExtTerm/2} to delete an extensional fact from the
+CDF store.
+
+@begin{itemize}
+	@item Checking Argument: Extensional CDF Fact
+	@item Default Setting: None (probably some consist. checks in
+                       the future). 
+@end{itemize}
+
+@item @tt{newExtTermBatch}.  This context designates calling newExtTerm/2
+repeatedly, as in loading a file.
+
+@begin{itemize}
+	@item Checking Argument: Extensional CDF Fact
+	@item Default Setting: 
+         cdf_flags(newExtTermBatch,check(A,B,[cdf_check_ground(A),
+	  			      check_types(A,B),
+				      check_identity(A,B)]))).
+@end{itemize}
+
+@item @tt{componentUpdate}.  This context designates the action of saving a
+component.
+
+@begin{itemize}
+	@item Checking Argument: component
+	@item Default Setting: 
+       cdf_flags(componentUpdate,check(A,B,[classify_if_necessary(A,B)])).
+  	  cdf_flag(checks(componentLoad,1),classify_if_necessary(Comp))
+  	  cdf_flag(checks(componentLoad,1),check_implication(Comp))
+@end{itemize}
+
+@item @tt{componentLoad}.  This context designates the action of loading a
+component.
+
+@begin{itemize}
+	@item Checking Argument: component
+	@item Default Setting: None (but you can turn on checks for this
+			       context if you like) 
+@end{itemize}
+			 
+There may be other contexts such as @em{obliterate_xxx}.
+
+As a first pass, I think the component checks should check a flag
+
+@begin{verbatim}
+cdf_flag(component_check,Component)
+@end{verbatim}
+
+before actually checking the component within a context.  This means
+that @tt{newExtTerm}, and @tt{retractallExtTerm} will need to set this
+flag along with
+
+@begin{verbatim}
+cdf_flag(cdf_dirty,Component)
+@end{verbatim}
+
+(Im not doing this yet).
+So with this, by default we check each check once in ""normal""
+evaluation -- loading or adding extensional terms and then saving them
+to and loading them from a component.
+
+
+").
+
+%-----------------------------------------------------------------
+
+:- document_export
+              isType0Term/1,                        % documented
+              cdf_check_ground/1,                % documented
+	  cdf_check_ground_fail/1,          % not documented
+	  cdf_check_sorts/1,                   % documented
+	  cdf_check_sorts/2,                   % documented
+	  check_types/1,                        % not documented.
+	  check_types/2,                        % not documented.
+	  cdf_check_identity/1,                 % documented.
+	  check_identity/2,                       % not documented.
+	  check_identity/1,                       % not documented.
+	  cdf_check_implication/1,            % documented.
+	  check_implication/2,                  % documented.
+	  cdf_check_redundancies/3,        % documented.
+	  check_redundancies/2,              % not documented.
+	  addCheckToContext/2,               % documented.
+	  removeCheckFromContext/2,      % documented.
+	  addUserContext/2,                     % documented.
+	  removeUserContext/1,                % documented.
+	  currentContext/3,                       % documented.
+	  isContextType/1,                        % documented.
+	  apply_checks/2,                         % not documented.
+	  classify_if_necessary/2,              % not documented.
+	  check_object_constraints/2.         % not documented.
+
+
+%              check_isa_types/4, check_ind_types/3.
+%	  check_ground_checkflag/2, 	  check_redundancies_checkflag/2,  
+%	  classify_if_necessary_checkflag/2, check_implication_checkflag/2, 
+%	  check_identity_checkflag/2, 	  check_types_checkflag/2, 
+
+:- import cdf_warning/2 from cdf_exceptions.
+:- import  concrete_component/1, 
+	  immed_allAttr/3, 
+	  immed_classHasAttr/3, 
+	  immed_hasAttr/3, isa/2,
+	  immed_minAttr/4,immed_maxAttr/4,
+	  in_hierarchy/1,
+	  newExtTerm/1,retractallExtTerm/1,
+	  system_component/1,
+	  abolish_cdf_tables/0,
+	  cdf_id_fields/4 from cdf_init_cdf.
+:- import get_component_extensional/2 from cdf_comps_share.
+
+:- import cdf_flags/2 from usermod.
+
+:- import allAttr_ext/3, classHasAttr_ext/3, hasAttr_ext/3,
+	   maxAttr_ext/4, minAttr_ext/4 from usermod.
+
+:- import allAttr/3, classHasAttr/3, hasAttr/3,
+	   maxAttr/4, minAttr/4 from cdf_init_cdf.
+
+:- import member/2, memberchk/2,length/2,append/3  from basics.
+:- import instantiation_error/3, domain_error/4, misc_error/1,
+	 check_nonvar/3 from error_handler.
+:- import numbervars/1 from num_vars.
+:- import call0/1 from machine.
+:- import messageln/2 from standard.
+:- import variant/2 from subsumes.
+
+#include "standard.h"
+
+apply_checks(Context,Term):- 
+	CDFFlag = flag(1),
+	(cdf_flags(Context,CheckTerm),
+	 CheckTerm = check(Context,Term,Chklist),
+	 member(Check,Chklist),
+	 call_check(Check,CDFFlag),
+	 fail
+	 ;
+	 CDFFlag == flag(1)
+	).
+
+:- import term_set_arg/4 from machine.
+call_check(Check,CDFFlag):- 
+        (call0(Check) -> true 
+         ; term_set_arg(CDFFlag,1,0,1)
+%           writeln(failed(Check))
+           ).
+
+isType0Term(Term):- type_table(Term,_).
+
+%-----------------
+cdf_check_ground_fail(Term):- 
+	catch(cdf_check_ground(Term),Error,failwrite(Error)).
+
+failwrite(Error):- numbervars(Error),messageln(Error,STDERR),fail.
+
+cdf_check_ground(Term):- 
+	(isType0Term(Term) -> 
+	    true 
+	  ; domain_error(type0Term,Term,cdf_check_ground/1,1)),
+	cdf_check_ground(Term,Term).
+
+cdf_check_ground(minAttr_ext(A,B,C,N),OrigTerm):- !,
+	cdf_check_id_list([A,B,C],1,OrigTerm),
+	(ground(N) -> true ; instantiation_error(minAttr_ext(A,B,C,N),4,ground)).
+cdf_check_ground(maxAttr_ext(A,B,C,N),OrigTerm):- !,
+	cdf_check_id_list([A,B,C],1,OrigTerm),
+	(ground(N) -> true ; instantiation_error(maxAttr_ext(A,B,C,N),4,ground)).
+cdf_check_ground(Term,OrigTerm):- 
+	Term =.. [_Functor|Args],
+	cdf_check_id_list(Args,1,OrigTerm).
+
+cdf_check_id_list([],_,_).
+cdf_check_id_list([Id|Rest],N,OrigTerm):- 
+	cdf_id_fields(Id,_,Nid,Cmpt),
+	(Cmpt == cdfpt -> 
+	    true
+	  ; cdf_check_ground_1(Nid,Cmpt,N,OrigTerm)),
+	N1 is N + 1,
+	cdf_check_id_list(Rest,N1,OrigTerm).
+
+cdf_check_ground_1(Nid,Cmpt,Arg,OrigTerm):- 
+	(ground(Cmpt) -> 
+	  true
+            ; instantiation_error(OrigTerm,Arg,ground)),
+	(structure(Nid) -> 
+	    Nid =.. [_Functor|Args],
+    	    cdf_check_id_list(Args,1,OrigTerm)
+	 ; (ground(Nid) -> 
+	      true
+                ; instantiation_error(OrigTerm,Arg,ground))).
+
+%-----------------
+
+cdf_check_sorts(Ctxt,Term):- 
+	check_types(Ctxt,Term).
+
+cdf_check_sorts(Term):- 
+	check_types(usercall,Term).
+
+check_types(Term):- 
+	check_types(usercall,Term).
+
+check_types(Context,Term):- 
+ 	    (type_table(Term,Typecall) -> 
+	        arg(1,Typecall,Context),
+	        call0(Typecall)
+	        ; cdf_warning(Context,[Term,
+				' does not have proper sorts and cannot ',
+				'be added.']),
+	           fail).
+
+%------
+:- comment(hide,check_isa_types/2).
+
+check_isa_types(Context,First,Second,Term):- !,
+	(var(First) -> 
+	     true
+	  ; check_isa_arg_1(First,Term,Context,F1)),
+	(var(Second) -> 
+	     true
+	  ; check_isa_arg_2(Second,Term,Context,F1)).
+check_isa_types(Context,First,Second,Term):- 
+	check_isa_arg_1(First,Term,Context,F1),
+	check_isa_arg_2(Second,Term,Context,F1).
+
+check_isa_arg_1(First,Term,Context,Fnct1):- 
+	(cdf_id_fields(First,Fnct1,Nid,Src) -> 
+  	    check_arg_consist(Src,Nid,Fnct1,First,Context,Term)
+	  ; cdf_warning(Context,[First,' in ',Term,' is not of proper type.']),
+	    fail ).
+
+check_isa_arg_2(Second,Term,Context,Fnct1):- 
+	((cdf_id_fields(Second,Fnct2,Nid,Src),isa_consist(Fnct1,Fnct2)) -> 
+  	    check_arg_consist(Src,Nid,Fnct2,Second,Context,Term)
+	  ; cdf_warning(Context,['Arguments in ',Term,
+				' are not of proper type.']),
+	    fail ).
+
+isa_consist(F,F):-!.
+isa_consist(oid,cid).
+
+%------
+:- comment(hide,check_ind_types/2).
+
+check_ind_types(Context,Term,List):- 
+	Term =.. [_|R],
+	check_ind_types_1(R,List,Context,Term).
+
+% TLS: goes through the arguments of the CDF fact.
+check_ind_types_1([],[],_,_).
+check_ind_types_1([Id|T],[List|LT],Context,Term):- 
+	(var(Id) -> 
+	    true
+	  ; 
+	    (List == posint -> 
+	         cdfCheckPosInt(Id,Term)
+	       ; 
+	         (cdf_id_fields(Id,F,Nid,Src),memberchk(F,List) -> 
+	             check_arg_consist(Src,Nid,F,Id,Context,Term)
+    	           ; cdf_warning(Context,
+			    [Id,' in ',Term,' is not of proper type.']),
+	           fail ) ) ),
+	check_ind_types_1(T,LT,Context,Term).
+
+% TLS: check gives an error here, because min and max will give an arithmetic
+% exception if not of the proper type.
+cdfCheckPosInt(Id,Term):- 
+	(integer(Id),Id > 0 -> 
+	    true 
+	  ;
+	 domain_error(positive_integer,Term,cdfCheckPosint,3) ).
+
+%TLS could perhaps also test to see that F \in oid,cid
+%check_arg_consist(cdfpt,_Nid,_F,_Id,_Context,_Term):- !.
+%	check_primitive_type(Nid,Context,Term).
+check_arg_consist(Src,Nid,F,Id,Context,Term):- 
+	((structure(Nid),\+ concrete_component(Src)) -> 
+	    Nid =.. [_Funct|L],
+	    check_arg_consist_list(L,F,Id,Context,Term) 
+	  ; true).
+
+check_arg_consist_list([],_F,_Id,_Context,_Term). 
+check_arg_consist_list([Nid|T],F,Id,Context,Term):- 
+	(var(Nid) -> 
+	    true
+	  ; 
+	    (cdf_id_fields(Nid,F,A,Src) ->  
+		(\+ concrete_component(Src) -> 
+		    true
+		  ; check_arg_consist(Src,A,F,Id,Context,Term) )
+	      ; cdf_warning(Context,[Id,' in ',Term,' is ill-formed.']),
+		fail ) ),
+	  check_arg_consist_list(T,F,Id,Context,Term).
+	
+/*
+check_primitive_type(Nid,Context,Term):- 
+	(atomic(Nid) -> 
+	    true
+	  ; structure(Nid),
+	    (cdf_id_fields(Nid,_,_,_) -> 
+    	         cdf_warning(Context,
+			    [Nid,' in ',Term,
+			     ' is not a proper primitive type.']),
+	         fail
+              ; 
+	         Nid =.. [_|List],
+  	         check_primitive_type_list(List,Context,Term) ) ).
+
+check_primitive_type_list([],_Context,_Term).
+check_primitive_type_list([H|T],Context,Term):- 
+	check_primitive_type(H,Context,Term),
+	check_primitive_type_list(T,Context,Term).
+*/
+
+type_table(isa(A,B),check_isa_types(_,A,B,isa(A,B))).
+type_table(isa_ext(A,B),check_isa_types(_,A,B,isa_ext(A,B))).
+type_table(isa_int(A,B),check_isa_types(_,A,B,isa_int(A,B))).
+
+type_table(hasAttr(A,B,C),check_ind_types(_,hasAttr(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+type_table(hasAttr_ext(A,B,C),check_ind_types(_,hasAttr_ext(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+type_table(hasAttr_int(A,B,C),check_ind_types(_,hasAttr_int(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+
+type_table(allAttr(A,B,C),check_ind_types(_,allAttr(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+type_table(allAttr_ext(A,B,C),check_ind_types(_,allAttr_ext(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+type_table(allAttr_int(A,B,C),check_ind_types(_,allAttr_int(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+
+type_table(minAttr(A,B,C,N),check_ind_types(_,minAttr(A,B,C,N),
+				[ [cid,oid], [rid], [cid,oid] ] ,posint) ).
+type_table(minAttr_ext(A,B,C,N),check_ind_types(_,minAttr_ext(A,B,C,N),
+				[ [cid,oid], [rid], [cid,oid], posint ] ) ).
+type_table(minAttr_int(A,B,C,N),check_ind_types(_,minAttr_int(A,B,C,N),
+				[ [cid,oid], [rid], [cid,oid], posint ] ) ).
+
+type_table(maxAttr(A,B,C,N),check_ind_types(_,maxAttr(A,B,C,N),
+				[ [cid,oid], [rid], [cid,oid], posint] ) ).
+type_table(maxAttr_ext(A,B,C,N),check_ind_types(_,maxAttr_ext(A,B,C,N),
+				[ [cid,oid], [rid], [cid,oid], posint ] ) ).
+type_table(maxAttr_int(A,B,C,N),check_ind_types(_,maxAttr_int(A,B,C,N),
+				[ [cid,oid], [rid], [cid,oid], posint ] ) ).
+
+type_table(classHasAttr(A,B,C),check_ind_types(_,classHasAttr(A,B,C),
+			[ [cid,rid,crid], [crid,crrid,crcrid,crrrid], [cid,oid,rid] ] ) ).
+type_table(classHasAttr_ext(A,B,C),check_ind_types(_,classHasAttr_ext(A,B,C),
+			[ [cid,rid,crid], [crid,crrid,crcrid,crrrid], [cid,oid,rid] ] ) ).
+type_table(classHasAttr_int(A,B,C),check_ind_types(_,classHasAttr(A,B,C),
+			[ [cid,rid,crid], [crid,crrid,crcrid,crrrid], [cid,oid,rid] ] ) ).
+
+type_table(coversAttr(A,B,C),check_ind_types(_,coversAttr(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+type_table(coversAttr_ext(A,B,C),check_ind_types(_,coversAttr_ext(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+type_table(coversAttr_int(A,B,C),check_ind_types(_,coversAttr_int(A,B,C),
+				[ [cid,oid], [rid], [cid,oid] ] ) ).
+
+type_table(necessCond(A,B),check_ind_types(_,necessCond(A,B),
+				[[cid], [vid] ] )).
+type_table(necessCond_ext(A,B),check_ind_types(_,necessCond_ext(A,B),
+				[[cid], [vid] ] )).
+type_table(necessCond_int(A,B),check_ind_types(_,necessCond_int(A,B),
+				[[cid], [vid] ] )).
+
+%----------------------------------------------------------------------
+
+cdf_check_identity(Term):- 
+	check_identity(Term).
+
+check_identity(_,Term):- 
+	check_identity(Term).
+
+/* calling intensional rules may invoke any CDF goal (as body of
+rule), so must abolish all the cdf tables in case of update.  If this
+turns out to be too inefficient, then we might just not check for
+intensional duplicates. */
+check_identity(Term):- 
+	(ground(Term)
+	 ->	(call0(Term)
+		 ->	fail
+		 ;	check_identity_int(Term)
+		)
+	 ; copy_term(Term,Term0),call0(Term),variant(Term,Term0)
+	 ->	fail 
+	 ;	check_identity_int(Term)
+	).
+
+check_identity_int(Term) :-
+	ext_to_int_call(Term, TermInt),
+	(\+clause(TermInt,_Bod)
+	 ->	true
+	 ;	(call0(TermInt)  
+		 ->	fail % won't be inserted, so no need to abolish
+		 ;	abolish_cdf_tables % intensional rule can call any cdf term, so must abolish any tables generated
+		)
+	).
+
+%% previous, erroneous, else was: (ext_to_int_call(Term, TermInt), call0(TermInt) -> fail ; true)).
+
+ext_to_int_call(isa_ext(A,B), isa_int(A,B)).
+ext_to_int_call(hasAttr_ext(A,B,C), hasAttr_int(A,B,C)).
+ext_to_int_call(allAttr_ext(A,B,C), allAttr_int(A,B,C)).
+ext_to_int_call(classHasAttr_ext(A,B,C), classHasAttr_int(A,B,C)).
+	
+%----------------------------------------------------------------------
+
+cdf_check_implication(Term):- 
+	check_implication(_,Term).
+
+check_implication(_,Term):- 
+	remove_ext(Term,Term1),
+	(call0(Term1) -> fail ; true).
+	
+remove_ext(allAttr_ext(A,B,C),allAttr(A,B,C)).
+remove_ext(classHasAttr_ext(A,B,C),classHasAttr(A,B,C)).
+remove_ext(hasAttr_ext(A,B,C),hasAttr(A,B,C)).
+remove_ext(isa_ext(A,B),isa(A,B)).
+remove_ext(minAttr_ext(A,B,C,N),minAttr(A,B,C,N)).
+remove_ext(maxAttr_ext(A,B,C,N),maxAttr(A,B,C,N)).
+
+%----------------------------------------------------------------------
+
+classify_if_necessary(_Context,Name):- 
+	get_component_fact(Name,Term),
+	classify_if_necessary_term(Term,Upd1,[]),
+	member(Term1,Upd1),
+	(call0(Term1) -> 
+	  true 
+	; newExtTerm(Term1),
+	  writeq(Term1),writeln('.')),
+	fail.
+classify_if_necessary(_,_Term).
+
+get_component_fact(Name,Fact):- 
+	(    Fact = isa_ext(One,Two)  
+               ;  Fact = classHasAttr_ext(One,Two,Three)
+	   ; Fact = allAttr_ext(One,Two,Three) 
+	   ; Fact = hasAttr_ext(One,Two,Three)
+               ; Fact = minAttr_ext(_,One,Two,Three)
+               ; Fact = minAttr_ext(_,One,Two,Three)
+               ; Fact = necessCond_ext(One,Two)
+	   ),
+	call0(Fact),
+	get_component_extensional(Fact,Name),
+	\+ system_component(Name).
+
+%:- [cdftp_chkCon].
+classify_if_necessary_term(necessCond_ext(_First,_Vid),_Upd1,_Upd):-!,
+	writeln(userout,'ceMember/2 is not defined.  This is stopgap until someone figures out what it should be....'),
+	fail.   % when figure out what ceMember is supposed to be/do, fix this.
+%%	findall(Id,ceMember(Vid,Id),Ids),
+%%	sort(Ids,Idsort),
+%%	classify_if_necessary_list([First|Idsort],Upd1,Upd).
+classify_if_necessary_term(isa_ext(First,Second),Upd1,Upd):-!,
+	arg(1,First,Arg),
+	(structure(Arg) -> 
+	    Arg =.. [_|L],
+	    classify_if_necessary_list([Second|L],Upd1,Upd)
+	  ; classify_arg(Second,Upd1,Upd)).
+classify_if_necessary_term(Term,Upd1,Upd):-
+	Term =.. [_|L],
+	classify_if_necessary_list(L,Upd1,Upd).
+
+classify_if_necessary_list([],Upd,Upd).
+classify_if_necessary_list([Arg|R],Updin,Upd):- 
+	classify_arg(Arg,Updin,Updmid),
+	classify_if_necessary_list(R,Updmid,Upd).
+
+classify_arg(Id,Upd1,Upd):- 
+%	writeln(ca(Id)),
+	(in_hierarchy(Id) -> 
+	    Upd1 = Updmid
+	 ; Id = cid(Cmp,Cmp)
+	 -> Upd1 = Updmid
+	  ; functor(Id,F,_),
+	    classification_type(F,Sup),
+	    Upd1 = [isa_ext(Id,Sup)|Updmid]),
+	  cdf_id_fields(Id,_,Nid,Comp),
+	   (Comp \== cdfpt,structure(Nid) -> 
+	       Nid =.. [_|L],
+	       classify_if_necessary_list(L,Updmid,Upd)
+	     ; Updmid = Upd).
+
+classification_type(oid,cid('CDF Classes',cdf)).
+classification_type(cid,cid('CDF Classes',cdf)).
+classification_type(rid,rid('CDF Object-Object Relations',cdf)).
+classification_type(crid,crid('CDF Class-Object Relations',cdf)).
+
+%classification_type(crrid,crrid('CDF Higher-Order (Object-Object)-Object Relations',cdf)).
+%classification_type(crcrid,crrid('CDF Higher-Order (Object-Object)-Object Relations',cdf)).
+
+%-----------------------------------------------------------------
+:- comment(check_redundancies/2,"
+
+@tt{check_redundancies/2}  checks for redundancies in the immediate
+predicates of a module  I.e., it finds tuples that could be deleted 
+without changing the semantics of the predicate.  The redundancies are
+currently emitted as a warning, but the predicate could be modified to
+delete them.  
+").
+
+%TLS the original was saved after end_of_file.
+
+:- import pconset/2, pconget/2, pconinc/1 from globalvar.
+:- import message/1 from standard.
+
+cdf_check_redundancies(Context,Component,Mode):- 
+	check_redundancies(Context,f(Component,Mode)).
+
+check_redundancies(Context,f(Component,Mode)):- 
+	cputime(Start),
+	pconset(redund,0),
+	check_redundancies_notime(Context,f(Component,Mode)),
+	cputime(End),
+	Tot is End - Start,
+	pconget(redund,N),
+	message(['Redundancy Cputime ',Tot,' for ',N,' Fact checks.']).
+ 
+% The main reason I folded this is for testing.
+check_redundancies_notime(Context,f(Component,Mode)):- 
+	allAttr_redundancy_check(Context,Component,Mode),
+	classHasAttr_redundancy_check(Context,Component,Mode),
+	hasAttr_redundancy_check(Context,Component,Mode),
+	maxAttr_redundancy_check(Context,Component,Mode),
+	minAttr_redundancy_check(Context,Component,Mode).
+
+allAttr_redundancy_check(Context,Component,Mode) :-
+	 allAttr_ext(S,R,T),
+             pconinc(redund),
+	 get_component_extensional(allAttr_ext(S,R,T),Component),
+	 allAttr_redundancy_check_1(Context,Component,allAttr(S,R,T),Mode),
+	 fail.
+allAttr_redundancy_check(_Context,_Component,_Mode).
+
+allAttr_redundancy_check_1(Context,Component,allAttr(S,R,T),Mode):- 
+	 immed_allAttr(S1,R1,T1),
+	 \+ (S1 = S,R1 =R,T1 = T),
+	 get_component_extensional(allAttr_ext(S1,R1,T1),Component),
+	 ((isa(S,S1),isa(R,R1),isa(T1,T)) -> 
+	     cdf_warning(Context,[allAttr(S,R,T),' is implied by ',
+	                                                     allAttr(S1,R1,T1)]),
+	     (Mode = retract -> retractallExtTerm(allAttr_ext(S,R,T)) ; true)
+	   ; 
+                 fail),!.
+
+classHasAttr_redundancy_check(Context,Component,Mode) :-
+	 classHasAttr_ext(S,R,T),
+             pconinc(redund),
+	 get_component_extensional(classHasAttr_ext(S,R,T),Component),
+	 classHasAttr_redundancy_check_1(Context,Component,
+	                                                     classHasAttr(S,R,T),Mode),
+	 fail.
+classHasAttr_redundancy_check(_Context,_Component,_Mode).
+
+classHasAttr_redundancy_check_1(Context,Component,
+	                                       classHasAttr(S,R,T),Mode):- 
+	 immed_classHasAttr(S,R1,T1),
+	 \+ (R1 == R,T1 == T),
+	 get_component_extensional(classHasAttr_ext(S,R1,T1),Component),
+	 ((isa(R,R1),isa(T1,T)) -> 	
+	     cdf_warning(Context,[classHasAttr(S,R,T),' is implied by ',
+	                                                     classHasAttr(S,R1,T1)]),
+	     (Mode = retract -> 
+		 retractallExtTerm(classHasAttr_ext(S,R,T)) ; true)
+	   ; 
+                 fail),!.
+
+hasAttr_redundancy_check(Context,Component,Mode) :-
+	 hasAttr_ext(S,R,T),
+             pconinc(redund),
+	 get_component_extensional(hasAttr_ext(S,R,T),Component),
+	 hasAttr_redundancy_check_1(Context,Component,hasAttr(S,R,T),
+	                                            Mode),
+	 fail.
+hasAttr_redundancy_check(_Context,_Component,_Mode).
+
+hasAttr_redundancy_check_1(Context,Component,hasAttr(S,R,T),Mode):- 
+	 immed_hasAttr(S1,R1,T1),
+	 \+ (S1 = S,R1 = R,T1 = T),
+	 get_component_extensional(hasAttr_ext(S1,R1,T1),Component),
+	 ((isa(S,S1),isa(R,R1),isa(T1,T)) -> 	
+	     cdf_warning(Context,[hasAttr(S,R,T),' is implied by ',
+	                                                     hasAttr(S1,R1,T1)]),
+	     (Mode = retract -> retractallExtTerm(hasAttr_ext(S,R,T)) ; true)
+	   ; 
+                 fail),!.
+
+minAttr_redundancy_check(Context,Component,Mode) :-
+	 minAttr_ext(S,R,T,N),
+             pconinc(redund),
+	 get_component_extensional(minAttr_ext(S,R,T,N),Component),
+	 minAttr_redundancy_check_1(Context,Component,minAttr(S,R,T,N),
+                                                         Mode),
+	 fail.
+minAttr_redundancy_check(_Context,_Component,_Mode).
+
+minAttr_redundancy_check_1(Context,Component,minAttr(S,R,T,N),Mode):- 
+	 immed_minAttr(S1,R1,T1,N1),
+	 \+ (S1 == S,R1 == R,T1 == T,N = N1),
+	 get_component_extensional(minAttr_ext(S1,R1,T1,N1),Component),
+	 ((isa(S,S1),isa(R,R1),isa(T1,T),N1 >= N) -> 	
+	     cdf_warning(Context,[minAttr(S,R,T,N),' is implied by ',
+	                                                     minAttr(S1,R1,T1,N1)]),
+	     (Mode = retract -> retractallExtTerm(minAttr_ext(S,R,T,N)) ; true)
+	   ; 
+                 fail),!.
+
+maxAttr_redundancy_check(Context,Component,Mode) :-
+	 maxAttr_ext(S,R,T,N),
+             pconinc(redund),
+	 get_component_extensional(maxAttr_ext(S,R,T,N),Component),
+	 maxAttr_redundancy_check_1(Context,Component,maxAttr(S,R,T,N),
+	                                             Mode),
+	 fail.
+maxAttr_redundancy_check(_Context,_Component,_Mode).
+
+maxAttr_redundancy_check_1(Context,Component,maxAttr(S,R,T,N),Mode):- 
+	 immed_maxAttr(S1,R1,T1,N1),
+	 \+ (S1 == S,R1 == R,T1 == T,N1 == N),
+	 get_component_extensional(maxAttr_ext(S1,R1,T1,N1),Component),
+	 ((isa(S,S1),isa(R,R1),isa(T1,T),N1 =< N) -> 	
+	     cdf_warning(Context,[maxAttr(S,R,T,N),' is implied by ',
+	                                                     maxAttr(S1,R1,T1,N1)]),
+	     (Mode = retract -> retractallExtTerm(maxAttr_ext(S,R,T,N)) ; true)
+	   ; 
+                 fail),!.
+
+%-----------------------------------------------------------------
+
+check_object_constraints(Context,Component):- 
+	cputime(Start),
+	pconset(object,0),
+	check_allAttr_constraints(Context,Component),
+	check_minAttr_constraints(Context,Component),
+	check_maxAttr_constraints(Context,Component),
+	cputime(End),
+	Tot is End - Start,
+	pconget(object,N),
+	message(['Object Check Cputime ',Tot,' for ',N,' Fact checks.']).
+
+check_allAttr_constraints(Context,Component):- 
+	pconinc(object),
+	immed_allAttr(S,R,T),
+	get_component_extensional(allAttr_ext(S,R,T),Component),
+	check_allAttr_constraints_1(Context,allAttr(S,R,T)),
+	fail.
+check_allAttr_constraints(_Context,_Component).
+
+check_allAttr_constraints_1(Context,allAttr(S,R,T)):- 
+	isa(oid(Oid,Src),S),
+	hasAttr(oid(Oid,Src),R,T1),
+	(isa(T1,T) -> 
+	    true
+	  ; cdf_warning(Context,[hasAttr(oid(Oid,Src),R,T1),' does not ',
+	                                     'explicitly satisfy the ',
+                                                 'constraint ',allAttr(S,R,T)]) ).
+
+check_minAttr_constraints(Context,Component):- 
+	pconinc(object),
+	immed_minAttr(S,R,T,N),
+	get_component_extensional(minAttr_ext(S,R,T,N),Component),
+	check_minAttr_constraints_1(Context,minAttr(S,R,T,N)),
+	fail.
+check_minAttr_constraints(_Context,_Component).
+	
+check_minAttr_constraints_1(Context,minAttr(S,R,T,N)):- 
+	isa(oid(Oid,Src),S),
+	findall(oid(Oid1,Src1),(hasAttr(oid(Oid,Src),R,oid(Oid1,Src1)),
+	                               isa(oid(Oid1,Src1),T)),NewOids),
+	length(NewOids,L),
+	(L >= N -> 
+	    true
+	  ; cdf_warning(Context,[oid(Oid1,Src1),' does not satisfy the',
+                                                 ' constraint ',minAttr(S,R,T,N)]) ).
+
+check_maxAttr_constraints(Context,Component):- 
+	pconinc(object),
+	immed_maxAttr(S,R,T,N),
+	get_component_extensional(maxAttr_ext(S,R,T,N),Component),
+	check_maxAttr_constraints_1(Context,maxAttr(S,R,T,N)),
+	fail.
+check_maxAttr_constraints(_Context,_Component).
+	
+check_maxAttr_constraints_1(Context,maxAttr(S,R,T,N)):- 
+	isa(oid(Oid,Src),S),
+	findall(oid(Oid1,Src1),(hasAttr(oid(Oid,Src),R,oid(Oid1,Src1)),
+	                               isa(oid(Oid1,Src1),T)),NewOids),
+	length(NewOids,L),
+	(L =< N -> 
+	    true
+	  ; cdf_warning(Context,[oid(Oid1,Src1),' does not satisfy the
+                                                  constraint ',maxAttr(S,R,T,N)]) ).
+
+
+%-------------------------------------------------------------------------
+% See manual for currentContext/2
+currentContext(Context,system,Type):- 
+	currentSystemContext(Context,Type).
+currentContext(Context,user,Type):- 
+	currentUserContext(Context,Type).
+
+:- dynamic currentUserContext/2.
+
+currentSystemContext(componentLoad,component).
+currentSystemContext(componentUpdate,component).
+currentSystemContext(query,term).
+currentSystemContext(newExtTermSingle,term).
+currentSystemContext(newExtTermBatch,term).
+currentSystemContext(retractallExtTermSingle,term).
+
+isContextType(component).
+isContextType(term).
+
+addUserContext(Context,Type):- 
+	check_nonvar(Context,addUserContext,1),
+	check_nonvar(Type,addUserContext,2),
+	(isContextType(Type) -> 
+	    true
+	 ;  domain_error(contextType,Type,addUserContext,2)),
+	(currentSystemContext(Context,_) -> 
+	    misc_error(['Cannot add system context as user context ',Context])
+	  ; true),
+	(currentUserContext(Context,Type1) -> 
+	    (Type1 = Type -> 
+		true
+	       ;    misc_error(['Cannot change type of user context ',Context,
+	                             ' from ',Type1,' to ',Type]))
+             ; assert(currentUserContext(Context,Type))).
+
+removeUserContext(Context):- 
+	retractall(currentUserContext(Context,_)).
+
+checkType(check_types/2,term).
+checkType(cdf_check_ground/2,term).
+checkType(check_identity/2,term).
+checkType(check_implication/2,term).
+checkType(check_redundancies/2,term).
+checkType(classify_if_necessary/2,component).
+
+addCheckToContext(Check,Context):- 
+	check_nonvar(Check,addCheckToContext,1),
+	check_nonvar(Context,addCheckToContext,2),
+	(currentContext(Context,_,Type) -> 
+	    true
+	 ;  domain_error(context,Context,addCheckToContext,2) ),
+	 (checkType(Check,Type) -> 
+	     true 
+	 ;  misc_error([Check,' cannot be used in ',Context])),
+	 addCheckToContext_1(Context,Check).
+	 
+addCheckToContext_1(Ctxt,B):- 
+	    (B = F/Arity -> 
+	          functor(Term,F,Arity),
+	          arg(1,Term,Ctxt),
+	          addCheckToContext_2(Ctxt,Term)
+	      ; misc_error(('cannot load initial flag for context: ',B))).
+
+addCheckToContext_2(Ctxt,Term):- 
+	((cdf_flags(Ctxt,check(Ctxt,Arg,List)),
+	      \+ member(Term,List)) -> 
+	     arg(2,Term,Arg),
+	     retractall(cdf_flags(Ctxt,_)),
+	     append([Term],List,NewList),
+	     assert(cdf_flags(Ctxt,check(Ctxt,Arg,NewList)))
+	  ;  arg(2,Term,Arg),
+ 	     assert(cdf_flags(Ctxt,check(Ctxt,Arg,[Term])))).
+
+% some obscure problem w.retractall.
+removeCheckFromContext(F/A,Context):- 
+	findall(cdf_flags(A,B),cdf_flags(A,B),Flaglist),
+	currentContext(Context,_,_),
+	checkType(F/A,_),
+	functor(Check,F,A),
+	member(cdf_flags(Context,List),Flaglist),
+	retractall(cdf_flags(Context,_)),
+	remove_from_list(List,Check,NewList),
+	assert(cdf_flags(Context,NewList)),
+	fail.
+removeCheckFromContext(_,_).
+    
+remove_from_list([],_,[]).
+remove_from_list([H|T],H,T):- 
+	remove_from_list(T,H,T).
+remove_from_list([H|T],Elt,[H|T1]):- 
+	remove_from_list(T,Elt,T1).
+
+%% assert(cdf_flags(newDLRuleSingle,check(Ctxt,Term,[check_dl_rule(Ctxt,Term)]))).
+
+:- document_export check_dl_rule/2.
+
+check_dl_rule(Context,'<='(Head,Body)) :- !,
+%%	writeln(Head),
+%%	write(' <='),writeln(Body),
+	check_type_dl_head(Head,Context),
+	check_type_dl_body(Body,Context).
+check_dl_rule(Context,BadRule) :-
+	cdf_warning(Context,[BadRule, ' is not a well-formed DL rule.']),
+	fail.
+
+check_type_dl_head((CE1,CE2),Context) :- !,
+	check_type_dl_head(CE1,Context),
+	check_type_dl_head(CE2,Context).
+check_type_dl_head(Cid,_Context) :- cdf_id_fields(Cid,cid,_,_), !.
+check_type_dl_head(Fmla,Context) :-
+	dl_type_table(Fmla,Typecall),
+	!,
+	arg(1,Typecall,Context),
+	call0(Typecall).
+check_type_dl_head(Head,Context) :-
+	cdf_warning(Context,
+		    [Head, ' does not have proper sorts and cannot be added.']),
+	fail.
+	
+%%dl_type_table(exists(R,C),check_ind_types(_,exists(R,C),[[rid],[cid]])).
+dl_type_table(exists(R,_C),check_ind_types(_,exists(R,_),[[rid],[cid]])).  %hack for now till figure out how to handle nested exists...
+dl_type_table(exists_immed(R,C),check_ind_types(_,exists_immed(R,_C),[[rid],[cid]])).
+dl_type_table(all(R,C),check_ind_types(_,all(R,C),[[rid],[cid]])).
+dl_type_table(atLeast(N,R,C),check_ind_types(_,atLeast(N,R,C),[posint,[rid],[cid]])).
+dl_type_table(atMost(N,R,C),check_ind_types(_,atMost(N,R,C),[posint,[rid],[cid]])).
+dl_type_table(atMost(N,R,C),check_ind_types(_,atMost(N,R,C),[posint,[rid],[cid]])).
+dl_type_table(component(_),=(_,_)). % no checking
+dl_type_table(call(_),=(_,_)). % no checking
+dl_type_table(is(_,_),=(_,_)). % no checking for now
+dl_type_table(dlEval(_,_),=(_,_)). % no checking??
+dl_type_table(dlTable(_N,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_,_,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_,_,_,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_,_,_,_,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_,_,_,_,_,_,_),isatom2(_,_N)).
+dl_type_table(dlTable(_N,_,_,_,_,_,_,_,_,_,_),isatom2(_,_N)).
+dl_type_table(trace,=(_,_)). % for debugging
+
+isatom2(Context,Atom) :-
+	(atom(Atom)
+	 ->	true
+	 ;	cdf_warning(Context,[Atom, ' cannot be a component name.']),
+		fail
+	).
+
+check_type_dl_body((C1,C2),Context) :- !,
+	check_type_dl_body(C1,Context),
+	check_type_dl_body(C2,Context).
+check_type_dl_body((C1;C2),Context) :- !,
+	check_type_dl_body(C1,Context),
+	check_type_dl_body(C2,Context).
+check_type_dl_body(not(C1),Context) :- !,
+	check_type_dl_body(C1,Context).
+check_type_dl_body(Cid,_Context) :- cdf_id_fields(Cid,cid,_,_), !.
+check_type_dl_body(Fmla,Context) :-
+	dl_type_table(Fmla,Typecall),
+	!,
+	arg(1,Typecall,Context),
+	call0(Typecall).
+check_type_dl_body(call(_),_Context) :- !.
+check_type_dl_body(Body,Context) :-
+	cdf_warning(Context,
+		    [Body, ' does not have proper sorts and cannot be added.']),
+	fail.
+
+end_of_file.
+
+:- import  marginal_clear/0, marginal_add/1, marginal_get/2 from marginals.
+:- import conset/2, conget/2, coninc/1 from gensym.
+
+hasAttr_redundancy_check :-
+	cputime(T0),
+	(marginal_clear,
+	 immed_hasAttr(S,R,T),
+	 marginal_add(first(R,S)),
+	 marginal_add(last(R,T)),
+	 fail
+	 ;	
+	 writeln('marginals generated'),
+	 pconset(lastind,0), pconset(firstind,0),
+	 F = f(S,R,T), F1 = f(S1,R1,T1),
+	 immed_hasAttr(S,R,T),
+	 isa(R1,R),
+	 marginal_get(first(R1,S),CntFirst),
+	 marginal_get(last(R1,T),CntLast),
+	 (CntLast < CntFirst
+	  ->	 pconinc(lastind),
+		 isa(T1,T),
+		 immed_hasAttr(S1,R1,T1),
+		 F \== F1,
+		 isa(S,S1)
+	  ;	 pconinc(firstind),
+		 isa(S,S1),
+		 immed_hasAttr(S1,R1,T1),
+		 F \== F1,
+		 isa(T1,T)
+	 ),
+	 writeln(hasAttr(S,R,T)),writeln(hasAttr(S1,R1,T1)),nl,
+	 fail
+	 ;
+	 marginal_clear
+	),
+	cputime(T1),
+	T is T1-T0, writeln(cputime=T),
+	pconget(lastind,Last), pconget(firstind,First),
+	writeln(['Use 1+2 index count'=First, 'Use 2+3 index count'=Last]).
+
+check_identity_checkflag(Context,Term):- 
+	((cdf_flags(Context,check(_,_,List)),
+	   member(check_identity(_,_),List)) -> 
+	    check_identity(_,Term)
+	  ; true).
+
+check_ground_checkflag(Context,Term):- 
+	((cdf_flags(Context,check(_,_,List)),
+	  member(cdf_check_ground(_),List)) -> 
+	    cdf_check_ground(Term)
+	  ; true).
+
+check_types_checkflag(Context,Term):- 
+	((cdf_flags(Context,check(_,_,List)),
+	  member(check_types(_,_),List)) -> 
+	    check_types(Context,Term)
+	  ; true).	
+
+check_implication_checkflag(Context,Term):- 
+	((cdf_flags(Context,check(_,_,List)),
+	  member(check_implication(_,_),List)) -> 
+	    check_implication(Context,Term)
+	  ; true).
+
+classify_if_necessary_checkflag(Context,Name):-
+	((cdf_flags(Context,check(_,_,List)),
+	   member(classify_if_necessary(_,_),List)) -> 
+	     classify_if_necessary(_Context,Name)
+	  ;  true).
+	    

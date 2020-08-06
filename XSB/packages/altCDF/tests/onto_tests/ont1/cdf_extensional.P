@@ -1,0 +1,157 @@
+%----------------------------------------------------------------------------------------------------------
+% New Ontology: Stereos
+
+isa_ext(cid(electronicPart,o1),cid('CDF Classes',cdf)).
+  isa_ext(cid(stereo,o1),cid(electronicPart,o1)).
+    isa_ext(cid(expensiveStereo,o1),cid(stereo,o1)).
+    isa_ext(cid(bookshelfStereo,o1),cid(stereo,o1)).
+      isa_ext(cid(expBookStereo,o1),cid(expensiveStereo,o1)).
+      isa_ext(cid(expBookStereo,o1),cid(bookshelfStereo,o1)).
+
+    isa_ext(cid(quadStereo,o1),cid(stereo,o1)).  % defined by rules.
+  isa_ext(cid(amplifier,o1),cid(electronicPart,o1)).
+  isa_ext(cid(speaker,o1),cid(electronicPart,o1)).
+    isa_ext(oid(spender,o1),cid(speaker,o1)).
+    isa_ext(oid(advent,o1),cid(speaker,o1)).
+    isa_ext(oid(ba,o1),cid(speaker,o1)).
+
+isa_ext(cid(size,o1),cid('CDF Classes',o1)).
+  isa_ext(cid(big,o1),cid(size,o1)).
+  isa_ext(cid(small,o1),cid(size,o1)).
+
+necessCond_ext(cid(big,o1),vid(not(cid(small,o1)))).
+
+hasAttr_ext(cid(stereo,o1),rid(hasAmplifier,o1),cid(size,o1)).
+
+necessCond_ext(cid(speaker,o1),vid(exists(rid(hasManufacturer,o1),
+	                                            ';'(oid(spender,o1),
+					 ';'(oid(advent,o1),oid(ba,o1)))))).
+
+%minAttr_ext(cid(expensiveStereo,o1),rid(hasSpeaker,o1),cid(speaker,o1),1).
+% Note that this increases the search space for 
+% expBookStereo 
+minAttr_ext(cid(expensiveStereo,o1),rid(hasSpeaker,o1),cid(speaker,o1),4).
+
+% Contradiction here: cant have big and small for expBookStereo
+maxAttr_ext(cid(expensiveStereo,o1),rid(hasAmplifier,o1),cid(size,o1),1).
+hasAttr_ext(cid(expensiveStereo,o1),rid(hasAmplifier,o1),cid(big,o1)).
+
+maxAttr_ext(cid(bookshelfStereo,o1),rid(hasAmplifier,o1),cid(size,o1),1).
+hasAttr_ext(cid(bookshelfStereo,o1),rid(hasAmplifier,o1),cid(small,o1)).
+
+%-------------------------------------------
+
+necessCond_ext(cid(incon,o1),vid(not(cid(incon,o1)))).
+
+necessCond_ext(cid(con,o1),vid(';'(not(cid(con,o1)),cid(atomicClass,o1))) ).
+
+%-------------------------------------------------------------------------------------------------
+% New Ontology: Tragedy
+
+hasAttr_ext(oid('Jocasta',oed),rid(hasChild,oed),oid('Oedipus',oed)).
+hasAttr_ext(oid('Oedipus',oed),rid(hasChild,oed),oid('Polyneikes',oed)).
+hasAttr_ext(oid('Jocasta',oed),rid(hasChild,oed),oid('Polyneikes',oed)).
+hasAttr_ext(oid('Polyneikes',oed),rid(hasChild,oed),oid('Thersandros',oed)).
+
+isa_ext(oid('Oedipus',oed),cid(patricide,oed)).
+
+necessCond_ext(oid('Thersandros',oed),vid(not(cid(patricide,oed)))).
+
+%--------------------------------------------------------------------------------------------------
+% Family Example.  DL handbook, .52 (extended)
+% Broken ontology.
+% A woman is a person and female, a man is a person who is not a woman.
+% Nothing prevents a woman from being both female and male.
+
+isa_ext(cid(gender,fam),cid('CDF Classes',cdf)).
+  isa_ext(cid(female,fam),cid(gender,fam)).
+  isa_ext(cid(male,fam),cid(gender,fam)).
+
+isa_ext(cid(person,fam),cid('CDF Classes',cdf)).
+allAttr_ext(cid(person,fam),rid(hasBrother_oops,fam),cid(male,fam)).
+allAttr_ext(cid(person,fam),rid(hasSister_oops,fam),cid(famale,fam)).
+allAttr_ext(cid(person,fam),rid(hasBrother,fam),cid(man,fam)).
+allAttr_ext(cid(person,fam),rid(hasSister,fam),cid(woman,fam)).
+
+%hasAttr_ext(cid(person,fam),rid(hasBrother,fam),cid(grandmother,fam)).
+
+  isa_ext(cid(woman,fam),cid(female,fam)).
+  isa_ext(cid(woman,fam),cid(person,fam)).
+
+  isa_ext(cid(man,fam),cid(person,fam)).
+  necessCond_ext(cid(man,fam),vid(not(cid(woman,fam)))).
+
+isa_ext(cid(mother,fam),cid(woman,fam)).
+hasAttr_ext(cid(father,fam),rid(hasChild,fam),cid(person,fam)).
+
+isa_ext(cid(father,fam),cid(man,fam)).
+hasAttr_ext(cid(mother,fam),rid(hasChild,fam),cid(person,fam)).
+
+necessCond_ext(cid(parent,fam),vid(';'(cid(father,fam),cid(mother,fam)))).
+
+isa_ext(cid(grandmother,fam),cid(mother,fam)).
+hasAttr_ext(cid(grandmother,fam),rid(hasChild,fam),cid(parent,fam)).
+
+isa_ext(cid(grandfather,fam),cid(father,fam)).
+hasAttr_ext(cid(grandfather,fam),rid(hasChild,fam),cid(parent,fam)).
+
+isa_ext(cid(motherwithmanychildren,fam),cid(mother,fam)).
+minAttr_ext(cid(motherwithmanychildren,fam),rel(hasChild,fam),cid(person,fam),3).
+
+isa_ext(cid(motherwithoutdaughter,fam),cid(mother,fam)).
+allAttr_ext(cid(motherwithoutdaughter,fam),rid(hasChild,fam),cid(notWoman,fam)).
+
+% This cid has to be created as a special cid.
+necessCond_ext(cid(notWoman,fam),vid(not(cid(woman,fam)))).
+
+hasAttr_ext(cid(wife,fam),rid(hasHusband,fam),cid(man,fam)).
+
+%--------------------------------------------------------------------------------------------------
+% A handy example.
+
+isa_ext(cid(bodyPart,mdl),cid('CDF Classes',cdf)).
+
+  isa_ext(cid(hand,mdl),cid(bodyPart,mdl)).
+  isa_ext(cid(thumb,mdl),cid(bodyPart,mdl)).
+
+    isa_ext(cid(handWithThumb,mdl),cid(hand,mdl)).
+    isa_ext(cid(handWithoutThumb,mdl),cid(hand,mdl)).
+
+% for each element of hand, if it has a hasPart relation, it will be to an elt of handPart
+allAttr_ext(cid(hand,mdl),rid(hasPart,mdl),cid(handPart,mdl)).
+
+% each element of hand has a hasPart relation to an elt of  palm
+hasAttr_ext(cid(hand,mdl),rid(hasPart,mdl),cid(palm,mdl)).
+
+% each element of handWithThumb has a hasPart relation to an elt. of thumb
+hasAttr_ext(cid(handWithThumb,mdl),rid(hasPart,mdl),cid(thumb,mdl)).
+
+% each element of handWithoutThumb does not have a hasPart relation to a thumb.
+necessCond_ext(cid(handWithoutThumb,mdl),vid(not(exists(rid(hasPart,mdl),cid(thumb,mdl))))).
+
+isa_ext(cid(handPart,mdl),cid('CDF Classes',cdf)).
+  isa_ext(cid(thumb,mdl),cid(handPart,mdl)).
+  isa_ext(cid(palm,mdl),cid(handPart,mdl)).
+  isa_ext(cid(finger,mdl),cid(handPart,mdl)).
+
+isa_ext(cid(person,mdl),cid('CDF Classes',cdf)).
+maxAttr_ext(cid(person,mdl),rid(hasPart,mdl),cid(hand,mdl),2).
+
+isa_ext(cid(hitchhiker,mdl),cid(person,mdl)).
+hasAttr_ext(cid(hitchhiker,mdl),rid(hasPart,mdl),cid(handWithThumb,mdl)).
+
+end_of_file.
+
+Must Jocasta have a child that is a patricide who has a child who is
+not a patricide?
+
+oidEntails(oid('Jocasta',oed), exists(rid(hasChild,oed),(cid(patricide,oed),
+                                               exists(rid(hasChild,oed),not(cid(patricide,oed)))))).
+
+Reason on cases: 
+1) If Polyneikes is a patricide, then model is Joc - Poly - Thers
+2) If Polyneikes is not a patricide, then model is Joc - Oed - Poly
+
+To find out if \phi is entailed by a kb, 
+	find not \phi and discover whether not \phi is consistent with the lce for phi
+if it is consistent, find each context and see if that is inconsistent.

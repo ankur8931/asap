@@ -1,0 +1,63 @@
+
+:- import wrap/2 from wrapping. 
+:- import platform/1 from shell.
+:- import misc_error/1 from error_handler.
+
+clean:- 
+	shell('rm -f *dylib xasppkg.xwam *.o xsb_wrap_xasppkg.c').
+
+make:- 
+	platform(Platform),
+	(Platform == darwin -> make_darwin 
+	 ; Platform == 'linux-gnu' -> make_linux
+	  ; Platform == windows -> make_windows
+            ; misc_error(['Unknown platform: ',Platform,
+	                   ' -- don''t know how to make -- see xasp/prologMake.P']) ).
+
+make_darwin:- 
+	shell('rm -f *dylib *.o'),
+	xsb_configuration(packagesdir,PkgPath),
+	xsb_configuration(config_dir,ConfPath),
+	xsb_configuration(emudir,EmuPath),
+	% 1) compile xasppkg
+	shell(['g++ -I',ConfPath,' -I',EmuPath,' -I',PkgPath,'/xasp/smodels -c -o xasppkg.o xasppkg.c']),
+	% 1) compile xsb_wrap_xasppkg
+	shell(['gcc -I',ConfPath,' -I',EmuPath,' -I',PkgPath,'/xasp/smodels -c xsb_wrap_xasppkg.c']),
+	% 3) make dylib
+	shell(['g++ -I',ConfPath,' -I',EmuPath,' -I',PkgPath,'/xasp/smodels -lm ',
+   	       '-dynamiclib -undefined dynamic_lookup -single_module -nostartfiles ',
+ 	       '-o xasppkg.dylib xasppkg.o xsb_wrap_xasppkg.o ',
+	       PkgPath,'/xasp/smodels/.libs/libsmodels.a']).
+
+make_linux:- 
+	shell('rm -f *dylib *.o'),
+	xsb_configuration(packagesdir,PkgPath),
+	xsb_configuration(config_dir,ConfPath),
+	xsb_configuration(emudir,EmuPath),
+	% 1) compile xasppkg
+	shell(['g++ -I',ConfPath,' -I',EmuPath,' -I',PkgPath,'/xasp/smodels -c -o xasppkg.o xasppkg.c']),
+	% 1) compile xsb_wrap_xasppkg
+	shell(['gcc -I',ConfPath,' -I',EmuPath,' -I',PkgPath,'/xasp/smodels -c xsb_wrap_xasppkg.c']),
+	% 3) make so
+	shell(['g++ -I',ConfPath,' -I',EmuPath,' -I',PkgPath,'/xasp/smodels -lm ',
+   	       '-shared ',
+ 	       '-o xasppkg.so xasppkg.o xsb_wrap_xasppkg.o ',
+	       PkgPath,'/xasp/smodels/.libs/libsmodels.a']).
+
+end_of_file.
+
+
+%%%% DANGER (sometimes have trouble w. wrapper).
+remake_all:- 
+	shell('rm -f *dylib *.o xsb_wrap_xasppkg.c'),
+	% 1) make wrapper
+	wrap('xasppkg.H','xsb_wrap_xasppkg.c'),
+	% 2) compile xasppkg
+	shell(['g++ -I/Users/macuser/XSB/XSB/config/i386-apple-darwin8.9.1-mt -I/Users/macuser/XSB/XSB/emu -I/Users/macuser/XSB/XSB/packages/xasp/smodels -c -o xasppkg.o xasppkg.c']),
+	% 3) compile xsb_wrap_xasppkg
+	shell(['gcc -I/Users/macuser/XSB/XSB/config/i386-apple-darwin8.9.1-mt -I/Users/macuser/XSB/XSB/emu -I/Users/macuser/XSB/XSB/packages/xasp/smodels -c xsb_wrap_xasppkg.c']),
+	% 4) make dylib
+	shell(['g++ -I/Users/macuser/XSB/XSB/config/i386-apple-darwin8.9.1-mt -I/Users/macuser/XSB/XSB/emu -I/Users/macuser/XSB/XSB/packages/xasp/smodels -lm ',
+	'-dynamiclib -undefined dynamic_lookup -single_module -nostartfiles ',
+	'-o xasppkg.dylib xasppkg.o xsb_wrap_xasppkg.o ',
+	'/Users/macuser/XSB/XSB/packages/xasp/smodels/.libs/libsmodels.a']).

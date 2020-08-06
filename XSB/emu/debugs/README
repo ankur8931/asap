@@ -1,0 +1,13 @@
+
+This directory contains debug.h files.
+
+If you need to turn on a defined debug variable, don't do it in the main
+source code. Do it here!
+
+The file debug.h is generated automatically by `configure'. Don't modify
+it---all changes will be lost!
+
+The other files are crafted manually, for your enjoyment.
+
+
+mk

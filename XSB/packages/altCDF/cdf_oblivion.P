@@ -1,0 +1,970 @@
+:- compiler_options([ciao_directives]).
+
+:- export
+	delete_class_cascade/1,
+	obliterate_class/1,obliterate_classes/1,
+	obliterate_object/1,	obliterate_objects/1,	
+	obliterate_extensional_component/1,
+	retractall_itsobjects/1,
+	retractall_subclasses/1,
+	delete_unattached_ext_things/0,
+	delete_unattached_ext_things/1,
+	delete_all_things_to_delete/0,
+	rename_one_subthing/2,
+	rename_things/1, rename_things/0.
+
+:- import
+            immed_isa/2, proper_isa/2,
+            retractallExtTerm/1,
+	    newExtTerm/1,
+	    concrete_component/1,
+	    cdf_id_fields/4
+	from cdf_init_cdf.
+
+:- import cdf_root/1, system_component/1 from cdf_init_cdf.
+
+:- import classHasAttr_ext/3, hasAttr_ext/3, allAttr_ext/3, minAttr_ext/4, maxAttr_ext/4 from usermod.
+:- import compdlrule/3 from usermod.
+
+:- import member/2 from basics.
+
+:- comment(module,"These predicates allow a user of CDF to delete
+large portions of the currently loaded CDF.  They are implmented in a
+way that tries to be efficient for reasonably large sets of deletions.
+").
+
+%% handle caches
+
+:- comment(obliterate_class/1, " @tt{obliterate_class(+ClassID)}
+removes (most) extensional facts that refer to ClassId within the
+ontology.  All its subclasses that are not subclasses of other
+non-deleted concepts are removed.  It also removes objects that become
+disconnected because they are only members of deleted classes. It
+deletes various relations that reference any deleted class or object
+@em{at the top level}.  NB: References to the deleted classes and
+objects that are embedded in product classes are @em{not} detected and
+are thus @em{not} deleted.
+").
+
+obliterate_class(Cid) :-
+	retractall(things_to_delete(_)),
+	assert(things_to_delete(Cid)),
+	delete_all_things_to_delete.
+
+:- comment(obliterate_objects/1, " @tt{obliterate_objects(+ObjIdList)}
+removes all objects whose ObjID's are in the input list.  It removes
+them from all classes they are in, and it removes all extensional
+relation facts that refer to them @em{at the top level}.  NB:
+References to the deleted objects that are embedded in product classes
+are @em{not} detected and are thus @em{not} deleted. ").
+
+obliterate_objects(ObjList) :-
+	retractall(things_to_delete(_)),
+	(member(Thing,ObjList),
+	 assert(things_to_delete(Thing)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+
+:- comment(obliterate_object/1, " @tt{obliterate_object(+ObjId)}
+removes the object identified by ObjID.  It removes it from all
+classes it is in, and it removes all extensional relation facts that
+refers to it @em{at the top level}.  NB: References to the deleted
+objects that are embedded in product classes are @em{not} detected and
+are thus @em{not} deleted.").
+
+obliterate_object(Oid) :-
+	retractall(things_to_delete(_)),
+	assert(things_to_delete(Oid)),
+	delete_all_things_to_delete.
+
+:- comment(obliterate_classes/1, " @tt{obliterate_classes(+CidList)}
+takes a list of class IDs, removes them from the taxonomy and then
+removes (most) other facts that refer to these classes.  All
+subclasses that are not subclasses of other non-deleted concepts are
+removed.  It also removes objects that become disconnected by being
+members of any deleted class and not a member of any other nondeleted
+class.  It deletes extensional relation facts that reference any
+deleted class or object @em{at the top level}.  NB: References to the
+deleted classes and objects that are embedded in product classes are
+@em{not} detected and are thus @em{not} deleted.").
+
+obliterate_classes(Cids) :-
+	retractall(things_to_delete(_)),
+	(member(Thing,Cids),
+	 assert(things_to_delete(Thing)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+	
+:- comment(retractall_itsobjects/1, " @tt{retractall_itsobjects(+Cid)}
+obliterates all the objects that are immedicate members of Cid.").
+
+retractall_itsobjects(Cid):-
+	retractall(things_to_delete(_)),
+	(Oid = oid(_,_),
+	 immed_isa(Oid,Cid),
+	 assert(things_to_delete(Oid)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+
+retractall_subclasses(PCid):-
+	retractall(things_to_delete(_)),
+	(Cid = cid(_,_),
+	 immed_isa(Cid,PCid),
+	 assert(things_to_delete(Cid)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+
+
+/* Delete a class, all its subclasses, and all their relations and attributes */
+delete_class_cascade(ACid) :-
+	obliterate_class(ACid).
+
+/* Delete an extensional component, and everything that references it.
+This only works for components whose objects and classes are defined
+extensionally.  */
+
+:- import isa_ext/2 from usermod.
+obliterate_extensional_component(Comp) :-
+	retractall(things_to_delete(_)),
+	(isa_ext(Thing,_),
+	 cdf_id_fields(Thing,_,_,Comp),
+	 assert(things_to_delete(Thing)),
+	 fail
+	 ;
+	 delete_all_things_to_delete
+	).
+
+
+/* Delete all classes and objects that are not immediately connected
+to the isa hierarchy by an isa_ext fact. (or attach them at a fixed place) */
+delete_unattached_ext_things :-
+	delete_unattached_ext_things(0).
+
+%% if IfWarn is a cid node, then instead of deleting, attach
+%% unattached things there.
+delete_unattached_ext_things(IfWarn) :-
+	retractall(things_to_delete(_)),
+	cdf_term_ext(Term,_Filt),
+	Term \= isa_ext(_,_),
+	call0(Term),
+	cdf_term_ext_arg(Term,Thing),
+	is_a_subthing(Thing,SubThing),
+	\+ isa_ext(SubThing,_),
+	\+ cdf_root(SubThing),
+	cdf_id_fields(SubThing,Id,Prod,Comp),
+	nonvar(Comp),
+	\+ system_component(Comp),
+	(structure(Prod)
+	 ->	\+ approx_prod_isa(Id,Prod,Comp)
+	 ;	true
+	),
+	(IfWarn == 1
+	 ->	writeln(userout,'*** WARNING *** Deleting '(SubThing))
+	 ; IfWarn @= cid(_,_)
+	 ->	newExtTerm(isa_ext(SubThing,IfWarn)),
+		fail
+	),
+	assert(things_to_delete(SubThing)),
+	fail.
+delete_unattached_ext_things(_IfWarn) :-
+	delete_all_things_to_delete,
+	fail.
+delete_unattached_ext_things(_IfWarn) :-
+	abolish_table_pred(local_tabled_isa(_)).
+
+approx_prod_isa(Id,Prod,Comp) :-
+	functor(Prod,Fun,Arity),
+	functor(AbsProd,Fun,Arity),
+	cdf_id_fields(AbsThing,Id,AbsProd,Comp),
+	local_tabled_isa(AbsThing).
+
+:- table local_tabled_isa/1.
+local_tabled_isa(AbsThing) :- isa_ext(AbsThing,_).
+
+/************************************************************************/
+/*									*/
+/*	Mass Delete Utilities						*/
+/*									*/
+/* Caller should assert Oids, Cids, etc. to dynamic predicate		*/
+/* things_to_delete/1, and call delete_all_things_to_delete/0.		*/
+/* It will delete all facts in the extensional database that contain	*/
+/* any class/reln/object in things_to_delete/1.				*/
+/*									*/
+/************************************************************************/
+
+:- import things_to_delete/1 from usermod.
+:- dynamic things_to_delete/1.
+:- index(things_to_delete/1,trie).
+:- dynamic things_in_closure/1.
+:- index(things_in_closure/1,trie).
+
+:- dynamic facts_to_delete/1.
+:- index(facts_to_delete/1,trie).
+
+:- import call0/1 from machine.
+delete_all_things_to_delete :-
+	close_things_to_delete,
+	cdf_term_ext(Goal,Filt),
+	%%conset(myctr,0),
+	retractall(facts_to_delete(_)),
+	(call0(Goal),
+	 (Filt == true
+	  ->	 true
+	  ;	 call0(Filt)
+	 ),
+	 cdf_term_ext_arg(Goal,Thing),
+	 is_a_subthing(Thing,SubThing),
+	 (things_in_closure(SubThing)
+	  ->	 true
+	  ;	 things_to_delete(SubThing)
+	 ),
+	 assert(facts_to_delete(Goal)),
+	 %%coninc(myctr),
+	 fail
+	 ;
+	 facts_to_delete(Fact),
+	 retractallExtTerm(Fact),
+	 fail
+	 %% ;
+	 %%conget(myctr,CNT),
+	 %%writeln(deleted(Goal,CNT)),
+	 %%fail
+	).
+delete_all_things_to_delete :-
+	retractall(facts_to_delete(_)),
+	retractall(things_to_delete(_)),
+	retractall(things_in_closure(_)).
+
+is_a_subthing(Thing,Thing).
+is_a_subthing(Thing,SubThing) :-
+	cdf_id_fields(Thing,_,Prod,Comp),
+	structure(Prod),
+	nonvar(Comp),
+	\+ concrete_component(Comp),
+	Prod =.. [_|ThingList],
+	is_a_subthing_list(ThingList,SubThing).
+
+is_a_subthing_list([Thing|_],SubThing) :-
+	is_a_subthing(Thing,SubThing).
+is_a_subthing_list([_|ThingList],SubThing) :-
+	is_a_subthing_list(ThingList,SubThing).
+
+/* close_things_to_delete/0 adds to the things_to_delete/1 table all
+things that will be disconnected from the taxonomy when all things in
+things_to_delete are deleted. */
+
+%%%:- import conset/2, conget/2, coninc/1 from gensym.
+close_things_to_delete :-
+	%%conset(myctr,0),
+	(abolish_table_pred(disconnected(_)),
+	 retractall(things_in_closure(_)),
+	 things_to_delete(Thing),
+	 proper_isa(SubThing,Thing),
+	 disconnected(SubThing),
+	 \+ things_to_delete(SubThing),
+	 \+ things_in_closure(SubThing),
+	 %%coninc(myctr),
+	 assert(things_in_closure(SubThing)),
+	 fail
+	 ;
+	 abolish_table_pred(disconnected(_))
+	).
+	%%conget(myctr,CNT),
+	%%writeln(done(CNT)).
+
+:- table disconnected/1.
+disconnected(X) :-
+	X \== cid('CDF Classes',cdf),
+	(things_to_delete(X)
+	 ->	true
+	 ;	findall(Y,immed_isa(X,Y),Ys),
+		all_disconnected(Ys)
+	).
+
+all_disconnected([]).
+all_disconnected([X|Xs]) :- disconnected(X), all_disconnected(Xs).
+
+cdf_term_ext(hasAttr_ext(_,_,_),true).
+cdf_term_ext(allAttr_ext(_,_,_),true).
+cdf_term_ext(classHasAttr_ext(_,_,_),true).
+cdf_term_ext(minAttr_ext(_,_,_,_),true).
+cdf_term_ext(maxAttr_ext(_,_,_,_),true).
+cdf_term_ext(isa_ext(oid(_,_),_),true).
+cdf_term_ext(isa_ext(Cid,_),\+Cid=oid(_,_)).
+
+cdf_term_ext_arg(isa_ext(X,_),X).
+cdf_term_ext_arg(isa_ext(_,X),X).
+cdf_term_ext_arg(hasAttr_ext(X,_,_),X).
+cdf_term_ext_arg(hasAttr_ext(_,X,_),X).
+cdf_term_ext_arg(hasAttr_ext(_,_,X),X).
+cdf_term_ext_arg(allAttr_ext(X,_,_),X).
+cdf_term_ext_arg(allAttr_ext(_,X,_),X).
+cdf_term_ext_arg(allAttr_ext(_,_,X),X).
+cdf_term_ext_arg(classHasAttr_ext(X,_,_),X).
+cdf_term_ext_arg(classHasAttr_ext(_,X,_),X).
+cdf_term_ext_arg(classHasAttr_ext(_,_,X),X).
+cdf_term_ext_arg(minAttr_ext(X,_,_,_),X).
+cdf_term_ext_arg(minAttr_ext(_,X,_,_),X).
+cdf_term_ext_arg(minAttr_ext(_,_,X,_),X).
+cdf_term_ext_arg(maxAttr_ext(X,_,_,_),X).
+cdf_term_ext_arg(maxAttr_ext(_,X,_,_),X).
+cdf_term_ext_arg(maxAttr_ext(_,_,X,_),X).
+
+
+/************************************************************************/
+/*									*/
+/*	Rename Utility							*/
+/*									*/
+/* rename_things/1 takes a list of pairs of the form OldID>NewID, where	*/
+/* OldID is any ID (Oid,Cid,CRid,...) that is to be renamed to the new	*/
+/* ID NewID.  It handles multiple occurrences of renamings in the same	*/
+/* tuple, transitive renaming (but usually a bad idea), and renaming	*/
+/* within product ID's.  It will loop if there is a cycle in the	*/
+/* renaming (as in e.g. [a>b,b>a].)					*/
+/*									*/
+/* rename_things/0 assumes things_to_rename/2 contains pairs of OldID	*/
+/* and NewID, where OldID is to be renamed to NewID.  Otherwise it	*/
+/* works the same as rename_things/1.					*/
+/*									*/
+/************************************************************************/
+:- import things_to_rename/2 from usermod.
+:- dynamic things_to_rename/2.
+:- index(things_to_rename/2,trie).
+
+:- dynamic facts_to_add/1.
+:- index(facts_to_add/1,trie).
+
+rename_things(RenameList) :-
+	retractall(things_to_rename(_,_)),
+	save_rename_list(RenameList),
+	rename_things.
+
+save_rename_list([]).
+save_rename_list([Old>New|Rest]) :-
+	(Old \== New
+	 ->	assert(things_to_rename(Old,New))
+	 ;	true
+	),
+	save_rename_list(Rest).
+
+rename_things :-
+	cdf_term_ext(Goal,Filt),
+	retractall(facts_to_delete(_)),
+	retractall(facts_to_add(_)),
+
+	(call0(Goal),
+	 (Filt == true
+	  ->	 true
+	  ;	 call0(Filt)
+	 ),
+	 cdf_term_ext_arg_rep(Goal,OldThing,NewGoal,NewThing),
+	 rename_one_subthing(OldThing,NewThing),
+	 assert(facts_to_delete(Goal)),
+	 assert(facts_to_add(NewGoal)),
+	 fail
+	 ;
+	 facts_to_delete(Fact),
+	 retractallExtTerm(Fact),
+	 fail
+	 ;
+	 close_add_facts,
+	 facts_to_add(Fact),
+	 newExtTerm(Fact),
+	 fail
+	).
+rename_things :- % in intensional rules
+	findall(changed_dlrule(Cmp,Head,Body,NewHead,NewBody),
+		update_dlrule(Cmp,Head,Body,NewHead,NewBody),
+		UpdateRules),
+	(member(changed_dlrule(Cmp,Head,Body,_,_),UpdateRules),
+	 retractall(compdlrule(Cmp,Head,Body)),
+	 fail
+	 ;
+	 member(changed_dlrule(Cmp,_,_,NewHead,NewBody),UpdateRules),
+	 assert(compdlrule(Cmp,NewHead,NewBody)),
+	 fail
+	 ;
+	 true
+	).
+rename_things :-
+	retractall(facts_to_delete(_)),
+	retractall(facts_to_add(_)),
+	retractall(things_to_rename(_,_)).
+
+rename_one_subthing(OldThing,NewThing) :-
+	things_to_rename(OldThing,NewThing), !.
+rename_one_subthing(OldThing,NewThing) :-
+	cdf_id_fields(OldThing,Typ,Prod,Comp),
+	structure(Prod),
+	nonvar(Comp),
+	\+ concrete_component(Comp),
+	cdf_id_fields(NewThing,Typ,NewProd,Comp),
+	Prod =.. [Fn|OldThingList],
+	rename_one_subthing_list(OldThingList,NewThingList),
+	NewProd =.. [Fn|NewThingList].
+
+rename_one_subthing_list([OldThing|OldThingList],[NewThing|NewThingList]) :-
+	(rename_one_subthing(OldThing,NewThing),
+	 OldThingList = NewThingList
+	 ;
+	 OldThing = NewThing,
+	 rename_one_subthing_list(OldThingList,NewThingList)
+	).
+
+:- import term_set_arg/4 from machine.
+close_add_facts :-
+	Flag = flag(0),
+	(add_closure_facts_and_fail(Flag)
+	 ;
+	 Flag = flag(1),
+	 !,
+	 term_set_arg(Flag,1,0,1),
+	 close_add_facts
+	).
+close_add_facts.
+
+add_closure_facts_and_fail(Flag):-
+	findall(p(OAddFact,NewAddFact),
+		(facts_to_add(OAddFact),
+		 cdf_term_ext_arg_rep(OAddFact,OldID,NewAddFact,NewID),
+		 rename_one_subthing(OldID,NewID)
+		),
+		MFacts),
+	MFacts \== [],
+	term_set_arg(Flag,1,1,1),
+	member(p(OAddFact,NewAddFact),MFacts),
+	retractall(facts_to_add(OAddFact)),
+	assert(facts_to_add(NewAddFact)),
+	fail.
+
+cdf_term_ext_arg_rep(isa_ext(X,A),X,isa_ext(Y,A),Y).
+cdf_term_ext_arg_rep(isa_ext(A,X),X,isa_ext(A,Y),Y).
+cdf_term_ext_arg_rep(hasAttr_ext(X,A,B),X,hasAttr_ext(Y,A,B),Y).
+cdf_term_ext_arg_rep(hasAttr_ext(A,X,B),X,hasAttr_ext(A,Y,B),Y) :- X=rid(_,_),Y=rid(_,_).
+cdf_term_ext_arg_rep(hasAttr_ext(A,B,X),X,hasAttr_ext(A,B,Y),Y).
+cdf_term_ext_arg_rep(allAttr_ext(X,A,B),X,allAttr_ext(Y,A,B),Y).
+cdf_term_ext_arg_rep(allAttr_ext(A,X,B),X,allAttr_ext(A,Y,B),Y) :- X=rid(_,_),Y=rid(_,_).
+cdf_term_ext_arg_rep(allAttr_ext(A,B,X),X,allAttr_ext(A,B,Y),Y).
+cdf_term_ext_arg_rep(classHasAttr_ext(X,A,B),X,classHasAttr_ext(Y,A,B),Y).
+cdf_term_ext_arg_rep(classHasAttr_ext(A,X,B),X,classHasAttr_ext(A,Y,B),Y) :- X=crid(_,_),Y=crid(_,_).
+cdf_term_ext_arg_rep(classHasAttr_ext(A,B,X),X,classHasAttr_ext(A,B,Y),Y).
+cdf_term_ext_arg_rep(minAttr_ext(X,A,B,C),X,minAttr_ext(Y,A,B,C),Y).
+cdf_term_ext_arg_rep(minAttr_ext(A,X,B,C),X,minAttr_ext(A,Y,B,C),Y) :- X=rid(_,_),Y=rid(_,_).
+cdf_term_ext_arg_rep(minAttr_ext(A,B,X,C),X,minAttr_ext(A,B,Y,C),Y).
+cdf_term_ext_arg_rep(maxAttr_ext(X,A,B,C),X,maxAttr_ext(Y,A,B,C),Y).
+cdf_term_ext_arg_rep(maxAttr_ext(A,X,B,C),X,maxAttr_ext(A,Y,B,C),Y) :- X=rid(_,_),Y=rid(_,_).
+cdf_term_ext_arg_rep(maxAttr_ext(A,B,X,C),X,maxAttr_ext(A,B,Y,C),Y).
+
+cdf_term_ext_arg_rep(hasAttr_ext(A,X,B),X,classHasAttr_ext(A,Y,B),Y) :- X=rid(_,_), Y=crid(_,_).
+cdf_term_ext_arg_rep(classHasAttr_ext(A,X,B),X,hasAttr_ext(A,Y,B),Y) :- X=crid(_,_), Y=rid(_,_).
+cdf_term_ext_arg_rep(minAttr_ext(A,X,B),X,classHasAttr_ext(A,Y,B),Y) :- X=rid(_,_), Y=crid(_,_).
+cdf_term_ext_arg_rep(maxAttr_ext(A,X,B),X,classHasAttr_ext(A,Y,B),Y) :- X=rid(_,_), Y=crid(_,_).
+
+% update dlrules according to facts in things_to_rename.
+update_dlrule(Cmp,Head,Body,NewHead,NewBody) :-
+	compdlrule(Cmp,Head,Body),
+	rename_dlrule_head(Head,Cmp,NewHead),
+	rename_dlrule_body(Body,Cmp,NewBody),
+	(Head \== NewHead
+	 ->	true
+	 ;	Body \== NewBody
+	).
+
+rename_dlrule_head((CE1,CE2),Cmp,(NCE1,NCE2)) :- !,
+	rename_dlrule_head(CE1,Cmp,NCE1),
+	rename_dlrule_head(CE2,Cmp,NCE2).
+rename_dlrule_head(exists(Rid,Cid),_Cmp,exists(NRid,NCid)) :- !,
+	rename_if_nec(Rid,NRid),
+	rename_if_nec(Cid,NCid).
+rename_dlrule_head(component(Cmp),_,component(Cmp)).
+
+rename_dlrule_body((CE1,CE2),Cmp,(NCE1,NCE2)) :- !,
+	rename_dlrule_body(CE1,Cmp,NCE1),
+	rename_dlrule_body(CE2,Cmp,NCE2).
+rename_dlrule_body(not(Body),Cmp,not(NBody)) :- !,
+	rename_dlrule_body(Body,Cmp,NBody).
+rename_dlrule_body(exists(Rid,Cid),_Cmp,exists(NRid,NCid)) :- !,
+	rename_if_nec(Rid,NRid),
+	rename_if_nec(Cid,NCid).
+rename_dlrule_body(exists_immed(Rid,Cid),_Cmp,exists_immed(NRid,NCid)) :- !,
+	rename_if_nec(Rid,NRid),
+	rename_if_nec(Cid,NCid).
+rename_dlrule_body(Cid,_Cmp,NCid) :- Cid = cid(_,_), !,
+	rename_if_nec(Cid,NCid).
+
+
+rename_if_nec(Id,NId) :- things_to_rename(Id,NId), !.
+rename_if_nec(Id,Id).
+
+
+/************************************************************************/
+/*									*/
+/*	clean_cdf Utility (to be implemented)				*/
+/*									*/
+/*  check_cdf/0 looks through the current cdf and reports		*/
+/*  inconsistencies.							*/
+/*									*/
+/*  clean_cdf/0 looks through a cdf, finds all disconnected entities 	*/
+/*  (those not in the isa hierarich) and obliterates them.  		*/
+/*									*/
+/************************************************************************/
+
+
+end_of_file.
+=======
+:- compiler_options([ciao_directives]).
+
+:- export
+	delete_class_cascade/1,
+	obliterate_class/1,obliterate_classes/1,
+	obliterate_object/1,	obliterate_objects/1,	
+	obliterate_extensional_component/1,
+	retractall_itsobjects/1,
+	retractall_subclasses/1,
+	delete_unattached_ext_things/0,
+	delete_all_things_to_delete/0,
+	rename_things/1, rename_things/0.
+
+:- import
+            immed_isa/2, proper_isa/2,
+            retractallExtTerm/1,
+	    newExtTerm/1,
+	    concrete_component/1,
+	    cdf_id_fields/4
+	from cdf_init_cdf.
+
+:- import cdf_root/1, system_component/1 from cdf_init_cdf.
+
+:- import classHasAttr_ext/3, hasAttr_ext/3, allAttr_ext/3, minAttr_ext/4, maxAttr_ext/4 from usermod.
+
+:- import member/2 from basics.
+
+:- comment(module,"These predicates allow a user of CDF to delete
+large portions of the currently loaded CDF.  They are implmented in a
+way that tries to be efficient for reasonably large sets of deletions.
+").
+
+%% handle caches
+
+:- comment(obliterate_class/1, " @tt{obliterate_class(+ClassID)}
+removes (most) extensional facts that refer to ClassId within the
+ontology.  All its subclasses that are not subclasses of other
+non-deleted concepts are removed.  It also removes objects that become
+disconnected because they are only members of deleted classes. It
+deletes various relations that reference any deleted class or object
+@em{at the top level}.  NB: References to the deleted classes and
+objects that are embedded in produce classes are @em{not} detected and
+are thus @em{not} deleted.
+").
+
+obliterate_class(Cid) :-
+	retractall(things_to_delete(_)),
+	assert(things_to_delete(Cid)),
+	delete_all_things_to_delete.
+
+:- comment(obliterate_objects/1, " @tt{obliterate_objects(+ObjIdList)}
+removes all objects whose ObjID's are in the input list.  It removes
+them from all classes they are in, and it removes all extensional
+relation facts that refer to them @em{at the top level}.  NB:
+References to the deleted objects that are embedded in product classes
+are @em{not} detected and are thus @em{not} deleted. ").
+
+obliterate_objects(ObjList) :-
+	retractall(things_to_delete(_)),
+	(member(Thing,ObjList),
+	 assert(things_to_delete(Thing)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+
+:- comment(obliterate_object/1, " @tt{obliterate_object(+ObjId)}
+removes the object identified by ObjID.  It removes it from all
+classes it is in, and it removes all extensional relation facts that
+refers to it @em{at the top level}.  NB: References to the deleted
+objects that are embedded in product classes are @em{not} detected and
+are thus @em{not} deleted.").
+
+obliterate_object(Oid) :-
+	retractall(things_to_delete(_)),
+	assert(things_to_delete(Oid)),
+	delete_all_things_to_delete.
+
+:- comment(obliterate_classes/1, " @tt{obliterate_classes(+CidList)}
+takes a list of class IDs, removes them from the taxonomy and then
+removes (most) other facts that refer to these classes.  All
+subclasses that are not subclasses of other non-deleted concepts are
+removed.  It also removes objects that become disconnected by being
+members of any deleted class and not a member of any other nondeleted
+class.  It deletes extensional relation facts that reference any
+deleted class or object @em{at the top level}.  NB: References to the
+deleted classes and objects that are embedded in product classes are
+@em{not} detected and are thus @em{not} deleted.").
+
+obliterate_classes(Cids) :-
+	retractall(things_to_delete(_)),
+	(member(Thing,Cids),
+	 assert(things_to_delete(Thing)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+	
+:- comment(retractall_itsobjects/1, " @tt{retractall_itsobjects(+Cid)}
+obliterates all the objects that are immedicate members of Cid.").
+
+retractall_itsobjects(Cid):-
+	retractall(things_to_delete(_)),
+	(Oid = oid(_,_),
+	 immed_isa(Oid,Cid),
+	 assert(things_to_delete(Oid)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+
+retractall_subclasses(PCid):-
+	retractall(things_to_delete(_)),
+	(Cid = cid(_,_),
+	 immed_isa(Cid,PCid),
+	 assert(things_to_delete(Cid)),
+	 fail
+	 ;
+	 true
+	),
+	delete_all_things_to_delete.
+
+
+/* Delete a class, all its subclasses, and all their relations and attributes */
+delete_class_cascade(ACid) :-
+	obliterate_class(ACid).
+
+/* Delete an extensional component, and everything that references it.
+This only works for components whose objects and classes are defined
+extensionally.  */
+
+:- import isa_ext/2 from usermod.
+obliterate_extensional_component(Comp) :-
+	retractall(things_to_delete(_)),
+	(isa_ext(Thing,_),
+	 cdf_id_fields(Thing,_,_,Comp),
+	 assert(things_to_delete(Thing)),
+	 fail
+	 ;
+	 delete_all_things_to_delete
+	).
+
+
+/* Delete all classes and objects that are not immediately connected
+to the isa hierarchy by an isa_ext fact. */
+delete_unattached_ext_things :-
+	retractall(things_to_delete(_)),
+	cdf_term_ext(Term,_Filt),
+	Term \= isa_ext(_,_),
+	call0(Term),
+	cdf_term_ext_arg(Term,Thing),
+	is_a_subthing(Thing,SubThing),
+	\+ isa_ext(SubThing,_),
+	\+ cdf_root(SubThing),
+	cdf_id_fields(SubThing,Id,Prod,Comp),
+	nonvar(Comp),
+	\+ system_component(Comp),
+	(structure(Prod)
+	 ->	\+ approx_prod_isa(Id,Prod,Comp)
+	 ;	true
+	),
+	assert(things_to_delete(SubThing)),
+	fail.
+delete_unattached_ext_things :-
+	delete_all_things_to_delete,
+	fail.
+delete_unattached_ext_things :-
+	abolish_table_pred(local_tabled_isa(_)).
+
+approx_prod_isa(Id,Prod,Comp) :-
+	functor(Prod,Fun,Arity),
+	functor(AbsProd,Fun,Arity),
+	cdf_id_fields(AbsThing,Id,AbsProd,Comp),
+	local_tabled_isa(AbsThing).
+
+:- table local_tabled_isa/1.
+local_tabled_isa(AbsThing) :- isa_ext(AbsThing,_).
+
+/************************************************************************/
+/*									*/
+/*	Mass Delete Utilities						*/
+/*									*/
+/* Caller should assert Oids, Cids, etc. to dynamic predicate		*/
+/* things_to_delete/1, and call delete_all_things_to_delete/0.		*/
+/* It will delete all facts in the extensional database that contains	*/
+/* any class/reln/object in things_to_delete/1.				*/
+/*									*/
+/************************************************************************/
+
+:- import things_to_delete/1 from usermod.
+:- dynamic things_to_delete/1.
+:- index(things_to_delete/1,trie).
+:- dynamic things_in_closure/1.
+:- index(things_in_closure/1,trie).
+
+:- dynamic facts_to_delete/1.
+:- index(facts_to_delete/1,trie).
+
+:- import call0/1 from machine.
+delete_all_things_to_delete :-
+	close_things_to_delete,
+	cdf_term_ext(Goal,Filt),
+	%%conset(myctr,0),
+	retractall(facts_to_delete(_)),
+	(call0(Goal),
+	 (Filt == true
+	  ->	 true
+	  ;	 call0(Filt)
+	 ),
+	 cdf_term_ext_arg(Goal,Thing),
+	 is_a_subthing(Thing,SubThing),
+	 (things_in_closure(SubThing)
+	  ->	 true
+	  ;	 things_to_delete(SubThing)
+	 ),
+	 assert(facts_to_delete(Goal)),
+	 %%coninc(myctr),
+	 fail
+	 ;
+	 facts_to_delete(Fact),
+	 retractallExtTerm(Fact),
+	 fail
+	 %% ;
+	 %%conget(myctr,CNT),
+	 %%writeln(deleted(Goal,CNT)),
+	 %%fail
+	).
+delete_all_things_to_delete :-
+	retractall(facts_to_delete(_)),
+	retractall(things_to_delete(_)),
+	retractall(things_in_closure(_)).
+
+is_a_subthing(Thing,Thing).
+is_a_subthing(Thing,SubThing) :-
+	cdf_id_fields(Thing,_,Prod,Comp),
+	structure(Prod),
+	nonvar(Comp),
+	\+ concrete_component(Comp),
+	Prod =.. [_|ThingList],
+	is_a_subthing_list(ThingList,SubThing).
+
+is_a_subthing_list([Thing|_],SubThing) :-
+	is_a_subthing(Thing,SubThing).
+is_a_subthing_list([_|ThingList],SubThing) :-
+	is_a_subthing_list(ThingList,SubThing).
+
+/* close_things_to_delete/0 adds to the things_to_delete/1 table all
+things that will be disconnected from the taxonomy when all things in
+things_to_delete are deleted. */
+
+%%%:- import conset/2, conget/2, coninc/1 from gensym.
+close_things_to_delete :-
+	write(userout,'closing...'),
+	%%conset(myctr,0),
+	(abolish_table_pred(disconnected(_)),
+	 retractall(things_in_closure(_)),
+	 things_to_delete(Thing),
+	 proper_isa(SubThing,Thing),
+	 disconnected(SubThing),
+	 \+ things_to_delete(SubThing),
+	 \+ things_in_closure(SubThing),
+	 %%coninc(myctr),
+	 assert(things_in_closure(SubThing)),
+	 fail
+	 ;
+	 abolish_table_pred(disconnected(_))
+	),
+	writeln(userout,done).
+	%%conget(myctr,CNT),
+	%%writeln(done(CNT)).
+
+:- table disconnected/1.
+disconnected(X) :-
+	X \== cid('CDF Classes',cdf),
+	(things_to_delete(X)
+	 ->	true
+	 ;	findall(Y,immed_isa(X,Y),Ys),
+		all_disconnected(Ys)
+	).
+
+all_disconnected([]).
+all_disconnected([X|Xs]) :- disconnected(X), all_disconnected(Xs).
+
+cdf_term_ext(hasAttr_ext(_,_,_),true).
+cdf_term_ext(allAttr_ext(_,_,_),true).
+cdf_term_ext(classHasAttr_ext(_,_,_),true).
+cdf_term_ext(minAttr_ext(_,_,_,_),true).
+cdf_term_ext(maxAttr_ext(_,_,_,_),true).
+cdf_term_ext(isa_ext(oid(_,_),_),true).
+cdf_term_ext(isa_ext(Cid,_),\+Cid=oid(_,_)).
+
+cdf_term_ext_arg(isa_ext(X,_),X).
+cdf_term_ext_arg(isa_ext(_,X),X).
+cdf_term_ext_arg(hasAttr_ext(X,_,_),X).
+cdf_term_ext_arg(hasAttr_ext(_,X,_),X).
+cdf_term_ext_arg(hasAttr_ext(_,_,X),X).
+cdf_term_ext_arg(allAttr_ext(X,_,_),X).
+cdf_term_ext_arg(allAttr_ext(_,X,_),X).
+cdf_term_ext_arg(allAttr_ext(_,_,X),X).
+cdf_term_ext_arg(classHasAttr_ext(X,_,_),X).
+cdf_term_ext_arg(classHasAttr_ext(_,X,_),X).
+cdf_term_ext_arg(classHasAttr_ext(_,_,X),X).
+cdf_term_ext_arg(minAttr_ext(X,_,_,_),X).
+cdf_term_ext_arg(minAttr_ext(_,X,_,_),X).
+cdf_term_ext_arg(minAttr_ext(_,_,X,_),X).
+cdf_term_ext_arg(maxAttr_ext(X,_,_,_),X).
+cdf_term_ext_arg(maxAttr_ext(_,X,_,_),X).
+cdf_term_ext_arg(maxAttr_ext(_,_,X,_),X).
+
+
+/************************************************************************/
+/*									*/
+/*	Rename Utility							*/
+/*									*/
+/* rename_things/1 takes a list of pairs of the form OldID>NewID, where	*/
+/* OldID is any ID (Oid,Cid,CRid,...) that is to be renamed to the new	*/
+/* ID NewID.  It handles multiple occurrences of renamings in the same	*/
+/* tuple, transitive renaming (but usually a bad idea), and renaming	*/
+/* within product ID's.  It will loop if there is a cycle in the	*/
+/* renaming (as in e.g. [a>b,b>a].)					*/
+/*									*/
+/* rename_things/0 assumes things_to_rename/2 contains pairs of OldID	*/
+/* and NewID, where OldID is to be renamed to NewID.  Otherwise it	*/
+/* works the same as rename_things/1.					*/
+/*									*/
+/************************************************************************/
+:- import things_to_rename/2 from usermod.
+:- dynamic things_to_rename/2.
+:- index(things_to_rename/2,trie).
+
+:- dynamic facts_to_add/1.
+:- index(facts_to_add/1,trie).
+
+rename_things(RenameList) :-
+	retractall(things_to_rename(_,_)),
+	save_rename_list(RenameList),
+	rename_things.
+
+save_rename_list([]).
+save_rename_list([Old>New|Rest]) :-
+	(Old \== New
+	 ->	assert(things_to_rename(Old,New))
+	 ;	true
+	),
+	save_rename_list(Rest).
+
+rename_things :-
+	cdf_term_ext(Goal,Filt),
+	retractall(facts_to_delete(_)),
+	retractall(facts_to_add(_)),
+
+	(call0(Goal),
+	 (Filt == true
+	  ->	 true
+	  ;	 call0(Filt)
+	 ),
+	 cdf_term_ext_arg_rep(Goal,OldThing,NewGoal,NewThing),
+	 rename_one_subthing(OldThing,NewThing),
+	 assert(facts_to_delete(Goal)),
+	 assert(facts_to_add(NewGoal)),
+	 fail
+	 ;
+	 facts_to_delete(Fact),
+	 retractallExtTerm(Fact),
+	 fail
+	 ;
+	 close_add_facts,
+	 facts_to_add(Fact),
+	 newExtTerm(Fact),
+	 fail
+	).
+rename_things :-
+	retractall(facts_to_delete(_)),
+	retractall(facts_to_add(_)),
+	retractall(things_to_rename(_,_)).
+
+rename_one_subthing(OldThing,NewThing) :-
+	things_to_rename(OldThing,NewThing), !.
+rename_one_subthing(OldThing,NewThing) :-
+	cdf_id_fields(OldThing,Typ,Prod,Comp),
+	structure(Prod),
+	nonvar(Comp),
+	\+ concrete_component(Comp),
+	cdf_id_fields(NewThing,Typ,NewProd,Comp),
+	Prod =.. [Fn|OldThingList],
+	rename_one_subthing_list(OldThingList,NewThingList),
+	NewProd =.. [Fn|NewThingList].
+
+rename_one_subthing_list([OldThing|OldThingList],[NewThing|NewThingList]) :-
+	(rename_one_subthing(OldThing,NewThing),
+	 OldThingList = NewThingList
+	 ;
+	 OldThing = NewThing,
+	 rename_one_subthing_list(OldThingList,NewThingList)
+	).
+
+:- import term_set_arg/4 from machine.
+close_add_facts :-
+	Flag = flag(0),
+	(add_closure_facts_and_fail(Flag)
+	 ;
+	 Flag = flag(1),
+	 !,
+	 term_set_arg(Flag,1,0,1),
+	 close_add_facts
+	).
+close_add_facts.
+
+add_closure_facts_and_fail(Flag):-
+	findall(p(OAddFact,NewAddFact),
+		(facts_to_add(OAddFact),
+		 cdf_term_ext_arg_rep(OAddFact,OldID,NewAddFact,NewID),
+		 rename_one_subthing(OldID,NewID)
+		),
+		MFacts),
+	MFacts \== [],
+	term_set_arg(Flag,1,1,1),
+	member(p(OAddFact,NewAddFact),MFacts),
+	retractall(facts_to_add(OAddFact)),
+	assert(facts_to_add(NewAddFact)),
+	fail.
+
+cdf_term_ext_arg_rep(isa_ext(X,A),X,isa_ext(Y,A),Y).
+cdf_term_ext_arg_rep(isa_ext(A,X),X,isa_ext(A,Y),Y).
+cdf_term_ext_arg_rep(hasAttr_ext(X,A,B),X,hasAttr_ext(Y,A,B),Y).
+cdf_term_ext_arg_rep(hasAttr_ext(A,X,B),X,hasAttr_ext(A,Y,B),Y).
+cdf_term_ext_arg_rep(hasAttr_ext(A,B,X),X,hasAttr_ext(A,B,Y),Y).
+cdf_term_ext_arg_rep(allAttr_ext(X,A,B),X,allAttr_ext(Y,A,B),Y).
+cdf_term_ext_arg_rep(allAttr_ext(A,X,B),X,allAttr_ext(A,Y,B),Y).
+cdf_term_ext_arg_rep(allAttr_ext(A,B,X),X,allAttr_ext(A,B,Y),Y).
+cdf_term_ext_arg_rep(classHasAttr_ext(X,A,B),X,classHasAttr_ext(Y,A,B),Y).
+cdf_term_ext_arg_rep(classHasAttr_ext(A,X,B),X,classHasAttr_ext(A,Y,B),Y).
+cdf_term_ext_arg_rep(classHasAttr_ext(A,B,X),X,classHasAttr_ext(A,B,Y),Y).
+cdf_term_ext_arg_rep(minAttr_ext(X,A,B,C),X,minAttr_ext(Y,A,B,C),Y).
+cdf_term_ext_arg_rep(minAttr_ext(A,X,B,C),X,minAttr_ext(A,Y,B,C),Y).
+cdf_term_ext_arg_rep(minAttr_ext(A,B,X,C),X,minAttr_ext(A,B,Y,C),Y).
+cdf_term_ext_arg_rep(maxAttr_ext(X,A,B,C),X,maxAttr_ext(Y,A,B,C),Y).
+cdf_term_ext_arg_rep(maxAttr_ext(A,X,B,C),X,maxAttr_ext(A,Y,B,C),Y).
+cdf_term_ext_arg_rep(maxAttr_ext(A,B,X,C),X,maxAttr_ext(A,B,Y,C),Y).
+
+end_of_file.

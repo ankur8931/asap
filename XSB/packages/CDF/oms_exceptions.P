@@ -1,0 +1,91 @@
+:- compiler_options([xpp_on,ciao_directives]).
+
+:- document_export oms_warning/2, oms_error/2.
+
+:- import  message/2,messageln/2 from standard.
+
+#include "flag_defs_xsb.h"
+#include "standard.h"
+:- dynamic using_xj/0.
+:- ensure_loaded(xsb_logger).
+	
+:- comment(module,"This module is designed to handle different kinds
+of ""exceptions"" that arise in execution of the OMS.  The word
+""exceptions"" is used to cover both @em{warnings} and @em{errors}.
+An error is defined as an exception that causes a special action
+(usually a message) along with a change in execution; a warning causes
+a special action (again, usually a message) but no change in
+execution.  Accordingly OMS errors are handled via @tt{oms_error/2}
+which uses XSB's catch and throw mechanism, while OMS warnings are
+handled directly by the predicate @tt{oms_warning/2}.
+
+Exceptions and warnings are typed.  While the typing is uncertain at
+this point, the current types are: @tt{update} if the exception arose
+while trying to update the OMS; and @tt{consistency} if the exception
+arose while trying to check the OMS for consistency.
+
+Both @tt{oms_error/2} and @tt{oms_warning/2} check to see if the
+dynamic preicate @tt{using_xj/0} has been defined.  If not, a message
+is written to XSB's standard error or standard warning stream.  If so,
+a message is displayed via a GUI window and, in the case of an error,
+something or other happens to control (currently there are just stubs).
+").
+
+:- comment(oms_error/2,"@tt{oms_error(Type,Error)} can be used to
+handle errors of different types -- currently
+@tt{consistency_warning} and @tt{update_warning}.  Actions taken
+depend on whether @pred{using_xj/0} is defined or not.
+
+In order for @tt{oms_error/2} to work properly, some ancestor,
+@tt{Goal} for it must be called in the scope of a catch statement of
+the form
+
+@tt{catch(Goal,oms_error(Type,List),handle_oms_error(Type,List))}.
+
+Otherwise, @tt{oms_error/2} will be handled by the default error
+handler.
+").
+
+oms_error(Type,List):- 
+	throw(oms_error(Type,List)).
+
+handle_oms_error(Type,List):-
+	concat_comma_list(List,Messages), 
+	log_error('CDF', '', Type, [Messages]).
+/*
+write_oms_error_noxj(Message):- 
+	message('++Error[OMS]: ', STDERR),
+	message('(Consistency) ', STDERR),
+	messageln(Message, STDERR).
+*/
+
+:- comment(oms_warning/2,"OMS warning can be used to handle warnings
+of different types -- currently @tt{consistency_warning} and
+@tt{update_warning}.  Actions taken depend on whether
+@pred{using_xj/0} is defined or not.").
+
+oms_warning(Type,MessageList):-
+	concat_comma_list(MessageList,Messages),
+	log_warn('CDF', '', Type, [Messages]).
+
+oms_warning(Module,Type,MessageList):-
+	concat_comma_list(MessageList,Messages),
+	log_warn(Module, '', Type, [Messages]).
+
+oms_warning(Module,Predicate,Type,MessageList):-
+	concat_comma_list(MessageList,Messages),
+	log_warn(Module, Predicate, Type, [Messages]).
+
+:- import term_to_atom/2, concat_atom/2 from string.
+concat_comma_list(Var, '_'):- var(Var),!.
+concat_comma_list((A,B),Text):- !,
+	(atom(A)
+	 ->	A1 = A
+	 ;	term_to_atom(A,A1)),
+   concat_comma_list(B,Text1),
+   concat_atom([A1,' ',Text1],Text).
+concat_comma_list(A,A1) :-
+	(atom(A)
+	 ->	A1 = A
+	 ;	term_to_atom(A,A1)
+	).

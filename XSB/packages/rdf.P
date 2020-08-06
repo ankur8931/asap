@@ -1,0 +1,167 @@
+/*
+** File: packages/rdf.P
+** Author: Aneesh Ali
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C): 2010, University of Amsterdam
+** Copyright (C) The Research Foundation of SUNY, 2011
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+/*
+This RDF parsing package is adapted from SWI Prolog.
+*/
+
+:- module(rdf,
+	  [ load_rdf/2,			% +File, -Triples
+	    load_rdf/3,			% +File, -Triples, :Options
+	    xml_to_rdf/3,		% +XML, -Triples, +Options
+	    process_rdf/3		% +File, :OnTriples, :Options
+	  ]).
+
+:- use_module(library(sgml), [load_structure/4]).
+:- use_module(option, [option/3]).
+:- use_module(library(lists), [select/3]).
+:- use_module(rdf_parser, [xml_to_plrdf/3,make_rdf_state/3]).	
+:- use_module(rdf_triple, [rdf_triples/2, rdf_start_file/2, rdf_end_file/1]).
+
+:- import storage_delete_keypair/3, storage_insert_keypair/4,
+          storage_find_keypair/3 from storage.
+
+:- bootstrap_package([rdf], rdf),
+	[rdfconfig].
+
+
+%%	load_rdf(+File, -Triples) is det.
+%%	load_rdf(+File, -Triples, :Options) is det.
+%
+%	Parse an XML file holding an RDF term into a list of RDF triples.
+%	see rdf_triple.pl for a definition of the output format. Options:
+%
+%		* base_uri(+URI)
+%		URI to use as base
+%
+%		* expand_foreach(+Bool)
+%		Apply each(Container, Pred, Object) on the members of
+%		Container
+%
+%		* namespaces(-Namespaces:list(NS=URL))
+%		Return list of namespaces declared using xmlns:NS=URL in
+%		the document.  This can be used to update the namespace
+%		list with rdf_register_ns/2.
+%
+%	@see	Use process_rdf/3 for processing large documents in
+%		_|call-back|_ style.
+
+load_rdf(File, Triples) :-
+	load_rdf(File, Triples, []).
+
+load_rdf(File, Triples, Options0) :-
+	entity_options(Options0, EntOptions, Options),
+	init_ns_collect(Options, NSList),
+	load_structure(File,
+		       [ RDFElement
+		       ],
+		       [ dialect(xmlns),
+			 space(sgml),
+			 call(xmlns, rdf:on_xmlns)
+		       | EntOptions
+		       ], _),
+	rdf_start_file(Options, Cleanup),
+	call_cleanup(xml_to_rdf(RDFElement, Triples0, Options),
+		     rdf_end_file(Cleanup)),
+	exit_ns_collect(NSList),
+	post_process(Options, Triples0, Triples).
+
+entity_options([], [], []).
+entity_options([H|T0], Entities, Rest) :-
+	(   H = entity(_,_)
+	->  Entities = [H|ET],
+	    entity_options(T0, ET, Rest)
+	;   Rest = [H|RT],
+	    entity_options(T0, Entities, RT)
+	).
+
+%%load_meta_option(convert_typed_literal).
+
+%%	xml_to_rdf(+XML, -Triples, +Options)
+
+xml_to_rdf(XML, Triples, Options) :-
+	is_list(Options), !,
+	make_rdf_state(Options, State, _),
+	xml_to_plrdf(XML, RDF, State),
+	rdf_triples(RDF, Triples).
+xml_to_rdf(XML, BaseURI, Triples) :-
+	atom(BaseURI), !,
+	xml_to_rdf(XML, Triples, [base_uri(BaseURI)]).
+
+
+		 /*******************************
+		 *	 POST-PROCESSING	*
+		 *******************************/
+
+post_process([], Triples, Triples).
+post_process([expand_foreach(true)|T], Triples0, Triples) :- !,
+	expand_each(Triples0, Triples1),
+	post_process(T, Triples1, Triples).
+post_process([_|T], Triples0, Triples) :- !,
+	post_process(T, Triples0, Triples).
+
+
+		 /*******************************
+		 *	      EXPAND		*
+		 *******************************/
+
+expand_each(Triples0, Triples) :-
+	select(rdf(each(Container), Pred, Object),
+	       Triples0, Triples1), !,
+	each_triples(Triples1, Container, Pred, Object, Triples2),
+	expand_each(Triples2, Triples).
+expand_each(Triples, Triples).
+
+each_triples([], _, _, _, []).
+each_triples([H0|T0], Container, P, O,
+	     [H0, rdf(S,P,O)|T]) :-
+	H0 = rdf(Container, rdf:A, S),
+	member_attribute(A), !,
+	each_triples(T0, Container, P, O, T).
+each_triples([H|T0], Container, P, O, [H|T]) :-
+	each_triples(T0, Container, P, O, T).
+
+member_attribute(A) :-
+	sub_atom(A, 0, _, _, '_').	% must check number?
+
+
+init_ns_collect(Options, NSList) :-
+	(   option(namespaces(NSList), Options, -),
+	    NSList \== (-)
+	->  nb_setval(rdf_nslist, list([]))
+	;   nb_setval(rdf_nslist, -),
+	    NSList = (-)
+	).
+
+exit_ns_collect(NSList) :-
+	(   NSList == (-)
+	->  true
+	;   nb_getval(rdf_nslist, list(NSList))
+	).
+
+nb_setval(K, V) :- storage_delete_keypair(global, K, _),
+	storage_insert_keypair(global, K, V, _).
+
+nb_getval(K, V) :- storage_find_keypair(global, K, V).
+

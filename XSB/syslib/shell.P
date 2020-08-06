@@ -1,0 +1,208 @@
+/* File:      shell.P
+** Author(s): Kostis F. Sagonas, Jiyang Xu, kifer
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: shell.P,v 1.28 2008/10/08 20:46:19 tswift Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on,sysmod]).
+
+#include "celltags_xsb.h"
+#include "system_defs_xsb.h"
+#include "builtin.h"
+#include "syscall_xsb.h"
+#include "extensions_xsb.h"
+
+
+/* Create subprocess. Redirect its standard input to StreamToProc
+   and standard output to StreamFromProc. Prolog program can then read 
+   from StreamFromProc and write to StreamToProc.
+   +CmdAndArglist, -StreamToProc,-StreamFromProc,-StreamFromStderr,-ProcessId
+   Fails, if can't create subprocess
+*/
+spawn_process(Cmd, StreamToProc, StreamFromProc, StreamFromStderr, Pid) :-
+	sys_system(SPAWN_PROCESS,
+		   Cmd,StreamToProc,StreamFromProc,StreamFromStderr,Pid,_).
+
+/* Like spawn_process, but returns error code instead of Pid.
+   XSB doesn't know where the corresponding processes are.
+   However, unlike spawn_process, you can pass any shell command, 
+   including pipes and redirection. */
+shell(Cmd,StreamToProc, StreamFromProc, StreamFromStderr, ErrCode) :-
+	sys_system(SHELL,
+		   Cmd,StreamToProc,StreamFromProc,StreamFromStderr,ErrCode,_).
+shell(Cmd, ErrCode) :- shell(Cmd, none, none, none, ErrCode).
+shell(Cmd) :- shell(Cmd, none, none, none, _).
+
+shell_to_list(Cmd, List,ErrCode) :- 
+	shell(Cmd, none, Output, none, ErrCode),
+ 	file_to_list(Output,List),
+	standard:close(Output).
+
+:- export shell_to_list/4.
+shell_to_list(Cmd, OList,EList,ErrCode) :- 
+	shell(Cmd, none, Ostr, Estr, ErrCode),
+ 	file_to_list(Ostr,OList),
+ 	file_to_list(Estr,EList),
+	standard:close(Ostr),
+	standard:close(Estr).
+
+exec(Cmd) :- sys_system(EXEC,Cmd,_,_,_,_,_).
+
+/* Process table is a list [process(Pid,To,From,Stderr,Cmdline), ...]
+   that represents all active subprocesses */
+get_process_table(ProcessList) :-
+	sys_system(GET_PROCESS_TABLE, ProcessList, _,_,_,_,_).
+
+%% obtain process status
+process_status(Pid, Status) :- sys_system(PROCESS_STATUS,Pid,Status,_,_,_,_).
+
+%% Send signal to process. Currently wait, kill
+process_control(Pid, Signal) :- sys_system(PROCESS_CONTROL,
+					   Pid, Signal, _,_,_,_).
+
+/* darwin, linux-gnu */
+platform(Platform):- 
+	xsb_configuration(os_type,Platform).
+
+%% Sleep for the specified number of seconds
+sleep(Seconds) :- sys_system(SLEEP_FOR_SECS, Seconds,_,_,_,_,_).
+is_plain_file(File) :- sys_system(IS_PLAIN_FILE, File,_,_,_,_,_).
+is_directory(File) :- sys_system(IS_DIRECTORY, File,_,_,_,_,_).
+
+list_directory(Dir,File) :-
+	(   (   atom(Dir)
+	    ;   is_list(Dir),
+		ground(Dir)
+	    ),
+	    var(File)
+	->  (   xsb_configuration(host_os,windows)
+	    ->	(   atom(Dir)
+		->  DDir = [Dir, '/*'] /* */
+		;   append(Dir,'/*',DDir) /* */
+		)
+	    ;	DDir = Dir
+	    ),
+	    sys_system(LIST_DIRECTORY,Handle,DDir,FirstFile,_,_,_),
+	    (	File = FirstFile
+	    ;	list_directory_1(DDir,File,Handle)
+	    )
+	;   abort('list_directory(+Dir,-File) called with wrong modes.')
+	).
+list_directory_1(Dir,File,Handle) :-
+	(   sys_system(LIST_DIRECTORY,Handle,Dir,NewFile,_,_,_)
+	->  (   File = NewFile
+	    ;	list_directory_1(Dir,File,Handle)
+	    )
+	;   fail
+	).
+
+cd(Path) :-
+	(   var(Path)
+	->  abort('Uninstantiated argument 1 of cd/1')
+	;   (   expand_filename(Path,Dir)
+	    ->	slash(Slash),
+		sys_chdir([Dir,Slash],Res),
+		Res =:= 0
+	    ;	abort('Wrong type in argument 1 of cd/1')
+	    )
+	).
+
+copy(Old, New) :- 
+	sys_filecopy(Old, New, Res), Res =:= 0.
+append(Old, New) :- 
+	sys_fileappend(Old, New, Res), Res =:= 0.
+
+rename(Old, New) :- 
+	sys_rename(Old, New, Res), Res =:= 0.
+
+ls :-
+	(   xsb_configuration(host_os,windows)
+	->  shell('dir', Res)
+	;   shell('ls -F',Res)
+	),
+	Res =:= 0.
+
+rm(Name) :- sys_unlink(Name, Res), Res =:= 0.
+
+rmdir(Name) :- sys_rmdir(Name, Res), Res =:= 0.
+
+rmdir_rec(Dir) :-
+	expand_filename(Dir, Dir1),
+	rmdir_rec1(Dir1).
+
+rmdir_rec1(Dir) :-
+	findall(File, list_directory(Dir, File), DirFiles),
+	member(File, DirFiles),
+	\+ File = '.',
+	\+ File = '..',
+	
+	expand_filename([Dir,'/', File], Path),
+	(path_sysop(isdir, Path)
+	 ->	rmdir_rec1(Path)
+	 ;	rm(Path)
+	),
+	fail.
+rmdir_rec1(Dir) :-
+	rmdir(Dir).
+
+
+%% current working directory
+cwd(Name) :- sys_cwd(Name, Res), Res =:= 0.
+
+create_lockfile(Name) :- sys_create(Name,Res), Res >= 0.
+
+edit(File) :- 
+	expand_filename(File, FileName), 
+	shell(['$EDITOR ', '$EDITOR_OPTIONS ', FileName, XSB_SRC_EXTENSION_ATOM]).
+
+% TLS: wanted tilde_ to have a better name.
+expand_filename_no_prepend(In,Out):- 
+	tilde_expand_filename(In,Out).
+
+%% sys_exit(+ExitCode) exit subprocess unconditionally with ExitCode
+sys_exit(ExitCode) :- sys_syscall(SYS_exit,_,ExitCode,_).
+
+%% TLS: adding error checking as I get hit.  Shouldn't add perceptable
+%% time,  given that these are system calls.  At some point, should
+%% probably have a typecheck for 'file'.
+%% Get process id -- Unix and Windows
+sys_pid(Pid)     	    :-	sys_syscall(SYS_getpid, Pid, _, _).
+%% Link file -- Unix only
+sys_link(Source, Dest, Res) :-	sys_syscall(SYS_link, Res, Source, Dest).
+sys_unlink(Path, Res) 	    :-	sys_syscall(SYS_unlink, Res, Path, _).
+sys_chdir(Dir, Res)	    :- 	sys_syscall(SYS_chdir, Res, Dir, _).
+sys_access(File, Mode, Res) :- 	sys_syscall(SYS_access, Res, File, Mode).
+sys_stat(Path, Buff, Res)   :-	sys_syscall(SYS_stat, Res, Path, Buff).
+sys_rename(Old, New, Res)   :-	
+	check_nonvar(Old,'sys_rename/3',1),
+	check_nonvar(New,'sys_rename/3',2),
+	sys_syscall(SYS_rename, Res, Old, New).
+/* current working dir. Res is 0 on success, 1 on failure */
+sys_cwd(Name, Res)   	    :-	sys_syscall(SYS_cwd, Res, Name, _).
+sys_mkdir(Name, Res)   	    :-	sys_syscall(SYS_mkdir, Res, Name, _).
+sys_rmdir(Name, Res)   	    :-	sys_syscall(SYS_rmdir, Res, Name, _).
+sys_filecopy(Source,Dest,Res)  :-  sys_syscall(SYS_filecopy, Res, Source, Dest).
+sys_fileappend(Source,Dest,Res)  :-  sys_syscall(SYS_fileappend, Res, Source, Dest).
+sys_create(Name,Res)      :-  sys_syscall(SYS_create, Res, Name, _).
+
+sys_main_memory(Memory_size):- sys_syscall(SYS_main_memory_size,_,Memory_size,_).

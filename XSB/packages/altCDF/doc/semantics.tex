@@ -1,0 +1,591 @@
+\chapter{The Meaning of Type-0 CDF Instances}
+\label{chap:type0} 
+
+%-------------------------------------------------------------------------------
+\mycomment{
+\subsection{Terminology}
+
+In this paper we use standard logic programming terminology and
+notation (e.g. \cite{Lloy84}), extended with the well-founded
+semantics~\cite{VGR99}. In addition, we commonly make use of notation
+for sentences and formulas in first-order logic.  While most of this
+notation is readily apparent, we sometimes write a first-order formula
+$\phi$ as $\phi[\overline{X}]$, where $\overline{X}$ is a {\em
+superset} of the free variables in $\phi$.
+}
+%-------------------------------------------------------------------------------
+
+Facts in both Type-0 and Type-1 CDF instances are closely related to
+class expressions in description logics.  However, because CDF often
+stores class expressions as Prolog facts in an unconventional way, and
+because description logics may not be familiar to a logic programming
+audience, we present here a somewhat formal introduction to how CDF
+represents knowledge.  Users without a mathematical background can
+ignore the various axioms and formal definitions that are presented in
+this chapter.  Our approach is to introduce a semantics of CDF based
+on a translation of a {\em CDF instance} into a set of first-order
+logic sentences that constitute an {\em Ontology Theory} whose models
+are the models of a CDF instance.  For simplicity of presentation the
+description of CDF instances in this section omits certain details
+about components, extensional facts and intenstional rules, and other
+topics that will be introduced in later chapters.
+
+We illustrate aspects of CDF by means of an example drawn from
+electronic commerce.  Health care organizations, such as hospitals,
+clinics, etc., have difficulties in buying disposable medical devices
+such as sutures, bandages, gloves, and so on.  The difficulty arises
+from the fact that these devices may be quite specialized, for intance
+when they are used in surgery.  At the same time, since these devices
+are disposable, they may need to be purchased frequently.  We consider
+concretly the class of {\em absorbable sutures}, which are used for
+stitching and securing tissues, and which can be absorbed by the human
+body.  Information below is adapted from he U.S. Defence Logistics
+Information Service \url{http://www.dlis.mil}, from the Universal
+Standard Products and Services Classification~\cite{UNSPSC}, as well
+as from websites of various commercial medical supply companies.
+
+\section{Type-0 CDF Instances}
+\label{sec:type0} 
+
+We begin with the syntax of Type-0 instances~\footnote{The syntax for
+identfiers differs in the actual CDF implementation. See
+Section~\ref{sec:instance}.}: 
+
+\begin{definition}[Type-0 Instances: Semantic Level] \label{def:ids}
+A {\em Type-0 CDF instance} is a finite set of ground facts for the
+predicates \pred{isa/2}, \pred{hasAttr/3}, \pred{allAttr/3},
+\pred{classHasAttr/3}, \pred{minAttr/4}, and \pred{maxAttr/4}.  An {\em
+identifier} is either a constant or a term.  The arguments of these
+predicates are {\em concrete identifiers}, where a term $T$ is an
+identifier iff $T$ has the functor symbol {\tt cid/1}, {\tt oid/1},
+{\tt rid/1}, or {\tt crid/1} whose argument is either
+
+\begin{enumerate}
+\item a constant; or 
+\item a term $f(I_1,\ldots,I_n)$ where $I_1,\ldots,I_n$ are identifiers.
+\end{enumerate}
+In the first case, an identifier is called {\em atomic}; in the second
+it is called a {\em product identifier}.
+\end{definition}
+
+Despite the simple syntax of Type-0 CDF instances, their semantics
+differs from the usual semantics assigned to facts in Prolog.
+Identifiers identify sets of objects, or binary relations between
+objects.  Furthermore, the facts of a Type-0 CDF instance can
+implicitly denote inheritance of various relationships among classes
+and objects, as well as inheritance constraints about what
+relationships are allowed.
+
+\subsection{Simple Taxonomies in CDF}
+
+\begin{example} \rm \label{ex:suture1}
+The following CDF instance illustrates a fragment of a taxonomy for
+medical equipment.
+%-------------------------------------------
+{\tt  {\small 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+isa(cid(medicalEquipment),cid('CDF Classes'))  \\
+\> isa(cid(woundCareProducts),cid(medicalEquipment)) \\
+\> \> \>  isa(cid(suturesAndRelatedProducts),cid(woundCareProducts)) \\
+\> \> \> isa(cid(sutures),cid(suturesAndRelatedProducts))  \\
+\> \> \> \> isa(cid(absorbableSutures),cid(sutures))  \\
+\> \> \> \> isa(cid(nonAbsorbableSutures),cid(sutures)) \\
+\> \\
+\> \> \>   isa(oid(sutureU245H),cid(absorbableSutures))  \\
+\> \> \> \> \>   isa(oid(suture547466),cid(sutures)) 
+\end{tabbing} }} 
+%-------------------------------------------
+\noindent
+In CDF, sets of objects are termed {\em classes} to stress the
+informality of its sets from the perspective of set theory, and class
+identifiers have the functor {\tt cid/1}.  One can read the fact
+\begin{verbatim}
+      isa(cid(nonAbsorbableSutures),cid(sutures))
+\end{verbatim}
+as ``all elements in the class {\tt cid(nonAbsorbableSutures)} are
+also in the class {\tt cid(sutures)}'' --- in other words, that {\tt
+cid(nonAbsorbableSutures)} is a subclass of {\tt cid(sutures)}.
+Object identifiers have the functor {\tt oid/1}, and denote classes
+with cardinality 1, or {\em singleton classes}.  The fact
+\begin{verbatim}
+      isa(oid(sutureU245H),cid(absorbableSutures))
+\end{verbatim}
+can be read as ``the element of the singleton class {\tt
+oid(sutureU245H)} is in the class {\tt cid(absorbableSutures)}''.
+Note that {\tt cid(absorbableSutures)} is (potentially) more specific
+than the class {\tt cid(sutures)}, to which {\tt oid(suture547466)}
+belongs.  The class {\tt cid('CDF Classes')} is taken to contain all
+objects in the domain of discourse.  All identifiers in this simple
+taxonomy are atomic.
+
+The decision of whether to denote an entity as an object or as a class
+depends on the use of a given CDF instance.  Here, a given part number
+can specify a number of physical parts, but the physical parts are
+taken to be identical for the purposes of this instance.  However, if
+we were constructing a CDF instance for warehouse management, the
+above objects might be better represented as classes, and the physical
+objects represented as CDF objects.
+\end{example} 
+
+Implicit in the above example is the fact that we use the term {\em
+object identifiers} or {\em objects} to denote singleton classes,
+class identifiers to denote all classes (including singleton classes).
+Elements cannot be denoted directly by CDF facts, but only through
+singleton classes that contain them (and are isomorphic to them).  At
+this point, we can begin defining the semantics of Type-0 CDF
+instances.
+
+%-------------------
+\begin{definition} \label{def:ontolang}
+\index{ontology language} \index{ontology structure} \index{ontology
+theory}
+%
+An {\em ontology language} is a first-order language with equality
+containing the predicates: {\em isClass/1, isElt/1, isRel/1, isCrel/1,
+elt/2, rel/3, and crel/3}, and a countable set of constants.  An {\em
+ontology structure} is a structure defined over an ontology language.
+An {\em ontology theory} is a set of first-order sentences formed over
+an ontology language that includes a set of {\em core axioms}, defined
+below, along with the defined predicate:
+\[
+isObj(X) =_{def} isClass(X) \wedge 
+	((elt(E_1,X) \wedge elt(E_2,X)) \Rightarrow E_1 = E_2)
+\]
+If $\cT$ is an ontology theory formed over an ontology
+language $\cL$, an ontology structure $S$ over $\cL$ is a model of
+$\cT$ if every sentence of $\cT$ is satisfied in $S$.
+\end{definition}
+%-------------------
+
+\index{sorting predicates}
+By convention we assume that the variables in an ontology language are
+indexed by the set of natural numbers.  In this paper we will restrict
+our attention to ontology languages whose constant and function
+symbols are identifiers as described in Definition~\ref{def:ids}.
+Informally $isClass/1$ indicates that an identifier $I$ is a class
+name or {\em class identifier}; $isElt/1$ indicates that an identifier
+$I$ is an element of a class; $isRel/1$ that $I$ is a {\em relation
+identifier}; and $isCrel/1$ that $I$ is a {\em class-relation
+identifier}; and $isObj/1$ that $I$ is an {\em object identifier}.  We
+sometimes call these 5 predicates {\em sorting predicates}.
+$elt(E,C)$ indicates that an element $O$ is a member of class
+identifier $C$; $rel(O_1,R,O_2)$ indicates that an element $E_1$ has a
+$R$ relation to an element $E_2$; and $crel(C_1,R,E)$ indicates that
+the class identifier $C_1$ has a $R$ relation to an object identifier
+$E$.
+
+The first core axiom ensures that objects, classes, relations and
+class-relations all have distinct identifiers within an ontology
+language.
+%-----------
+\begin{axiom}[Distinct Identifiers] \label{ax:distinct}
+\index{axioms!distinct identifiers} 
+\ \\
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $\neg \exists Id [isClass(Id) \wedge (isElt(Id) \vee isRel(Id) 
+	                                 \vee isCrel(Id))] \wedge $ \\
+\> $\neg \exists Id [isObj(Id) \wedge (isElt(Id) \vee isCrel(Id))] \wedge $ \\
+\> $\neg \exists Id [isElt(Id) \wedge isCrel(Id)] $ 
+\end{tabbing}
+\end{axiom} 
+%-----------
+
+$isClass/1$, $isElt/1$, $isRel/1$, and $isCrel/1$ provide an effective
+sorting that extends to all predicates, as the next axiom indicates.
+
+\begin{axiom}[Predicate Sorts] \rm \label{ax:sorts}
+\index{axioms!predicate sorts} 
+\ \\
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> \> $(\forall X,Y) [elt(X,Y) \Rightarrow (isElt(X) \wedge isClass(Y))]
+								\wedge $ \\
+\> \> $(\forall X,Y,Z) [rel(X,Y,Z) \Rightarrow (isElt(X) \wedge isRel(Y)
+					   \wedge isElt(Z))] \wedge  $ \\
+\> \> $(\forall X,Y,Z) [crel(X,Y,Z) \Rightarrow (isClass(X) \wedge isRel(Y)
+					   \wedge isElt(Z))] $ \\
+\end{tabbing}
+\end{axiom} 
+
+%-----------
+
+The following definition of $IdSort$ relates the functors of
+identifiers in a Type-0 CDF instance to their sort in an ontology
+theory.  It will be used in the various instance axioms to enforce
+proper sorting of product identifiers.
+
+\begin{definition}{\bf [IdSort]} \label{def:IdSort}
+Let {\em I} is be an identifier. Then {\em IdSort(I)} is equal to {\em
+isClass(I)} if the main functor symbol of {\em I} is {\tt cid/1}; {\em
+isObj(I)} if the main functor symbol of {\em I} is {\tt oid/1}; {\em
+isRel(I)} if the main functor symbol of {\em I} is {\tt rid/1}; and
+{\em isCrel(I)} if the main functor symbol of {\em I} is {\tt crid/1}.
+\end{definition}
+
+%-----------------------------------------------------------------------------------------
+\mycomment{
+\begin{definition}{\bf [IdSort]}  Let {\em I} is be an identifier, and
+$\cI$ be the set of identifiers occurring in {\em I}. Then
+%
+\[ IdSort(I) =_{def} \bigwedge_{I' \in \cI} Sort(I') \]
+%
+where {\em Sort(I)} is equal to {\em isClass(I)} if the main functor
+symbol of {\em I} is {\tt cid/1}; {\em isObj(I)} if the main functor
+symbol of {\em I} is {\tt oid/1}; {\em isRel(I)} if the main functor
+symbol of {\em I} is {\tt rid/1}; and {\em isCrel(I)} if the main
+functor symbol of {\em I} is {\tt crid/1}.
+\end{definition}
+}
+%-----------------------------------------------------------------------------------------
+
+From Definitions~\ref{def:IdSort} and~\ref{def:ontolang}, it is easy
+to see that for any object identifier $O$, $IdSort(O) = isObj(O)$, and
+$isObj(O) \Rightarrow isClass(O)$.
+
+%-----------
+\begin{instance} [Translation of {\tt isa/2}] \rm 
+For each fact of the form {\tt isa(Id$_1$,Id$_2$)} add the axiom
+\ \\
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $ IdSort(Id_1) \wedge IdSort(Id_2) \wedge $ \\
+
+\> \> $ (((isClass(Id_1) \wedge isClass(Id_2)) \wedge
+	(\forall X) [elt(X,Id_1) \Rightarrow elt(X,Id_2)]) \vee $ \\
+
+%\> \> $ ((isObj(Id_1) \wedge isClass(Id_2)) \wedge elt(Id_1,Id_2)) \vee $ \\
+
+\> \> $ ((isRel(Id_1) \wedge isRel(Id_2)) \wedge
+	(\forall X,Y)[rel(X,Id_1,Y) \Rightarrow rel(X,Id_2,Y)]) \vee $ \\
+
+\> \> $ ((isCrel(Id_1) \wedge isCrel(Id_2)) \wedge
+	(\forall X,Y)[crel(X,Id_1,Y) \Rightarrow crel(X,Id_2,Y)])) $ 
+\end{tabbing}
+denoted as {\tt isa(Id$_1$,Id$_2$)}$^{\cI}$.
+\end{instance}
+%-----------
+
+Note that the reflexive and transitive closure of {\tt isa/2} is an
+immediate consequence of its translation rule.  The next axiom is
+technical.  It is important for the semantics of relations that each
+class have at least one member.
+%-----------
+\begin{axiom}[Non-Empty Classes] \label{ax:nonnull}
+\index{axioms!non-empty classes} 
+\[ (\forall X) [isClass(X) \Rightarrow (\exists Y) [elt(Y,X)]] \]
+\end{axiom} 
+%-----------
+
+The last core axiom for these predicates ensures is that each class is
+a subclass of {\tt cid('CDF Classes')}.
+
+%-----------
+\begin{axiom}[Domain Containment] \label{ax:contained}
+\index{axioms!domain containment} 
+\[ (\forall X) [isElt(X) \Rightarrow elt(X,cid('CDF\ Classes'))] \]
+\end{axiom} 
+%-----------
+
+\subsection{General Relations between Objects in  Classes}
+
+\begin{example} \rm \label{ex:suture2}
+The class {\tt cid(sutures)} can be further defined by its relations
+to other classes.  For instance, an object in {\tt cid(sutures)} may
+have a designation of its needle design indicating whether it is to be
+used for abdominal surgeries, thoracic surgeries, or other purposes.
+This information is indicated by the following CDF facts:
+%
+{\small
+\begin{tabbing}
+fooo\=foo\=foo\=foo\=fooooooooooooooooooooooooooooooo\=ooooooooooooo\=\kill
+\> {\tt isa(rid(hasNeedleDesign),rid('CDF Relations'))} \\
+\\
+\> {\tt isa(cid(domainTypes),cid('CDF Classes'))} \\
+\> \> {\tt isa(cid(needleDesignTypes),cid(domainTypes))} \\
+\> \> \> {\tt isa(cid(Abdominal),cid(needleDesign))} \\
+\> \> \> {\tt isa(cid(Abscisson),cid(needleDesign))} \\
+\> \> \> {\tt isa(cid('Adson Dura'),cid(needleDesign))} \\
+\> {\it \% 126 other values..}  \\
+\\
+\> {\tt allAttr(cid(sutures),rid(hasNeedleDesign),cid(needleDesign))} 
+\end{tabbing}
+}
+%
+\noindent
+The {\tt allAttr/3} fact above can be read as ``if any object in {\tt
+cid(absorbableSutures)} has a {\tt rid(hasNeedleDesign)} relation, it
+must be to an object in the class {\tt cid(needleDesign)}''.  That
+{\tt hasNeedleDesign} is a relation is indicated by clothing it in the
+functor {\tt rid/1}.  This relation is an immediate subclass of all
+{\tt CDF Relations} which in turn is taken to represent the universal
+binary relation over the domain of discourse.  Thus the {\tt
+allAttr/3} fact effectively types the range of {\tt
+rid(hasNeedleDesign)} relations, stemming from objects in the class
+{\tt cid(absorbableSutures)}, but it does not indicate the existence
+of such a relationship.  From a user's point of view, the {\tt
+rid(hasNeedleDesign)} relation can be thought of as an optional
+attribute for a given {\tt cid(absorbableSutures)} object.  Sample
+values for {\tt cid(hasNeedleDesignTypes)} are also given.
+\end{example} 
+
+%-------------------
+
+{\tt allAttr/3} provides a simple but powerful mechanism for
+inheritance of typing among CDF classes:
+%---------------------------------------------------------------------------
+\mycomment{
+, as can be seen from the
+following translation rule, which uses the defined formula
+
+\[ 
+elt(X,Y) =_{def} ((isClass(Y) \wedge elt(X,Y)) \vee (isObj(Y) 
+			\wedge X = Y))
+\] }
+%---------------------------------------------------------------------------
+
+\begin{instance} [Translation of {\tt allAttr/3}] \rm 
+For each fact of the form {\tt allAttr(Id$_1$,Rid,Id$_2$)} add the instance
+axiom: 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $ IdSort(Id_1) \wedge IdSort(Rid) \wedge IdSort(Id_2) \wedge $ \\
+\> \> $ IsClass(Id_1) \wedge IsRel(Rid) \wedge IsClass(Id_2) \wedge $ \\
+\> \> $(\forall X, Y) [(elt(X,Id_1) \wedge rel(X,Rid,Y))
+					\Rightarrow elt(Y,Id_2)] $
+\end{tabbing}
+denoted as {\tt allAttr(Id$_1$,Rid,Id$_2$)$^{\cI}$}.
+\end{instance}
+
+%----------------------
+\mycomment{
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $ IdSort(Id_1) \wedge IdSort(Rid) \wedge IdSort(Id_2) \wedge $ \\
+\> \> $ (IsClass(Id_1) \vee isObj(Id_1)) \wedge IsRel(Rid) \wedge 
+	 (IsClass(Id_2) \vee isObj(Id_2)) \wedge $ \\
+\> \> $(\forall X, Y) [(elt(X,Id_1) \wedge rel(X,Rid,Y))
+					\Rightarrow elt(Y,Id_2)] $
+\end{tabbing}
+}
+%----------------------
+\begin{example} \rm \label{ex:hasAttr}
+While {\tt allAttr/3} indicates a typing for relations, it does not
+indicate that a relation must exist for elements of a class.  This
+statement is made by \pred{hasAttr/3}.  The relation {\tt
+rid(hasPointStyle)} for the class {\tt cid(absorbableSutures)} is
+taken to be required in this schema.  The facts
+%
+{\small
+\begin{tabbing}
+fooo\=foo\=foo\=foo\=foooooooooooooooooooooooooooo\=ooooooooooooo\=\kill
+\> {\tt allAttr(cid(absorbableSutures),rid(hasPointStyle),cid(pointStyle)) } \\
+\> {\tt hasAttr(cid(absorbableSutures),rid(hasPointStyle),cid(pointStyle)) }
+\end{tabbing}
+}
+%
+\noindent
+indicate not only the range of such relationships, but that such a
+relationship must exist.  Indeed, the {\tt hasAttr/3} fact can be read
+as ``all objects in the class {\tt cid(absorbableSutures)} have a
+relation {\tt rid(hasPointStyle)} to an object in the class {\tt
+cid(pointStyle)}''.  The facts below also give information about the
+{\tt rid(hasPointStyle)} relation.
+%
+{\small
+\begin{tabbing}
+fooo\=foo\=foo\=foo\=foooooooooooboooooooooooooooo\=ooooooooooooo\=\kill
+\> {\tt isa(cid(pointStyle),cid(domainTypes))} \\
+\> {\tt isa(cid(regularCuttingEdge),cid(pointStyle))} \\
+\> {\tt isa(cid(reverseCuttingEdge),cid(pointStyle))} \\
+\> {\tt isa(cid(scalpelPoint),cid(pointStyle))} \\
+\> {\it \% 10 other values.} \\
+\\
+\> {\tt hasAttr(oid(sutureU245H),rid(hasPointStyle),cid(regularCuttingEdge))}
+\end{tabbing}
+} 
+\noindent
+The last of the above facts can be read as ``the object {\tt
+oid(sutureU245H)} has a {\tt rid(hasPointStyle)} relation to an object
+in the class {\tt cid(pointStyle)}''.  
+\end{example}
+
+Not surprisingly, the definition of {\tt hasAttr/3} bears some
+similarity to that of {\tt allAttr/3}.
+
+\begin{instance} [Translation of \pred{hasAttr/3}] \rm 
+For each fact of the form {\tt hasAttr(Id$_1$,Rid,Id$_2$)} add the instance
+axiom: 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $ IdSort(Id_1) \wedge IdSort(Id_2) \wedge IdSort(Id_2) \wedge $ \\
+\> \> $ IsClass(Id_1) \wedge IsRel(Rid) \wedge
+	 IsClass(Id_2) \wedge $ \\
+\> \> \> $ (\forall X) [elt(X,Id_1) \Rightarrow \exists Y [rel(X,Rid,Y) 
+					\wedge elt(Y,Id_2)]]$
+\end{tabbing}
+denoted as {\tt hasAttr(Id$_1$,Rid,Id$_2$)$^{\cI}$}.
+\end{instance}
+
+We next turn to relational axioms that indicate the cardinality of
+various relations.
+
+\begin{example} \rm  \label{ex:maxAttr}
+For our purposes, an object in {\tt cid(absorbableSutures)} can be
+thought of as consisting of a needle and a thread~\footnote{The thread
+is often called a suture.  We are assuming for purposes of
+illustration that all sutures are --- in suture-speak --- ``armed''.}.  This is
+represented by the facts:
+%
+{\small
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> {\tt allAttr(cid(absorbableSutures),rid(hasImmedPart),cid(absSutPart)) } \\
+\> {\tt hasAttr(cid(absorbableSutures),rid(hasImmedPart),cid(absSutNeedle)) } \\
+\> {\tt hasAttr(cid(absorbableSutures),rid(hasImmedPart),cid(absSutThread)) } \\
+\\
+\> {\tt isa(cid(absSutPart),cid(suturesAndRelatedProducts))}  \\
+\> \> {\tt isa(cid(absSutNeedle),cid(absSutPart)) } \\
+\> \> {\tt isa(cid(absSutSuture),cid(absSutPart)) } 
+\end{tabbing}
+}
+%
+\noindent
+A needle for an absorbable suture is typically made of a different
+material than the thread to which the needle is attached.  Each of
+these materials may be important in choosing an absorbable suture, and
+each of these materials are unique.  The facts
+%
+{\small
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> {\tt hasAttr(cid(absSutPart),rid(hasMaterial),cid(absSutMaterial)) } \\
+\> {\tt maxAttr(cid(absSutPart),rid(hasMaterial),cid(absSutMaterial),1) } \\
+\\
+\> {\tt isa(cid(material),cid(domainTypes))} \\
+\> {\tt isa(cid(absSutMaterial),cid(material)} \\
+\> {\tt isa(cid(gut),cid(absSutMaterial))} \\
+\> {\tt isa(cid(polyglyconate),cid(absSutMaterial))} \\
+\> {\tt isa(cid(polyglyconicAcid),cid(absSutMaterial)) } 
+\end{tabbing}
+}
+%
+\noindent
+indicate that each {\tt cid(absSutPart)} has a unique material.  The
+{\tt maxAttr/4} fact can be read as ``Each object in the class {\tt
+cid(absSutPart)} has at most 1 {\tt rid(hasMaterial)} relation to an
+object in the class {\tt cid(absSutMaterial)}''.
+\end{example}
+
+In order to define the semantics of {\tt maxAttr/4}, let
+$\exists^{\leq n}X_m[ \phi(X,Z)]$ be defined as an abbreviation for
+the formula
+\[
+  \exists x_m,...,\exists x_{m+n} [\bigwedge_{m \leq i \leq m+n} 
+	\phi(x_i,\overline{z}) 
+	\Rightarrow \bigvee_{m \leq i < j \leq m+n} x_i  = x_j]
+\]
+i.e., for the formula indicating that there are at most $N$ non-equal
+elements satisfying $\phi(x,z)$.  The abbreviation $\exists^{\geq N}$
+is defined similarly to indicate that a formula is satisfied by at
+least $N$ non-equal elements.
+
+\begin{instance} [Translation of {\tt maxAttr/4}] \rm 
+For each fact of the form {\tt maxAttr(Id$_1$,Rid,Id$_2$,N)} add the instance
+axiom: 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $ IdSort(Id_1) \wedge IdSort(Id_2) \wedge IdSort(Id_2) \wedge $ \\
+\> \> $ IsClass(Id_1) \wedge IsRel(Rid) \wedge
+	 (IsClass(Id_2) \wedge $ \\
+\> \> \> $ (\forall X) [elt(X,Id_1) \Rightarrow \exists^{\leq N} Y [rel(X,Rid,Y) 
+					\wedge elt(Y,Id_2)]]$
+\end{tabbing}
+denoted as {\tt maxAttr(Id$_1$,Rid,Id$_2$,N)$^{\cI}$}.
+\end{instance}
+
+A corresponding predicate, {\tt minAttr/4} is used to indicate a
+minimality restriction on a relation.  {\tt minAttr/4} is defined
+similarly to {\tt maxAttr/4}, but using $\exists^{\geq N}$ rather than
+$\exists^{\leq N}$.  Indeed, the predicate
+%
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> hasAttr(cid(absSutPart),rid(hasMaterial),cid(absSutMaterial)).
+\end{tabbing}
+} }
+%
+\noindent
+could be replaced by the predicate
+%
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> minAttr(cid(absSutPart),rid(hasMaterial),cid(absSutMaterial),1).
+\end{tabbing}
+} }
+%
+\subsection{Class Relations}
+Each of the predicates discussed so far are inheritable in their first
+argument.  For instance, the fact
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> hasAttr(cid(absSutPart),rid(hasMaterial),cid(absSutMaterial)).
+\end{tabbing}
+} } 
+%
+\noindent
+implies that every subclass of {\tt cid(absSutures)} will have a
+material in the class {\tt cid(absSutMaterial)}.  However, classes may
+have relations that do {\em not} hold for their subclasses or members.
+For instance, a finite set may have a given cardinality, but its
+proper subsets will have a different cardinality.  Such relations are
+termed {\em class relations}.
+
+%-------------------
+\begin{example} \label{ex:strel} \rm 
+A practical example of a class relation comes from an application that
+may be called part equivalency matching.  In this application, the
+possible attributes for a class of parts are given various weights.
+Two parts match if the sum of the weights of their attributes that
+match are above a given threshold.  The weighting for the {\tt
+cid(pointStyle)} of sutures might be given as:
+%----------------------------------
+{\small 
+{\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> isa(cid(pointStyleWeight),cid('CDF Classes')) \\
+\> \> isa(cid(highWeight),cid(pointStyleWeight)) \\
+\> \> isa(cid(lowWeight),cid(pointStyleWeight)) \\
+\\
+\> classHasAttr(cid(sutures),crid(pointStyleWeight),cid(highWeight))
+\end{tabbing}
+} }
+%----------------------------------
+\noindent
+The {\tt classHasAttr/3} fact can be read as ``the class {\tt
+cid(sutures)} has a {\tt crid(pointStyleWeight)} relation to an object
+in {\tt cid(highWeight)}.  Matching weights are made non-inheritable
+via {\tt classHasAttr/3} because a weight may depend on a given
+classification of a part.  For instance if a part were classified as a
+{\tt cid(nonAbsorbableSuture)}, its {\tt cid(pointStyle)} might weigh
+less (or more) for determining whether two sutures are equivalent.
+\end{example}
+%------------------
+\begin{instance} [Translation of {\tt classHasAttr/3}] \rm 
+For each fact of the form {\tt classHasAttr(Id$_1$,CRid,Id$_2$)} add the
+instance axiom: 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> $ IdSort(Id_1) \wedge IdSort(CRid) \wedge IdSort(Id_2) \wedge $ \\
+\> \> $ IsClass(Id_1) \wedge IsCrel(CRid) \wedge isClass(Id_2) \wedge $ \\
+\> \> \> $ (\exists X) [elt(X,Id_2) \wedge crel(Id_1,CRid,X)] $
+\end{tabbing}
+denoted as {\tt classHasAttr(Id$_1$,Rid,Id$_2$)$^{\cI}$}.
+\end{instance}
+%----------
+

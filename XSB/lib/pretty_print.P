@@ -1,0 +1,193 @@
+/* File:      pretty_print.P
+** Code from Bart Demoen and Ciao combined by Swift.  Any bugs are likely mine.
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: pretty_print.P,v 1.10 2011-05-08 19:12:43 tswift Exp $
+** 
+*/
+
+:- export pretty_print/1.
+:- export pretty_print/2.
+
+:- dynamic user_replacement_hook/2.
+:- import user_replacement_hook/2 from usermod.
+:- import call0/1 from machine.
+
+:- import numbervars/3 from num_vars.
+
+:- import (dynamic)/1 from assert.
+:- import nl/0 from standard.
+:- import set_output/1, writeln/1, writeq/1 from standard.
+:- import tab/1 from standard.
+:- import put/1 from standard.
+:- import (\=)/2 from standard.
+:- import write/1 from standard.
+:- import copy_term/2 from basics.
+
+:- import current_output/1 from curr_sym.
+
+pretty_print(Stream,List):- 
+	current_output(OldStream),
+	set_output(Stream),
+	pretty_print(List),
+	set_output(OldStream).	
+
+pretty_print([]):- !.
+pretty_print([(Cl,Dict)|T]) :- !,
+	pretty_print_clause(Cl,Dict),
+	pretty_print(T).
+pretty_print([Cl|T]) :- !,
+	pretty_print_clause(Cl),
+	pretty_print(T).
+pretty_print((Cl,Dict)) :- !,
+	pretty_print_clause(Cl,Dict).
+pretty_print(Cl) :- 
+	pretty_print_clause(Cl).
+
+pretty_print_clause(Cl):- 
+	instantiate_term([],Cl),
+	ppfail(Cl),
+	(separator(yes) -> nl ; true).
+pretty_print_clause(Clause,Dict) :-
+	instantiate_term(Dict,Clause),
+	ppfail(Clause),
+	(separator(yes) -> nl ; true).
+
+instantiate_term([],Clause):- !,numbervars(Clause,0,_).
+instantiate_term(Dict,Clause):- 
+	instantiate_term_1(Dict,Clause).
+
+instantiate_term_1([],Clause):- 
+	copy_term(Clause,Clause_copy),
+	numbervars(Clause_copy,1,Num),
+	NegNum is 0 - Num,
+	numbervars(Clause,NegNum,_).
+instantiate_term_1([Const = Var|R],Clause):- 
+	'$VAR'(Const) = Var,
+	instantiate_term_1(R,Clause).
+
+/* used for writing out terms not in XSB syntax (e.g. ASP weight constraints) */
+replacement_hook(A):- 
+	user_replacement_hook(A,Call),!,
+	call0(Call).
+replacement_hook(H):- 
+%	write_term(H,[quoted(true),numbervars(true)]).  % write_term not quite right.
+	writeq(H).
+
+separator(yes).  % or no.
+
+ppfail(Clause):- pretty_print1(Clause),fail ; true.
+
+pretty_print1(directive(D)):- !,
+	write(':- '), 
+	replacement_hook(D).
+pretty_print1((H :- B)) :-
+            !,
+	pretty_print2(H,B).
+pretty_print1(H):-
+	pretty_print2(H,true).
+
+pretty_print2(H,true) :- !, 	replacement_hook(H),write(' .'),nl.
+pretty_print2(H,!) :- !, pretty_print3(H,0), write(' :- !.').
+pretty_print2(H,B) :- pretty_print3(H,0), write(' :-'), nl, pretty_print3(B,8),
+	                 writeln(' .').
+
+pretty_print3((A,B),Space) :- !,
+	pretty_print3(A,Space),
+	put(0',),nl,
+	pretty_print3(B,Space).
+pretty_print3((A->B;C),Space) :- !,
+	tab(Space), put(0'(),
+	pretty_print_ite((A->B;C),Space),nl,
+	tab(Space), put(0')).
+pretty_print3((A->B),Space) :- !,
+	tab(Space), put(0'(), nl,
+	Space1 is Space+2,
+	Space2 is Space+5,
+	pretty_print3(A,Space1),
+	write(' ->'), nl,
+	pretty_print3(B,Space2),nl,
+	tab(Space), put(0')).
+pretty_print3((A;B),Space) :- !,
+	tab(Space), put(0'(), nl,
+	pretty_print_disj((A;B),Space),nl,
+	tab(Space), put(0')).
+pretty_print3(A:G,Space) :- !,
+ 	tab(Space),
+	replacement_hook(A), put(0':), replacement_hook(G).
+pretty_print3(A,Space) :-
+ 	tab(Space),
+	replacement_hook(A).
+
+pretty_print_ite(G,Space) :-
+	Space1 is Space+2,
+	Space2 is Space+5,
+	( G = (A->B;C) ->
+		( simple_goal(A) ->
+			pretty_print3(A,2)
+		;	
+			nl,
+			pretty_print3(A,Space1)
+		),
+		write(' ->'),
+		nl,
+		pretty_print3(B,Space2),nl,
+		tab(Space), put(0';), 
+		pretty_print_ite(C,Space)
+	; G = (A -> B) ->
+		( simple_goal(A) ->
+			pretty_print3(A,2)
+		;
+			nl,
+			pretty_print3(A,Space1)
+		),
+		write(' ->'),
+		nl,
+		pretty_print3(B,Space2)
+	;
+		nl,
+		pretty_print3(G,Space2)
+	).
+
+pretty_print_disj(G,Space) :-
+	Space1 is Space+5,
+	( G = (A;B), A \= (_ -> _) -> 
+		pretty_print_disj(A,Space),nl,
+		tab(Space), put(0';), nl,
+		pretty_print_disj(B,Space)
+	;
+		pretty_print3(G,Space1)
+	).
+
+simple_goal(G) :-
+	G \= (_ , _),
+	G \= (_ ; _),
+	G \= (_ -> _).
+
+end_of_file.
+
+:- import writeq/1,
+	  write/1,
+          nl/0,
+	  put/1,
+	  tab/1,
+	  (\=)/2,
+	  (=..)/2,
+	  atomic/1
+   from standard.

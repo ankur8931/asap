@@ -1,0 +1,597 @@
+
+<style>
+<!--
+div.Section1
+	{page:Section1;}
+span.SpellE
+	{}
+span.GramE
+	{}
+-->
+</style>
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber1">
+    <tr>
+      <td>
+      <a href="../index.htm">
+      <img border="0" src="w4small.GIF" width="101" height="101"></a></td>
+      <td>
+      <p align="center"><span lang="pt"><font face="Arial" size="7">MODULE IRI</font></span></td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center">&nbsp;</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center"><font face="Arial">(c)
+      <a href="http://centria.di.fct.unl.pt/~cd">Carlos Viegas Damásio</a>,
+      <span lang="pt">October </span>2003</font></td>
+    </tr>
+  </table>
+  </center>
+</div>
+<p align="left">&nbsp;</p>
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="5" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber2">
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF"><span lang="pt">
+      <a name="sec1"></a>1.
+      </span>Description</font></td>
+    </tr>
+    <tr>
+      <td width="100%">This module implements a set of library predicates for 
+      parsing and working with IRI references, according to RFC 2396 and RFC 
+      2732 and the draft proposals of RFC 2396 bis and Internationalized 
+      Resource Identifiers:<ul>
+        <li>This module implements an IRI parser and resolution of IRI 
+        references. </li>
+        <li>It also provides conversion predicates from atoms and strings to IRI 
+        refs, and vice-versa. </li>
+        <li>The mapping of IRIs to ordinary URIs is also supported. </li>
+        <li>Resolves IRI references according to RFC 2396 bis.</li>
+      </ul>
+      <p>Currently, the parser does not implement a full parser of IPv4 and IPv6 
+      addresses, i.e. some invalid IPv4 and IPv6 addressed may be recognized. 
+      Since this module depends on draft specifications, the user is advised to 
+      restrict the usage of this module to the parsing of ordinary URI 
+      references.</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">
+      <a name="sec2"></a>2. Internationalized Resource Identifiers References 
+      Representation</font></span><p>The user can use this module to construct a 
+      Prolog term representation of Internationalized Resource Identifiers 
+      References and to resolve them. Basically, the IRIs can be parsed from -1 
+      terminated lists of Unicode character codes or from atom names encoding 
+      IRIs in UTF-8. In both situations, the following term is constructed when 
+      a syntactically correct IRI is provided:</p>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="100%" id="AutoNumber3">
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt"><b>Internationalized 
+          Resource Identifiers References Representation</b></span></td>
+        </tr>
+        <tr>
+          <td width="100%" colspan="2"><span lang="pt">
+          iriref(Scheme,Authority,Path,Query,Fragment)</span></td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">Scheme:</span></td>
+          <td width="84%">The term <i>scheme( ListOfCodes )</i> represents an 
+          existing scheme component part in the IRI reference, where ListOfCodes 
+          is a list of Unicode character codes. <br>
+          The empty list <i>[]</i> if there is no scheme component in the IRI 
+          reference.</td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">Authority:</span></td>
+          <td width="84%">The term <i>authority( UserInfo, Host, Port )</i>, 
+          where UserInfo, Host, and Port are (possibly empty) lists of Unicode 
+          character codes.<br>
+          The empty list <i>[]</i> if there is no authority component part in 
+          the IRI reference.</td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">Path:</span></td>
+          <td width="84%">The term <i>path( rel, Segments ) </i>or<i> path( abs, 
+          Segments) </i>represents either an relative or absolute path. The 
+          Segments are (possibly empty)&nbsp; lists of terms of the form <i>
+          segment(ListOfCodes)</i>, where ListOfCodes is a (possibly empty) list 
+          of Unicode character codes.<br>
+          The empty list <i>[]</i> if there is no path component.</td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">Query:</span></td>
+          <td width="84%">The term <i>query( ListOfCodes ) </i>represents an 
+          existing query component part in the IRI reference, where ListOfCodes 
+          is a list of Unicode character codes.<br>
+          The empty list <i>[]</i> if there is no query component in the IRI 
+          reference.</td>
+        </tr>
+        <tr>
+          <td width="16%"><span lang="pt">Fragment:</span></td>
+          <td width="84%">The term <i>fragment( ListOfCodes )</i> represents an 
+          existing fragment component in the IRI reference, where ListOfCodes is 
+          a list of Unicode character codes.<br>
+          The empty list <i>[]</i> if there is no fragment part in the IRI.</td>
+        </tr>
+      </table>
+      <p>The main predicates are <b>parseIRIref/2</b>,<b>&nbsp; parseIRIref/3
+      </b>and <b>atom2iriref/2</b>, for parsing and construction of IRI 
+      Reference term representation, and <b>resolveIRIref/3</b> for resolution 
+      of relative references with respect to a base IRI. The separators of the 
+      several IRI components are not mantained in the IRI reference term 
+      representation, i.e. '<font face="Courier New">:</font>','<font face="Courier New">@</font>','<font face="Courier New">/</font>','<font face="Courier New">&amp;</font>', 
+      and '<font face="Courier New">#</font>'.</p>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">
+      <a name="sec3"></a>3. Installation of the IRI Module</font></span><ol>
+        <li>Unpack the <a href="iri-1.0-beta.zip">package</a> containing the 
+        source files to a library directory. This package should contain the 
+        following files:<ul>
+          <li>&nbsp;<b>iri.P</b> and <b>iriparse.P</b>. The latest version of <b>
+          utilities.P</b> and <b>builtins.P</b> should also be available, and 
+          are included in the package.</li>
+          <li>The file <b>iriparse.G</b>, containing the source code for 
+          generating <b>iriparse.P</b>, if necessary. To generate <b>iriparse.P</b> 
+          the user should use our lookup DCG parser generator.</li>
+          <li>This user's manual and the file <b>testiri.P</b> are also 
+          provided. The test file illustrates the parsing and resolution of 
+          IRIs.</li>
+        </ul>
+        </li>
+        <li>Compile the main file with the goal
+        <font face="Courier New">?-[iri]</font>.</li>
+        <li>The module can be tested by compiling the <b>testiri.P</b>. and 
+        executing the goals <font face="Courier New">?- testiris</font>. and
+        <font face="Courier New">?- testresolution</font>. </li>
+        <li>The module predicates can be used resorting to import declarations. 
+        The full set of predicates is described in the following section.</li>
+      </ol>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">
+      <a name="sec4"></a>4. Usage of the IRI Module</font></span><p>
+      <font face="Arial Black" color="#0000FF">4.1 Parsing of IRI references:</font></p>
+      <p><font size="2">IRI references can be parsed using <b>parseIRIref/2</b> 
+      and <b>parseIRIref/3</b>. For efficiency, the programmer should use <b>
+      parseIRIref/2</b> which requires terminated lists of Unicode character 
+      codes.</font></p>
+      <font SIZE="2">
+      <ul>
+        <li><font face="Courier New">parseIRIref( + TermUCSList, IRIref )</font></li>
+      </ul>
+      <blockquote>
+        <p>Given a list of Unicode character codes, terminated with -1, <b>
+        parseIRIref/2</b> returns the term representation of the IRI reference. 
+        Fails if the first argument is not a syntactically correct IRI 
+        reference. Notice that separators of the several&nbsp; IRI components do 
+        not appear in the IRI reference term representation.<br>
+        The production ihostname of Internationalized Resource Identifiers is 
+        not fully implemented: it is only checked if the ihostname part does not 
+        contain illegal characters. The syntax of IPv6 addresses is not checked, 
+        and IPv4 addresses are checked only if UserInfo is present.</p>
+        <p><b><font color="#FF0000">Example:</font></b></p>
+        <p><font face="Courier New">| ?- append( 
+        &quot;http://www.ics.uci.edu/pub/ietf/uri/historical.html#WARNING&quot;, [-1], 
+        _Codes ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; parseIRIref( _Codes, Ref ).<br>
+        <br>
+        Ref = iriref(scheme([104,116,116,112]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        authority([],[119,119,119,46,105,99,115,46,117,99,105,46,101,100,117],[]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        path(abs,[segment([112,117,98]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        segment([105,101,116,102]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        segment([117,114,105]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        segment([104,105,115,116,111,114,105,99,97,108,46,104,116,109,108])<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        ]<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        ),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        fragment([87,65,82,78,73,78,71])<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; );</font></p>
+      </blockquote>
+      <ul>
+        <li><font face="Courier New">parseIRIref( + Terminated, + ListOfCodes, 
+        IRIref )</font></li>
+      </ul>
+      <blockquote>
+        <p>The first argument <font face="Courier New">Terminated</font> may 
+        take the values <font face="Courier New">yes</font> or
+        <font face="Courier New">no</font>, indicating respectively whether the 
+        2nd argument list of Unicode character codes is terminated or not. A 
+        call of the form <font face="Courier New">parseIRIref( yes, ListOfCodes, 
+        IRIref )</font> is equivalent to <font face="Courier New">parseIRIref( 
+        ListOfCodes, IRI )</font>. If the first argument is
+        <font face="Courier New">no</font>, then the symbol -1 is appended to 
+        the 2nd argument and <b>parseIRIref/2</b> is called. Thus, this second 
+        form should be used sparingly.</p>
+      </blockquote>
+      <p>&nbsp;</p>
+      </font>
+      <p><font face="Arial Black" color="#0000FF">4.2 Testing and Inspection of 
+      IRI reference terms:</font></p>
+      <font SIZE="2">
+      <p>The following set of predicates determine the type of IRI reference 
+      parsed or constructed:</p>
+      <ul>
+        <li><font face="Courier New">isIRIref(+ IRIref )</font><br>
+        <br>
+        This predicates succeeds when its argument is an IRI term function 
+        symbol. For efficiency, it does not check if its component arguments are 
+        correct.<br>
+&nbsp;</li>
+        <li><font face="Courier New">isIRI(+ IRIref )</font><br>
+        <br>
+        This predicates succeed when its argument is an IRI, i.e. an IRI 
+        reference with a non-empty scheme component.<br>
+&nbsp;</li>
+        <li><font face="Courier New">isAbsoluteIRI(+ IRIref )</font><br>
+        <br>
+        This predicates succeed when its argument is an absolute IRI, i.e. an 
+        IRI without fragment part.<br>
+&nbsp;</li>
+        <li><font face="Courier New">isRelativeIRI(+ IRIref )</font><br>
+        <br>
+        This predicates succeed when its argument is a relative IRI, i.e. an IRI 
+        reference with an empty scheme component.</li>
+      </ul>
+      <p>To obtain the several components of an IRI reference term, the 
+      following predicates may be used:</p>
+      <ul>
+        <li><font face="Courier New">getIRIrefScheme(+ IRIref,Scheme)<br>
+        <br>
+        </font>Obtains the scheme component of a given IRI reference. The scheme 
+        component is a term of the form <i>scheme( ListOfCodes )</i> or an empty 
+        list, as described in <a href="#sec2">Section 2</a>.<br>
+&nbsp;</li>
+        <li><font face="Courier New">getIRIrefAuthority(+ IRIref,Authority)<br>
+        <br>
+        </font>Obtains the authority component of a given IRI reference. The 
+        authority component is a term of the form <i>authority( UserInfo, Host, 
+        Port)</i> or an empty list, as described in <a href="#sec2">Section 2</a>.<br>
+&nbsp;</li>
+        <li><font face="Courier New">getIRIrefPath(+ IRIref,Path)<br>
+        <br>
+        </font>Obtains the path component of a given IRI reference. The path 
+        component is a term of the form <i>path( AbsRel, Segments )</i> or an 
+        empty list, as described in <a href="#sec2">Section 2</a>.<br>
+&nbsp;</li>
+        <li><font face="Courier New">getIRIrefQuery(+ IRIref,Query)<br>
+        <br>
+        </font>Obtains the query component of a given IRI reference. The query 
+        component is a term of the form <i>query( ListOfCodes )</i> or an empty 
+        list, as described in <a href="#sec2">Section 2</a>.<br>
+&nbsp;</li>
+        <li><font face="Courier New">getIRIrefFragment(+ IRIref,Fragment)<br>
+        <br>
+        </font>Obtains the fragment component of a given IRI reference. The 
+        fragment component is a term of the form <i>fragment( ListOfCodes )</i> 
+        or an empty list, as described in <a href="#sec2">Section 2</a>.<br>
+&nbsp;</li>
+      </ul>
+      </font>
+      <p><font face="Arial Black" color="#0000FF">4.3 Construction of IRI 
+      references:</font></p>
+      <p>The next predicates provide mechanisms to dynamically construct IRI 
+      references. The advised method to construct IRIs is to parse them from 
+      lists of Unicode character codes. The predicates described in this section 
+      should be used with care since no checking of arguments is performed. </p>
+      <ul>
+        <li><font face="Courier New"><span class="SpellE"><span class="GramE">
+        <font size="2"><span style="font-size: 10pt">createEmptyIRI</span></font></span></span><span class="GramE"><font size="2"><span style="font-size: 10pt">ref(</span></font></span><font size="2"><span style="font-size: 10pt"> 
+        IRIref )<br>
+        <br>
+        </span></font></font>This predicate creates an empty IRI reference<br>
+&nbsp;</li>
+        <li><font face="Courier New"><span class="SpellE"><span class="GramE">
+        <font size="2"><span style="font-size: 10pt">createIRI</span></font></span></span><span class="GramE"><font size="2"><span style="font-size: 10pt">ref(</span></font></span><font size="2"><span style="font-size: 10pt"> 
+        + Scheme, + Authority, + Path, + Query, + Fragment, IRIref )<br>
+        <br>
+        </span></font></font>This predicate creates an IRI reference from the 
+        several components of the IRI reference. The input arguments are either 
+        empty lists or component terms as described in <a href="#sec2">Section 2</a> 
+        above.<br>
+        <br>
+&nbsp;</li>
+        <li><font face="Courier New"><span class="SpellE"><span class="GramE">
+        <font size="2"><span style="font-size: 10pt">setIRIrefScheme</span></font></span></span><span class="GramE"><font size="2"><span style="font-size: 10pt">(</span></font></span><font size="2"><span style="font-size: 10pt"> 
+        + <span class="SpellE">OldIRIref</span>, + Scheme, <span class="SpellE">
+        NewIRIref</span> )<br>
+        <br>
+        </span></font></font>The predicate <b>setIRIrefScheme/3</b> replaces&nbsp; 
+        the scheme component in the IRI reference term <font face="Courier New">
+        OldIRIref</font> by the list of Unicode character codes in argument
+        <font face="Courier New">Scheme</font>, returning the new IRI reference 
+        term in the last argument <font face="Courier New">NewIRIref</font>.<br>
+&nbsp;</li>
+        <li><font face="Courier"><span class="SpellE"><span class="GramE">
+        <font size="2"><span style="font-size: 10pt">setIRIrefAuthority</span></font></span></span><span class="GramE"><font size="2"><span style="font-size: 10pt">(</span></font></span></font><font size="2"><span style="font-size: 10pt"><font face="Courier"> 
+        + <span class="SpellE">OldIRIref</span>, + <span class="SpellE">UserInfo</span>, 
+        + Host, + Port, <span class="SpellE">NewIRIref</span> )<br>
+        </font><br>
+        </span></font>The predicate <b>setIRIrefAuthority/5</b> replaces the 
+        authority component in the IRI term <font face="Courier New">OldIRIref</font> 
+        by the authority term constructed from the lists of Unicode character 
+        codes arguments <font face="Courier New">UserInfo</font>,
+        <font face="Courier New">Host</font> and<font face="Courier New"> Port.</font> 
+        The new IRI reference term is returned in the last argument
+        <font face="Courier New">NewIRIref.<br>
+&nbsp;</font></li>
+        <li><font face="Courier"><span class="SpellE"><span class="GramE">
+        <font size="2"><span style="font-size: 10pt">setIRIref</span></font></span></span><span class="GramE"><font size="2"><span style="font-size: 10pt">Path(</span></font></span></font><font size="2"><span style="font-size: 10pt"><font face="Courier"> 
+        + <span class="SpellE">OldIRIref</span>, + <span class="SpellE">AbsRel</span>, 
+        + Path, <span class="SpellE">NewIRIref</span> )<br>
+        </font><br>
+        </span></font>The predicate <b>setIRIrefPath/5</b> replaces&nbsp; the 
+        path component in the IRI term <font face="Courier New">OldIRIref</font> 
+        by the path term constructed from the list of segments in argument
+        <font face="Courier New">Path</font>, and the flag
+        <font face="Courier New">AbsRel</font>, which may take the values
+        <font face="Courier New">abs</font> or <font face="Courier New">rel</font>. 
+        The new IRI reference term is returned in the last argument
+        <font face="Courier New">NewIRIref</font>.<br>
+&nbsp;</li>
+        <li><font face="Courier New"><span class="SpellE"><span class="GramE">
+        <font size="2"><span style="font-size: 10pt">setIRIrefQuery</span></font></span></span><span class="GramE"><font size="2"><span style="font-size: 10pt">(</span></font></span><font size="2"><span style="font-size: 10pt"> 
+        + <span class="SpellE">OldIRIref</span>, + Query, <span class="SpellE">
+        NewIRIref</span> )<br>
+        <br>
+        </span></font></font>The predicate <b>setIRIrefQuery/3</b> replaces the 
+        query component in the IRI reference term <font face="Courier New">
+        OldIRIref</font> by the list of Unicode character codes in argument
+        <font face="Courier New">Query</font>, returning the new IRI reference 
+        term in the last argument <font face="Courier New">NewIRIref</font>.<br>
+&nbsp;</li>
+        <li><font face="Courier New"><span class="SpellE"><span class="GramE">
+        <font size="2"><span style="font-size: 10pt">setIRIrefFragment</span></font></span></span><span class="GramE"><font size="2"><span style="font-size: 10pt">(</span></font></span><font size="2"><span style="font-size: 10pt"> 
+        + <span class="SpellE">OldIRIref</span>, + Query, <span class="SpellE">
+        NewIRIref</span> )<br>
+        <br>
+        </span></font></font>The predicate <b>setIRIrefFragment/3</b> replaces 
+        the fragment component in the IRI reference term
+        <font face="Courier New">OldIRIref</font> by the list of Unicode 
+        character codes in argument <font face="Courier New">Query</font>, 
+        returning the new IRI reference term in the last argument
+        <font face="Courier New">NewIRIref</font>.</li>
+      </ul>
+      <p><font face="Arial Black" color="#0000FF">4.4 Resolution of IRI 
+      references:</font></p>
+      <font SIZE="2">
+      <p>The IRI module implements resolution of IRI references according to the 
+      algorithms described in RFC 2396 bis. Therefore, empty references are 
+      allowed and abnormal relative path &quot;..&quot; segments are removed from the 
+      resulting IRI.</p>
+      <ul>
+        <li><font face="Courier New">resolveIRIref( + IRIref, + BaseIRI, ResIRI)<br>
+        </font><br>
+        The first argument of <b>resolveIRIref/3</b> is an arbitrary IRI 
+        reference term, while the <font face="Courier New">BaseIRI </font>should 
+        be an IRI term, i.e. with scheme component part. The resolved IRI is 
+        returned in the last argument.<br>
+        <br>
+        <font color="#FF0000"><b>Example:</b></font><br>
+        <br>
+        <font face="Courier New">| ?- atom2iriref( 
+        'http://www.example.com:8080/a/b/c', BaseIRI ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; atom2iriref( '../x/y&amp;query#123', RelIRI ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; resolveIRIref( RelIRI, BaseIRI, ResIRI ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; iriref2atom( ResIRI, Resolved ).<br>
+        <br>
+        BaseIRI = iriref(scheme([104,116,116,112]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        authority([],[119,119,119,46,101,120,97,109,112,108,101,46,99,111,109],[56,48,56,48]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        path(abs,[segment([97]),segment([98]),segment([99])]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        [],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        []<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        )<br>
+        RelIRI&nbsp; = iriref([],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        [],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        path(rel,[segment([46,46]),segment([120]),segment([121,38,113,117,101,114,121])]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        [],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        fragment([49,50,51])<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        )<br>
+        ResIRI&nbsp; = iriref(scheme([104,116,116,112]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        authority([],[119,119,119,46,101,120,97,109,112,108,101,46,99,111,109],[56,48,56,48]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        path(abs,[segment([97]),segment([120]),segment([121,38,113,117,101,114,121])]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        [],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        fragment([49,50,51])<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        )<br>
+        Resolved = http://www.example.com:8080/a/x/y&amp;query#123;</font></li>
+      </ul>
+      <p>&nbsp;</p>
+      </font>
+      <p><font color="#0000FF" face="Arial Black">4.5 Conversion and mapping of 
+      IRI references</font></p>
+      <font SIZE="2">
+      <ul>
+        <li><font face="Courier New">atom2iriref( + AtomInUTF8, IRIref).<br>
+        </font><br>
+        This predicate converts an IRI reference represented as an UTF8 sequence 
+        of octets to the IRI ref term representation. It fails if the atom is 
+        not a syntactically correct IRI reference.<br>
+&nbsp;</li>
+        <li><font face="Courier New">iriref2atom( + IRIref, AtomInUTF8 ).</font><br>
+        <br>
+        Predicate iriref2atom/2 converts the IRI reference term representation 
+        to an Atom in UTF-8 encoding. <br>
+        <br>
+        <b><font color="#FF0000">Example:<br>
+        <br>
+        </font></b><font face="Courier New">| ?- atom2iriref( 
+        'mailto:Carlos.Damasio@di.fct.unl.pt', IRIref ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; iriref2atom(IRIref, Atom ).<br>
+        <br>
+        IRIref = iriref(scheme([109,97,105,108,116,111]),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        [],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        path(rel,[segment([67,97,114,108,111,115,46,68,97,109,97,115,105,111,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        64,100,105,46,102,99,116,46,117,110,108,46,112,116])]<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        ),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        [],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+        [])<br>
+        Atom = mailto:Carlos.Damasio@di.fct.unl.pt;<br>
+        </font><br>
+&nbsp;</li>
+        <li><font face="Courier New">iriref2string( + IRIref, StringInUTF8) <br>
+        iriref2string( + IRIref, StringInUTF8, RestStringInUTF8 ).<br>
+        </font><br>
+        Predicates iriref2string convert an IRI refererence term representation 
+        to a list of Unicode characters in UTF-8 encoding. The three argument 
+        version returns an incomplete list, where RestStringInUTF8 is the 
+        variable tail.<br>
+&nbsp;</li>
+        <li><font face="Courier New">iri2uri( + UCSList, URIList )<br>
+        iri2uri( + UCSList, URIList, RestURIList )</font><br>
+        <br>
+        Predicates iri2uri convert an IRI reference represented by a list of 
+        Unicode character codes to a proper Universal Resource Identifier, using 
+        the algoritm described in Internationalized Resource Identifiers.&nbsp; 
+        The three argument version returns an incomplete list, where RestURIList 
+        is the variable tail.<br>
+        <br>
+        <b><font color="#FF0000">Example:<br>
+        <br>
+        </font></b><font face="Courier New">| ?- iri2uri( 
+        &quot;mailto://Carlos.Damásio@di.fct.unl.pt&quot;, L ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; atom_codes( URI, L ).<br>
+        <br>
+        L = 
+        [109,97,105,108,116,111,58,47,47,67,97,114,108,111,115,46,68,97,109,37,67,<br>
+&nbsp;&nbsp;&nbsp;&nbsp; 
+        50,37,65,48,115,105,111,64,100,105,46,102,99,116,46,117,110,108,46,112,116]<br>
+        URI = mailto://Carlos.Dam%C2%A0sio@di.fct.unl.pt;<br>
+        </font><br>
+&nbsp;</li>
+        <li><font face="Courier New">filename2uri( + UCSList, URIList )<br>
+        filename2uri( + UCSList, URIList, RestURIList )</font><br>
+        <br>
+        Predicates <b>filename2uri</b> assume that an absolute file path, 
+        represented by a list of ASCII character codes to a Universal Resource 
+        Identifier, escaping excluded charactes. The three argument version 
+        returns an incomplete list, where RestURIList is the variable tail. This 
+        predicate uses specific built-in XSB predicates to be able to detect the 
+        unerlying operating system in order to recognize path separators: ''\' 
+        in Windows-based. <br>
+        In the case of Windows operating systems, the absolute file path must 
+        contain the drive letter. For non-windows operating systems, the path 
+        must start with '/'.<br>
+        <br>
+        <b><font color="#FF0000">Example (Windows):<br>
+        <br>
+        </font></b><font face="Courier New">| ?- filename2uri( &quot;C:\My 
+        Documents\Jo%A0o&quot;, L, [-1] ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; parseIRIref( L, _IRI ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; iriref2atom( _IRI, FilePath ).<br>
+        <br>
+        L = 
+        [102,105,108,101,58,47,47,67,58,47,77,121,37,50,48,68,111,99,117,109,101,110,116,115,47,74,111,37,65,48,111,-1]<br>
+        FilePath = file://C:/My%20Documents/Jo%A0o;<br>
+        <br>
+        no<br>
+        | ?- filename2uri( &quot;C:/My Documents/Jo%A0o&quot;, L, [-1] ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; parseIRIref( L, _IRI ),<br>
+&nbsp;&nbsp;&nbsp;&nbsp; iriref2atom( _IRI, FilePath ).<br>
+        <br>
+        L = 
+        [102,105,108,101,58,47,47,67,58,47,77,121,37,50,48,68,111,99,117,109,101,110,116,115,47,74,111,37,65,48,111,-1]<br>
+        FilePath = file://C:/My%20Documents/Jo%A0o</font></li>
+      </ul>
+      <blockquote>
+        <p><b><font color="#FF0000">Example (Non-Windows):<br>
+        <br>
+        </font></b><font face="Courier New">| ?- filename2uri( &quot;/My 
+        Documents/Jo%A0o&quot;, L, [-1] ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; parseIRIref( L, _IRI ), <br>
+&nbsp;&nbsp;&nbsp;&nbsp; iriref2atom( _IRI, FilePath ).<br>
+        <br>
+        L = 
+        [102,105,108,101,58,47,77,121,37,50,48,68,111,99,117,109,101,110,116,115,47,74,111,37,65,48,111,-1]<br>
+        FilePath = file:/My%20Documents/Jo%A0o;<br>
+        <br>
+        no</font></p>
+      </blockquote>
+      <p>&nbsp;</font></td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p><span lang="pt"><font face="Arial Black" size="5" color="#0000FF">
+      <a name="sec5"></a>5. 
+      Copyright</font></span><p>This is an academic and experimental tool. It 
+      cannot be used for commercial purposes without explicit consent of the 
+      author.</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p><span lang="pt"><font face="Arial Black" size="5" color="#0000FF">
+      <a name="sec6"></a>6. 
+      Disclaimer</font></span><p>This is an academic and experimental tool. I 
+      do not give any guarantee of any form regarding the use of this tool.</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      Last update: October 30th, 2003</td>
+    </tr>
+  </table>
+  </center>
+</div>

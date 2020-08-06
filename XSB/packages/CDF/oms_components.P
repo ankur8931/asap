@@ -1,0 +1,1600 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export 
+	  add_component_initializer/3,
+	  analyze_components/2,
+	  update_components/2,
+	  update_all_components/2,
+          load_component/3.
+
+:- import short_directory/2,
+	canonical_pathname/2,
+	rel_path/3 from directry.
+
+:- import is_absolute_filename/1,
+	machine_file_exists/1 from machine.
+
+:- import member/2,ground/1 from basics.
+:- import slash/1 from machine.
+:- import concat_atom/2 from string.
+:- import message/1, file_exists/1 from standard.
+
+:- import fmt_write_string/3 from file_io.
+:- import pretty_print/1 from newpp.
+
+:- ensure_loaded(oms_io).
+:- ensure_loaded(oms_queries).
+:- ensure_loaded(oms_config).
+
+:- dynamic temp_depends/4.
+
+
+/*
+% oms_init_oms
+:- import class/4, class_ext/3, class_cidbound/4, oms_cn/4,
+	object/4, oms_obj/4,
+	oms_ao/3, oms_at/3, oms_mo/2, oms_rln/3, oms_sc/2,
+	oms_schrel/3, oms_strel/3, strel_ext/6,
+	oms_dirty/1,
+	immediate_strel/3, retractallStrel/3,strel/3, 
+	oms_fix_dir/2, oms_primitive_class/4,
+	init_ext_data_index/0, init_ext_schema_index/0 from usermod.
+
+:- import newStrel/3,newComponent/5 from usermod.
+
+% oms_config.
+:- import component_table_ext/3,component_table_int/3 from usermod.
+
+% oms_queries.
+:- import q_strel/3 from usermod.
+
+:- import oms_warning/2,oms_error/2 from oms_exceptions.
+
+%oms_io
+:- import load_intensional_rules/2, 
+	  fast_merge_omsext/0, merge_omsext/0,
+	  retract_omsext/0,
+	  write_ext_term/1, write_hdr/1
+	from usermod.
+*/
+
+/*
+handle_load_component_error(Message):- 
+	retract_omsext,
+	retractall(temp_depends(_,_,_)),
+	write_oms_error_noxj(Message),
+	abort.
+*/
+
+:- comment(module,"Typically, an OMS instance can be partitioned into
+several separate cells, representing information that arises from
+different sources, for instance from UNSPSC, NAICS, or DLAFIIG.  There
+may be a need for these cells to be managed separately so that various
+applications can update them and incorporate their information.  The
+OMS components system attempts to address this need by allowing
+ontologies to be built from discrete @em{components}.
+
+One method of partitioning facts in an OMS instance (whether it be a
+loaded state or set of external files) is to choose a @em{component
+argument} for each predicate type, and to set as the component of each
+fact the source of the identifier in the component argument.  (If the
+identifier is a product identifier, the source is the source of the
+outer function symbol).  Using this method, the facts in an OMS
+instance may be partitioned in various ways.
+
+A @em{class-based component system} chooses as component arguments:
+
+@begin{itemize}
+
+@item the second-argument of all @em{class/2} and @pred{object/2}
+facts.
+
+@item the first-argument of all other facts.
+
+@end{itemize} 
+@noindent Class-based components thus form a collection
+vaguely analagous to a Java package, and are useful when different
+processes are responsible for creating or modifying different classes
+and objects.
+
+A @em{relation-based component system} chooses as argument identifiers
+
+@begin{itemize} @item the second-argument of all @pred{class/2} and
+@pred{object/2} facts.
+
+@item the first-argument of all @pred{memberof/2} and
+@pred{subclass/2} facts.
+
+@item the second-argument of all @pred{irel/3}, @pred{strel/3},
+@pred{schrel/3}, @pred{attribute/3}, and @pred{attribute_object/3}
+facts.
+
+@end{itemize}
+
+Relation-based component systems differ from class-based systems only
+in their partitions of relations and attributes.  Relation-based
+component systems are useful when different processes may be
+associated with creating or modifying different relations and
+attributes for the same class or object.  The OMS uses a
+relation-based component system by default, but can be repartitioned
+by adjusting the tables in @module{oms_config.P}.
+
+In either case, one component @em{C1} directly depends on another
+component @em{C2} if @em{id(NID2,C2)} is an argument in a fact in
+component @em{C1}; or if @em{id(Nid1,C1)} is a component argument of a
+fact in @em{C1}, @em{Nid1} is a product identifier, and
+@em{id(NID2,C2)} occurs as a direct constituent in @em{C1}.  By this
+definition, it is easy to see that component dependency need not be
+hierarchical so that two components may directly depend on one
+another; furthermore each component must directly depend on itself.
+In addition, each component always directly depends on the component
+'OMS' by fiat.  Component dependency is defined as the transitive
+closure of direct dependency.
+
+Dependency information is used to determine how to load a component
+and when to update it and is usually computed by the OMS.  Computing
+dependency information is easy for extensional facts, but computing
+dependency information for intensional rules is harder, as the
+component system would need to compute all answer substitutions to
+determine all dependencies, and this in impractical for some sets of
+intensional rules.  Rather, dependencies are computed by checking the
+top-level arguments of intensional rules, which leads to an
+under-approximation of the dependencies.
+
+@section{Components, Paths, and Versions}
+
+Given the notions that components partition an OMS instance, and give
+rise to dependency information, the component system must interact
+with file systems and databases in order to allow users to manage
+components as separate entities.
+
+A component is identified by a structured @index{component name},
+which consists of a @em{path} and a @em{source}.  For example,
+information in the directory @tt{/home/tswift/unspsc} would have a
+path of @tt{/home/tswift} and source @tt{unspsc}.  Inside the OMS,
+only the source is used as a source argument for identifiers; The path
+is maintained separately.  The structuring of component tags has
+implications for the behavioral aspects of the component system.  If
+two components with the same names and different paths are loaded,
+facts and rules from the two different components cannot be
+distinguished, as only the source is maintained in their identifiers.
+The attempt to load two such components can be treated as an error; or
+the load can be allowed to succeed unioning the information from both
+components, implicitly asserting an axiom of equality for the two
+(structured) component names.
+
+A component name corresponds to a directory containing files with data
+in external form (e.g. @tt{schema_omsext.P} and @tt{data_omsext.P}
+files), or in external intensional form @tt{oms_intensional.P}.  In
+addition, the directory may contain an initialization file,
+@tt{component_init.P},  whose actions are taken to be transparent to
+the OMS (unless they explicitly call OMS routines).  The OMS cannot
+load as a component information in internal format (i.e. data in
+@tt{schema_oms.P} and @tt{data_oms.P} files) as ambiguity arises if
+one attempts to combine internal identifiers from different files.  It
+does however provide tools to create components from a current loaded
+OMS state.
+
+The same component name can have multiple @em{versions}.  An OMS state
+can contain only one version for each component name, and an attempt
+to load two different versions for the same name always gives rise to
+an error.  A convention is made that a component @tt{Name} with
+version @tt{V} is to be found in a directory named @tt{Name_V}.  On
+the other hand, if two component names @em{C1} and @em{C2} have the
+same source and different paths, they do not have the same name.  If
+they are loaded so that their information is unioned together an error
+does not occur if @em{C1} and @em{C2} have different versions.
+
+@section{Representing Component Information}
+
+Information about a component resides in the OMS data itself and is
+viewable by the user.  When a component with name @tt{C} is loaded,
+the class @tt{id(N,N)} (where @tt{N} is the source of @tt{C})
+is created as an immediate subclass of @tt{id('OMS Component','OMS')}.
+Since components are not expected to have members, information about
+them is maintained through @pred{strel/3} facts.
+
+@begin{itemize} 
+
+@item The path of component @tt{C} is kept via 
+@begin{verbatim}
+strel(id(N,N),id(hasPath,N),id(atom(Path),'OMS'))
+@end{verbatim}
+
+@item The version of component @tt{C} is kept via the
+strel@footnote{This will change so that @tt{compName/2} has @tt{N}
+as its source.}
+
+@begin{verbatim}
+strel(id(compName(id(N,N),id(atom(Path),'OMS')),'OMS'),
+           id(hasVersion,N),id(integer(V)),'OMS')
+@end{verbatim}
+
+@item Dependency information of @tt{C} is maintained through the strel
+@footnote{This will change so that @tt{component/3} has @tt{N} as
+its source.} 
+@begin{verbatim}
+strel(id(component(id(N,N),id(atom(Path),'OMS'),id(integer(V),'OMS')),'OMS'),
+           id(componentDepends,Name),
+           component(id(N2,N2),id(atom(P2),'OMS'),id(integer(V2),'OMS')))
+@end{verbatim}
+@end{itemize}
+
+@section{Major Functionality}
+
+Given an OMS state, a user may want to do several things.  
+@begin{enumerate}
+
+@item A user may wish to create components from an OMS state, or to
+update components used by an OMS state.  One way to do this is by the
+predicate @tt{update_all_components(Dir,Options)} which determines a
+class or relation based partition of the OMS instance, and computes
+all dependencies between these cells.  Cells that are not components
+are made into components (with version 0), and those that are already
+components have their version number updated if necessary (by checking
+@tt{oms_dirty/1}).  Other aspects may be specified by various options.
+
+Alternately, if a part of a loaded OMS instance is to be saved as a
+component the predicate @tt{update_components(List,Dir)} can be used.
+@tt{List} is a list of component names, and for each @tt{Name} in
+@tt{List}, @pred{update_components/2} writes ou the component
+@tt{Name} as a subdirectory of @tt{Dir} whose version is either 0 if
+the component is new, or incremented if the component is updated.  The
+predicate gives an error if a component @tt{Name} in @tt{List} depends
+on an updated component not in @tt{List}, or if it depends on a cell
+that has not been made into a component.
+
+@item A user may wish to load a component, along with all of its
+dependencies.  Loads may be parameterized by
+@begin{itemize}
+@item Whether it is considered an error to try to load two components
+with different path parts and the same name parts.
+
+@item Whether a fast merge or a slower merge with more redundancy
+checking is to be used.
+
+@item Whether the latest version is to be loaded or a particular
+version is specified.
+@end{itemize}
+
+@item Finally, a user may analyze component dependency information by
+backtracking through @tt{analyze_components/2}, which neither affects
+the OMS state, nor saves component information to files.
+@end{enumerate}
+
+@em{
+This version does not yet use dirty bits to determine when new
+versions need to be created.}
+
+").
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- comment(analyze_components/2,
+"@tt{analyze_components(-Component,-Dependency_list)} examines a
+loaded OMS instance to partition it into components and for each
+component @em{C} to return a list of components upon which @em{C}
+depends.").
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+analyze_components(Name,List):- 
+	abolish_table_pred(analyze_component_table/2),
+	analyze_component_1(Name,List).
+
+analyze_component_1(Name,List):-
+	setof(Dep,analyze_component_table(Name,Dep),List).
+
+:- table analyze_component_table/2.
+:- use_subsumptive_tabling  analyze_component_table/2.
+
+analyze_component_table(Name,Dep):- 
+	analyze_extensional(Name,Dep1),
+	(Dep = Dep1 ; Dep = 'OMS').
+analyze_component_table(Name,Dep):- 
+	analyze_intensional(Name,Dep).
+
+analyze_extensional(Name,Dep):- 
+	oms_cn(I0,I1,I2,I3),
+	get_component_extensional(oms_cn(I0,I1,I2,I3),Name),
+	get_dependency_extensional(oms_cn(I0,I1,I2,I3),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_obj(I0,I1,I2,I3),
+	get_component_extensional(oms_obj(I0,I1,I2,I3),Name),
+	get_dependency_extensional(oms_obj(I0,I1,I2,I3),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_sc(I0,I1),
+	get_component_extensional(oms_sc(I0,I1),Name),
+	get_dependency_extensional(oms_sc(I0,I1),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_mo(I0,I1),
+	get_component_extensional(oms_mo(I0,I1),Name),
+	get_dependency_extensional(oms_mo(I0,I1),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_rln(I0,I1,I2),
+	get_component_extensional(oms_rln(I0,I1,I2),Name),
+	get_dependency_extensional(oms_rln(I0,I1,I2),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_schrel(I0,I1,I2),
+	get_component_extensional(oms_schrel(I0,I1,I2),Name),
+	get_dependency_extensional(oms_schrel(I0,I1,I2),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_strel(I0,I1,I2),
+	get_component_extensional(oms_strel(I0,I1,I2),Name),
+	get_dependency_extensional(oms_strel(I0,I1,I2),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_at(I0,I1,I2),
+	get_component_extensional(oms_at(I0,I1,I2),Name),
+	get_dependency_extensional(oms_at(I0,I1,I2),Dep).
+analyze_extensional(Name,Dep):- 
+	oms_ao(I0,I1,I2),
+	get_component_extensional(oms_ao(I0,I1,I2),Name),
+	get_dependency_extensional(oms_ao(I0,I1,I2),Dep).
+
+analyze_intensional(Name,Dep):- 
+	Term =  class_int(_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  object_int(_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  immediate_subclass_int(_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  immediate_memberof_int(_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  immediate_memberof_int(_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  immediate_relationship_int(_,_,_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  immediate_schrel_int(_,_,_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  immediate_schrel_int(_,_,_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  immediate_attribute_int(_,_,_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+analyze_intensional(Name,Dep):- 
+	Term =  attribute_object_int(_,_,_,_,_,_),
+	get_intensional_rule(Term,Body),
+	get_component_intensional(Term,Body,Name),
+	get_dependency_intensional(Term,Body,Dep).
+
+%----------------
+
+get_dependency_extensional(Term,Dep):- 
+	component_table_ext(Term,arg(Comp,Type),Deps),
+	(    arg(Comp,Term,CompId),
+	     dep_from_id(Type,CompId,Dep) 
+	  ; 
+	     member(arg(DepArg,DType),Deps),
+	     arg(DepArg,Term,DepId),
+	     source_from_id(DType,DepId,Dep) ).
+
+dep_from_id(class,CompId,Component):- 
+	dep_from_cid(CompId,Component).
+dep_from_id(obj,CompId,Component):- 
+	dep_from_oid(CompId,Component).
+
+dep_from_cid(Id,Source):-  oms_cn(Id,_,_,Source).
+dep_from_cid(Id,Source):-  
+	compound(Id), 
+	\+ (oms_primitive_class(Id,_,_,_)),
+	Id =.. [_|Arglist],
+	dep_from_cid_list(Arglist,Source).
+		
+dep_from_cid_list(Arglist,Source):- 
+	member(Id,Arglist),
+	dep_from_cid(Id,Source).
+
+dep_from_oid(Id,Source):-  oms_obj(Id,_,_,Source).
+dep_from_oid(Id,Source):-  
+	compound(Id), 
+	\+ (oms_primitive_class(Id,_,_,_)),   % TLS shd not occur, but check.
+	Id =.. [_|Arglist],
+	dep_from_oid_list(Arglist,Source).
+		
+dep_from_oid_list(Arglist,Source):- 
+	member(Id,Arglist),
+	dep_from_cid(Id,Source).
+
+%------------------
+ 
+get_component_intensional(Term,Body,Component):- 
+	component_table_int(Term,Arg,_Deps),
+	arg(Arg,Term,Source),
+	(atom(Source) -> 
+	    Source = Component
+	 ;  oms_warning(component,
+	                ['Cannot find component for intensional rule: ',
+			  (:-(Term,Body))]),
+	    fail).
+
+get_dependency_intensional(Term,Body,Component):- 
+	component_table_int(Term,Arg,_Deps),
+	arg(Arg,Term,Source),
+	(atom(Source) -> 
+	    Source = Component
+	 ;  oms_warning(component,
+	                  ['Cannot find dependencies in arg: ',Arg,
+			   ' of intensional rule: ', (:-(Term,Body))]),
+	    fail).
+get_dependency_intensional(Term,Body,Component):- 
+	component_table_int(Term,_A,Deps),
+	member(arg(Arg,Warn),Deps),
+	arg(Arg,Term,Source),
+	(atom(Source) -> 
+	    Source = Component
+	 ;  (Warn == warn -> 
+	        oms_warning(component,
+	                  ['Cannot find dependencies in arg: ',Arg,
+			   ' of intensional rule: ', (:-(Term,Body))])
+	        ; true),
+	    fail).
+
+/* Assumes that intensional rules have been read in via
+   load_intensional_rules/2 */
+get_intensional_rule(Head,Body1):- 
+	clause(Head,Body),
+	Head =.. [_|Alist],
+	clause(Body,Body1),
+	Body =.. [_|Alist].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% :-
+:- comment(load_component/3,
+"@tt{load_component(Name,Path,Parameter_list)} loads the component
+@tt{Name}, from path @tt{Path} and recursively, all other components
+upon which the component depends.  If a version conflict is detected
+between a component tag to be loaded and one already in the OMS state
+or about to be loaded, @tt{loadmerge_component/2} aborts without
+changing OMS extensional rules in internal form, or intensional rules.
+
+The order of loading is as follows.  First, all extensional facts are
+loaded for the component @tt{Path/Name} and for all components on
+which it depends.  Next, the dependency graph is re-traversed and
+intensional rules are loaded. Initialization files are consulted
+in a bottom-up manner (i.e. in a post-order traversal of the
+dependency graph). 
+
+@tt{Parameter_list} may contain the following elements:
+@begin{itemize}
+
+@item @tt{action(Action)} where @tt{Action} is @tt{check} or
+@tt{union}.  If the action is to check, two components with the same
+name part and different path parts or versions cannot be loaded: an
+attempt to do so will cause an error.  If the action is to union, two
+components with the same name and different paths may be loaded, and
+the effect will look as if the two components had been unioned
+together.  However an error will occur if two components with the same
+name and paths but different versions are loaded.
+
+@item @tt{merge(Speed)} where @tt{Speed} is @tt{fast} or @tt{slow}
+(default @tt{fast}).  This controls the amount of redundancy checking
+upon merging in external facts in the components (see @ref{}).
+
+@item @tt{force(Bool)} where @tt{Bool} is @tt{yes} or @tt{no} (default
+@tt{no}).  If @tt{Force} is @tt{yes}, any components that have
+previously been loaded into the OMS are reloaded, and their
+initialization files reconsulted.  If @tt{Force} is @tt{no}, no
+actions will be taken to load or initialize components already loaded
+into the OMS.
+
+@item @tt{version(V)} where @tt{V} is a version number.  If the
+parameter list contains such a term, the loader attempts to load
+version @tt{V} of component.  The default action is to load the latest
+version of a component.
+
+@end{itemize}
+").
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+load_component(Name,Path,Arglist):-
+	retractall(temp_depends(_,_,_,_)),
+	(atom(Path),atom(Name),ground(Arglist) -> 
+	    true
+	  ; oms_error(load_component,['Component name, path and arglist must',
+			' be instantiated to load: ',Path,'/',Name,' ',
+			Arglist]) ),
+	load_component_1(Name,Path,Arglist).
+
+load_component_1(Name,Path,Arglist):- 
+	retract_omsext,
+	split_arglist_on_version(Arglist,V,Arglist1),
+	(load_component_pass1(Name,(Path,CPath),V,Arglist1) -> 
+	    message(['Merging in components.']),nl,
+	    (member(speed(slow),Arglist1) -> 
+	        merge_omsext 
+	      ; fast_merge_omsext),
+	    load_component_pass2(Name,(Path,CPath),V,[]) 
+	  ; true),
+	retractall(temp_depends(_,_,_,_)),
+	retract_omsext.
+
+split_arglist_on_version([],null,[]).
+split_arglist_on_version([version(V)|R],version(V),R):-!.
+split_arglist_on_version([H|T],V,[H|T1]):-
+	split_arglist_on_version(T,V,T1).
+
+%----------
+
+load_component_pass1(Name,(Path,Full),Vin,Arglist):- 
+	get_full_path_and_loadname(Name,Path,Vin,Full,V,Loadname),
+	(check_component(Name,Full,V,Arglist) -> 
+  	    message(['Loading component: ',Full,'/',Loadname]),nl,
+  	    concat_atom([Full,'/',Loadname],Absname),
+	    overload_omsext(Absname,Full),
+	    check_good_component(Name,Full),
+	    (	pe_push_dir(Full),
+		load_component_dependencies_pass1(Name,Full,Arglist)
+	    ;	pe_pop_dir(Full)
+	    )
+	  ; 
+	    fail ).
+
+load_component_dependencies_pass1(Name,Path,Arglist):- 
+	strel_ext(component(Name,Name,atom(Path),'OMS',
+						integer(_V),'OMS'),'OMS',
+			 componentDepends,Name,
+			 component(New,New,atom(Pathnew),'OMS',
+					integer(Vnew),'OMS'),'OMS'),
+	writeln(checking(dep(Name,New))),	
+        load_component_pass1(New,(Pathnew,CPathnew),version(Vnew),Arglist),
+        assert_dependencies_for_path2(Name,New,(Pathnew,CPathnew),Vnew),
+	fail.
+load_component_dependencies_pass1(_,_,_).
+
+assert_dependencies_for_path2(Name,New,Pathnew,Vnew):- 
+	New \== 'OMS',
+	New \== Name,
+	call_assert(temp_depends(Name,New,Pathnew,Vnew)).
+
+call_assert(Term):- (call(Term) -> true ; asserta(Term)).
+
+%----------
+
+/* TLS: pass 2 is to load intensional rules and consult initialization file.
+   Assume that all conflict checking has been done in pass2 */
+load_component_pass2(Name,(Path,Full),Vin,Anclist):-
+%%	get_full_path_and_loadname(Name,Path,Vin,Full,_V,Loadname),
+	(   Vin = version(V) 
+	->  file_find_version_name(Full,Name,V,Loadname)
+	;   Loadname = Name,
+	    file_latest_version(Full,Name,V)
+	),
+	message(['Loading int rules and initializing component: ',
+			Full,'/',Loadname]),nl,
+        load_component_dependencies_pass2(Name,Full,Anclist),
+	load_intensional_rules(Full,Name),
+	initialize_component(Loadname,Full).
+
+load_component_dependencies_pass2(Name,_Path,Anclist):- 
+	temp_depends(Name,New,Pathnew,Vnew),
+	(member(New,Anclist) -> true
+	  ; 
+	    load_component_pass2(New,Pathnew,Vnew,[Name|Anclist]) ),
+	fail.
+load_component_dependencies_pass2(_,_,_).
+
+initialize_component(Name,Path):-
+	slash(Slash),
+	concat_atom([Path,Slash,Name,Slash,'initialization_file.P'],File),
+	(file_exists(File) -> consult(File) ; true).
+
+%---------------
+
+check_good_component(Name,Full):- 
+	(class_ext(Name,Name,Name) -> 
+	    true
+	  ;
+	    oms_error(component_load,['Pathname: ',Full,
+				      ' is not a component']) ).
+
+%---------------
+
+/* If check_component succeeds, we go ahead and do a pass 1 load. */
+check_component(Name,Path,V,Arglist):- 
+	Name \== 'OMS',
+	check_conflicting_path(Name,Path,Arglist),
+	check_conflicting_version(Name,Path,V),
+	\+ already_present(Name,Path,V,Arglist).
+
+check_conflicting_version(Name,Path,V):- 
+	(conflicting_version(Name,Path,V,V1) -> 
+	    oms_error(component_load,['Version ',V,' of ',Name,
+			' cannot be loaded, as version ',V1,
+			' is halreaty loaded '])
+	  ; true).
+
+%---------------
+
+/* TLS: For now, each component is taken to depend on some version of
+the OMS. */
+conflicting_version(Name,Path,V,V1):- 
+	(strel_ext(component(Name,Name,atom(Path),'OMS',integer(V1),'OMS'),
+			'OMS',componentDepends,Name,_,_)
+	 ; 
+	     class(Cid,Name,Name,Name),
+	     class(Rid,componentDepends,componentDepends,Name),
+	     immediate_strel(component(Cid,atom(Path),integer(V1)),Rid,_)
+	),
+        V \== V1,
+	!.
+
+check_conflicting_path(Name,Path,Arglist):- 
+	(\+ member(action(union),Arglist) -> 
+		(conflicting_path(Name,Path,Path1) -> 
+ 	            oms_error(component_load,['Component ',Name,' has ',
+			'conflicting paths in non-union merge: ',Path,
+			' and ',Path1])
+		  ; 
+		    true) 
+	      ;  true).
+
+conflicting_path(Name,P,P1):- 
+	(   strel_ext(Name,Name,hasPath,Name,atom(P1),'OMS')
+	 ; 
+	     class(Cid,Name,Name,Name),
+	     class(Rid,hasPath,hasPath,Name),
+	     immediate_strel(Cid,Rid,atom(P1))
+	),
+        P \== P1,
+	!.
+
+%---------------
+
+/* TLS: if component is in cache, it has  already scheduled been
+traversed in pass1.  Otherwise count merged components as traversed
+unless force is yes. */
+
+already_present(Name,Path,V,Arglist):- 
+	
+	(   strel_ext(Name,Name,hasPath,Name,atom(Path),'OMS'),
+	    strel_ext(compName(Name,Name,atom(Path),'OMS'),'OMS',
+  	  	          hasVersion,Name,integer(V),'OMS')
+	    
+	 ; 
+  	     \+ member(force(yes),Arglist),
+	     class(Cid,New,New,New),
+	     class(Pid,hasPath,hasPath,Name),
+	     immediate_strel(Cid,Pid,atom(Path)),
+	     class(Vid,hasVersion,hasVersion,Name),
+	     immediate_strel(compName(Cid,Pid),Vid,integer(V))
+	).
+
+%---------------
+
+/* 
+   Name is the name part of a component, and Path its path-part, 
+   possibly input as a relative path name.  Upon success, V is
+   instantiated to the proper version of the component (which may
+   implicitly be the latest version), CanonPath is instantiated
+   to a canonical path, and Loadname is the name, plus version if 
+   applicable.
+ */
+get_full_path_and_loadname(Name,Path,Vin,CanonPath,V,Loadname):- 
+	pe_canon_path(Path,CanonPath),
+	(Vin = version(V) -> 
+	    file_find_version_name(CanonPath,Name,V,Loadname)
+	 ; 
+	    Loadname = Name,file_latest_version(CanonPath,Name,V) ).
+
+file_find_version_name(Path,Name,Version,Loadname):- 
+	file_latest_version(Path,Name,V),
+	(V = Version -> 
+	    Loadname = Name
+	  ; (V > Version -> 
+	        concat_atom([Name,'_',Version],Loadname)
+	      ; 
+		oms_error(load_component,['Improper version number',Version,
+				' for ',Path,'/',Name]) ) ).
+	  
+file_latest_version(Dir,Name,Version):- 
+	findall(File,short_directory(Dir,File),Files),
+	atom_chars(Name,NameL),
+	file_latest_version_1(Files,NameL,-1,Version).
+		
+file_latest_version_1([],_NameL,V,V1):- V1 is V + 1.
+file_latest_version_1([File|Rest],NameL,V,V1):- 
+	atom_chars(File,FileL),
+	(get_v_from_filelist(NameL,FileL,NumL) -> 
+	    number_chars(N,NumL),
+	    (N > V -> 
+	        file_latest_version_1(Rest,NameL,N,V1)
+	      ; 
+		file_latest_version_1(Rest,NameL,V,V1))
+	  ;
+	    file_latest_version_1(Rest,NameL,V,V1)).
+
+get_v_from_filelist([],['_'|Rest],Rest).
+get_v_from_filelist([H|T],[H|T1],Rest):- 
+	get_v_from_filelist(T,T1,Rest).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+:- comment(update_all_components/2,
+"@tt{update_all_components(Dir,Option_list)} analyzes components of an
+OMS state and their dependencies, determining whether they need to be
+updated or not, and creating components when necessary.  When a
+component is created with path @tt{Dir}, the files @tt{data_omsext.P},
+@tt{schema_omsext.P} and @tt{oms_intensional.P} are created.
+Initialization files must be added manually for new components.
+@tt{Option_list} contains a list of parameters which currently
+specifies the effect on previously existing components:
+
+@begin{itemize} @item @tt{action(Action)}.  
+@begin{itemize} 
+
+@item If @tt{Action} is @tt{create}, then a new set of components is
+created in @tt{Dir}.  Information not previously componetized is added
+to new components whose path is @tt{Dir} and whose version number is
+0.  Facts that are parts of previously created components are also
+written as subdirectories of @tt{Dir}; if their previous path was
+@tt{Dir}, their versions are updated if needed (i.e. if any facts in
+the component have changed).  Otherwise, if the path of a previously
+created component @tt{C} was not @tt{Dir}, @tt{C} is dumped as a
+subdirectory of @tt{Dir}, its path is changed to @tt{Dir} and its
+version is set to 0.  In addition, the initialization file for @tt{C}
+is copied to @tt{Dir}.
+
+@item If @tt{Action} is @tt{in_place}, then components are created in
+@tt{Dir} only for information that was not previously componetized.
+Facts that are parts of newly created components are dumped as
+subdirectories of @tt{Dir} which serves as their path, and their
+version number is 0.  Previously created components whose paths were
+not @tt{Dir} are updated using their present path, if needed.
+
+@end{itemize}
+
+In either case all dependency information reflects new component and
+path information.
+@end{itemize}
+").
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- dynamic temp_new_version/2.
+
+update_all_components(InDir,Options):-
+	pe_canon_path(InDir,Dir),
+	retractall(temp_new_version(_,_)),
+	(member(action(create),Options) -> 
+	    Action = create,initialize_for_create(Dir)
+	  ; Action = in_place,initialize_for_in_place(Dir) ),
+	((Action = in_place,merge_has_occurred) -> 
+	    oms_error(update_components,['Cannot update in place: two ',
+		'components have been merged'])
+	    ; true ),
+	analyze_component_1(Comp,Dep),
+	writeln((Comp,Dep)),
+	update_component_1(Action,Comp,Dep,Dir),
+	fail.
+update_all_components(_Dir,_Options):- 
+	retractall(temp_new_version(_,_)).
+
+%----------
+
+/* In initialize for create, old versions don't matter -- the only
+   thing that matters is the version of the file in Dir, if any */
+
+initialize_for_create(Dir):- 
+	analyze_components(Name,_),
+	slash(Slash),
+	concat_atom([Dir,Slash,Name],File),
+	(file_exists(File) ->
+  	     file_latest_version(Dir,Name,V),
+	     V1 is V + 1,
+	     assert(temp_new_version(Name,V1))
+	  ;  assert(temp_new_version(Name,0))),
+	fail.
+initialize_for_create(_Dir).
+
+%----------
+
+initialize_for_in_place(Dir):- 
+	propagate_dirty_bits(Dir).
+
+/* TLS: this pass is needed becasue we dont know the order in which
+the name/list pairs will be returned. Thus if c is dirty, and a
+depends on b depends on c, we might get a,[b] back first, and b will
+be unmarked.  While we do the pass, we assert the new version so we
+dont get confused when doing the dependencies.  */
+
+propagate_dirty_bits(Dir):- 
+	abolish_table_pred(comp_depends_on/2),
+	analyze_components(Name,_List),
+	propagate_for_name(Name),
+	(class(_Nid,Name,Name,Name) -> 
+	     versions_for_existing_component(Name)
+	  ;  versions_for_new_component(Dir,Name) ),
+  	fail.
+propagate_dirty_bits(_Dir).
+
+versions_for_new_component(Dir,Name):-
+	slash(Slash),
+	concat_atom([Dir,Slash,Name],File),
+	(file_exists(File) ->
+    	     file_latest_version(Dir,Name,V),
+	     V1 is V + 1,
+	     call_assert(temp_new_version(Name,V1))
+	  ;  call_assert(temp_new_version(Name,0)) ).
+
+/* also, adjust version here */
+versions_for_existing_component(Name):- 
+	class(Nid,Name,Name,Name),
+	class(Vid,hasVersion,hasVersion,Name),
+	immediate_strel(compName(Nid,atom(P)),Vid,integer(V)),
+        ((needs_update(Name),Name \== 'OMS') -> 
+	      V1 is V + 1,
+	      call_assert(temp_new_version(Name,V1)),
+	      retractallStrel(compName(Nid,atom(P)),Vid,integer(V)),
+	      newStrel(compName(Nid,atom(P)),Vid,integer(V1))
+	    ; call_assert(temp_new_version(Name,V))).
+
+propagate_for_name(Name):- 
+	((\+ class(_,Name,Name,Name) ; needs_update_tran(Name)) -> 
+	     call_assert(oms_dirty(Name))
+	   ; true).	
+
+/* demand could go here */
+needs_update_tran(Name):- 
+	(    needs_update(Name)
+	  ;  comp_depends_on(Name,Comp),needs_update(Comp) ).
+
+:- table comp_depends_on/2.	
+comp_depends_on(X,Z):- 
+	analyze_component_1(X,List),member(Y,List),
+	(Z = Y ; comp_depends_on(Y,Z) ).
+
+merge_has_occurred:- 
+	immediate_strel(Nameid,hasPath,atom(P1)),
+	immediate_strel(Nameid,hasPath,atom(P2)),
+	P1 \== P2.
+
+%-----------------
+
+/* Need to get oldpath in order to copy init files.  Note that 
+   the component may be created (i.e. namexname is a class) but 
+   its dependencies not yet added. In addition, need to get right
+   version. */
+
+update_component_1(create,Name,Dep,Dir):- 
+	Name \== 'OMS',
+	(q_immediate_strel(
+	    id(component(id(Name,Name),id(atom(Oldp),_),_V),_),_,_) -> 
+               true
+	    ;  Oldp = nocopy),
+	newComponent(Name,Dir,create,CompId,RelId),
+	CompId = component(_Nameid,atom(Newpath),integer(_Vnew)),
+	temp_new_version(Name,Version),
+	NewCompId = component(_Nameid,atom(Newpath),integer(Version)),
+	create_dependencies_create(Dep,Name,NewCompId,RelId,Dir),
+	dump_component_1(Name,Newpath,Version,Oldp).
+
+/* No copy for in_place: updates in place, and Dir is only for new comps.
+   Note that we have already checked for merge, so Newpath is functional
+   on Nameid. */
+update_component_1(in_place,Name,Dep,Dir):- 
+	Name \== 'OMS',needs_update(Name),
+	newComponent(Name,Dir,in_place,CompId,RelId),
+	CompId = component(Nameid,atom(Newpath),_),
+	temp_new_version(Name,Version),
+	NewCompid = component(Nameid,atom(Newpath),integer(Version)),
+	create_dependencies_in_place(Dep,Name,NewCompid,RelId,Dir),
+	dump_component_1(Name,Newpath,Version,nocopy).
+
+%--------------------- 
+
+:- comment(update_components/2, "@tt{update_components(Dir,List)}
+Updates components in @tt{List} (or creates them) writing them into
+subdirectories of @tt{Dir}.  If a component in @tt{List} depends on a
+component that needs updating but is not in list or on a source that
+has not been made into a component, the predicate abort without
+changing the state or file system.  ").
+
+update_components(_Dir,_List):- 
+	abort('update_components/2 not yet implemented').
+
+%--------------------- 
+
+/* 
+Adds dependency structures for each component as needed, omitting
+self-dependencies.  These dependency structures are of two kinds,
+dependencies to newly created components (in Dir, specified at the
+top-level) and dependencies to previously created components.  In the
+second case, a check must be made whether the action is create or
+in_place.  If the action is create, depdendency information that may
+contain the old path is retracted, and dependency information is
+created with the new path.  If the action is in_place, dependency
+information with current the path information is created if needed.
+*/
+
+create_dependencies_create([],_From,_Compid,_Relid,_Dir).
+create_dependencies_create([ToName|T],FromName,Compid,Relid,Dir):- 
+	FromName \== ToName,!,
+	create_all_dependencies_create(ToName,Dir,Compid,Relid),
+	create_dependencies_create(T,FromName,Compid,Relid,Dir).
+create_dependencies_create([_|T],FromName,Compid,Relid,Dir):- 
+	create_dependencies_create(T,FromName,Compid,Relid,Dir).
+
+/* TLS: in first clause, we are not necessarily creating a component: 
+   we may be removing it so that it can be moved, so we need to
+   retract all old dependencies, using the version we have previously found */
+create_all_dependencies_create('OMS',_Dir,FromCompid,Relid):- !,
+	FromCompid = component(FromNameId,atom(_),integer(_)),
+	class(ToNameid,'OMS','OMS','OMS'),
+	class(Depid,componentDepends,componentDepends,'OMS'),
+	immediate_strel(component(ToNameid,atom(Poms),integer(Voms)),
+			Depid,_),	
+	retractallStrel(component(FromNameId,atom(_),integer(_))
+			,Relid,component(ToNameid,_,integer(_))),
+	newStrel(FromCompid,Relid,
+		component(ToNameid,atom(Poms),integer(Voms))).
+create_all_dependencies_create(ToName,Dir,FromCompid,Relid):- !,
+	FromCompid = component(FromNameId,atom(_),integer(_)),
+	temp_new_version(ToName,V),
+	(class(ToNameid,ToName,ToName,ToName) -> 
+	    true
+	  ; 
+  	    class(Compid,'OMS Component','OMS Component','OMS'),
+	    newClass(ToName,Compid,ToName,ToNameid) ),
+	retractallStrel(component(FromNameId,atom(_),integer(_))
+			,Relid,component(ToNameid,_,integer(_))),
+	newStrel(FromCompid,Relid,component(ToNameid,atom(Dir),integer(V))).
+
+create_dependencies_in_place([],_FromName,_NewCompid,_Relid,_Dir).
+create_dependencies_in_place([ToName|T],FromName,FromCompid,Relid,Dir):- 
+	ToName \== FromName,!,
+	create_all_dependencies_in_place(ToName,Dir,FromCompid,Relid),
+	create_dependencies_in_place(T,FromName,FromCompid,Relid,Dir).
+create_dependencies_in_place([_|T],FromName,FromCompid,Relid,Dir):- 
+	create_dependencies_in_place(T,FromName,FromCompid,Relid,Dir).
+
+/*  There are 3 cases: 
+    1) Component has been created.
+    2) Component has not been created, but the component name has been 
+	interned.
+    3) Component has not been created, and name must be interned */
+ 
+create_all_dependencies_in_place(ToName,Dir,FromCompid,Relid):- !,
+	(class(Toid,ToName,ToName,ToName) -> 
+	    (class(Pid,hasPath,hasPath,ToName) -> 
+		 immediate_strel(Toid,Pid,atom(ToPath))
+	      ;  
+	         ToPath = Dir)
+	  ; 
+  	    class(Compid,'OMS Component','OMS Component','OMS'),
+	    newClass(ToName,Compid,ToName,Toid),
+            ToPath = Dir ),
+	temp_new_version(ToName,V),
+	FromCompid = component(Fromid,atom(FromPath),_),
+	retractallStrel(component(Fromid,atom(FromPath),_),Relid,
+	           component(Toid,_,_)),
+        newStrel(FromCompid,Relid,component(Toid,atom(ToPath),integer(V))).
+
+%---------------------
+
+dump_component_1(Name,Dir,Version,Oldpath):- 
+	Name \== 'OMS',
+	slash(Slash),
+	make_component_dir(Dir,Name,Version,NewDir),
+	concat_atom([NewDir,Slash,'schema_omsext.P'],SchFile),
+	init_ext_schema_index,
+	tell(SchFile),
+	compwrite_class(Name),compwrite_subclass(Name),
+	compwrite_irel(Name),compwrite_schrel(Name),
+	compwrite_strel(Name),
+	told,
+	concat_atom([NewDir,Slash,'data_omsext.P'],DataFile),
+	init_ext_data_index,
+	tell(DataFile),
+	compwrite_object(Name),compwrite_memberof(Name),
+	compwrite_attribute(Name),compwrite_attribute_object(Name),
+	told,
+	concat_atom([NewDir,Slash,'oms_intensional.P'],IntFile),
+	tell(IntFile),
+	write_component_intensional(Name),
+	told,
+	(Oldpath = nocopy -> 
+	    true
+	  ; 
+	    (concat_atom([Oldpath,'/initialization_file.P'],Oldfile),
+	     (file_exists(Oldfile) -> 
+	         shell(['cp ',Oldfile,' ',Dir]) 
+	       ; true ) ) ),
+	writeln(dumped(Name)).
+
+make_component_dir(Dir,Name,Version,NameDir):- 
+	slash(Slash),
+        concat_atom([Dir,Slash,Name],NameDir),
+	(Version = 0 -> 
+	    true
+	  ; 
+	    LastVersion is Version - 1,
+            concat_atom([Dir,Slash,Name,'_',LastVersion],LastDir),
+	    shell(['mv ',NameDir,' ',LastDir]) ),
+        xsb_makedir(NameDir).
+
+
+compwrite_class(Source):- 
+	write_hdr(class_ext(_,_,_)),
+	oms_cn(Id,Name,Nid,Src),
+	get_component_extensional(oms_cn(Id,Name,Nid,Src),Source),
+	write_ext_term(class_ext(Name,Nid,Source)),
+	fail.
+compwrite_class(_).
+
+compwrite_object(Source):- 
+	write_hdr(object_ext(_,_,_)),
+	object(Id,Name,Nid,Src),
+	get_component_extensional(oms_obj(Id,Name,Nid,Src),Source),
+	write_ext_term(object_ext(Name,Nid,Source)),
+	fail.
+compwrite_object(_).
+
+compwrite_subclass(Source):- 
+	write_hdr(subclass_ext(_,_,_,_)),
+	oms_sc(Sub,Sup),
+	get_component_extensional(oms_sc(Sub,Sup),Source),
+	class_cidbound(Sub,_,Nid1,Source1),
+	class_cidbound(Sup,_,Nid2,Source2),
+	write_ext_term(
+                 subclass_ext(Nid1,Source1,Nid2,Source2)),
+	fail.
+compwrite_subclass(_).
+
+compwrite_memberof(Source):- 
+	write_hdr(memberof_ext(_,_,_,_)),
+	oms_mo(Sub,Sup),
+	get_component_extensional(oms_mo(Sub,Sup),Source),
+	object(Sub,_,Nid1,Source1),
+	class_cidbound(Sup,_,Nid2,Source2),
+	write_ext_term(
+                 memberof_ext(Nid1,Source1,Nid2,Source2)),
+	fail.
+compwrite_memberof(_).
+
+compwrite_irel(Source):- 
+	write_hdr(relationship_ext(_,_,_,_,_,_)),
+	oms_rln(Src,Rel,Targ),
+	get_component_extensional(oms_rln(Src,Rel,Targ),Source),
+	class_cidbound(Src,_,Nid1,Source1),
+	class_cidbound(Rel,_,Nid2,Source2),
+	class_cidbound(Targ,_,Nid3,Source3),
+	write_ext_term(
+                 relationship_ext(Nid1,Source1,Nid2,Source2,Nid3,Source3)),
+	fail.
+compwrite_irel(_).
+
+compwrite_schrel(Source):- 
+	write_hdr(schrel_ext(_,_,_,_,_,_)),
+	oms_schrel(Src,Rel,Targ),
+	get_component_extensional(oms_schrel(Src,Rel,Targ),Source),
+	class_cidbound(Src,_,Nid1,Source1),
+	class_cidbound(Rel,_,Nid2,Source2),
+	class_cidbound(Targ,_,Nid3,Source3),
+	write_ext_term(
+                 schrel_ext(Nid1,Source1,Nid2,Source2,Nid3,Source3)),
+	fail.
+compwrite_schrel(_).
+
+compwrite_strel(Source):- 
+	write_hdr(strel_ext(_,_,_,_,_,_)),
+	oms_strel(Src,Rel,Targ),
+	get_component_extensional(oms_strel(Src,Rel,Targ),Source),
+	class_cidbound(Src,_,Nid1,Source1),
+	class_cidbound(Rel,_,Nid2,Source2),
+	class_cidbound(Targ,_,Nid3,Source3),
+	%% make dependencies use relative paths
+	(   Nid2 == componentDepends
+	->  Nid3 = component(CName,CSrc,atom(CPath),PSrc,CVer,VSrc),
+	    (	CName == 'OMS'
+	    ->	RCPath = CPath
+	    ;	Nid1 = component(_,_,atom(OPath),_,_,_),
+		rel_path(OPath,CPath,RCPath)
+	    ),
+	    RNid3 = component(CName,CSrc,atom(RCPath),PSrc,CVer,VSrc),
+	    message(strel_ext(Nid1,Source1,Nid2,Source2,RNid3,Source3))
+	;   RNid3 = Nid3
+	),
+	write_ext_term(
+                 strel_ext(Nid1,Source1,Nid2,Source2,RNid3,Source3)),
+	fail.
+compwrite_strel(_).
+
+compwrite_attribute(Source):- 
+	write_hdr(attribute_ext(_,_,_,_,_,_)),
+	oms_at(Src,Rel,Targ),
+	get_component_extensional(oms_at(Src,Rel,Targ),Source),
+	object(Src,_,Nid1,Source1),
+	class_cidbound(Rel,_,Nid2,Source2),
+	class_cidbound(Targ,_,Nid3,Source3),
+	write_ext_term(
+                 attribute_ext(Nid1,Source1,Nid2,Source2,Nid3,Source3)),
+	fail.
+compwrite_attribute(_).
+
+compwrite_attribute_object(Source):- 
+	write_hdr(attribute_object_ext(_,_,_,_,_,_)),
+	oms_ao(Src,Rel,Targ),
+	get_component_extensional(oms_ao(Src,Rel,Targ),Source),
+	object(Src,_,Nid1,Source1),
+	class_cidbound(Rel,_,Nid2,Source2),
+	object(Targ,_,Nid3,Source3),
+	write_ext_term(
+                 attribute_object_ext(Nid1,Source1,Nid2,Source2,Nid3,Source3)),
+	fail.
+compwrite_attribute_object(_).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Utilities
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+overload_omsext(Dir,CPath) :-
+	oms_fix_dir(Dir,DirS),
+	dir_overload_dync(DirS,schema_omsext,CPath),
+	dir_overload_dync(DirS,data_omsext,CPath).
+
+dir_overload_dync(Dir,Base,CPath) :-
+	concat_atom([Dir,Base,'.P'],File),!,
+	(overload_dync(File,CPath) 		% i.e. use asserta
+              -> true
+	  ; oms_warning(permission,('File does not exist ',
+                                    'or is not readable: ',File))).
+
+overload_dync(File,CPath):- 
+	see(File),
+	overload_dync_1(CPath),
+	seen.
+
+overload_dync_1(CPath):- 
+	repeat,
+	read_canonical(T),
+	(   T = end_of_file
+	->  true
+	;   fix_paths(T,CPath,T1),
+%	    writeln(asserting(T1)),
+	    asserta(T1),
+	    fail
+	).
+
+fix_paths(strel_ext(C,C,hasPath,C,_,'OMS'),
+	  CPath,
+	  strel_ext(C,C,hasPath,C,atom(CPath),'OMS')) :- !.
+fix_paths(strel_ext(component(C,C,_,'OMS',V,'OMS'),'OMS',
+		    componentDepends,C,Dep,'OMS'),
+	  CPath,
+	  strel_ext(component(C,C,atom(CPath),'OMS',V,'OMS'),'OMS',
+		    componentDepends,C,Dep,'OMS')) :- !.
+fix_paths(strel_ext(compName(C,C,_,'OMS'),'OMS',hasVersion,C,V,'OMS'),
+	  CPath,
+	  strel_ext(compName(C,C,atom(CPath),'OMS'),
+		    'OMS',hasVersion,C,V,'OMS')):-!.
+fix_paths(T,_,T).
+
+xsb_makedir(Dir):- 
+	(path_sysop(isdir,Dir) -> true ; path_sysop(mkdir,Dir)).
+
+write_component_intensional(Name):- 
+	component_table_int(Head,_Arg,_Arg2),
+	Head =.. [F|T],
+	concat_atom([F,'_',Name],NewF),
+	NewHead =.. [NewF|T],
+	clause(NewHead,Body), 
+	pretty_print(clause(Head,Body)),
+	fail.
+write_component_intensional(_).
+
+needs_update(Component):- oms_dirty(Component).
+
+%%%% Path manipulation.
+:- dynamic pe_cwd/1, pe_dir_stack/1.
+
+%% initialize default path to CDF package dir
+:- init_path_engine.
+
+init_path_engine :-
+	xsb_configuration(install_dir,IDIR),
+	slash(Slash),
+	canonical_pathname([IDIR,Slash,'packages',Slash,'CDF'],DefaultPath),
+	retractall(pe_cwd(_)),
+	asserta(pe_cwd(DefaultPath)),
+	retractall(pe_dir_stack(_)).
+
+pe_push_dir(Dir) :-
+	asserta(pe_dir_stack(Dir)),
+	retractall(pe_cwd(_)),
+	asserta(pe_cwd(Dir)),
+%	writeln(pe_push_dir(Dir)),
+	true.
+
+pe_pop_dir(Dir) :-
+	once(pe_dir_stack(Dir)),
+	retract(pe_dir_stack(Dir)),
+	retractall(pe_cwd(_)),
+	once(pe_dir_stack(NCwd)),
+	asserta(pe_cwd(NCwd)),
+%	writeln(pe_pop_dir(Dir)),
+	true.
+
+pe_canon_path(Path,CPath) :-
+	(   is_absolute_filename(Path)
+	->  canonical_pathname(Path,CPath)
+	;   pe_cwd(Cwd),
+	    slash(Slash),
+	    (	machine_file_exists([Cwd,Slash,Path])
+	    ->	canonical_pathname([Cwd,Slash,Path],CPath)
+	    ;	throw(file_not_found(Path,cwd(Cwd)))
+	    )
+	),
+%	writeln(pe_canon_path(Path,CPath)),
+	true.
+
+end_of_file.
+
+@item A user may wish to create components from external files.  In
+this case, the predicate @pred{create_external_component/1} can be
+used to add this information.  @tt{create_external_component(Dir)}
+reads in external files, computes their dependencies, and writes out
+the files, plus component information, back to @em{Dir}.  The
+information in this component does not affec the state of the OMS
+until it is explicitly loaded.  In the case where a putative component
+includes an external intensional view, dependency information for the
+external intensional view must be added by hand.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+:- comment(create_external_component/1,"
+@tt{create_external_component(Dir)} loads from @tt{Dir}
+@tt{data_omsext.P}, and @tt{schema_omsext.P} files, creates a
+component if possible, then dumps the new omsext that includes the
+component information.").
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+create_external_component(Name):- 
+	retract_omsext,
+	abolish_table_pred(find_component_dependency/1),
+	find_component_dir(Name,Full),
+	load_omsext(Full),
+	check_component(Name),
+	assert(class_ext(Name,Name,Name)),
+	assert(subclass_ext(Name,Name,'OMS Component','OMS')),
+	create_dependencies_ext(Name),
+	dump_component_ext(Full,Name),
+	retract_omsext.
+
+/* works on loaded, unmerged omsext */	
+create_dependencies_ext(Name):- 
+	find_component_dependency(Dep),
+	call_assert(strel_ext(Name,Name,componentDepends,Name,Dep,Dep)),
+	fail.
+create_dependencies(Name):- 
+	asserta(strel_ext(Name,Name,componentDepends,Name,Name,Name)).
+
+%-----------
+/* checks whether a set of loaded,  non-merged external facts with
+a given source constitute a component */ 
+
+check_component(Name):- 
+	check_class(Name),
+	check_object(Name),check_subclass(Name),
+	check_memberof(Name),check_relationship(Name),
+	check_schrel(Name),check_strel(Name),
+	check_attribute(Name),check_attribute_object(Name).
+
+check_class(Name):- 
+	(class_ext(Q,W,N),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+                                      ' has class with different source: ',
+			              class_ext(Q,W,N)])
+	; 
+	   fail).
+check_class(_).
+
+check_object(Name):- 
+	(object_ext(Q,W,N),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+                                      ' has object with different source: ',
+					      object_ext(Q,W,N)])
+	; 
+	   fail).
+check_object(_).
+
+check_subclass(Name):- 
+	(subclass_ext(Q,N,W,E),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+                                      ' has subclass with different source: ',
+					      subclass_ext(Q,N,W,E)])
+	; 
+	   fail).
+check_subclass(_).
+
+check_memberof(Name):- 
+	(memberof_ext(Q,N,W,E),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+	                   ' has memberof with different source: ',
+			   memberof_ext(Q,N,W,E)])
+	; 
+	   fail).
+check_memberof(_).
+
+check_relationship(Name):- 
+	(relationship_ext(Q,N,W,E,R,T),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+	                   ' has relationship with different source: ',
+			   relationship_ext(Q,N,W,E,R,T)])
+	; 
+	   fail).
+check_relationship(_).
+
+check_schrel(Name):- 
+	(schrel_ext(Q,N,W,E,R,T),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+	                   ' has schrel with different source: ',
+			   schrel_ext(Q,N,W,E,R,T)])
+	; 
+	   fail).
+check_schrel(_).
+
+check_strel(Name):- 
+	(strel_ext(Q,N,W,E,R,T),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+	                   ' has strel with different source: ',
+			   strel_ext(Q,N,W,E,R,T)])
+	; 
+	   fail).
+check_strel(_).
+
+check_attribute(Name):- 
+	(attribute_ext(Q,N,W,E,R,T),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+	                   ' has attribute with different source: ',
+			   attribute_ext(Q,N,W,E,R,T)])
+	; 
+	   fail).
+check_attribute(_).
+
+check_attribute_object(Name):- 
+	(attribute_object_ext(Q,N,W,E,R,T),N \== Name -> 
+	    oms_error(component,['Component specified by ',Name,
+	                   ' has attribute_object with different source: ',
+			   attribute_object_ext(Q,N,W,E,R,T)])
+	; 
+	   fail).
+check_attribute_object(_).
+
+%-------------------------------------
+
+/* find_component_dependency/1 returns the set of dependencies for a
+putative component -- from a set of loaded, non-merged external facts.
+Only those dependencies obtained from external form are returned --
+extint dependencies must be added "by hand". */
+
+:- table find_component_dependency/1.
+find_component_dependency(Dep):- 
+	find_component_dependency_1(Dep).
+
+find_component_dependency_1(Dep):- 
+	class_ext(_,Class,S),
+            (Dep = S; (S \== 'OMS',find_pc_dependency(Class,Dep))).
+find_component_dependency_1(Dep):- 
+	object_ext(_,Class,S),
+            (Dep = S; (S \== 'OMS',find_pc_dependency(Class,Dep))).
+find_component_dependency_1(Dep):- 
+	subclass_ext(_,_,Class,S),
+            (Dep = S; (S \== 'OMS',find_pc_dependency(Class,Dep))).
+find_component_dependency_1(Dep):- 
+	memberof_ext(_,_,Class,S),
+            (Dep = S; (S \== 'OMS',find_pc_dependency(Class,Dep))).
+find_component_dependency_1(Dep):- 
+	relationship_ext(_,_,Rcl,Rs,Tcl,Ts),
+	(Rs = Dep ; Rs \== 'OMS',find_pc_dependency(Rcl,Dep)
+             ; Ts = Dep ; Ts \== 'OMS',find_pc_dependency(Tcl,Dep)).
+find_component_dependency_1(Dep):- 
+	schrel_ext(_,_,Rcl,Rs,Tcl,Ts),
+	(Rs = Dep ; Rs \== 'OMS',find_pc_dependency(Rcl,Dep)
+             ; Ts = Dep ; Ts \== 'OMS',find_pc_dependency(Tcl,Dep)).
+find_component_dependency_1(Dep):- 
+	strel_ext(_,_,Rcl,Rs,Tcl,Ts),
+	(Rs = Dep ; Rs \== 'OMS',find_pc_dependency(Rcl,Dep)
+             ; Ts = Dep ; Ts \== 'OMS',find_pc_dependency(Tcl,Dep)).
+find_component_dependency_1(Dep):- 
+	attribute_ext(_,_,Rcl,Rs,Tcl,Ts),
+	(Rs = Dep ; Rs \== 'OMS',find_pc_dependency(Rcl,Dep)
+             ; Ts = Dep ; Ts \== 'OMS',find_pc_dependency(Tcl,Dep)).
+find_component_dependency_1(Dep):- 
+	attribute_object_ext(_,_,Rcl,Rs,Tcl,Ts),
+	(Rs = Dep ; Rs \== 'OMS',find_pc_dependency(Rcl,Dep)
+             ; Ts = Dep ; Ts \== 'OMS',find_pc_dependency(Tcl,Dep)).
+
+find_pc_dependency(Class,Dep):- 
+	compound(Class),
+	Class =.. [_|Arglist],
+	find_pc_dependency_list(Arglist,Dep).
+	
+find_pc_dependency_list([_Class,S|_R],S).
+find_pc_dependency_list([Class,S|_R],Dep):- 
+	S \== 'OMS',
+	find_pc_dependency(Class,Dep).
+find_pc_dependency_list([_Class,_S|R],Dep):- 
+	find_pc_dependency_list(R,Dep).
+
+%-----------
+/* dump_component_ext/2 is not to be exported -- it dumps from
+extrernal format and is to be used with create component. */
+dump_component_ext(Dir,Name):- 
+	slash(Slash),
+  	concat_atom([Dir,Slash,'schema_omsext.P'],SchFile),
+	init_ext_schema_index,
+	tell(SchFile),
+	write_hdr(class_ext(_,_,_)),
+	write_call(class_ext(_,_,Name)),
+	write_hdr(subclass_ext(_,_,_,_)),
+	write_call(subclass_ext(_,Name,_,_)),
+	write_hdr(relationship_ext(_,_,_,_,_,_)),
+	write_call(relationship_ext(_,Name,_,_,_,_)),
+	write_hdr(schrel_ext(_,_,_,_,_,_)),
+	write_call(schrel_ext(_,Name,_,_,_,_)),
+	write_hdr(strel_ext(_,_,_,_,_,_)),
+	write_call(strel_ext(_,Name,_,_,_,_)),
+	told,
+  	concat_atom([Dir,Slash,'data_omsext.P'],DataFile),
+	init_ext_data_index,
+	tell(DataFile),
+	write_hdr(object_ext(_,_,_)),
+	write_call(object_ext(_,_,Name)),
+	write_hdr(memberof_ext(_,_,_,_)),
+	write_call(memberof_ext(_,Name,_,_)),
+	write_hdr(attribute_ext(_,_,_,_,_,_)),
+	write_call(attribute_ext(_,Name,_,_,_,_)),
+	write_hdr(attribute_object_ext(_,_,_,_,_,_)),
+	write_call(attribute_object_ext(_,Name,_,_,_,_)),
+	told.
+
+%---
+
+write_call(Call):- 
+	abolish_table_pred(table_call/1),
+	table_call(Call),
+	write_ext_term(Call),
+	fail.
+write_call(_Call):-
+	abolish_table_pred(table_call/1).
+
+:- table table_call/1.
+table_call(Call):- call(Call).
+
+
+:-comment(merge_components/2,"merge_components(+List,+Component)
+merges the components in @tt{List} into component @tt{Component}.
+Specifically, for each component @tt{C} in @tt{List} it renames any
+known identifier @tt{id(Nid,C)} in the OMS state to
+@tt{id(Nid,Component)}.  The dirty bit is set on @tt{Component} so
+that it will be written out on update.  ").
+
+needs_rewrite(oms_cn(Id,Name,Nid,Src),Clist,Comp,
+	      oms_cn(Id,Name,Nid,Src),Flag):- 
+	((member(Src,Clist),Src \== Comp) -> 
+	     
+	check_and_rewrite(oms_cn(Id,Name,Nid,Src),Clist,Comp,Flag),
+	
+check_and_rewrite(oms_cn(Id,Name,Nid,Src),Clist,Comp,Flag),
+
+
+dep_from_cid(Id,Source):-  oms_cn(Id,_,_,Source).
+dep_from_cid(Id,Source):-  
+	compound(Id), 
+	\+ (oms_primitive_class(Id,_,_,_)),
+	Id =.. [_|Arglist],
+	dep_from_cid_list(Arglist,Source).
+		
+dep_from_cid_list(Arglist,Source):- 
+	member(Id,Arglist),
+	dep_from_cid(Id,Source).
+
+:- comment(add_component_initializer/3,
+"@tt{add_component_initializer(Source,Path,File)} can be used to add
+@tt{File} as an initialization file for the component whose source is
+@tt{Source}, and whose path is @tt{Path}.  The component must already
+exist and be loaded into an OMS state, otherwise a warning is given
+and the predicate fails.").
+
+add_component_initializer(Source,File):- 
+   (q_strel(id(compName(id(Source,Source),id(atom(Path),'OMS'),'OMS'),
+	    		id(hasVersion,Source),id(integer(V),'OMS')) -> 
+	q_newStrel(id(compVers(id(Source,Source),id(integer(V),'OMS')),'OMS'),
+	          id(initialization_file,Source),
+	          id(atom(File),'OMS'))
+     ; 
+	oms_warning(component,['Cannot initialize uncreated component ',
+				Source]),
+	fail).
+
+find_component_dir(Name,Full):- 
+	(search_module(Name,_Dir_part,_Base_part,_Ext,Full,_Obj) 
+                -> true 
+	    ; 
+	        oms_error(component,['can''t find component: ',Name])),
+	(path_sysop(isdir,Full) -> 
+	    true 
+	  ; 
+	     oms_error(component,['component name is not a directory',Full])).
+
+top_level_needs_loading(_Path,Name,Arglist):- 
+	\+ (Name = 'OMS'),
+	(member(force(yes),Arglist) -> 
+	    true
+	  ; 
+	    \+ class(_,Name,Name,Name) ).
+
+
+conflicting_version(Name,New,V1,Name2,V2):- 
+	strel_ext(component(Name,Name,atom(_),'OMS',integer(_),'OMS'),'OMS',
+		    componentDepends,Name,
+		    component(New,New,atom(_),'OMS',integer(V1),'OMS'),'OMS'),
+	(    strel_ext(component(Name2,Name2,atom(_),'OMS',
+					     integer(_),'OMS'),'OMS',
+			 componentDepends,_,
+			 compVers(New,New,atom(_),'OMS',
+					  integer(V2),'OMS'),'OMS')
+	 ; 
+	     class(Cid,New,New,New),
+	     class(Rid,componentDepends,componentDepends,Name),
+	     immediate_strel(Sid,Rid,component(Cid,atom(_),integer(V2))),
+	     Sid = component(Sid2,_,_),class(Sid2,Name2,Name2,Name2)
+	),
+        V1 \== V2.
+
+
+dependency_needs_loading(New,Name,Arglist):- 
+	New \== 'OMS',New \== Name,
+	\+ class_ext(New,New,New),
+	(member(force(yes),Arglist) ; \+ class(_,New,New,New) ).
+
+get_version_info(Name,CV):- 
+   (q_strel(id(Name,Name),id(hasVersion,Name),id(integer(Version),'OMS')) -> 
+	    CV = compVers(Name,Name,integer(Version),'OMS')
+	  ; CV = compVers(Name,Name,integer(0),'OMS')).
+
+create_all_dependencies_in_place(0,Name,Dir,_Compid,NewCompid,Relid):- !,
+	newComponent(Name,Dir,in_place,NewCompid,_NewRelid),
+	newStrel(NewCompid,Relid,NewCompid).
+create_all_dependencies_in_place(V,Name,_Dir,Compid,NewCompid,Relid):- !,
+	class(Nameid,Name,Name,Name),
+	(needs_update(Nameid) -> 
+            % To needs update, NewCompid handles both cases of from
+	    strel(component(Nameid,integer(V),atom(Path)),_,_),
+	    V1 is V + 1,
+	    retractallStrel(Compid,Relid,component(Nameid,integer(V),_)),
+	    newStrel(NewCompid,Relid,component(Nameid,integer(V1),atom(Path)))
+	  ; 
+	    (Compid = NewCompid  -> 
+                % neither from nor to needed update.
+		true	
+	      ; 
+	        % From needs update but not to
+		strel(component(Nameid,integer(V),atom(Path)),_,_),
+	        retractallStrel(Compid,Relid,component(Nameid,integer(V),_)),
+	        newStrel(NewCompid,Relid,
+				component(Nameid,integer(V1),atom(Path))) ) ).
+		
+

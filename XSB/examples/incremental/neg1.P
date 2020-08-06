@@ -1,0 +1,96 @@
+/* Incremental evaluation in the context of normal tabled logic program
+
+Compile and execute :- test.
+Answers should be:
+X = 3
+
+Y = 2
+Y = 3
+
+Z = 4
+
+yes
+| ?- 
+
+:- test1.
+should give the same answer (but only initially, not after test.)
+*/
+
+:- import incr_assert/1, incr_retractall/1 from increval.
+:- import incr_assert_inval/1, incr_retractall_inval/1, incr_table_update/0 from increval.
+:- import call_c/1 from standard.
+
+test :-
+	test1,
+	test2.
+
+test1 :-
+	abolish_all_tables,
+	retractall(a(_)),retractall(b(_,_)),retractall(c(_)),
+	assert(a(1)),assert(b(1,2)),assert(c(2)),assert(c(3)),
+	(check_ans(1,X,p(X),[3]),
+	 fail
+	 ;
+	 incr_retractall(b(1,2)),
+	 check_ans(2,X,p(X),[2,3]),
+	 fail
+	 ;
+	 incr_assert(a(2)),
+	 incr_assert(b(2,3)),
+	 incr_assert(c(4)),
+	 check_ans(3,X,p(X),[4]),
+	 fail
+	 ;
+	 true
+	).
+
+test2 :-
+	abolish_all_tables,
+	retractall(a(_)),retractall(b(_,_)),retractall(c(_)),
+	assert(a(1)),assert(b(1,2)),assert(c(2)),assert(c(3)),
+	(check_ans(4,X,p(X),[3]),
+	 fail
+	 ;
+	 incr_retractall_inval(b(1,2)),
+	 incr_table_update,
+	 check_ans(5,X,p(X),[2,3]),
+	 fail
+	 ;
+	 incr_assert_inval(a(2)),
+	 incr_assert_inval(b(2,3)),
+	 incr_assert_inval(c(4)),
+	 incr_table_update,
+	 check_ans(6,X,p(X),[4]),
+	 fail
+	 ;
+	 true
+	).
+
+check_ans(Num,Var,Call,RightAnswers) :-
+	findall(Var,Call,Answers),
+	sort(Answers,SAnswers),
+	(SAnswers == RightAnswers
+	 ->	writeln('OK'(Num))
+	 ;	writeln(error(Num,SAnswers,RightAnswers))
+	).			
+
+:- table p/1,q/1. 
+:- use_incremental_tabling p/1,q/1.
+
+p(X):- q(X),not r(X).
+
+q(X):- c(X).
+
+:- table r/1.
+:- use_incremental_tabling r/1.
+
+r(X):- a(X).
+r(X):- r(Y),b(Y,X).
+
+:- use_incremental_dynamic a/1,b/2,c/1.
+:- dynamic a/1,b/2,c/1.
+
+a(1).
+b(1,2).
+c(2).
+c(3).

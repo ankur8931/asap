@@ -1,0 +1,467 @@
+## File:      topMakefile.in
+## Author(s): kifer
+## Contact:   xsb-contact@cs.sunysb.edu
+##
+## Copyright (C) The Research Foundation of SUNY, 1998
+##
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+##
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+##
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: topMakefile.in,v 1.64 2012-09-27 02:25:57 kifer Exp $
+##
+##
+
+###############################################################################
+#  This is a top-level distribution Makefile for XSB.
+#  The `configure' script uses this file as a template for creating Makefile
+#
+# make all	to compile and build XSB.
+# make install	to install it.
+#
+# make clean
+#      Delete all files from the distribution that are normally
+#      created by building XSB, but preserve the files that
+#      record the configuration.
+#
+# make configclean
+#	Delete architecture-specific files for the current architecture.
+#
+# make distclean
+#      Delete all files from the current directory that are created by
+#      configuring or building XSB.
+#
+###############################################################################
+
+
+SHELL = /bin/sh
+
+# If Make doesn't predefine MAKE, set it here.
+@SET_MAKE@
+
+# ==================== Things `configure' Might Edit ====================
+
+CC=@CC@
+CPP=@CPP@
+LDFLAGS=@LDFLAGS@
+CPPFLAGS=@CPPFLAGS@
+
+### These help us choose version- and architecture-specific directories
+### to install files in. Not used for now.
+xsb_version=@xsb_version@
+
+### This should be the name of the configuration we're building XSB
+### for, like `sparc-sun-sunos'.
+configuration=@canonical@
+config_tag=@config_tag@
+
+xsb_obj_extension=@xsb_obj_extension@
+
+# ==================== Where To Install XSB ====================
+
+# Everything is placed in subdirectories of this directory.
+# The values for many of the variables below are expressed
+# in terms of this one, so you do not need to change them.
+prefix=$(DESTDIR)@prefix@
+
+srcdir=@topdir@
+VPATH=$(srcdir)
+
+link_cmd=@config_ln_command@
+
+# where XSB lib directory lives
+install_libdir=$(prefix)/lib
+# where XSB syslib directory lives
+install_syslibdir=$(prefix)/syslib
+# where XSB cmplib directory lives
+install_cmplibdir=$(prefix)/cmplib
+# where prolog includes go
+install_prolog_includes=$(prefix)/prolog_includes
+
+# where packages are installed
+install_pkgdir=$(prefix)/packages
+# specific packages:
+install_pkgxmcdir=$(prefix)/packages/xmc
+
+# where etc are installed
+install_etcdir=$(prefix)/etc
+# where .h files will be copied
+install_emudir=$(prefix)/emu
+# where XSB examples live
+install_examples=$(prefix)/examples
+
+
+# Like `prefix', but used for architecture-specific files.
+src_config_prefix=@arch_config_prefix@
+install_config_prefix=$(DESTDIR)@arch_install_config_prefix@
+# we copy the xsb.o module here
+install_config_objlibdir=$(install_config_prefix)/saved.o
+
+src_emudir=$(srcdir)/emu
+
+# where source lib directory lives
+src_libdir=$(srcdir)/lib
+# where source syslib directory lives
+src_syslibdir=$(srcdir)/syslib
+# where source cmplib directory lives
+src_cmplibdir=$(srcdir)/cmplib
+# where source prolog includes live
+src_prolog_includes=$(srcdir)/prolog_includes
+# where source packages live
+src_pkgdir=$(srcdir)/packages
+src_etcdir=$(srcdir)/etc
+src_examples=$(srcdir)/examples
+
+src_config_libdir=$(src_config_prefix)/lib
+
+# Where to install XSB binaries
+install_bindir=$(install_config_prefix)/bin
+# where arch-dependent XSB .{P,H,O} files go
+install_config_libdir=$(install_config_prefix)/lib
+# where the scripts go
+install_scriptdir=$(prefix)/bin
+# where the config detection scripts go
+install_builddir=${prefix}/build
+
+# where the object code goes
+src_config_objlibdir=$(src_config_prefix)/saved.o
+src_bindir=$(src_config_prefix)/bin
+src_scriptdir=$(srcdir)/bin
+
+arch_install_objdir=${install_config_prefix}/saved.o
+
+EXECUTABLE=$(src_bindir)/xsb
+
+# where the object code is found
+arch_config_objlibdir=$(src_config_prefix)/saved.o
+
+# If building with Oracle, `configure' will set this to `xsbora' target.
+# Otherwise, it'll be the `xsb' target.
+# If this (topMakefile) is invoked through the `module' goal, then
+# emuMakefile will be invoked through `xsbmod or `xsboramod' targets.
+emumake_goal=@emumake_goal@
+
+# Normal user
+all: prepare emulator xsbmod xsbdll gpp_exe remake_dot_O_files emu_clean
+
+# Developer who just checked out or updated CVS copy
+devel: prepare emulator xsbmod xsbdll gpp_exe remake_dot_O_files emu_clean
+
+superdevel: prepare emulator xsbmod xsbdll gpp_exe remake_dot_O_files_force packages emu_clean
+
+# Developer who needs a quick re-make of the executable, don't make .O files
+fast: prepare emulator gpp_exe do_cleaning
+# very fast: like fast, but without gpp
+vfast: prepare emulator do_cleaning
+
+
+# Packages
+packages: start_packages finish_packages
+
+start_packages: xasp
+	@rm -f $(srcdir)/build/.*.tmp
+	@cd $(srcdir); $(MAKE) packages XSB=$(src_scriptdir)/xsb$(config_tag)
+	@echo "" | tee -a Installation_summary
+	@./pkg_config.sh $(src_scriptdir)/xsb$(config_tag ) | \
+										tee -a Installation_summary
+
+finish_packages:
+	@echo "" | tee -a Installation_summary
+	@cat $(srcdir)/build/.*.tmp 2> /dev/null | \
+			tee -a Installation_summary
+prepare:
+	@echo ""; echo "Preparing..."
+	@cd $(src_emudir); \
+	  rm -f *.o Makefile  2> /dev/null || echo "" ; \
+	  ${link_cmd} ${src_config_objlibdir}/*.o . 2> /dev/null || echo "" ; \
+	  ${link_cmd} ${src_config_prefix}/emuMakefile ./Makefile
+	@cd $(srcdir)/gpp; \
+	  rm -f *.o Makefile ; \
+	  ${link_cmd} ${src_config_prefix}/gppMakefile ./Makefile
+	@rm -f $(srcdir)/build/.*.tmp
+
+emulator: ${src_config_prefix}/xsb_config.h ${src_config_prefix}/xsb_debug.h
+	@echo ""; echo "Making emulator..." ; \
+		cd ${src_emudir} ; \
+		$(MAKE) depend 2>/dev/null || echo "*** Warning: The command 'makedepend' is not installed. Install it to speed up compilation of XSB." ; \
+		rm -f $(srcdir)/build/.xsb_build_failed; \
+		($(MAKE) EXECUTABLE="$(EXECUTABLE)" $(emumake_goal) || \
+			$(srcdir)/build/touch.sh $(srcdir)/build/.xsb_build_failed) \
+		2>&1 | tee -a ../build/Installation_summary; \
+		(test ! -f $(srcdir)/build/.xsb_build_failed || \
+					(rm -f $(srcdir)/build/.xsb_build_failed; exit 1))
+
+gpp_exe:
+	@echo ""; echo "Making gpp"
+	@cd $(srcdir)/gpp; $(MAKE) 2>&1 | tee -a ../build/Installation_summary
+
+# Compiling the interface with SMODELS.
+xasp:
+	@cd $(src_pkgdir)/xasp; \
+	  echo "Compiling xasp interface"; \
+	  rm -f *.o Makefile *.h *$(xsb_obj_extension) *.so 2>/dev/null || echo ""; \
+	  ${link_cmd} ${src_config_prefix}/smoMakefile ./Makefile; \
+	  $(MAKE) CROSS_SIMULATOR=@CROSS_SIMULATOR@ XSB=$(src_scriptdir)/xsb$(config_tag) @smodels_goal@ 2>&1\
+		 | tee -a ../../build/Installation_summary
+
+# Goal for making an XSB load module to be linked with external
+# C-drivers that pass queries to XSB
+module: prepare xsbmod do_cleaning inform_module
+
+dynmodule: prepare xsbdynmod
+
+cygdll: prepare loccygdll do_cleaning inform_module
+
+# if supporting Oracle, then emumake_goal=xsbora; else emumake_goal=xsb
+# This invokes xsboramod and xsbmod goals in emuMakefile, respectively
+xsbmod: ${src_config_prefix}/xsb_config.h ${src_config_prefix}/xsb_debug.h
+	@echo ""; echo "Making XSB module..."
+	@cd ${src_emudir}; \
+		$(MAKE) $(emumake_goal)mod
+
+xsbdynmod: ${src_config_prefix}/xsb_config.h ${src_config_prefix}/xsb_debug.h
+	@cd ${src_emudir}; \
+		$(MAKE) $(emumake_goal)dynmod
+
+xsbdll: ${src_config_prefix}/xsb_config.h ${src_config_prefix}/xsb_debug.h
+	@echo ""; echo "Making DLL... (if Cygwin)"
+	@cd ${src_emudir}; $(MAKE) dll
+
+loccygdll: ${src_config_prefix}/xsb_config.h ${src_config_prefix}/xsb_debug.h
+	@cd ${src_emudir}; $(MAKE) cygdll
+
+emu_clean: do_cleaning inform_executable
+	@chmod 644  $(src_config_libdir)/xsb_configuration$(xsb_obj_extension)
+
+do_cleaning:
+	@cd $(src_emudir); \
+	  rm -f *.o 2> /dev/null || echo "" ; \
+	  rm -f Makefile Makefile.bak  2> /dev/null || echo ""
+	@cd $(srcdir)/gpp ; \
+	  rm -f Makefile Makefile.bak  2> /dev/null || echo ""
+	@echo "" >> ./Installation_summary
+	@echo "" >> ./Installation_summary
+	@cp ./Installation_summary $(src_config_prefix)
+	@echo ""
+	@cat $(srcdir)/build/.*.tmp 2> /dev/null | \
+			tee -a Installation_summary
+
+inform_executable:
+	@echo "" ; \
+		echo "Now you can run XSB using the shell script:" ; \
+		echo "       $(src_scriptdir)/xsb${config_tag}" ; \
+		echo ""
+
+inform_module:
+	@echo "" ; \
+		echo "The C-callable XSB module is in:"; \
+		echo "       $(arch_config_objlibdir)/xsb.o" ; \
+		echo ""
+
+register:
+	@./register.sh
+
+
+install:: make_directories copy_files configure_packages_install
+
+make_directories::
+	@echo "Verifying that installtion directories exist..."
+	@rm -f .missingdirs.tmp
+	@echo -n "Directory: ${install_emudir}..."
+	  @(test -d "${install_emudir}" || \
+		mkdir -p "${install_emudir}" ) &&	\
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_emudir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_libdir}..."
+	  @(test -d "${install_libdir}" || \
+		mkdir -p "${install_libdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_libdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_syslibdir}..."
+	  @(test -d "${install_syslibdir}" || \
+		mkdir -p "${install_syslibdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_syslibdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_cmplibdir}..."
+	  @(test -d "${install_cmplibdir}" || \
+		mkdir -p "${install_cmplibdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_cmplibdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_scriptdir}..."
+	  @(test -d "${install_scriptdir}" || \
+		mkdir -p "${install_scriptdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_scriptdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_builddir}..."
+	  @(test -d "${install_builddir}" || \
+		mkdir -p "${install_builddir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_builddir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_bindir}..."
+	  @(test -d "${install_bindir}" || \
+		mkdir -p "${install_bindir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_bindir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_config_libdir}..."
+	  @(test -d "${install_config_libdir}" || \
+		mkdir -p "${install_config_libdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_config_libdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${arch_install_objdir}..."
+	  @(test -d "${arch_install_objdir}" || \
+		mkdir -p "${arch_install_objdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${arch_install_objdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_etcdir}..."
+	  @(test -d "${install_etcdir}" || \
+		mkdir -p "${install_etcdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_etcdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_pkgdir}..."
+	  @(test -d "${install_pkgdir}" || \
+		mkdir -p "${install_pkgdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_pkgdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_pkgxmcdir}..."
+	  @(test -d "${install_pkgxmcdir}" || \
+		mkdir -p "${install_pkgxmcdir}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_pkgxmcdir}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_examples}..."
+	  @(test -d "${install_examples}" || \
+		mkdir -p "${install_examples}" ) && \
+		  echo "ok" || \
+		(echo "FAILED"; echo "+++Can't create ${install_examples}" >> .missingdirs.tmp)
+	@echo -n "Directory: ${install_prolog_includes}..."
+	  @(test -d "${install_prolog_includes}" || \
+		mkdir -p "${install_prolog_includes}" ) && \
+		  echo "ok" || \
+			(echo "FAILED"; echo "+++Can't create ${install_prolog_includes}" >> .missingdirs.tmp)
+	@(test -f .missingdirs.tmp && \
+	  (cat .missingdirs.tmp; \
+		echo "***Make the above directories manually and rerun makexsb")) \
+		|| echo "Verifying installation directories ... Done"
+	@test ! -f .missingdirs.tmp || exit 1
+
+copy_files: make_directories
+	@( test "${prefix}" = "${srcdir}" && \
+	  echo "Installation dir = source dir: nothing to install" ) || \
+	  ( echo "Installing XSB in ${prefix} ..." ; \
+		umask 022 ; \
+		echo "Copying executables..." ; \
+		cp -f ${src_bindir}/* ${install_bindir}  ; \
+		cp -f ${src_scriptdir}/xsb${config_tag} \
+				${install_scriptdir}/xsb${config_tag}; \
+		chmod 755 ${install_scriptdir}/* ${install_bindir}/* ; \
+		cp -f ${srcdir}/build/config.sub \
+		  ${srcdir}/build/config.guess \
+		  ${prefix}/build; \
+		chmod 755 ${prefix}/build/* ; \
+		echo "Copying config..." ; \
+		cp -f ${src_config_libdir}/xsb_configuration.* \
+			  ${install_config_libdir} ; \
+		chmod 644 ${install_config_libdir}/xsb_configuration.* ; \
+		./touch.sh ${install_config_libdir}/xsb_configuration$(xsb_obj_extension) ; \
+		cp -f ${src_config_prefix}/banner.msg ${src_config_prefix}/*.h \
+			  ${install_config_prefix} ; \
+		chmod 644 ${install_config_prefix}/banner.msg \
+			  ${src_config_prefix}/*.h ; \
+		cp -f ${src_config_libdir}/* \
+			  ${install_config_libdir} 2> /dev/null || echo ""; \
+		chmod 644 ${install_config_libdir}/* 2> /dev/null || echo ""; \
+		echo "Copying xsb.o" ; \
+		cp -f ${src_config_objlibdir}/xsb.o ${install_config_objlibdir} ; \
+		chmod 644 ${install_config_objlibdir}/*.o ; \
+		echo "Copying .h files from emu dir..." ; \
+		cp -f ${src_emudir}/*.h ${install_emudir} ; \
+		chmod 644 ${install_emudir}/*.h ; \
+		echo "Copying prolog_includes..." ; \
+		cp -f ${src_prolog_includes}/*.h ${install_prolog_includes} ; \
+		chmod 644 ${install_prolog_includes}/*.h ; \
+		echo "Copying lib..." ; \
+		cp -f ${src_libdir}/*$(xsb_obj_extension) ${install_libdir} ; \
+		chmod 644 ${install_libdir}/*$(xsb_obj_extension) ; \
+		./copysubdirs.sh ${src_libdir} ${install_libdir} ; \
+		echo "Copying syslib..." ; \
+		cp -f ${src_syslibdir}/*$(xsb_obj_extension) ${install_syslibdir} ; \
+		chmod 644 ${install_syslibdir}/*$(xsb_obj_extension) ; \
+		cp -f ${src_syslibdir}/debugger_data.P ${install_syslibdir} ; \
+		chmod 644 ${install_syslibdir}/*$(xsb_obj_extension) ${install_syslibdir}/*.P ; \
+		./copysubdirs.sh ${src_syslibdir} ${install_syslibdir} ; \
+		echo "Copying cmplib..." ; \
+		cp -f ${src_cmplibdir}/*$(xsb_obj_extension) ${install_cmplibdir} ; \
+		chmod 644 ${install_cmplibdir}/*$(xsb_obj_extension) ; \
+		./copysubdirs.sh ${src_cmplibdir} ${install_cmplibdir} ; \
+		echo "Copying packages..."; \
+		cp -f ${src_pkgdir}/*$(xsb_obj_extension) ${install_pkgdir}; \
+		cp -f ${src_pkgdir}/*.P ${install_pkgdir}; \
+		./touch.sh ${install_pkgdir}/*$(xsb_obj_extension); \
+		./copysubdirs.sh ${src_pkgdir} ${install_pkgdir} ; \
+		echo "Copying etc..."; \
+		cp -fr ${src_etcdir}/* ${install_etcdir}; \
+		echo "Copying examples..."; \
+		cp -f ${src_examples}/*.[POH] ${install_examples}; \
+		cp -f ${src_examples}/README ${install_examples}; \
+		cp -f ${src_examples}/Makefile ${install_examples}; \
+		./copysubdirs.sh ${src_examples} ${install_examples} ; \
+		echo ""; echo "Installed!" \
+	  )
+
+
+configure_packages_install:
+	@./pkg_config.sh $(install_scriptdir)/xsb$(config_tag) ; \
+	  chmod 644  $(install_config_libdir)/xsb_configuration$(xsb_obj_extension)
+
+remake_dot_O_files: gpp_exe
+	@cd $(srcdir); $(MAKE) XSB=$(src_scriptdir)/xsb$(config_tag)
+
+remake_dot_O_files_force:
+	@cd $(srcdir); $(MAKE) force XSB=$(src_scriptdir)/xsb$(config_tag)
+
+# clean for this architecture only
+configclean::
+	@rm -rf $(src_config_prefix)/*
+	@rm -rf ./config.status
+
+# clean out all architectures
+distclean: clean
+	@rm -rf $(srcdir)/config/*
+	@rm -f $(srcdir)/bin/*
+	@rm -f $(srcdir)/emu/*.o
+
+# clean only the object code for this architecture
+clean:
+	@echo "Cleaning up ${src_config_libdir}"
+	@rm -f ${src_config_libdir}/*$(xsb_obj_extension) ${src_config_libdir}/*.so
+	@echo "Cleaning up ${src_config_objlibdir}"
+	@-rm -f ${src_config_objlibdir}/*
+	@echo "Cleaning up ${src_emudir}"
+	@-rm -f ${src_emudir}/*.o
+	@echo "Cleaning up packages"
+	@cd ../packages; ../build/clean_pkgs.sh
+	@-cd ${src_examples}; rm -f *$(xsb_obj_extension) *.o *~ */*$(xsb_obj_extension) */*.o */*~
+	@echo "Cleaning up ${src_libdir}"
+	@-(cd ${src_libdir}; $(MAKE) clean)
+	@echo "Cleaning up ${src_syslibdir}"
+	@-(cd ${src_syslibdir}; $(MAKE) clean)
+	@echo "Cleaning up ${src_cmplibdir}"
+	@-(cd ${src_cmplibdir}; $(MAKE) clean)
+	@rm -f *~ *.bak .#*
+
+# recreate the makefiles
+again: Makefile.in emuMakefile.in config.status ${src_config_prefix}/config.cache
+	./config.status
+
+config.status:
+${src_config_prefix}/config.cache:
+

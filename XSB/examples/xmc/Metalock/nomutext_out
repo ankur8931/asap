@@ -1,0 +1,4 @@
+metalock(2,1) nomutualex(1)
+Modelcheck from TEXT MODE gives 	mck(metaj(2,1),nomutualex(1)) is false.
+Modelcheck from GUI gives false
+Justification tree has 799 nodes.

@@ -1,0 +1,490 @@
+/* File:      tabdef.P
+** Author(s): Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: tabdef.P,v 1.6 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/* perform_table_all(+Module)						*/
+/*	Tables every predicate defined in the module.			*/
+/*======================================================================*/
+
+perform_table_all(module(_,_,Preds,_)) :- table_all_predicates(Preds).
+
+:- mode table_all_predicates(+).
+
+table_all_predicates([]).
+table_all_predicates([pred(Sym,_,_)|Preds]) :-
+	table_it(Sym),
+	table_all_predicates(Preds).
+
+/*======================================================================*/
+/* perform_auto_table(+Module)						*/
+/*	Runs the dependency graph of the predicates in the Module, and	*/
+/*	tries to break all cycles by tabling at least one the involved	*/
+/*	predicates.  Since most of the cycles in the dependency graph	*/
+/*	are caused by immediately recursive predicates, these		*/
+/*	predicates are handled separately.				*/
+/*======================================================================*/
+
+perform_auto_table(module(SymTab,_,CL0,_)) :-
+	table_preds_in_tabling_meta_preds(SymTab, CL0, CL1),
+	table_immediate_recursions(CL1, CL2),
+	table_to_break_all_loops(CL2).
+
+/*======================================================================*/
+/* table_preds_in_tabling_meta_preds(+SymTab, +PredsIn, -PredsOut)	*/
+/*======================================================================*/
+
+table_preds_in_tabling_meta_preds(SymTab, PredsIn, PredsOut) :-
+	( tabling_meta_predicate_exists(SymTab) ->
+		table_preds_in_tabling_meta_preds(PredsIn),
+		remove_tabled_preds(PredsIn, PredsOut)
+	; PredsOut = PredsIn
+	).
+
+:- mode table_preds_in_tabling_meta_preds(+).
+
+table_preds_in_tabling_meta_preds([]).
+table_preds_in_tabling_meta_preds([pred(_,Cls,_)|Preds]) :-
+	table_in_pred(Cls),
+	table_preds_in_tabling_meta_preds(Preds).
+
+:- mode table_in_pred(+).
+
+table_in_pred([]).
+table_in_pred([clause(_,Body,_)|Cls]) :-
+	table_in_clause(Body),
+	table_in_pred(Cls).
+
+:- mode table_in_clause(+).
+
+table_in_clause(and(G1,G2)) :- table_in_clause(G1), table_in_clause(G2).
+table_in_clause(or(G1,G2)) :- table_in_clause(G1), table_in_clause(G2).
+table_in_clause(if(G1,G2)) :- table_in_clause(G1), table_in_clause(G2).
+table_in_clause(not(G)) :- table_in_clause(G).
+table_in_clause(inlinegoal(_,_,_)).
+table_in_clause(goal(GoalSym,Args)) :-
+	sym_name(GoalSym, N, A),
+	( N == tnot, A =:= 1 -> Args = [Arg], table_arg(Arg, N, A)
+	; N == tfindall, A =:= 3 -> goal_arg(Args, Arg), table_arg(Arg, N, A)
+	; N == tbagof, A =:= 3 -> goal_arg(Args, Arg), table_arg(Arg, N, A)
+	; N == tsetof, A =:= 3 -> goal_arg(Args, Arg), table_arg(Arg, N, A)
+	; true
+	).
+
+goal_arg([_,Arg,_], Arg).	% to bypass a compiler register alloc bug
+
+:- mode table_arg(+,+,+).
+
+table_arg(varocc(_), _, _) :- !.
+table_arg(constant(Sym), N, A) :- !, table_sym_of_arg(Sym, N, A).
+table_arg(structure(Sym,_), N, A) :- !, table_sym_of_arg(Sym, N, A).
+table_arg(Argument, N, A) :- ll_arg(1, Argument, T),
+	error(('Non callable term ', T, ' used as argument of ', N, '/', A)).
+
+
+/*======================================================================*/
+/* table_immediate_recursions(+PredsIn, -PredsOut)			*/
+/*======================================================================*/
+
+:- mode table_immediate_recursions(+,-).
+
+table_immediate_recursions([], []).
+table_immediate_recursions([Pred|Preds], PredsOut) :-
+	Pred = pred(Sym,_Cls,_),
+	( needs_tabling(Pred) ->
+		table_it(Sym), PredsOut = P
+	; PredsOut = [Pred|P]
+	),
+	table_immediate_recursions(Preds, P).
+
+/*----------------------------------------------------------------------*/
+/* needs_tabling(+Pred)							*/
+/*	True iff tabling is needed for an immediately recursive		*/
+/*	predicate.							*/
+/*----------------------------------------------------------------------*/
+
+needs_tabling(Pred) :-
+	Pred = pred(Sym,Cls,_),
+	( sym_prop(tabled(_,_), Sym) -> fail
+	; clauses_call_sym(Cls, Sym), fail_if(proven_terminating(Pred))
+	).
+
+/*----------------------------------------------------------------------*/
+/* clauses_call_sym(+Clauses, +Sym)					*/
+/*	Succeeds iff there exists a clause that contains a call to Sym.	*/
+/*----------------------------------------------------------------------*/
+
+:- mode clauses_call_sym(+,+).
+
+clauses_call_sym([Cl|Cls], Sym) :-
+        Cl = clause(_,Body,_),
+	( body_calls_sym(Body, Sym) -> true ; clauses_call_sym(Cls, Sym) ).
+
+/*----------------------------------------------------------------------*/
+/* body_calls_sym(+Body, +Sym)						*/
+/*	Succeeds iff Body contains a call to Sym.			*/
+/*----------------------------------------------------------------------*/
+
+:- mode body_calls_sym(+,+).
+
+body_calls_sym(and(Goal1,Goal2), Sym) :-
+	( body_calls_sym(Goal1, Sym) -> true ; body_calls_sym(Goal2, Sym) ).
+body_calls_sym(or(Goal1,Goal2), Sym) :-
+	( body_calls_sym(Goal1, Sym) -> true ; body_calls_sym(Goal2, Sym) ).
+body_calls_sym(if(Goal1,Goal2), Sym) :-
+	( body_calls_sym(Goal1, Sym) -> true ; body_calls_sym(Goal2, Sym) ).
+body_calls_sym(not(Goal), Sym) :-
+	body_calls_sym(Goal, Sym).
+body_calls_sym(goal(GoalSym,GoalArgs), Sym) :-
+	( GoalSym == Sym -> true
+	; is_meta_pred(GoalSym), call_in_meta_pred(GoalArgs, Sym)
+	).
+
+:- mode call_in_meta_pred(+,+).
+
+call_in_meta_pred([Arg], Sym) :-       % call/1 and not/1
+	call_in_arg(Arg, Sym).
+call_in_meta_pred([_,Arg,_], Sym) :-   % findall/3, setof/3 and bagof/3
+	call_in_arg(Arg, Sym).
+
+:- mode call_in_arg(+,+).
+
+call_in_arg(constant(Sym), Sym).
+call_in_arg(structure(StructSym,StructArgs), Sym):-
+	( StructSym == Sym -> true ; call_in_meta_pred(StructArgs, Sym) ).
+
+/*======================================================================*/
+/* proven_terminating(+Pred)						*/
+/*	Succeeds iff an immediate recursive Pred is proven terminating.	*/
+/*	A predicate is proven terminating iff all its clauses are	*/
+/*	proven terminating.  To do so, mode information is needed.	*/
+/*									*/
+/*	NOTE: Multiple modes are not handled properly yet!!!		*/ 
+/*======================================================================*/
+
+proven_terminating(pred(Sym,Cls,_)) :-
+	sym_prop(mode(Mode), Sym),	% if no mode is known fail.
+	terminating_clauses(Cls, Sym, Mode).
+
+:- mode terminating_clauses(+,+,+).
+
+terminating_clauses([], _, _).
+terminating_clauses([Cl|Cls], Sym, Mode) :-
+	Cl = clause(HeadArgs,Body,_),
+	terminating_body(Body, HeadArgs, Sym, Mode),
+	terminating_clauses(Cls, Sym, Mode).
+
+:- mode terminating_body(+,+,+,+).
+
+terminating_body(and(Goal1,Goal2), HeadArgs, Sym, Mode) :-
+	terminating_body(Goal1, HeadArgs, Sym, Mode),
+	terminating_body(Goal2, HeadArgs, Sym, Mode).
+terminating_body(or(Goal1,Goal2), HeadArgs, Sym, Mode) :-
+	terminating_body(Goal1, HeadArgs, Sym, Mode),
+	terminating_body(Goal2, HeadArgs, Sym, Mode).
+terminating_body(if(Goal1,Goal2), HeadArgs, Sym, Mode) :-
+	terminating_body(Goal1, HeadArgs, Sym, Mode),
+	terminating_body(Goal2, HeadArgs, Sym, Mode).
+terminating_body(not(Goal), HeadArgs, Sym, Mode) :-
+	terminating_body(Goal, HeadArgs, Sym, Mode).
+terminating_body(inlinegoal(_,_,_), _, _, _).
+terminating_body(goal(GoalSym,GoalArgs), HeadArgs, Sym, Mode) :-
+	( GoalSym == Sym ->
+		decreasing_ground_arg(GoalArgs, HeadArgs, 1, Mode)
+	; true
+	).
+
+:- mode decreasing_ground_arg(+,+,+,+).
+
+decreasing_ground_arg([GoalArg|GoalArgs], [HeadArg|HeadArgs], I, Mode) :-
+	( ll_arg(I, Mode, (+)), goal_arg_smaller(GoalArg, HeadArg), !
+	; I1 is I+1, decreasing_ground_arg(GoalArgs, HeadArgs, I1, Mode)
+	).
+
+/*----------------------------------------------------------------------*/
+/* goal_arg_smaller(+GoalArg, +HeadArg)					*/
+/*	Succeeds, iff GoalArg is a subterm of HeadArg.			*/
+/*	Currently partially implemented but works well in practice!.	*/
+/*----------------------------------------------------------------------*/
+
+:- mode goal_arg_smaller(+,+).
+
+goal_arg_smaller(varocc(X), structure(_,StructArgs)) :-
+	var_in_structure(X, StructArgs).
+
+:- mode var_in_structure(+,+).
+
+var_in_structure(X, [varocc(X)|_]) :- !.
+var_in_structure(X, [structure(_,Args)|_]) :- var_in_structure(X, Args), !.
+var_in_structure(X, [_|Args]) :- var_in_structure(X, Args).
+
+
+/*======================================================================*/
+/* table_to_break_all_loops(+Preds)					*/
+/*======================================================================*/
+
+table_to_break_all_loops(Preds) :-
+	call_themselves(Preds, LoopPreds, Preds),
+	( LoopPreds == [] -> true
+	; lp(LoopPreds, LoopPreds, LPs), LPs = [LP|_],
+	  optimal_sym(LPs, LP, Sym), table_it(Sym),
+	  exclude(LoopPreds, Sym, _, RestPreds),
+	  table_to_break_all_loops(RestPreds)
+	).
+
+/*----------------------------------------------------------------------*/
+/* call_themselves(+PredsIn, -LoopPreds, +Preds)			*/
+/*	Collects in LoopPreds all predicates that call themselves via	*/
+/*	at least one other predicate.  All self-loops have already been	*/
+/*	broken by this time.						*/
+/*----------------------------------------------------------------------*/
+
+:- mode call_themselves(+,-,+).
+
+call_themselves([], [], _).
+call_themselves([Pred|Preds], LoopPreds, AllPreds) :-
+	Pred = pred(Sym,_,_),
+        ( path(Sym, Sym, AllPreds) -> LoopPreds = [Pred|Ps] ; LoopPreds = Ps ),
+	call_themselves(Preds, Ps, AllPreds).
+
+/*----------------------------------------------------------------------*/
+/* path(+Sym1, +Sym2, +Preds)						*/
+/*	Succeeds iff there is a non-trivial path from Sym1 to Sym2.	*/
+/*----------------------------------------------------------------------*/
+
+path(Sym1, Sym2, Preds) :-
+	fail_if(sym_prop(tabled(_,_),Sym1)),
+	exclude(Preds, Sym1, Cls, RestPreds), nonvar(Cls),
+	path_in_clauses(Cls, Sym1, Sym2, RestPreds).
+
+/* 2-parameter Sym1 is needed to exclude immediate recursion */
+
+:- mode path_in_clauses(+,+,+,+).
+
+path_in_clauses([clause(_,Body,_)|Cls], Sym1, Sym2, Preds) :-
+	( path_in_body(Body, Sym1, Sym2, Preds) -> true
+	; path_in_clauses(Cls, Sym1, Sym2, Preds)
+	).
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+:- mode path_in_body(+,+,+,+).
+
+path_in_body(and(Goal1,Goal2), Sym1, Sym, Preds) :-
+	( path_in_body(Goal1, Sym1, Sym, Preds) -> true
+	; path_in_body(Goal2, Sym1, Sym, Preds)
+	).
+path_in_body(or(Goal1,Goal2), Sym1, Sym, Preds) :-
+	( path_in_body(Goal1, Sym1, Sym, Preds) -> true
+	; path_in_body(Goal2, Sym1, Sym, Preds)
+	).
+path_in_body(if(Goal1,Goal2), Sym1, Sym, Preds) :-
+	( path_in_body(Goal1, Sym1, Sym, Preds) -> true
+	; path_in_body(Goal2, Sym1, Sym, Preds)
+	).
+path_in_body(not(Goal), Sym1, Sym, Preds) :-
+	path_in_body(Goal, Sym1, Sym, Preds).
+path_in_body(goal(GoalSym,GoalArgs), Sym1, Sym, Preds) :-
+	( GoalSym == Sym -> Sym1 \== Sym
+	; is_meta_pred(GoalSym) ->
+		path_in_meta_pred_args(GoalArgs, Sym1, Sym, Preds)
+	; path(GoalSym, Sym, Preds)
+	).
+
+:- mode path_in_meta_pred_args(+,+,+,+).
+
+path_in_meta_pred_args([Arg], Sym0, Sym, Preds) :-      % call/1 and not/1
+	path_in_meta_pred_arg(Arg, Sym0, Sym, Preds).
+path_in_meta_pred_args([_,Arg,_], Sym0, Sym, Preds) :-  % findall/3, setof/3
+	path_in_meta_pred_arg(Arg, Sym0, Sym, Preds).   % and bagof/3
+
+path_in_meta_pred_arg(constant(Sym1), Sym0, Sym, Preds) :-
+	path_in_body(goal(Sym1,[]), Sym0, Sym, Preds).
+path_in_meta_pred_arg(structure(Sym1,Args), Sym0, Sym, Preds) :-
+	sym_name(Sym1, Name, Arity),
+	( Name == ',', Arity =:= 2 ->
+	    Args = [A1,A2], % code below immitates path_in_boby(and(A1,A2), ...
+	    ( path_in_meta_pred_arg(A1, Sym0, Sym, Preds) -> true
+	    ; path_in_meta_pred_arg(A2, Sym0, Sym, Preds)
+	    )
+	; Name == ';', Arity =:= 2 ->
+	    Args = [A1,A2], % code below immitates path_in_boby(or(A1,A2), ...
+	    ( path_in_meta_pred_arg(A1, Sym0, Sym, Preds) -> true
+	    ; path_in_meta_pred_arg(A2, Sym0, Sym, Preds)
+	    )
+	; Name == 'not', Arity =:= 1 ->
+	    Args = [A1],    % code below immitates path_in_boby(not(A1), ...
+	    path_in_meta_pred_arg(A1, Sym0, Sym, Preds)
+	; path_in_body(goal(Sym1,Args), Sym0, Sym, Preds)
+	).
+
+/*----------------------------------------------------------------------*/
+/* lp(+Preds, +AllPreds, -LoopParticipationList)			*/
+/*	Attempts to calculate the number of loops that each predicate	*/
+/*	symbol participates in.  The numbers appear to be mostly	*/
+/*	correct (very close to the actual ones) !!			*/
+/*----------------------------------------------------------------------*/
+
+:- mode lp(+,+,-).
+
+lp([], _, []).
+lp([Pred|Preds], AllPreds, [loop_participation(Sym,N)|L1]) :-
+	Pred = pred(Sym,_,_),
+	lp_sym(AllPreds, Pred, AllPreds, 0, N),
+	lp(Preds, AllPreds, L1).
+
+:- mode lp_sym(+,+,+,+,-).
+
+lp_sym([], _, _, N, N).
+lp_sym([pred(Sym1,_,_)|Preds], Pred, AllPreds, Nin, Nout) :-
+	Pred = pred(Sym,Cls,_),
+	( Sym1 \== Sym, clauses_call_sym(Cls, Sym1) ->
+		lp_num(AllPreds, Sym, Sym1, AllPreds, 0, N),
+		Nmid is Nin + N
+	; Nmid = Nin
+	),
+	lp_sym(Preds, Pred, AllPreds, Nmid, Nout).
+
+:- mode lp_num(+,+,+,+,+,-).
+
+lp_num([], _, _, _, N, N).
+lp_num([pred(Sym2,Cls2,_)|Preds], Sym, Sym1, AllPreds, Nin, Nout) :-
+	( ( clauses_call_sym(Cls2, Sym),
+            ( path(Sym1, Sym2, AllPreds) ; Sym1 == Sym2 ) ) ->
+		Nmid is Nin + 1
+	; Nmid = Nin
+	),
+	lp_num(Preds, Sym, Sym1, AllPreds, Nmid, Nout).
+
+/*----------------------------------------------------------------------*/
+/* optimal_sym(+LoopParticipations, +ChoiceSoFar, -ChosenSymbol)	*/
+/*	Given a list of loop participations and an initial choice, it	*/
+/*	returns ``the optimal'' symbol to table so that them most loops	*/
+/*	are broken ``in the cheapest way''.  Several heuristics are	*/
+/*	employed and most of them should be self-explanatory.  The 	*/
+/*	``cheaper table choice'' is only partially implemented; a full	*/
+/*	implementation requires type analysis.  It is however, fully	*/
+/*	implemented for Datalog.					*/
+/*----------------------------------------------------------------------*/
+
+:- mode optimal_sym(+,+,-).
+
+optimal_sym([], loop_participation(Sym,_), Sym).
+optimal_sym([LP|LPs], LPin, Sym) :-
+	'two way choice'(LP, LPin, Chosen),
+	optimal_sym(LPs, Chosen, Sym).
+
+:- mode 'two way choice'(+,+,-).
+
+'two way choice'(X, Y, Chosen) :-
+	X = loop_participation(SymX,LPX),
+	Y = loop_participation(SymY,LPY),
+	( 'greedy choice'(LPX, LPY, X, Y, Chosen) -> true
+	; 'exported choice'(SymX, SymY, X, Y, Chosen) -> true
+	; 'cheaper table choice'(SymX, SymY, X, Y, Chosen) -> true
+	/*
+	; 'bigger body choice'(SymX, SymY, X, Y, Chosen) -> true
+	; 'closer to exported choice'(SymX, SymY, X, Y, Chosen) -> true
+	*/
+	; Chosen = Y	/* if all tests cannot decide just pick one!	*/
+	).
+
+'greedy choice'(LPX, LPY, X, Y, Chosen) :-
+	( LPX > LPY -> Chosen = X ; LPX < LPY -> Chosen = Y ).
+
+'exported choice'(SymX, SymY, X, Y, Chosen) :-
+	( sym_prop(ex, SymX) -> fail_if(sym_prop(ex,SymY)), Chosen = X
+	; sym_prop(ex, SymY) -> Chosen = Y
+	).
+
+'cheaper table choice'(SymX, SymY, X, Y, Chosen) :-
+	sym_name(SymX, _, AX), sym_name(SymY, _, AY),
+	( AX < AY -> Chosen = X ; AX > AY -> Chosen = Y ).
+
+
+/*----------------------------------------------------------------------*/
+/* Meta-predicates.							*/
+/*----------------------------------------------------------------------*/
+
+is_meta_pred(Sym) :-
+	sym_name(Sym, Name, Arity),
+	( Arity =:= 1 ->
+		( Name == call -> true
+		; Name == (not)
+		)
+	; Arity =:= 3 ->
+		( Name == findall -> true
+		; Name == setof -> true
+		; Name == bagof
+		)
+	).
+
+/*----------------------------------------------------------------------*/
+/* Auxiliary predicates.						*/
+/*----------------------------------------------------------------------*/
+
+table_it(Sym) :-
+	sym_propin(tabled, Sym),
+	sym_name(Sym, Name, Arity),
+	message(('% Compiling predicate ', 
+		    Name, '/', Arity, ' as a tabled predicate')).
+
+table_sym_of_arg(Sym, Name, Arity) :-
+	( sym_prop(tabled(_,_), Sym) -> true
+	; sym_prop(defined, Sym) -> table_it(Sym)
+	; sym_prop(im(_), Sym) -> true
+	; error(('Tabling meta predicate ', Name, '/', Arity,
+		 ' used with illegal goal argument'))
+	).
+
+tabling_meta_predicate_exists(SymTab) :-
+	sym_gen(Sym, SymTab), sym_name(Sym, Name, Arity),
+	( Name == tnot, Arity =:= 1 ; 
+	  Name == tfindall, Arity =:= 3 ;
+	  Name == tbagof, Arity =:= 3 ;
+	  Name == tsetof, Arity =:= 3 
+	),
+	!.
+
+:- mode remove_tabled_preds(+,-).
+
+remove_tabled_preds([], []).
+remove_tabled_preds([Pred|Preds], PredsOut) :-
+	Pred = pred(Sym,_,_),
+	( sym_prop(tabled(_,_), Sym) -> PredsOut = P
+	; PredsOut = [Pred|P]
+	),
+	remove_tabled_preds(Preds, P).
+
+:- mode exclude(+,+,-,-).
+
+exclude([], _, _, []).
+exclude([Pred|Preds], Sym, Cls, PredsOut) :-
+	Pred = pred(PredSym,PredCls,_),
+	( PredSym == Sym -> Cls = PredCls, PredsOut = Preds
+	; PredsOut = [Pred|PO], exclude(Preds, Sym, Cls, PO)
+	).
+
+/* ----------------------- end of file tabdef.P -----------------------	*/

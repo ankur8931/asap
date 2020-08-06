@@ -1,0 +1,666 @@
+/*********************************************************************
+This is a simple tool to analyze import/exports and definitions
+and uses of predicates.  It tries to find possible inconsistencies and
+generate document_import/export declarations that might be useful.
+
+It is used by first asserting library_directory facts as needed to
+access all files used, and then calling:
+
+checkImpExps(Options,FileNameList).
+or
+checkImpExps(FileNameList).
+
+where FileNameList is a list of names of XSB source files to be checked.
+
+Options:
+a. used_elsewhere: Warn on: defined, not used, but used elsewhere
+   (Useful to see if it might be better to move the predicate def'n,
+    but prints lots of predicates for libraries)
+b. unused: Warn on: exported but never used,
+   (Useful to see if predicate is not used anywhere, and can be deleted,
+    but prints lots of predicates for libraries)
+c. all_files: Process all files and modules, even if they have no
+   export or document_export directives.
+
+All uses of symbols that appear in a "predicate context", i.e., in the
+body of a rule or in a meta-predicate argument position of a use of a
+meta-predicate, are considered uses of that predicate symbol.  The
+default is also to allow nonconstant symbols appearing in any other
+context to also count as uses of that symbol as that predicate symbol.
+This is useful for programs that define their own meta-predicates.
+
+The following options allow the user to determine more precisely what
+uses of a symbol are considered as uses of it as the predicate symbol:
+
+d. all_symbol_uses: Treat ALL non-predicate uses of symbols (even
+   constants) as predicate uses for the purpose of generating imports.
+e. no_symbol_uses: Don't treat any non-predicate uses of symbols as
+   predicate uses for the purpose of generating imports.
+
+*********************************************************************/
+
+
+/* Do a simple check of import and export statements, to check that
+they are consistent. */
+%%% ciao operators.  These may cause problems in reading some files.
+:- op(500,yfx,#).
+:- op(975, xfx,(=>)).
+:- op(978, xfx,(::)).
+%%:- op(200,fy,(?)).
+:- op(500,fy,(@)).
+:- import '_$op'/3 from file_op.
+
+:- import member/2 from basics.
+:- import memberchk/2 from basics.
+:- import concat_atom/2 from string.
+:- import standard_symbol/3 from std_xsb.
+:- import standard_metapredicate/3 from std_xsb.
+:- import file_size/2 from file_io.
+:- import call_c/1 from standard.
+
+:- dynamic imports/3.
+:- dynamic exports/2.
+:- dynamic all_files/1.
+:- index(all_files/1,trie).
+:- dynamic files_not_found/1.
+:- index(files_not_found/1,trie).
+:- dynamic files_read/1.
+:- dynamic fileNames/2.
+:- dynamic predicates_defined/2.
+:- index(predicates_defined/2,[*(2),1]).
+:- dynamic predicates_used/2.
+:- index(predicates_used/2,[*(2),1]).
+:- dynamic symbols_used/2.
+:- index(symbols_used/2,[*(2),1]).
+:- dynamic multifile_pred/2.
+:- index(multifile_pred/2,[*(2),1]).
+:- dynamic mod_printed/1.
+:- dynamic real_module/1.
+:- index(real_module/1,trie).
+:- dynamic fake_module/1.
+:- index(fake_module/1,trie).
+:- dynamic dynamically_defined/2.
+:- index(dynamically_defined/2,[*(2),1]).
+:- dynamic operators/1.
+
+checkImpExps(Files) :- checkImpExps([],Files).
+
+checkImpExps(Opts,Files) :-
+	retractall(imports(_,_,_)),
+	retractall(exports(_,_)),
+	retractall(all_files(_)),
+	retractall(files_not_found(_)),
+	retractall(files_read(_)),
+	retractall(fileNames(_,_)),
+	retractall(predicates_defined(_,_)),
+	retractall(predicates_used(_,_)),
+	retractall(symbols_used(_,_)),
+	retractall(multifile_pred(_,_)),
+	retractall(mod_printed(_)),
+	retractall(real_module(_)),
+	retractall(fake_module(_)),
+	assert(real_module(usermod)),
+	retractall(dynamically_defined(_,_)),
+	(member(File,Files),
+	 assert(all_files(File)),
+	 fail
+	 ;
+	 true
+	),
+	repeat,
+	findall(Mod,(all_files(Mod),\+files_read(Mod)),Mods),
+	(Mods == []
+	 ->	!,
+		checkImpExpsOpt(Opts)
+	 ;	member(Mod,Mods),
+		assert(files_read(Mod)),
+		Mod \== usermod,
+		read_for_ports(Mod),
+		nl,
+		fail
+	).
+
+checkImpExpsOpt(Opts) :-
+	print_possible_conflicts(Opts),
+	findall(Mod,files_read(Mod),UMods),
+	sort(UMods,Mods),
+	member(Mod,Mods),
+	print_mod_conflicts(Opts,Mod),
+	(memberchk(all_files,Opts)
+	 ->	true
+	 ;	real_or_fake_module(Mod)
+	),
+	print_missing_exports(Opts,Mod),
+	print_missing_imports(Opts,Mod),
+	fail.
+checkImpExpsOpt(_Opts).
+
+print_possible_conflicts(_Opts) :-
+	nl,nl,
+	writeln('Possible usermod definition conflicts:'),
+	setof(Mod,usermod_conflict(Mod,Pred),Mods),
+	write_pred(Pred), write(' defined in '),writeln(Mods),
+	fail.
+print_possible_conflicts(_Opts) :- nl.
+
+write_pred(P/A) :- writeq(P),write('/'),write(A).
+
+usermod_conflict(Mod,Pred) :-
+	usermod_predicates_defined(Mod,Pred),
+	usermod_predicates_defined(Mod1,Pred),
+	Mod1\==Mod,
+	\+ (dynamically_defined(Mod,Pred),  % multiple dynamic decls not a problem
+	    dynamically_defined(Mod1,Pred)),
+	\+ (multifile_pred(Mod,Pred),
+	    multifile_pred(Mod1,Pred)).
+
+usermod_predicates_defined(Mod,Pred) :-
+	predicates_defined(Mod,Pred),
+	\+ real_module(Mod).
+
+usermod_predicates_used(Mod,Pred) :-
+	predicates_or_symbols_used(Mod,Pred),
+	\+ real_module(Mod).
+
+predicates_or_symbols_used(Mod,Pred) :- predicates_used(Mod,Pred).
+predicates_or_symbols_used(Mod,Pred) :- symbols_used(Mod,Pred).
+
+print_mod_conflicts(Opts,Mod) :-	% defined, not used, but exactly one other place
+	memberchk(used_elsewhere,Opts),
+	usermod_predicates_defined(Mod,Pred),
+	\+multifile_pred(Mod,Pred),
+	\+ predicates_or_symbols_used(Mod,Pred),
+	findall(ModI,
+		(usermod_predicates_used(ModI,Pred),ModI \== Mod,\+multifile_pred(ModI,Pred)),
+		ModIs),
+	ModIs = [_],
+	print_hdr_if_nec(Mod),
+	write('%% '),write_pred(Pred),write(' defined, not used, but used in '),
+	writeln(ModIs),
+	fail.
+print_mod_conflicts(Opts,Mod) :-	% exported but never used
+	memberchk(unused,Opts),
+	exports(Mod,Pred),
+	\+ imports(_OMod,Pred,Mod),
+	print_hdr_if_nec(Mod),
+	write('%% exports '),write_pred(Pred), writeln(' but no other module imports it!!'),
+	fail.
+print_mod_conflicts(_Opts,Mod) :-	% cant be both real and fake module
+	real_module(Mod),
+	fake_module(Mod),
+	print_hdr_if_nec(Mod),
+	write('%% Has both :- export and :- document_export.  Cannot have BOTH!!'),
+	fail.
+print_mod_conflicts(_Opts,Mod) :-	% cant be both imported AND defined
+	findall(p(Pred,ModI),(imports(Mod,Pred,ModI), ModI \== usermod,
+			      predicates_defined(Mod,Pred)),
+		UPreds),
+	UPreds \== [],
+	print_hdr_if_nec(Mod),
+	sort(UPreds,Preds),
+	member(p(Pred,ModI),Preds),
+	write('%% '),write_pred(Pred), write(' both defined here and imported from '),write(ModI),writeln('!!'),
+	fail.
+print_mod_conflicts(_Opts,Mod) :-	% exported but not defined
+	findall(Pred,(exports(Mod,Pred),
+		      \+ predicates_defined(Mod,Pred)),
+		UPreds),
+	UPreds \== [],
+	print_hdr_if_nec(Mod),
+	sort(UPreds,Preds),
+	member(Pred,Preds),
+	write('%% '),write_pred(Pred), writeln(' exported but not defined!!'),
+	fail.
+print_mod_conflicts(_Opts,Mod) :-	% imported from multiple places
+	setof(ModI,imports(Mod,Pred,ModI),ModIs),
+	ModIs = [_,_|_],	% more than 1
+	print_hdr_if_nec(Mod),
+	write('%% '),write_pred(Pred),write(' imported from multiple places: '),writeln(ModIs),
+	fail.	
+print_mod_conflicts(_Opts,Mod) :-	% imported from somewhere, but not exported from real or fake module
+	findall(p(ModI,Pred),
+		(imports(Mod,Pred,ModI),
+		 ModI \== usermod,
+		 \+exports(ModI,Pred),
+		 real_or_fake_module(ModI)),
+		UPMs),
+	UPMs \== [],
+	sort(UPMs,PMs),
+	member(p(ModI,Pred),PMs),
+	print_hdr_if_nec(Mod),
+	write('%% '),write_pred(Pred),write(' imported from '),write(ModI),writeln(' but not exported there'),
+	(exports(ModEx,Pred)
+	 ->	writeln('%%   but it can be imported with:'),
+		print_import(Pred,ModEx,Mod,'')
+	 ;	true
+	),
+	fail.
+print_mod_conflicts(_Opts,Mod) :-	% imported but not used
+	findall(p(ModI,Pred),
+		(imports(Mod,Pred,ModI),
+		 Pred = Name/Arity,
+		 \+ standard_symbol(Name,Arity),
+		 \+ multifile_pred(Mod,Pred),
+		 \+ predicates_or_symbols_used(Mod,Pred),
+		 \+ predicates_or_symbols_used(Mod,ModI:Pred)
+		),
+		UPMs),
+	UPMs \== [],
+	print_hdr_if_nec(Mod),
+	sort(UPMs,PMs),
+	member(p(ModI,Pred),PMs),
+	write('%% '),write_pred(Pred),write(' imported from '),write(ModI),writeln(' but not used!!'),
+	fail.
+print_mod_conflicts(_Opts,Mod) :-	% import used and defined, but exported elsewhere.
+	findall(p(ModI,Pred),
+		(usermod_predicates_used(Mod,Pred),
+		 usermod_predicates_defined(Mod,Pred),
+		 exports(ModI,Pred),
+		 real_module(ModI)),
+		UPMs),
+	UPMs \== [],
+	print_hdr_if_nec(Mod),
+	sort(UPMs,PMs),
+	member(p(ModI,Pred),PMs),
+	write(':- import '),write_pred(Pred),write(' from '),write(ModI),write('.'),
+	put(9),writeln('% here in usermod, but could import'),
+	fail.
+print_mod_conflicts(_Opts,_Mod).
+
+standard_symbol(Name,Arity) :- standard_symbol(Name,Arity,_), !.
+standard_symbol(Name,Arity) :- ciao_directive(Name,Arity), !.
+standard_symbol((index),1).
+standard_symbol((local),1).
+standard_symbol((compiler_options),1).
+standard_symbol(('_$builtin'),1).
+standard_symbol((mode),1).
+
+ciao_directive((comment),2).
+ciao_directive((decl),1).
+ciao_directive((discontiguous),1).
+ciao_directive((impl_defined),1).
+ciao_directive((meta_predicate),1).
+ciao_directive((pred),2).
+ciao_directive((pred),1).
+ciao_directive((prop),1).
+ciao_directive((prop),2).
+ciao_directive((regtype),1).
+ciao_directive((document_export),1).
+ciao_directive((document_import),1).
+
+print_missing_exports(_Opts,Mod) :-	% prints doc_exports for all preds defined, but not used
+	(real_module(Mod)
+	 ->	Export = ':- export '
+	 ;	Export =':- document_export '
+	),
+	findall(Pred,pred_defined_not_used(Mod,Pred),UPs),
+	UPs \== [],
+	print_hdr_if_nec(Mod),
+	sort(UPs,Ps),
+	member(Pred,Ps),
+	write(Export),write_pred(Pred),writeln('.'),
+	fail.
+print_missing_exports(_Opts,Mod) :-	% prints exps for preds defined here but used elsewhere.
+	findall(p(Pred,IMods),
+		(predicates_defined(Mod,Pred),
+		 \+ pred_defined_not_used(Mod,Pred),
+		 \+ (dynamically_defined(Mod,Pred),imports(Mod,Pred,_)),
+		 \+ multifile_pred(Mod,Pred),
+		 \+ exports(_,Pred),
+		 findall(IMod,(predicates_or_symbols_used(IMod,Pred),Mod \== IMod,\+predicates_defined(IMod,Pred)),UIMods),
+		 UIMods \== [],
+		 sort(UIMods,IMods)),
+		UPs),
+	UPs \== [],
+	print_hdr_if_nec(Mod),
+	sort(UPs,Ps),
+	member(p(Pred,IMods),Ps),
+	(real_module(Mod)
+	 ->	write(':- export '),write_pred(Pred),write('.'),
+		put(9),write('% used in '),writeln(IMods)
+	 ;	write(':- document_export '),write_pred(Pred),write('.'),
+		put(9),write('% used in '),writeln(IMods)
+	),
+	fail.
+print_missing_exports(_Opts,_Mod).
+
+pred_defined_not_used(Mod,Pred) :-
+	predicates_defined(Mod,Pred),
+	\+ exports(Mod,Pred),
+	\+ predicates_or_symbols_used(Mod,Pred),
+	\+ dynamically_defined(Mod,Pred),
+	\+ multifile_pred(Mod,Pred).
+
+print_missing_imports(Opts,Mod) :-
+	findall(p(ModIm,Pred),
+		missing_import(Opts,Mod,Pred,ModIm),
+		UMPs),
+	UMPs \== [],
+	print_hdr_if_nec(Mod),
+	sort(UMPs,MPs),
+	member(p(ModIm,Pred),MPs),
+	print_import(Pred,ModIm,Mod,''),
+	fail.
+print_missing_imports(_Opts,_Mod).
+
+missing_import(Opts,Mod,Pred,ModIm) :-
+	(predicates_or_symbols_used(Mod,Pred),
+	 Pred = Name/Arity,
+	 (memberchk(no_symbol_uses,Opts)
+	  ->	 predicates_used(Mod,Pred)
+	  ; memberchk(all_symbol_uses,Opts)
+	  ->	 true
+	  ; Arity =:= 0
+	  ->	 predicates_used(Mod,Pred)
+	  ;	 true
+	 ),
+	 \+ predicates_defined(Mod,Pred),
+	 \+ imports(Mod,Pred,_),
+	 \+ standard_symbol(Name,Arity),
+	 (predicates_defined(ModI,Pred),
+	  (imports(ModI,Pred,RMod)
+	   ->	  ModIm = RMod
+	   ;	  ModIm = ModI
+	  ),
+	  (real_module(ModIm)
+	   ->	  exports(ModIm,Pred)
+	   ;	  true
+	  )
+	  ;	 
+	  \+ predicates_defined(_,Pred),
+	  predicates_used(Mod,Pred),
+	  ModIm = usermod
+	 )).
+
+print_import(Pred,Mod,IntoMod,Cmt) :-
+	(real_module(Mod)
+	 ->	write(':- import '),
+		write_pred(Pred),write(' from '),write(Mod),write('.'),writeln(Cmt)
+	 ;	(real_module(IntoMod)
+		 ->	write(':- import '),
+			write_pred(Pred),write(' from usermod.'),
+			put(9),write('% in '), write(Mod), writeln(Cmt)
+		 ;	write(':- document_import '),
+			write_pred(Pred),write(' from '),write(Mod),write('.'),writeln(Cmt)
+		)
+	).
+		
+print_hdr_if_nec(Mod) :-
+	(mod_printed(Mod)
+	 ->	true
+	 ;	assert(mod_printed(Mod)),
+		nl, write(Mod),
+		(real_module(Mod)
+		 ->	write(' (module)')
+		 ; fake_module(Mod)
+		 ->	write(' (fake module)')
+		 ;	write(' (file)')
+		),
+		(fileNames(Mod,FileName)
+		 ->	write(' in '),writeln(FileName)
+		 ;	writeln(' not found')
+		)
+	).
+
+real_or_fake_module(Mod) :-
+	(real_module(Mod)
+	 ->	true
+	 ;	fake_module(Mod)
+	).
+
+
+/********* Load Data **************/
+read_for_ports(Mod) :-
+	((Dir = '.', concat_atom([Mod,'.H'],FileName),Type=h
+	  ;	 
+	  Dir = '.', concat_atom([Mod,'.P'],FileName),Type=p
+	 )
+	 ;	
+	 (xsb_configuration(syslibdir,Dir)
+	  ;
+	  xsb_configuration(cmplibdir,Dir)
+	  ;	 
+	  xsb_configuration(libdir,Dir)
+	  ;
+	  library_directory(Dir)
+	 ),
+	 (concat_atom([Dir,'/',Mod,'.H'],FileName),Type=h
+	  ;	 
+	  concat_atom([Dir,'/',Mod,'.P'],FileName),Type=p
+	 )
+	 ;	
+	 write('Missing Module: '), writeln(Mod),
+	 assert(files_not_found(Mod)),
+	 fail
+	),
+	file_exists(FileName),
+	!,
+	file_size(FileName,Filesize),
+	(Filesize > 5000000
+	 ->	write('Ignored: '),write(Mod),write(' since too big: '),writeln(Filesize),
+		fail
+	 ;	true
+	),
+	write('Reading: '),write(Mod),write(' ['),write(Dir),writeln(']'),
+	assert(fileNames(Mod,Dir)),
+	load_code_file(FileName,Mod),
+	(Type == h
+	 ->	(Dir = '.'
+		 ->	concat_atom([Mod,'.P'],FileNameP)
+		 ;	concat_atom([Dir,'/',Mod,'.P'],FileNameP)
+		),
+		load_code_file(FileNameP,Mod)
+	),
+	fail.
+
+
+load_code_file(FileName,Mod) :-
+	filter_to_temp(FileName,TempFileName),
+	retractall(operators(_)),
+	see(TempFileName),
+	repeat,
+	read(Term),
+	(Term == end_of_file
+	 ->	!, seen, undo_operators
+	 ;	expand_term(Term,ETerm),
+		process_clause(ETerm,Mod),
+		fail
+	).
+
+undo_operators :-
+	retract(operators(Op)),
+	call_c(Op),
+	fail.
+undo_operators.
+
+filter_to_temp(FileName,TempFileName) :-
+	file_open(FileName,read,InStr),	
+	TempFileName = '#xsb_lint_impexp_temp.P',
+	tell(TempFileName),
+	repeat,
+	(file_read_line_list(InStr,Line)
+	 ->	Line = [FC|_],
+		FC =\= 0'#, % delete macro lines
+		FC =\= 0'%, % and while we're at it, delete these comment lines
+		Line \== [13,10],
+		Line \== [10],
+		putList(Line),
+		fail
+	 ;	!,
+		told,
+		file_close(InStr)
+	).
+
+putList([]).
+putList([C|Cs]) :- put(C), putList(Cs).
+
+
+process_clause(':-'(Directive),Mod) :- !,
+	(process_directive(Directive,Mod)
+	 ->	true
+	 ;	process_body(Directive,Mod)
+	).
+process_clause('?-'(Body),Mod) :- !,
+	process_body(Body,Mod).
+process_clause(':-'(Head,Body),Mod) :- !,
+	process_def(Head,Body,Mod).
+process_clause(Head,Mod) :- !,
+	process_head(Head,Mod).
+
+process_directive(op(X,Y,Z),_) :-
+	assert(operators(op(X,Y,Z))),
+	('_$op'(X1,Y,Z)
+	 ->	assert(operations(op(X1,Y,Z)))
+	 ;	assert(operations(op(0,Y,Z)))
+	),
+	op(X,Y,Z),
+	fail.
+process_directive(import(from(Preds,IMod)),Mod) :-
+	assert_from_clist(Preds,Pred,imports(Mod,Pred,IMod)),
+	assert(all_files(IMod)).
+process_directive(document_import(from(Preds,IMod)),Mod) :-
+	assert_from_clist(Preds,Pred,imports(Mod,Pred,IMod)),
+	assert(all_files(IMod)).
+process_directive(export(Preds),Mod) :-
+	assert(real_module(Mod)),
+	assert_from_clist(Preds,Pred,exports(Mod,Pred)).
+process_directive(document_export(Preds),Mod) :-
+	assert(fake_module(Mod)),
+	assert_from_clist(Preds,Pred,exports(Mod,Pred)).
+process_directive(multifile(Preds),Mod) :-
+	assert_from_clist(Preds,Pred,multifile_pred(Mod,Pred)).
+process_directive(dynamic(Preds),Mod) :-
+	define_specs(Preds,Mod).
+
+define_specs((P1,P2),Mod) :- !,
+	define_specs(P1,Mod),
+	define_specs(P2,Mod).
+define_specs(P/A,Mod) :- !,
+	asserta(dynamically_defined(Mod,P/A)),
+	functor(Pred,P,A),
+	process_head(Pred,Mod).
+define_specs(Pred,Mod) :-
+	functor(Pred,P,A),
+	asserta(dynamically_defined(Mod,P/A)),
+	process_head(Pred,Mod).
+
+assert_from_clist((E1,E2),E,Fact) :-
+	!,
+	assert_from_clist(E1,E,Fact),
+	assert_from_clist(E2,E,Fact).
+assert_from_clist(E,E1,Fact) :-
+	(E = E1, \+ call_c(Fact), asserta(Fact), fail
+	 ;
+	 true
+	).
+
+:- import tphrase/1 from dcg.
+process_def(Head,Body,Mod) :-
+	process_head(Head,Mod),
+	process_body(Body,Mod).
+
+process_head(Head,Mod) :-
+	nonvar(Head),
+	functor(Head,Pred,Arity),
+	(predicates_defined(Mod,Pred/Arity)
+	 ->	true
+	 ;	asserta(predicates_defined(Mod,Pred/Arity))
+	),
+	Head =.. [_|Args],
+	process_uses_list(Args,Mod).
+
+process_uses(Var,_Mod) :- var(Var), !.
+process_uses(Number,_Mod) :- number(Number), !.
+process_uses(Atom,Mod) :- atom(Atom), !,
+	(symbols_used(Mod,Atom/0)
+	 ->	true
+	 ;	asserta(symbols_used(Mod,Atom/0))
+	).
+process_uses(CMod:Term,Mod) :-
+	atom(CMod), nonvar(Term), !,
+	functor(Term,Pred,Arity),
+	(symbols_used(Mod,CMod:Pred/Arity)
+	 ->	true
+	 ;	asserta(symbols_used(Mod,CMod:Pred/Arity))
+	),
+	Term =.. [_|Args],
+	process_uses_list(Args,Mod).
+process_uses(Term,Mod) :-
+	functor(Term,Pred,Arity),
+	(symbols_used(Mod,Pred/Arity)
+	 ->	true
+	 ;	asserta(symbols_used(Mod,Pred/Arity))
+	),
+	Term =.. [_|Args],
+	process_uses_list(Args,Mod).
+
+process_uses_list([],_Mod).
+process_uses_list([A|As],Mod) :- process_uses(A,Mod), process_uses_list(As,Mod).
+
+process_body(A,_Mod) :- var(A), !.
+process_body((C->Then;Else),Mod) :- !,
+	process_body(C,Mod),
+	process_body(Then,Mod),
+	process_body(Else,Mod).
+process_body((C->Then),Mod) :- !,
+	process_body(C,Mod),
+	process_body(Then,Mod).
+process_body((A,B),Mod) :- !,
+	process_body(A,Mod),
+	process_body(B,Mod).
+process_body((A;B),Mod) :- !,
+	process_body(A,Mod),
+	process_body(B,Mod).
+process_body(\+(A),Mod) :- !,
+	process_body(A,Mod).
+process_body(CMod:A,Mod) :-
+	atom(CMod), nonvar(A), !,
+	functor(A,Pred,Arity),
+	(predicates_used(Mod,CMod:Pred/Arity)
+	 ->	true
+	 ;	asserta(predicates_used(Mod,CMod:Pred/Arity))
+	),
+	A =.. [_|Args],
+	process_uses_list(Args,Mod).
+process_body(Goal,Mod) :-
+	(Goal = tphrase(C,_,_) ; Goal = tphrase(C,_,_,_)),
+	nonvar(C), !,
+	functor(C,P,A1),
+	Arity is A1+2,
+	(predicates_used(Mod,P/Arity)
+	 ->	true
+	 ;	asserta(predicates_used(Mod,P/Arity))
+	),
+	C =.. [_|Args],
+	process_uses_list(Args,Mod).
+process_body(Goal,Mod) :-
+	functor(Goal,Pred,Arity),
+	(standard_metapredicate(Pred,Arity,MetaArg)
+	 ->	(predicates_used(Mod,Pred/Arity)
+		 ->	true
+		 ;	asserta(predicates_used(Mod,Pred/Arity))
+		),				
+		arg(MetaArg,Goal,Bod),
+		process_body(Bod,Mod)
+	 ; predicates_used(Mod,Pred/Arity)
+	 ->	true
+	 ;	asserta(predicates_used(Mod,Pred/Arity))
+	),
+	Goal =.. [_|Args],
+	process_uses_list(Args,Mod).
+
+add_libraries([]) :- !.
+add_libraries([Library|Libraries]) :- !,
+	add_libraries(Library),
+	add_libraries(Libraries).
+add_libraries(File) :-
+	(library_directory(File)
+	 ->	true
+	 ;	assert(library_directory(File))
+	).
+
+end_of_file.
+
+add_libraries(['c:/xsbsys/XSBCVS/lib/utils','c:/xsbsys/XSBCVS/lib/ode_cdf','c:/xsbsys/XSBCVS/lib/wordnet','c:/xsbsys/XSBCVS/lib/xjcdfwidgets','c:/xsbsys/XSBCVS/lib/xjcdfwidgets/comp_manager','c:/xsbsys/XSBCVS/lib/xjcdfwidgets/cdf_validation','c:/xsbsys/XSBCVS/lib/ode_cdf/ode_classifier', 'c:/xsbsys/XSBCVS/lib/ode_cdf','c:/xsbsys/XSBCVS/lib/cdf','c:/xsbsys/XSBCVS/lib/xj2/com/xsb/xj','c:/xsbsys/XSBCVS/lib/xj2/com/declarativa/interprolog','c:/xsbsys/XSBCVS/lib/ode_cdf/ode_editor','c:/xsbsys/XSBENV/XSB/packages/altCDF','c:/xsbsys/XSBENV/XSB/packages/altCDF/cdftp']).
+
+checkImpExps([ode_classifierGUIConcept,ode_classifierGUIExplain,ode_classifierGUIObjList,ode_classifierGUIOperations,ode_classifierGUISearch,ode_classifierGUITraining,ode_classifierGUIUpdateProps,ode_classifierGUIdatactr,ode_classifierGUIinval,ode_classifierGUImain,ode_classifierGUIt2t,ode_classifierValidation]).

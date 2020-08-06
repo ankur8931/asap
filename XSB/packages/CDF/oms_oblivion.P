@@ -1,0 +1,257 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export
+	delete_class_cascade/1,
+	obliterate_class/1,obliterate_classes/1,
+	obliterate_objects/1,
+	retractall_itsobjects/1,
+	retractall_subclasses/1.
+
+:- import member/2 from basics.
+
+/* This import statement is not needed for execution -- just for
+checking dead code, and for understanding the interface between the
+files.
+
+:- import
+	immediate_attribute_object/3, class/4, 
+	immediate_attribute/3, immediate_relationship/3, 
+	immediate_schrel/3, immediate_strel/3,
+	object/4,
+	retractall_attribute/3, retractall_attribute_object/3,
+	retractall_class/4, retractall_memberof/2,
+	retractall_object/4,  retractall_relationship/3,
+	retractall_schrel/3, retractall_strel/3,  retractall_subclass/2 
+	from oms_init_oms.
+*/
+
+:- comment(module,"
+
+These predicates allow a user of the OMS to delete large portions of the
+currently loaded OMS.  They are implmented in a way that tries to be
+efficient for reasonably large sets of deletions.
+
+").
+
+%% handle caches
+
+:- comment(obliterate_class/1, "
+
+@tt{obliterate_concept(+ConceptID)} takes a Concept ID, removes the
+concept from the taxonomy and then removes (most) other facts that
+refer to this concept.  All its subclasses that are not subclasses of
+other non-deleted concepts are removed.  It also removes objects that
+become disconnected by being members of this class and not a member of
+any other nondeleted class.  It deletes relationship, schrel, strel,
+attribute, and attribute_object facts that reference any deleted class
+or object @em{at the top level}.  NB: References to the deleted
+classes and objects that are embedded in parameterized types are
+@em{not} detected and are thus @em{not} deleted.
+
+").
+
+obliterate_class(Cid) :-
+	(findall(PCid,immediate_subclass(Cid,PCid),PCids),
+	 member(PCid,PCids),
+	 retractall_subclass(Cid,PCid),
+	 fail
+	 ;
+	 gc_class(Cid)
+	).
+
+retractall_itsobjects(Cid):-
+	findall(Oid,immediate_memberof(Oid,Cid),Oids),
+	(
+	 member(Oid,Oids),
+	 retractall_memberof(Oid,Cid),
+	 \+ (immediate_memberof(Oid,Set), Set\==object(Oid)),
+	 obliterate_object(Oid),
+	 fail
+	 ;
+	 true
+	).
+
+:- comment(obliterate_objects/1, "
+
+@tt{obliterate_objects(+ObjIdList)} removes all objects whose ObjID's
+are in the input list.  It removes them from all classes they are in,
+and it removes all attribute and attribute_object facts that refer to
+them @em{at the top level}.  NB: References to the deleted objects
+that are embedded in parameterized types are @em{not} detected and are
+thus @em{not} deleted. [Bug: It should delete class references to
+object(ObjID) for deleted ObjID.  I don't think it does this, but I
+think it should.]
+
+").
+
+obliterate_objects(ObjList) :-
+	findall(p(Oid,Cid),(member(Oid,ObjList),
+		     retractall_object(Oid,_,_,_),
+		     immediate_memberof(Oid,Cid)),
+		Cids),
+	member(p(Oid,Cid),Cids),
+	retractall_memberof(Oid,Cid),
+	fail.
+obliterate_objects(_) :- gc_attribute_fail.
+obliterate_objects(_) :- gc_attribute_object_fail.
+obliterate_objects(_).
+
+:- comment(obliterate_object/1, "
+
+@tt{obliterate_objects(+ObjId)} removes the object identified by
+ObjID.  It removes it from all classes it is in, and it removes
+all attribute and attribute_object facts that refers to it @em{at the
+top level}.  NB: References to the deleted objects that are embedded
+in parameterized types are @em{not} detected and are thus @em{not}
+deleted. [Bug: It should delete class references to object(ObjID) for
+deleted ObjID.  I don't think it does this, but I think it should.]
+
+").
+
+obliterate_object(Oid) :-
+	retractall_attribute(Oid,_,_),
+	retractall_attribute_object(Oid,_,_),
+	retractall_attribute_object(_,_,Oid),
+	retractall_memberof(Oid,_),
+	retractall_object(Oid,_,_,_).
+
+:- comment(obliterate_class/1, "
+
+@tt{obliterate_concept(+CidList)} takes a list of concept IDs, removes
+them from the taxonomy and then removes (most) other facts that refer
+to these concepts.  All subclasses that are not subclasses of other
+non-deleted concepts are removed.  It also removes objects that become
+disconnected by being members of any deleted class and not a member of
+any other nondeleted class.  It deletes relationship, schrel, strel,
+attribute, and attribute_object facts that reference any deleted class
+or object @em{at the top level}.  NB: References to the deleted
+classes and objects that are embedded in parameterized types are
+@em{not} detected and are thus @em{not} deleted.
+
+").
+
+obliterate_classes(Cids) :-
+	(findall(p(Cid,PCid),
+		 (member(Cid,Cids),immediate_subclass(Cid,PCid)),
+		 PCids),
+	 member(p(Cid,PCid),PCids),
+	 retractall_subclass(Cid,PCid),
+	 fail
+	 ;
+	 gc_classes(Cids)
+	).
+
+
+/* gc_class takes a class and if it is not connected in the
+taxonomy, deletes it and all other implied unconnected OMS components.
+It is primarily intended to be called after retractall_subclass, to
+transitively remove the newly detached subclass (if it is indeed
+detached) and all newly detached OMS components.  */
+
+gc_class(Cid) :-
+	\+ immediate_subclass(Cid,_),
+	gc_class_fail(Cid).
+gc_class(_) :- gc_allrels_fail.
+gc_class(_).
+
+gc_classes(Cids) :-
+	member(Cid,Cids),
+	\+ immediate_subclass(Cid,_),
+	gc_class_fail(Cid).
+gc_classes(_) :- gc_allrels_fail.
+gc_classes(_).
+
+gc_class_fail(Cid) :-
+	retractall_class(Cid,_,_,_),
+	(findall(Oid,immediate_memberof(Oid,Cid),Oids),
+	 member(Oid,Oids),
+	 retractall_memberof(Oid,Cid),
+	 \+ (immediate_memberof(Oid,Set), Set\==object(Oid)),
+	 retractall_object(Oid,_,_,_),
+	 fail
+	 ;
+	 findall(CCid,immediate_subclass(CCid,Cid),CCids),
+	 member(CCid,CCids),
+	 retractall_subclass(CCid,Cid),
+	 \+ immediate_subclass(CCid,_),
+	 gc_class_fail(CCid)
+	).
+
+
+gc_allrels_fail :- gc_relationship_fail.
+gc_allrels_fail :- gc_schrel_fail.
+gc_allrels_fail :- gc_strel_fail.
+gc_allrels_fail :- gc_attribute_fail.
+gc_allrels_fail :- gc_attribute_object_fail.
+
+gc_relationship_fail :-
+	findall(r(A,B,C),orphan_relationship(A,B,C),Rlns),
+	member(r(A,B,C),Rlns),
+	retractall_relationship(A,B,C),
+	fail.
+
+gc_schrel_fail :-
+	findall(r(A,B,C),orphan_schrel(A,B,C),Rlns),
+	member(r(A,B,C),Rlns),
+	retractall_schrel(A,B,C),
+	fail.
+
+gc_strel_fail :-
+	findall(r(A,B,C),orphan_strel(A,B,C),Rlns),
+	member(r(A,B,C),Rlns),
+	retractall_strel(A,B,C),
+	fail.
+
+gc_attribute_fail :-
+	findall(r(A,B,C),orphan_attribute(A,B,C),Rlns),
+	member(r(A,B,C),Rlns),
+	retractall_attribute(A,B,C),
+	fail.
+
+gc_attribute_object_fail :-
+	findall(r(A,B,C),orphan_attribute_object(A,B,C),Rlns),
+	member(r(A,B,C),Rlns),
+	retractall_attribute_object(A,B,C),
+	fail.
+
+orphan_relationship(A,B,C) :-
+	immediate_relationship(A,B,C),
+	\+ (class(A,_,_,_), class(B,_,_,_), class(C,_,_,_)).
+	 
+orphan_schrel(A,B,C) :-
+	immediate_schrel(A,B,C),
+	\+ (class(A,_,_,_), class(B,_,_,_), class(C,_,_,_)).
+	 
+orphan_strel(A,B,C) :-
+	immediate_strel(A,B,C),
+	\+ (class(A,_,_,_), class(B,_,_,_), class(C,_,_,_)).
+	 
+orphan_attribute(A,B,C) :-
+	immediate_attribute(A,B,C),
+	\+ (object(A,_,_,_), class(B,_,_,_), class(C,_,_,_)).
+	 
+orphan_attribute_object(A,B,C) :-
+	immediate_attribute_object(A,B,C),
+	\+ (object(A,_,_,_), class(B,_,_,_), object(C,_,_,_)).
+
+/* Delete a class, all its subclasses, and all their relations
+and attributes */
+delete_class_cascade(ACid) :-
+	obliterate_class(ACid).
+
+retractall_subclasses(Cid):-
+	findall(Sid,immediate_subclass(Sid,Cid),Sids),
+	(
+	 member(Sid,Sids),
+	 \+ thereis_another_parent(Sid,Cid),
+	 obliterate_class(Sid),
+	 fail
+	 ;
+	 true
+	).
+
+thereis_another_parent(Sid,Cid):-
+	immediate_subclass(Sid,X),\+(X=Cid).
+
+
+

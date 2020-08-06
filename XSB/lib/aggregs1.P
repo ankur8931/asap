@@ -1,0 +1,674 @@
+/* File:      aggregs.P
+** Author(s): David S. Warren, Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** 
+*/
+
+:- compiler_options([sysmod,xpp_on]).
+
+#include "builtin.h"
+
+
+/*=======================================================================
+
+bagReduce(+UnaryPred,?Result,+BinOp,+OpId) reduces all values that
+	(HiLog) UnaryPred is true of using BinOp with identity OpId.
+	So, for example, bagReduce(p,Sum,plus,0) binds Sum to the sum
+	of all values X such that p(X) is true (assuming a definition
+	of: plus(X,Y,Z) :- Z is X+Y. and plus is declared a hilog
+	symbol.) bagSum, bagCount, and bagAvg are defined using this
+	meta-predicate.
+
+bagPO(+UnaryPred,?Result,+PO) finds all the maximal elements (under
+	the partial order PO) that unify with Result and that
+	UnaryPred is true of.
+
+filterReduce(?UnaryPred,+BinOp,+OpId,?Result) 
+	is copied from bagReduce with two changes.  NOTE CHANGE IN
+	ARGUMENT ORDER!!!
+	1) it does not use HiLog.  Rather than trying to reduce Hilog
+	terms of the form, e.g. p(X,Y)(Value), it assumes that BinOp
+	is applied to the last argument of a non-Hilog term,
+	e.g. p(X,Y,Value).  The Hilog version is more elegant, surely,
+	but is only as robust as XSB's Hilog implementation.
+
+	2) it aggregates answers using a variance rather than a
+	unification. If we have two facts
+
+	p(X)(1)
+	p(a)(2)
+	p(a)(3)
+
+	or equivalently 
+
+	p(X,1).
+	p(a,2).
+	p(a,3).
+
+	and want to construct the maximum, bagReduce will return
+
+	p(a)(3).
+
+	while filterReduce will return 
+
+	p(X,1).
+	p(a,3).
+
+	Clause indexing should be more efficient for filterReduce, but
+	indexing of answers within the table should be more efficient for
+	bagReduce.
+
+========================================================================*/
+
+bagMin(Call,Var) :- bagReduce(Call,Var,minimum,zzz(zzz)).
+
+bagMax(Call,Var) :- bagReduce(Call,Var,maximum,_).
+
+bagSum(Call,Var) :- bagReduce(Call,Var,sum,0).
+
+bagCount(Call,Var) :- bagReduce(Call,Var,successor,0).
+
+bagAvg(Call,Avg) :- 
+	bagReduce(Call,[Sum|Count],sumcount,[0|0]),
+	Avg is Sum/Count.
+
+
+% Keep all lubs in a partial order (HiLog) PO(/2).
+bagPO(Call,Var,PO) :- bagPO1(Call,Var,PO), fail.
+bagPO(Call,Var,PO) :- bagPO1(Call,Var,PO).
+:- table bagPO1/3.
+:- use_variant_tabling bagPO1(_,_,_).
+bagPO1(Call,Var,PO) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,3,Skel,Cs),
+	copy_term(p(Call,Var,Skel),p(Call,Ovar,Oskel)),
+	Call(Var),
+	((get_returns(Cs,Oskel,Leaf),(Ovar==Var -> true;PO(Var,Ovar)))
+	 ->	fail
+	 ;	(findall(p(Cs,Ovar,Leaf),
+			 (get_returns(Cs,Oskel,Leaf), PO(Ovar,Var)),
+			 Rets),
+		 sort(Rets, Rets1),
+		 member(p(Cs,Ovar,Leaf),Rets1),
+		 delete_return(Cs,Leaf),
+		 fail
+		;
+		 true
+		)
+	).
+
+% Reduce elements using associative Op with identity Id.
+bagReduce(Call,_Res,Op,Id) :- bagReduce1(Call,_,Op,Id), fail.
+bagReduce(Call,Res,Op,Id) :- bagReduce1(Call,Res0,Op,Id), Res=Res0.
+:- table bagReduce1/4.
+:- use_variant_tabling bagReduce1(_,_,_,_).
+bagReduce1(Call,Res,Op,Id) :-
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+	copy_term(p(Call,Res,Skel),p(Call,Ovar,Oskel)),
+	Call(Nvar),
+	(get_returns(Cs,Oskel,Leaf)
+	 ->	Op(Ovar,Nvar,Res),
+		Res \== Ovar,
+		delete_return(Cs,Leaf)
+	 ;	Op(Id,Nvar,Res)
+	).
+
+% Define HiLog bagOf in terms of Prolog bagof. 
+bagOf(Call,List) :- bagof(Var,Call(Var),List).
+
+% Reduce elements using associative Op with identity Id.
+% Template,Call,Res are like args for setof; Call may have existentials
+
+bagReduce(Template,Call,Res,Op,Id) :-
+	table_state(bagReduce1(Template,Call,Res,Op,Id),_PT,_,AnsSetStatus),
+	(AnsSetStatus == complete
+	 ->	bagReduce1(Template,Call,Res,Op,Id)
+	 ; AnsSetStatus == undefined
+	 ->	(bagReduce1(Template,Call,Res,Op,Id),fail
+		 ;
+		 bagReduce(Template,Call,Res,Op,Id)
+		)
+	 ; AnsSetStatus == incomplete
+	 ->	get_ptcp(PTCP),
+		get_producer_call(bagReduce1(Template,Call,Res,Op,Id),
+		                  SubgPtr,_RetTmplt),
+		is_incomplete(SubgPtr,PTCP),
+		bagReduce1(Template,Call,Res,Op,Id)
+	).
+
+:- table bagReduce1/5.
+:- use_variant_tabling bagReduce1(_,_,_,_,_).
+
+bagReduce1(Templ,Call,Res,Op,Id) :-
+	'_$savecp'(Breg),
+	breg_retskel(Breg,5,Skel,Cs),
+	excess_vars(Call,Templ,[],VarList),
+	copy_term(p(Call,VarList,Templ,Res,Skel),
+		  p(OCall,VarList,OTempl,ORes,Oskel)),
+	(atom(Op)
+	 ->	Test =.. [Op,Var1,OTempl,Res]
+	 ; Op = OpF/3
+	 ->	Test =.. [OpF,Var1,OTempl,Res]
+	 ; 	copy_term(Op,Test),
+		arg(1,Test,Var1),
+		arg(2,Test,OTempl),
+		arg(3,Test,Res)
+	),
+	call(OCall),
+	(get_returns(Cs,Oskel,Leaf)
+	 ->	Var1 = ORes, call_c(Test), %Op(ORes,OTempl,Res),
+		Res \== ORes,
+		delete_return(Cs,Leaf)
+	 ;	Var1 = Id, call_c(Test)   %Op(Id,OTempl,Res)
+	).
+
+/*** The following (the else of VarList==[] test below) is a more
+correct (but slower) implementation of bagPO.  It better handles
+variables (in the set of non-existential variables in the goal) that
+remain unbound in answers.  Consider the example,
+
+v(a,2).  v(b,4).  v(_,3).
+
+and goal bagPO(Y,v(X,Y),Min,(=<)).
+This implementation gives:
+X = a, Min = 2;
+X = b, Min = 3;
+X = _, Min = 3;
+no
+
+This is still not exactly right semantically, since there really
+should be the constraint on the _ answer that it is not a.  But this
+is closer, and the important result is that the min given for b is 3,
+not 4.
+**************/
+
+% Template,Call,Res are like args for setof; Call may have existentials
+bagPO(Templ,Call,_Res,PO) :- bagPO1(Templ,Call,_,PO), fail.
+bagPO(Templ,Call,Res,PO) :- bagPO1(Templ,Call,Res1,PO), Res=Res1.
+
+:- table bagPO1/4.
+:- use_variant_tabling bagPO1(_,_,_,_).
+bagPO1(Templ,Call,Res,PO) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+	excess_vars(Call,Templ,[],VarList),
+	copy_term(p(Call,VarList,Templ,Res,Skel),
+		  p(OCall,OVarList,OTempl,Ores,Oskel)),
+	(atom(PO)
+	 ->	POCA =.. [PO,Ores,OTempl],
+		POCB =.. [PO,OTempl,Ores]
+	 ; PO = PO1/2
+	 ->	POCA =.. [PO1,Ores,OTempl],
+		POCB =.. [PO1,OTempl,Ores]
+	 ;	copy_term(PO,POCA), copy_term(PO,POCB),
+		arg(1,POCA,Ores), arg(2,POCA,OTempl),
+		arg(1,POCB,OTempl), arg(2,POCB,Ores)
+	),
+	call(OCall),
+	(VarList == []
+	 ->	((get_returns(Cs,Oskel,Leaf),
+		  (OTempl==Ores -> true;(call_c(POCA),fail;call_c(POCA))))
+		 ->	fail
+		 ;	(findall(p(Cs,Leaf),
+				 (get_returns(Cs,Oskel,Leaf), call_c(POCB)),
+				 Rets),
+			 sort(Rets, Rets1),
+			 member(p(Cs,Leaf),Rets1),
+			 delete_return(Cs,Leaf),
+			 fail
+			 ;	
+			 Res = OTempl
+			)
+		)
+	 ;	findall(p(Tp,Oskel,OVarList,Leaf),
+			get_returns_type(Cs,Skel,VarList,Oskel,OVarList,POCA,POCB,Leaf,Tp),
+			Rets),
+		sort(Rets, Rets1),
+		split_on_type(Rets1,Variants_ob,[],Variants_nb,[],OldSubsumes,[],NewSubsumes,[]),
+		(member(p(variant_oldbetter,Oskel,OVarList,Leaf),Variants_ob)
+		 ->	fail
+		 ;	(member(p(variant_newbetter,Oskel,OVarList,Leaf),Variants_nb),
+			 delete_return(Cs,Leaf), % so delete old
+			 fail
+			 ;	
+			 member(p(newsubsumes_newbetter,Oskel,OVarList,Leaf),NewSubsumes),
+			 delete_return(Cs,Leaf), % so delete old
+			 fail
+			 ;	
+			 member(p(oldsubsumes_oldbetter,Oskel,OVarList,Leaf),OldSubsumes),
+			 VarList = OVarList, % so return new with old answer
+			 Res = Ores
+			 ;	
+			 member(p(newsubsumes_newbetter,Oskel,OVarList,Leaf),NewSubsumes),
+			 VarList = OVarList, % so return new
+			 Res = OTempl
+			 ;	
+			 \+ member(p(oldsubsumes_oldbetter,Oskel,OVarList,Leaf),OldSubsumes),
+			 VarList = OVarList,
+			 Res = OTempl
+			)
+		)
+	).
+
+split_on_type([],Vo,Vo,Vn,Vn,O,O,N,N).
+split_on_type([Ret|Rets],Vo0,Vo,Vn0,Vn,O0,O,N0,N) :-
+	Ret = p(Tp,_,_,_),
+	(Tp == variant_oldbetter
+	 ->	Vo0 = [Ret|Vo1],
+		split_on_type(Rets,Vo1,Vo,Vn0,Vn,O0,O,N0,N)
+	 ; Tp == variant_newbetter
+	 ->	Vn0 = [Ret|Vn1],
+		split_on_type(Rets,Vo0,Vo,Vn1,Vn,O0,O,N0,N)
+	 ; Tp == oldsubsumes_oldbetter
+	 ->	O0 = [Ret|O1],
+		split_on_type(Rets,Vo0,Vo,Vn0,Vn,O1,O,N0,N)
+	 ;	N0 = [Ret|N1],
+		split_on_type(Rets,Vo0,Vo,Vn0,Vn,O0,O,N1,N)
+	).
+
+get_returns_type(Cs,Skel,VarList,Oskel,OVarList,POCA,POCB,Leaf,Tp) :-
+	get_returns(Cs,Skel,Leaf),
+	(variant(OVarList,VarList)
+	 ->	Skel = Oskel,
+		(call_c(POCA)
+		 ->	Tp = variant_oldbetter
+		 ; call_c(POCB)
+		 ->	Tp = variant_newbetter
+		)
+	 ; subsumes(OVarList,VarList)
+	 ->	Skel = Oskel,
+		call_c(POCB),
+		Tp = newsubsumes_newbetter
+	 ; subsumes(VarList,OVarList)
+	 ->	Skel = Oskel,
+		call_c(POCA),
+		Tp = oldsubsumes_oldbetter
+	).
+
+
+/*=======================================================================*/
+
+filterMin(Call,Var) :- filterReduce(Call,min,neg_inf,Var).
+
+filterMax(Call,Var) :- filterReduce(Call,max,inf,Var).
+
+max(X,Y,Y):- \+ number(X),!.
+max(X,Y,X):- \+ number(Y),!.
+max(X,Y,Z):- (X > Y -> Z = X ; Z = Y).
+
+min(X,Y,Y):- \+ number(X),!.
+min(X,Y,X):- \+ number(Y),!.
+min(One,Two,Min):- One > Two -> Min = Two ; Min = One.
+
+/* Variant seems a better semantics, but is more expensive.  The issue
+   is that in order to ensure variance we need to examine the table
+   without binding further either the new answer or any answer in the
+   table.  This means that our search for answers in the table can
+   only be indexed by what is in the the original call -- otherwise if
+   we indexed based on the new answer we might bind something in the
+   table.  So we have to search through all answers for the call,
+   rather than searching through all answers that unify with the new
+   answer.
+
+   At a coe level, the get_returns must unify answers with Oskel,
+   which is the original call, rather than with (an abstraction of
+   Skel), which is done in the unification routines (via copying
+   Call).  */
+bottom_up_unify(_Term,_Root,_Leaf) :- '_$builtin'(BOTTOM_UP_UNIFY).
+:- import append/3 from basics.
+:- import writeln/1 from standard.
+:- import get_unifiable_returns/3 from tables.
+
+% Reduce elements using associative Op with identity Id.
+filterReduce(Call,Op,Id,Res) :- filterReduce1(Call,Op,Id,Res), fail.
+filterReduce(Call,Op,Id,Res) :- filterReduce1(Call,Op,Id,Res).
+:- table filterReduce1/4.
+:- use_variant_tabling filterReduce1(_,_,_,_).
+filterReduce1(Call,Op,Id,Res) :-
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+	writeln(skel(Skel)),
+	copy_term(Skel,Oskel),
+	get_opt_non_opt(Oskel,_Osargs,Oopt),	
+	get_non_opt(Skel,Sargs),	        % divide into opt arg and rest
+	append(Sargs,[_],Temp),
+	TempSkel =.. [ret|Temp],
+	call(Call,Nvar),
+%	writeln(get_returns(Cs,Oskel,Leaf)),
+	(get_unifiable_returns(Cs,TempSkel,Leaf),
+	 writeln(get_returns(Cs,Leaf)),
+	 bottom_up_unify(Term,Cs,Leaf),
+%	 writeln(buu(Term)),
+	 f(Term) =.. [_|Targs],
+%	 writeln((Sargs,Osargs,Targs)),
+%	 variant(Sargs,Osargs)
+	 variant(Sargs,Targs)
+	 ->	
+%		writeln(p(Comp,Res,Oopt)),
+	        call(Op,Oopt,Nvar,Res),
+		Res \== Oopt,
+		delete_return(Cs,Leaf)
+	 ;	
+	        call(Op,Id,Nvar,Res)
+	).
+
+% Reduce elements using associative Op with identity Id.
+filterReduce_u(Call,Op,Id,_Res) :- filterReduce1_u(Call,Op,Id,_), fail.
+filterReduce_u(Call,Op,Id,Res) :- filterReduce1_u(Call,Op,Id,Res0), Res=Res0.
+:- table filterReduce1_u/4.
+:- use_variant_tabling filterReduce1_u(_,_,_,_).
+filterReduce1_u(Call,Op,Id,Res) :-
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+	copy_term(p(Call,Res,Skel),p(Call,Ovar,Oskel)),
+	call(Call,Nvar),
+%	 writeln(getting_return_for(Skel,Oskel)),
+	(get_returns(Cs,Oskel,Leaf)
+	 ->	call(Op,Ovar,Nvar,Res),
+		Res \== Ovar,
+		delete_return(Cs,Leaf)
+	 ;	call(Op,Id,Nvar,Res)
+	).
+
+% Keep all lubs in a partial order (HiLog) PO(/2).
+filterPO(Call,Var,PO) :- filterPO1(Call,Var,PO), fail.
+filterPO(Call,Var,PO) :- filterPO1(Call,Var,PO).
+:- table filterPO1/3.
+:- use_variant_tabling filterPO1(_,_,_).
+filterPO1(Call,Var,PO) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,3,Skel,Cs),
+	copy_term(p(Call,Var,Skel),p(Call,Ovar,Oskel)),
+	call(Call,Var),
+	((get_returns(Cs,Oskel,Leaf),
+	    (Ovar==Var 
+	    ->  true
+            ;   % apply_last(PO,[Ovar,Var],PO_call),
+%	        writeln(p(2,PO_call)),
+		% call(PO_call)))
+	        call(PO,Ovar,Var)))
+	 ->	fail
+	 ;	(findall(p(Cs,Ovar,Leaf),
+			 (get_returns(Cs,Oskel,Leaf), 
+%			  apply_last(PO,[Var,Ovar],PO_call_1),
+%		          writeln(p(32,PO_call_1)),
+%			  call(PO_call_1)
+			  call(PO,Var,Ovar)
+%			  writeln(p(33,PO_call_1))
+			  ),
+			 Rets),
+		 sort(Rets,Rets1),
+		 member(p(Cs,Ovar,Leaf),Rets1),
+%		 writeln(deleting(Ovar)),
+		 delete_return(Cs,Leaf),
+		 fail
+		;
+		 true
+		)
+	).
+
+% Keep all lubs in a partial order (HiLog) PO(/2).
+filterPOA(Call,Var,PO,Abstract) :- filterPOA1(Call,Var,PO,Abstract), fail.
+filterPOA(Call,Var,PO,Abstract) :- filterPOA1(Call,Var,PO,Abstract).
+:- table filterPOA1/4.
+:- use_variant_tabling filterPOA1(_,_,_,_).
+filterPOA1(Call,Var,PO,Abstract) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,3,Skel,Cs),
+	copy_term(p(Call,Var,Skel),p(Call,Ovar,Oskel)),
+	call(Call,VarTmp),
+%	writeln(oskel(Oskel,VarTmp,Out)),
+	((get_returns(Cs,Oskel,Leaf),
+	    (Ovar==VarTmp
+	    ->  true
+            ;   call(PO,Ovar,VarTmp)))
+	 ->	fail
+	 ;	findall(p(Cs,Ovar,Leaf),
+			 (get_returns(Cs,Oskel,Leaf), 
+%			  writeln(get_returns(Cs,Oskel,Leaf)), 
+%			  writeln(call(PO,VarTmp,Ovar)),
+			  call(PO,VarTmp,Ovar)
+			  ),
+			 Rets),
+		 sort(Rets,Rets1),
+%		 writeln(Rets1),
+		 filterOutCalls(Rets1,Calls),
+%		 writeln(call(Abstract,Calls,VarTmp,Var)),
+		 call(Abstract,Calls,VarTmp,Var),
+%		 writeln(aftercall(Abstract,Calls,VarTmp,Var)),
+		 ( member(p(Cs,Ovar,Leaf),Rets1),
+%		   delete_return(Cs,Leaf),
+		   fail
+		  ;
+		   true )
+	).
+%, writeln(success(Call,Var)).
+
+%--------------------------------------------------------------
+:- export filterPOA/5.
+filterPOA(Call,Var,PO,Abstract,CallAbs) :- filterPOAA1(Call,Var,PO,Abstract,CallAbs), fail.
+filterPOA(Call,Var,PO,Abstract,CallAbs) :- filterPOAA1(Call,Var,PO,Abstract,CallAbs).
+:- table filterPOAA1/5.
+:- use_variant_tabling filterPOAA1(_,_,_,_,_).
+filterPOAA1(Call,Var,PO,Abstract,CallAbs) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+	copy_term(p(Call,Var,Skel),p(Call,Ovar,Oskel)),
+	call(Call,VarTmp),
+	call(CallAbs,VarTmp,Out),
+	Oskel = ret(Out),
+%	writeln(oskel(Oskel,VarTmp,Out)),
+	((get_returns(Cs,Oskel,Leaf),
+	    (Ovar==VarTmp
+	    ->  true
+            ;   call(PO,Ovar,VarTmp)))
+	 ->	fail
+	 ;	findall(p(Cs,Ovar,Leaf),
+			 (get_returns(Cs,Oskel,Leaf), 
+%			  writeln(get_returns(Cs,Oskel,Leaf)), 
+%			  writeln(call(PO,VarTmp,Ovar)),
+			  call(PO,VarTmp,Ovar)
+			  ),
+			 Rets),
+		 sort(Rets,Rets1),
+%		 writeln(Rets1),
+		 filterOutCalls(Rets1,Calls),
+%		 writeln(call(Abstract,Calls,VarTmp,Var)),
+		 call(Abstract,Calls,VarTmp,Var),
+%		 writeln(aftercall(Abstract,Calls,VarTmp,Var)),
+		 ( member(p(Cs,Ovar,Leaf),Rets1),
+%		   delete_return(Cs,Leaf),
+		   fail
+		  ;
+		   true )
+	).
+%, writeln(success(Call,Var)).
+
+%--------------------------------------------------------------
+:- export alt_filterPOA/5.
+alt_filterPOA(Call,Var,PO,Abstract,CallAbs) :- alt_filterPOAA1(Call,Var,PO,Abstract,CallAbs), fail.
+alt_filterPOA(Call,Var,PO,Abstract,CallAbs) :- alt_filterPOAA1(Call,Var,PO,Abstract,CallAbs).
+:- table alt_filterPOAA1/5.
+:- use_variant_tabling alt_filterPOAA1(_,_,_,_,_).
+:- import term_set_arg/4 from machine.
+:- import more_general_than/2,abstract/3,abstract_call/2 from usermod.
+alt_filterPOAA1(Call,Var,_PO,_Abstract,_CallAbs) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+	copy_term(p(Call,Var,Skel),p(Call,Ovar,Oskel)),
+	call(Call,VarTmp),
+%	call(CallAbs,VarTmp,Out),
+	abstract_call(VarTmp,Out),
+%	term_set_arg(CallAbs, 1, VarTmp, 0),
+%	term_set_arg(CallAbs, 2, Out, 0),
+%	call_c(CallAbs),
+%	writeln(oskel(Oskel,VarTmp,Out)),
+	Oskel = ret(Out),
+	((get_returns(Cs,Oskel,Leaf),
+	    (Ovar==VarTmp
+	    ->  true
+%	     ;   term_set_arg(PO, 1, Ovar, 0),
+%	         term_set_arg(PO, 2, VarTmp, 0),
+%	         call_c(PO)))
+%            ;   call(PO,Ovar,VarTmp)))
+	     ;   more_general_than(Ovar,VarTmp)))
+	 ->	fail
+	 ;	findall(p(Cs,Ovar,Leaf),
+			 (get_returns(Cs,Oskel,Leaf), 
+%			  writeln(get_returns(Cs,Oskel,Leaf)), 
+%			  writeln(call(PO,VarTmp,Ovar)),
+			  more_general_than(VarTmp,Ovar)
+%			  call(PO,VarTmp,Ovar)
+			  ),
+			 Rets),
+		 sort(Rets,Rets1),
+%		 writeln(Rets1),
+		 filterOutCalls(Rets1,Calls),
+%		 writeln(call(Abstract,Calls,VarTmp,Var)),
+%		 call(Abstract,Calls,VarTmp,Var),
+		 abstract(Calls,VarTmp,Var),
+%		 writeln(aftercall(Abstract,Calls,VarTmp,Var)),
+		 ( member(p(Cs,Ovar,Leaf),Rets1),
+%		   delete_return(Cs,Leaf),
+		   fail
+		  ;
+		   true )
+	).
+%, writeln(success(Call,Var)).
+
+%--------------------------------------------------------------
+:- export shared_filterPOA/5.
+shared_filterPOA(Call,Var,PO,Abstract,CallAbs) :- shared_filterPOA1(Call,Var,PO,Abstract,CallAbs), fail.
+shared_filterPOA(Call,Var,PO,Abstract,CallAbs) :- shared_filterPOA1(Call,Var,PO,Abstract,CallAbs).
+:- thread_shared(shared_filterPOA1/5).
+:- table shared_filterPOA1/5.
+:- use_variant_tabling shared_filterPOA1(_,_,_,_,_).
+shared_filterPOA1(Call,Var,PO,Abstract,CallAbs) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,3,Skel,Cs),
+	copy_term(p(Call,Var,Skel),p(Call,Ovar,Oskel)),
+	call(Call,VarTmp),
+	call(CallAbs,VarTmp,Out),
+	Oskel = ret(Out),
+%	writeln(oskel(Oskel,VarTmp,Out)),
+	((get_returns(Cs,Oskel,Leaf),
+	    (Ovar==VarTmp
+	    ->  true
+            ;   call(PO,Ovar,VarTmp)))
+	 ->	fail
+	 ;	findall(p(Cs,Ovar,Leaf),
+			 (get_returns(Cs,Oskel,Leaf), 
+%			  writeln(get_returns(Cs,Oskel,Leaf)), 
+%			  writeln(call(PO,VarTmp,Ovar)),
+			  call(PO,VarTmp,Ovar)
+			  ),
+			 Rets),
+		 sort(Rets,Rets1),
+%		 writeln(Rets1),
+		 filterOutCalls(Rets1,Calls),
+%		 writeln(call(Abstract,Calls,VarTmp,Var)),
+		 call(Abstract,Calls,VarTmp,Var),
+%		 writeln(aftercall(Abstract,Calls,VarTmp,Var)),
+		 ( member(p(Cs,Ovar,Leaf),Rets1),
+%		   delete_return(Cs,Leaf),
+		   fail
+		  ;
+		   true )
+	).
+%, writeln(success(Call,Var)).
+
+filterOutCalls([],[]).
+filterOutCalls([p(_,V,_)|R],[V|R1]):- 
+	filterOutCalls(R,R1).
+
+get_opt_non_opt(Call,Args,Opt):- 
+	Call =.. [_Functor|List],
+	get_opt_non_opt_1(List,Args,Opt).
+
+get_non_opt(Call,Args):- 
+	Call =.. [_Functor|List],
+	get_non_opt_1(List,Args).
+
+get_non_opt_1([_H],[]):-!.
+get_non_opt_1([H|T],[H|T1]):-
+	get_non_opt_1(T,T1).
+
+get_opt_non_opt_1([H],[],H):-!.
+get_opt_non_opt_1([H|T],[H|T1],O):-
+	get_opt_non_opt_1(T,T1,O).
+
+%-----------------
+
+filterPO(Call,PO) :- filterPO1(Call,PO), fail.
+filterPO(Call,PO) :- filterPO1(Call,PO).
+:- table filterPO1/2.
+:- use_variant_tabling filterPO1(_,_).
+filterPO1(Call,PO) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,2,Skel,Cs),
+	copy_term(p(Call,Skel),p(Ocall,Oskel)),
+	call(Call),
+	((get_returns(Cs,Oskel,Leaf),
+	  call(PO,Ocall,Call))
+	 ->	fail
+	 ;	(findall(p(Cs,Ocall,Leaf),
+			 (get_returns(Cs,Oskel,Leaf), 
+			  call(PO,Call,Ocall)
+			  ),
+			 Rets),
+		 sort(Rets,Rets1),
+		 member(p(Cs,Ocall,Leaf),Rets1),
+		 delete_return(Cs,Leaf),
+		 fail
+		;
+		 true
+		)
+	).
+
+%-----------------
+:- table table_once/1.
+:- use_variant_tabling table_once(_).
+table_once(Call) :- 
+	'_$savecp'(Breg),
+	breg_retskel(Breg,1,Skel,Cs),
+	copy_term(Skel,Oskel),
+	call(Call),
+	(get_returns(Cs,Oskel,_Leaf) -> fail ; true).
+
+/*
+** A built-in used in the implementation of aggregates.                   
+** Takes: Breg (where the choice point was saved), 
+**    	  Arity of the skeleton term to return. (TLS: this does not seem to be used)
+** Returns: Subgoal skeleton, Ptr to a subgoal structure.
+**          Subgoal skeleton is of the form ret(X,Y,Z), where X,Y,Z are
+**    	    all the free variables in the subgoal.
+*/
+
+breg_retskel(_BregOffset,_Arity,_RetTerm,_SubgoalPtr) :- '_$builtin'(154).
+
+
+end_of_file.
+
+apply_last(Call,Var,Newcall):-
+	Call =.. List,
+	append(List,Var,Newlist),
+	Newcall =.. Newlist.
+

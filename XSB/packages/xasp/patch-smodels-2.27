@@ -1,0 +1,474 @@
+diff -urN smodels-2.27/Makefile smodels-2.27-lf3/Makefile
+--- smodels-2.27/Makefile	2002-10-14 04:16:54.000000000 -0400
++++ smodels-2.27-lf3/Makefile	2003-02-26 15:46:55.000000000 -0500
+@@ -1,36 +1,52 @@
+ CXX = g++
+ CXXFLAGS = -O3 -Wall -W
+-LFLAGS =
+ LIBSRCS = smodels.cc stack.cc dcl.cc atomrule.cc read.cc \
+ queue.cc timer.cc list.cc improve.cc program.cc api.cc stable.cc \
+ tree.cc denant.cc
+ SRCS = $(LIBSRCS) main.cc
+ OBJS = $(SRCS:.cc=.o)
+ 
++# uncomment the following in order to create native win32 
++# binaries and/or libraries under cygwin   --lfcastro
++CXXFLAGS += -mno-cygwin
++LIBTOOL = 
++LIBOBJS = $(LIBSRCS:.cc=.o)
++NAME = smodels.exe
++LIBNAME = smodels.dll
++LFLAGS = -shared -mno-cygwin 
++LFLAGS += -Wl,--out-implib=$(LIBNAME:.dll=.a) 
++LFLAGS += -Wl,--output-def=$(LIBNAME:.dll=.def)
++LDOPTS = 
++# use the following otherwise --lfcastro
++# LIBTOOL = libtool
++# NAME = smodels
++# LIBOBJS = $(LIBSRCS:.cc=.lo)
++# LIBNAME = libsmodels.la
++# LIBPATH = /usr/local/lib
++# LFLAGS = 
++# LDOPTS = -rpath $(LIBPATH)
++
+ smodels: $(OBJS)
+-	$(CXX) $(LFLAGS) -o smodels $(OBJS)
++	$(CXX) $(LFLAGS) -o $(NAME) $(OBJS)
+ 
+ %.o: %.cc
+ 	$(CXX) $(CXXFLAGS) -c $<
+ 
+ .PHONY: lib libinstall clean all build binary install
+ 
+-LIBPATH = /usr/local/lib
+-LIBOBJS = $(LIBSRCS:.cc=.lo)
+ 
+ # Make a shared library
+ lib: $(LIBOBJS)
+-	libtool $(CXX) $(LFLAGS) -o libsmodels.la $(LIBOBJS) \
+-                -rpath $(LIBPATH)
++	$(LIBTOOL) $(CXX) $(LFLAGS) -o $(LIBNAME) $(LIBOBJS) $(LDOPTS)
+ 
+ %.lo: %.cc
+-	libtool $(CXX) $(CXXFLAGS) -c $<
++	$(LIBTOOL) $(CXX) $(CXXFLAGS) -c $<
+ 
+ libinstall:
+-	libtool install -c libsmodels.la $(LIBPATH)/libsmodels.la
++	$(LIBTOOL) install -c libsmodels.la $(LIBPATH)/libsmodels.la
+ 
+ clean:
+-	rm -f core $(OBJS) $(LIBOBJS) smodels libsmodels.la
++	rm -f core $(OBJS) $(LIBOBJS) $(NAME) $(LIBNAME) 2>/dev/null
+ 
+ all:
+ 	$(MAKE) clean smodels
+Binary files smodels-2.27/smodels.a and smodels-2.27-lf3/smodels.a differ
+diff -urN smodels-2.27/smodels.def smodels-2.27-lf3/smodels.def
+--- smodels-2.27/smodels.def	1969-12-31 19:00:00.000000000 -0500
++++ smodels-2.27-lf3/smodels.def	2003-02-26 15:50:11.000000000 -0500
+@@ -0,0 +1,404 @@
++EXPORTS
++    _ZN10ChoiceRule10inactivateEPK7Follows @1
++    _ZN10ChoiceRule10isInactiveEv @2
++    _ZN10ChoiceRule13backChainTrueEv @3
++    _ZN10ChoiceRule13isUpperActiveEv @4
++    _ZN10ChoiceRule13mightFireInitEPK7Follows @5
++    _ZN10ChoiceRule13propagateTrueEPK7Follows @6
++    _ZN10ChoiceRule14backChainFalseEv @7
++    _ZN10ChoiceRule14backtrackUpperEPK7Follows @8
++    _ZN10ChoiceRule14print_internalEv @9
++    _ZN10ChoiceRule14propagateFalseEPK7Follows @10
++    _ZN10ChoiceRule19backtrackFromActiveEPK7Follows @11
++    _ZN10ChoiceRule21backtrackFromInactiveEPK7Follows @12
++    _ZN10ChoiceRule4initEP4Init @13
++    _ZN10ChoiceRule5printEv @14
++    _ZN10ChoiceRule5setupEv @15
++    _ZN10ChoiceRule6reduceEb @16
++    _ZN10ChoiceRule6searchEP4Atom @17
++    _ZN10ChoiceRule6unInitEv @18
++    _ZN10ChoiceRule7isFiredEv @19
++    _ZN10ChoiceRule8fireInitEv @20
++    _ZN10ChoiceRule8unreduceEv @21
++    _ZN10ChoiceRule9mightFireEPK7Follows @22
++    _ZN10ChoiceRuleC1Ev @23
++    _ZN10ChoiceRuleC2Ev @24
++    _ZN10ChoiceRuleD0Ev @25
++    _ZN10ChoiceRuleD1Ev @26
++    _ZN10ChoiceRuleD2Ev @27
++    _ZN10WeightRule10chainFalseEPP4Atom @28
++    _ZN10WeightRule10inactivateEPK7Follows @29
++    _ZN10WeightRule10initWeightEm @30
++    _ZN10WeightRule10isInactiveEv @31
++    _ZN10WeightRule11not_in_loopEP7Follows @32
++    _ZN10WeightRule13backChainTrueEv @33
++    _ZN10WeightRule13isUpperActiveEv @34
++    _ZN10WeightRule13mightFireInitEPK7Follows @35
++    _ZN10WeightRule13propagateTrueEPK7Follows @36
++    _ZN10WeightRule14backChainFalseEv @37
++    _ZN10WeightRule14backtrackUpperEPK7Follows @38
++    _ZN10WeightRule14print_internalEv @39
++    _ZN10WeightRule14propagateFalseEPK7Follows @40
++    _ZN10WeightRule19backChainTrueShadowEv @41
++    _ZN10WeightRule19backtrackFromActiveEPK7Follows @42
++    _ZN10WeightRule20backChainFalseShadowEv @43
++    _ZN10WeightRule21backtrackFromInactiveEPK7Follows @44
++    _ZN10WeightRule4heapEll @45
++    _ZN10WeightRule4initEP4Init @46
++    _ZN10WeightRule4sortEv @47
++    _ZN10WeightRule4swapEll @48
++    _ZN10WeightRule5printEv @49
++    _ZN10WeightRule5setupEv @50
++    _ZN10WeightRule6reduceEb @51
++    _ZN10WeightRule6searchEP4Atom @52
++    _ZN10WeightRule6unInitEv @53
++    _ZN10WeightRule7in_loopEP7Follows @54
++    _ZN10WeightRule7isFiredEv @55
++    _ZN10WeightRule7smallerEll @56
++    _ZN10WeightRule8fireInitEv @57
++    _ZN10WeightRule8swappingEP7FollowsS1_ @58
++    _ZN10WeightRule8unreduceEv @59
++    _ZN10WeightRule9backtrackEPP4Atom @60
++    _ZN10WeightRule9chainTrueEPP4Atom @61
++    _ZN10WeightRule9mightFireEPK7Follows @62
++    _ZN10WeightRuleC1Ev @63
++    _ZN10WeightRuleC2Ev @64
++    _ZN10WeightRuleD0Ev @65
++    _ZN10WeightRuleD1Ev @66
++    _ZN10WeightRuleD2Ev @67
++    _ZN12GenerateRule10inactivateEPK7Follows @68
++    _ZN12GenerateRule10inactivateEv @69
++    _ZN12GenerateRule10isInactiveEv @70
++    _ZN12GenerateRule13backChainTrueEv @71
++    _ZN12GenerateRule13isUpperActiveEv @72
++    _ZN12GenerateRule13mightFireInitEPK7Follows @73
++    _ZN12GenerateRule13propagateTrueEPK7Follows @74
++    _ZN12GenerateRule14backChainFalseEv @75
++    _ZN12GenerateRule14backtrackUpperEPK7Follows @76
++    _ZN12GenerateRule14print_internalEv @77
++    _ZN12GenerateRule14propagateFalseEPK7Follows @78
++    _ZN12GenerateRule19backtrackFromActiveEPK7Follows @79
++    _ZN12GenerateRule21backtrackFromInactiveEPK7Follows @80
++    _ZN12GenerateRule4initEP4Init @81
++    _ZN12GenerateRule5printEv @82
++    _ZN12GenerateRule5setupEv @83
++    _ZN12GenerateRule6reduceEb @84
++    _ZN12GenerateRule6searchEP4Atom @85
++    _ZN12GenerateRule6unInitEv @86
++    _ZN12GenerateRule7isFiredEv @87
++    _ZN12GenerateRule8fireInitEv @88
++    _ZN12GenerateRule8unreduceEv @89
++    _ZN12GenerateRule9mightFireEPK7Follows @90
++    _ZN12GenerateRuleC1Ev @91
++    _ZN12GenerateRuleC2Ev @92
++    _ZN12GenerateRuleD0Ev @93
++    _ZN12GenerateRuleD1Ev @94
++    _ZN12GenerateRuleD2Ev @95
++    _ZN12OptimizeRule10inactivateEPK7Follows @96
++    _ZN12OptimizeRule10isInactiveEv @97
++    _ZN12OptimizeRule10setOptimumEv @98
++    _ZN12OptimizeRule13backChainTrueEv @99
++    _ZN12OptimizeRule13isUpperActiveEv @100
++    _ZN12OptimizeRule13mightFireInitEPK7Follows @101
++    _ZN12OptimizeRule13propagateTrueEPK7Follows @102
++    _ZN12OptimizeRule14backChainFalseEv @103
++    _ZN12OptimizeRule14backtrackUpperEPK7Follows @104
++    _ZN12OptimizeRule14print_internalEv @105
++    _ZN12OptimizeRule14propagateFalseEPK7Follows @106
++    _ZN12OptimizeRule19backtrackFromActiveEPK7Follows @107
++    _ZN12OptimizeRule21backtrackFromInactiveEPK7Follows @108
++    _ZN12OptimizeRule4initEP4Init @109
++    _ZN12OptimizeRule5printEv @110
++    _ZN12OptimizeRule5setupEv @111
++    _ZN12OptimizeRule6reduceEb @112
++    _ZN12OptimizeRule6searchEP4Atom @113
++    _ZN12OptimizeRule6unInitEv @114
++    _ZN12OptimizeRule7isFiredEv @115
++    _ZN12OptimizeRule8fireInitEv @116
++    _ZN12OptimizeRule8unreduceEv @117
++    _ZN12OptimizeRule9mightFireEPK7Follows @118
++    _ZN12OptimizeRuleC1Ev @119
++    _ZN12OptimizeRuleC2Ev @120
++    _ZN12OptimizeRuleD0Ev @121
++    _ZN12OptimizeRuleD1Ev @122
++    _ZN12OptimizeRuleD2Ev @123
++    _ZN14ConstraintRule10inactivateEPK7Follows @124
++    _ZN14ConstraintRule10isInactiveEv @125
++    _ZN14ConstraintRule11not_in_loopEP7Follows @126
++    _ZN14ConstraintRule13backChainTrueEv @127
++    _ZN14ConstraintRule13isUpperActiveEv @128
++    _ZN14ConstraintRule13mightFireInitEPK7Follows @129
++    _ZN14ConstraintRule13propagateTrueEPK7Follows @130
++    _ZN14ConstraintRule14backChainFalseEv @131
++    _ZN14ConstraintRule14backtrackUpperEPK7Follows @132
++    _ZN14ConstraintRule14print_internalEv @133
++    _ZN14ConstraintRule14propagateFalseEPK7Follows @134
++    _ZN14ConstraintRule19backtrackFromActiveEPK7Follows @135
++    _ZN14ConstraintRule21backtrackFromInactiveEPK7Follows @136
++    _ZN14ConstraintRule4initEP4Init @137
++    _ZN14ConstraintRule5printEv @138
++    _ZN14ConstraintRule5setupEv @139
++    _ZN14ConstraintRule6reduceEb @140
++    _ZN14ConstraintRule6searchEP4Atom @141
++    _ZN14ConstraintRule6unInitEv @142
++    _ZN14ConstraintRule7in_loopEP7Follows @143
++    _ZN14ConstraintRule7isFiredEv @144
++    _ZN14ConstraintRule8fireInitEv @145
++    _ZN14ConstraintRule8unreduceEv @146
++    _ZN14ConstraintRule9mightFireEPK7Follows @147
++    _ZN14ConstraintRuleC1Ev @148
++    _ZN14ConstraintRuleC2Ev @149
++    _ZN14ConstraintRuleD0Ev @150
++    _ZN14ConstraintRuleD1Ev @151
++    _ZN14ConstraintRuleD2Ev @152
++    _ZN3Api10begin_ruleE8RuleType @153
++    _ZN3Api11change_bodyElbm @154
++    _ZN3Api11set_computeEP4Atomb @155
++    _ZN3Api13reset_computeEP4Atomb @156
++    _ZN3Api16set_atleast_bodyEl @157
++    _ZN3Api16set_atleast_headEl @158
++    _ZN3Api18set_atleast_weightEm @159
++    _ZN3Api4copyEPS_ @160
++    _ZN3Api4doneEv @161
++    _ZN3Api4list4growEv @162
++    _ZN3Api4list4pushEP4Atomm @163
++    _ZN3Api4list5resetEv @164
++    _ZN3Api4listC1Ev @165
++    _ZN3Api4listC2Ev @166
++    _ZN3Api4listD1Ev @167
++    _ZN3Api4listD2Ev @168
++    _ZN3Api6forgetEv @169
++    _ZN3Api8add_bodyEP4Atomb @170
++    _ZN3Api8add_bodyEP4Atombm @171
++    _ZN3Api8add_headEP4Atom @172
++    _ZN3Api8end_ruleEv @173
++    _ZN3Api8get_atomEPKc @174
++    _ZN3Api8new_atomEv @175
++    _ZN3Api8rememberEv @176
++    _ZN3Api8set_initEv @177
++    _ZN3Api8set_nameEP4AtomPKc @178
++    _ZN3ApiC1EP7Program @179
++    _ZN3ApiC2EP7Program @180
++    _ZN3ApiD0Ev @181
++    _ZN3ApiD1Ev @182
++    _ZN3ApiD2Ev @183
++    _ZN3Dcl14propagateFalseEv @184
++    _ZN3Dcl3dclEv @185
++    _ZN3Dcl4initEv @186
++    _ZN3Dcl4pathEP4AtomS1_ @187
++    _ZN3Dcl5printEv @188
++    _ZN3Dcl5setupEv @189
++    _ZN3Dcl6denantEv @190
++    _ZN3Dcl6reduceEb @191
++    _ZN3Dcl6revertEv @192
++    _ZN3Dcl7improveEv @193
++    _ZN3Dcl8undenantEv @194
++    _ZN3Dcl8unreduceEv @195
++    _ZN3DclC1EP7Smodels @196
++    _ZN3DclC2EP7Smodels @197
++    _ZN3DclD1Ev @198
++    _ZN3DclD2Ev @199
++    _ZN4Atom10etrue_pushEv @200
++    _ZN4Atom10queue_pushEv @201
++    _ZN4Atom11efalse_pushEv @202
++    _ZN4Atom11reduce_headEv @203
++    _ZN4Atom12reduce_nbodyEb @204
++    _ZN4Atom12reduce_pbodyEb @205
++    _ZN4Atom13backchainTrueEv @206
++    _ZN4Atom14backchainFalseEv @207
++    _ZN4Atom18backtrackFromBTrueEv @208
++    _ZN4Atom19backtrackFromBFalseEv @209
++    _ZN4Atom5visitEv @210
++    _ZN4Atom6reduceEb @211
++    _ZN4Atom7setTrueEv @212
++    _ZN4Atom8setBTrueEv @213
++    _ZN4Atom8unreduceEv @214
++    _ZN4Atom9atom_nameEv @215
++    _ZN4Atom9setBFalseEv @216
++    _ZN4AtomC1EP7Program @217
++    _ZN4AtomC2EP7Program @218
++    _ZN4AtomD1Ev @219
++    _ZN4AtomD2Ev @220
++    _ZN4ListC1Ev @221
++    _ZN4ListC2Ev @222
++    _ZN4Read12addBasicRuleERSi @223
++    _ZN4Read13addChoiceRuleERSi @224
++    _ZN4Read13addWeightRuleERSi @225
++    _ZN4Read15addGenerateRuleERSi @226
++    _ZN4Read15addOptimizeRuleERSi @227
++    _ZN4Read17addConstraintRuleERSi @228
++    _ZN4Read4growEv @229
++    _ZN4Read4readERSi @230
++    _ZN4Read7getAtomEl @231
++    _ZN4Read8readBodyERSilb @232
++    _ZN4ReadC1EP7ProgramP3Api @233
++    _ZN4ReadC2EP7ProgramP3Api @234
++    _ZN4ReadD1Ev @235
++    _ZN4ReadD2Ev @236
++    _ZN4Rule11not_in_loopEP7Follows @237
++    _ZN4Rule14print_internalEv @238
++    _ZN4Rule5printEv @239
++    _ZN4Rule7in_loopEP7Follows @240
++    _ZN4Rule8swappingEP7FollowsS1_ @241
++    _ZN4RuleD0Ev @242
++    _ZN4RuleD1Ev @243
++    _ZN4Tree17check_consistencyEPNS_4NodeE @244
++    _ZN4Tree17check_consistencyEv @245
++    _ZN4Tree4NodeC1EP4AtomPS0_S3_ @246
++    _ZN4Tree4NodeC2EP4AtomPS0_S3_ @247
++    _ZN4Tree4NodeD1Ev @248
++    _ZN4Tree4NodeD2Ev @249
++    _ZN4Tree4findEPKc @250
++    _ZN4Tree5flushEPNS_4NodeE @251
++    _ZN4Tree5splayEPKcPNS_4NodeE @252
++    _ZN4Tree6insertEP4Atom @253
++    _ZN4Tree6removeEP4Atom @254
++    _ZN4Tree7compareEPKcP4Atom @255
++    _ZN4TreeC1Ev @256
++    _ZN4TreeC2Ev @257
++    _ZN4TreeD1Ev @258
++    _ZN4TreeD2Ev @259
++    _ZN5Queue4InitEl @260
++    _ZN5QueueC1El @261
++    _ZN5QueueC2El @262
++    _ZN5QueueD1Ev @263
++    _ZN5QueueD2Ev @264
++    _ZN5Stack4InitEl @265
++    _ZN5StackC1El @266
++    _ZN5StackC2El @267
++    _ZN5StackD1Ev @268
++    _ZN5StackD2Ev @269
++    _ZN5Timer4stopEv @270
++    _ZN5Timer5printEv @271
++    _ZN5Timer5resetEv @272
++    _ZN5Timer5startEv @273
++    _ZN5TimerC1Ev @274
++    _ZN5TimerC2Ev @275
++    _ZN6Denant6strongEP4Atom @276
++    _ZN6Denant9do_strongEP4AtomP4Ruleb @277
++    _ZN6DenantC1El @278
++    _ZN6DenantC2El @279
++    _ZN6Stable10print_timeEv @280
++    _ZN6Stable14print_internalEv @281
++    _ZN6Stable4readERSi @282
++    _ZN6Stable5triesEv @283
++    _ZN6Stable9calculateEv @284
++    _ZN6Stable9randomizeEv @285
++    _ZN6StableC1Ev @286
++    _ZN6StableC2Ev @287
++    _ZN6StableD0Ev @288
++    _ZN6StableD1Ev @289
++    _ZN6StableD2Ev @290
++    _ZN7Improve6strongEP4Atom @291
++    _ZN7ImproveC1El @292
++    _ZN7ImproveC2El @293
++    _ZN7Program11set_optimumEv @294
++    _ZN7Program14print_internalEl @295
++    _ZN7Program4initEv @296
++    _ZN7Program5printEv @297
++    _ZN7ProgramC1Ev @298
++    _ZN7ProgramC2Ev @299
++    _ZN7ProgramD1Ev @300
++    _ZN7ProgramD2Ev @301
++    _ZN7Smodels10printStackEv @302
++    _ZN7Smodels10setToBTrueEP4Atom @303
++    _ZN7Smodels11printAnswerEv @304
++    _ZN7Smodels11setToBFalseEP4Atom @305
++    _ZN7Smodels11wellfoundedEv @306
++    _ZN7Smodels12set_conflictEv @307
++    _ZN7Smodels14add_dependencyEP4Atomb @308
++    _ZN7Smodels16clear_dependencyEv @309
++    _ZN7Smodels16reset_dependencyEv @310
++    _ZN7Smodels18optimize_heuristicEv @311
++    _ZN7Smodels20setup_with_lookaheadEv @312
++    _ZN7Smodels22lookahead_no_heuristicEv @313
++    _ZN7Smodels4initEv @314
++    _ZN7Smodels4pickEv @315
++    _ZN7Smodels5modelEbb @316
++    _ZN7Smodels5printEv @317
++    _ZN7Smodels5setupEv @318
++    _ZN7Smodels6chooseEv @319
++    _ZN7Smodels6revertEv @320
++    _ZN7Smodels6unwindEv @321
++    _ZN7Smodels7improveEv @322
++    _ZN7Smodels7shuffleEv @323
++    _ZN7Smodels7smodelsEbb @324
++    _ZN7Smodels7smodelsEbbl @325
++    _ZN7Smodels7testNegEP4Atom @326
++    _ZN7Smodels7testPosEP4Atom @327
++    _ZN7Smodels8backjumpEv @328
++    _ZN7Smodels8conflictEv @329
++    _ZN7Smodels9backtrackEb @330
++    _ZN7Smodels9backtrackEv @331
++    _ZN7Smodels9heuristicEv @332
++    _ZN7Smodels9lookaheadEv @333
++    _ZN7Smodels9testScoreEP4Atoml @334
++    _ZN7Smodels9unwind_toEl @335
++    _ZN7SmodelsC1Ev @336
++    _ZN7SmodelsC2Ev @337
++    _ZN7SmodelsD0Ev @338
++    _ZN7SmodelsD1Ev @339
++    _ZN7SmodelsD2Ev @340
++    _ZN8AtomListD1Ev @341
++    _ZN8AtomListD2Ev @342
++    _ZN8RuleListD1Ev @343
++    _ZN8RuleListD2Ev @344
++    _ZN9BasicRule10inactivateEPK7Follows @345
++    _ZN9BasicRule10isInactiveEv @346
++    _ZN9BasicRule13backChainTrueEv @347
++    _ZN9BasicRule13isUpperActiveEv @348
++    _ZN9BasicRule13mightFireInitEPK7Follows @349
++    _ZN9BasicRule13propagateTrueEPK7Follows @350
++    _ZN9BasicRule14backChainFalseEv @351
++    _ZN9BasicRule14backtrackUpperEPK7Follows @352
++    _ZN9BasicRule14print_internalEv @353
++    _ZN9BasicRule14propagateFalseEPK7Follows @354
++    _ZN9BasicRule19backtrackFromActiveEPK7Follows @355
++    _ZN9BasicRule21backtrackFromInactiveEPK7Follows @356
++    _ZN9BasicRule4initEP4Init @357
++    _ZN9BasicRule5printEv @358
++    _ZN9BasicRule5setupEv @359
++    _ZN9BasicRule6reduceEb @360
++    _ZN9BasicRule6searchEP4Atom @361
++    _ZN9BasicRule6unInitEv @362
++    _ZN9BasicRule7isFiredEv @363
++    _ZN9BasicRule8fireInitEv @364
++    _ZN9BasicRule8unreduceEv @365
++    _ZN9BasicRule9mightFireEPK7Follows @366
++    _ZN9BasicRuleC1Ev @367
++    _ZN9BasicRuleC2Ev @368
++    _ZN9BasicRuleD0Ev @369
++    _ZN9BasicRuleD1Ev @370
++    _ZN9BasicRuleD2Ev @371
++    _ZTI10ChoiceRule @372 DATA
++    _ZTI10WeightRule @373 DATA
++    _ZTI12GenerateRule @374 DATA
++    _ZTI12OptimizeRule @375 DATA
++    _ZTI14ConstraintRule @376 DATA
++    _ZTI3Api @377 DATA
++    _ZTI4Rule @378 DATA
++    _ZTI6Stable @379 DATA
++    _ZTI7Smodels @380 DATA
++    _ZTI8HeadRule @381 DATA
++    _ZTI9BasicRule @382 DATA
++    _ZTS10ChoiceRule @383 DATA
++    _ZTS10WeightRule @384 DATA
++    _ZTS12GenerateRule @385 DATA
++    _ZTS12OptimizeRule @386 DATA
++    _ZTS14ConstraintRule @387 DATA
++    _ZTS3Api @388 DATA
++    _ZTS4Rule @389 DATA
++    _ZTS6Stable @390 DATA
++    _ZTS7Smodels @391 DATA
++    _ZTS8HeadRule @392 DATA
++    _ZTS9BasicRule @393 DATA
++    _ZTV10ChoiceRule @394 DATA
++    _ZTV10WeightRule @395 DATA
++    _ZTV12GenerateRule @396 DATA
++    _ZTV12OptimizeRule @397 DATA
++    _ZTV14ConstraintRule @398 DATA
++    _ZTV3Api @399 DATA
++    _ZTV4Rule @400 DATA
++    _ZTV6Stable @401 DATA
++    _ZTV7Smodels @402 DATA
++    _ZTV9BasicRule @403 DATA

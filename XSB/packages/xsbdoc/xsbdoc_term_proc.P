@@ -1,0 +1,725 @@
+
+:- export
+%%	  comma_append/3, comma_length/2, 
+%%	  comma_member/2, comma_memberchk_eq/2,
+%%	  comma_to_list/2,
+	  corrected_search_module/5,
+	  get_atom_from_body/2, 
+	  messageln/1,
+	  prettyprint/2, 
+	  process_a_file/5,
+	  postproc_newlines/2,
+	  read_file_as_string/2,
+	  read_file_reset/0.
+
+:- import reverse/2 from basics.
+:- import search_module/6 from consult.
+:- import numbervars/3 from num_vars.
+:- import message/1 from standard.
+:- import str_sub/2,concat_atom/2 from string.
+:- import write_term/2 from write_term.
+:- import xsb_configuration/2 from usermod.
+:- import check_atom/3, permission_error/4 from error_handler.
+%:- import file_time/2 from file_io.
+
+:- import '_#clause'/2 from usermod.
+
+:- index('_#clause'/2,trie).
+
+:- dynamic '_#ctr'/1.
+:- dynamic '_#clause'/2.
+
+read_file_as_string(File,List):- 
+	open(File,read,FStr),
+	read_file_as_string_1(FStr,List_in),
+	postproc_newlines(List_in,List),
+	close(FStr).
+	
+read_file_as_string_1(FStr,List):- 
+	get_code(FStr,Char),
+	(Char < 0 -> 
+	    List = [] 
+    	  ; List = [Char|List1],
+	    read_file_as_string_1(FStr,List1) ).
+	    
+postproc_newlines(H,T):- 
+	xsb_configuration(host_os,Type),
+	(Type == windows -> 
+	    postproc_newlines1(H,T)
+	  ;   
+	    H = T).
+
+postproc_newlines1([H],[H]):-!.
+postproc_newlines1([13|Tin],Tout):- !,
+	postproc_newlines1(Tin,Tout).
+postproc_newlines1([H|Tin],[H|Tout]):- !,
+	postproc_newlines1(Tin,Tout).
+postproc_newlines1(Nonlist,Nonlist).   % for hide, etc.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/* Call from autodoc
+		process_files_from(I, asr, any, 
+		                   process_file_assertions(I,Verb,Opts), 
+                                   false, false, needs_processing(I,Verb)),
+
+need to do process_file_assertions
+
+*/
+
+process_a_file(File,Dir,Base,SrcName,IsLib) :-
+	read_file_reset,
+ 	corrected_search_module(File,Dir,Base,SrcName,IsLib),
+	concat_atom([Dir,SrcName],Full),
+            read_record_file(Full),
+	concat_atom([Dir,Base,'.H'],Hname),
+	(file_exists(Hname) -> read_record_file(Hname) ; true).
+
+:- import user_library/1 from usermod.
+:- dynamic user_library/1.
+
+/* corrected_search_module(main,Dir,main,main.P,<true/false>) */
+corrected_search_module(Input,Dir,Base,Source,IsLib):- 
+	check_atom(Input,'corrected_search_module/5',1),
+	(search_module(Input, Dir, Base, SExt, _Full, _Obj) -> 
+	   concat_atom([Base,'.',SExt],Source)
+	 ; atom_chars(Input,Inl),
+	   reverse(Inl,Inlr),
+	   Inlr = [_,'.'|Inlr],
+	   reverse(Inlr,NewInput),
+	   search_module(NewInput, Dir, Base, SExt, _Full, _Obj),
+	   concat_atom([Base,'.',SExt],Source)),
+	xsb_configuration(srcdir,SrcDir),
+	(str_sub(SrcDir,Dir) -> 
+	    IsLib = true 
+	  ; (user_library(Base) -> 
+	        IsLib = true
+	      ; IsLib = false) ),!.
+corrected_search_module(Input,_Dir,_Base,_Source,_IsLib):- 
+	permission_error(file_search,file,Input,'corrected_search_module/5').
+
+read_record_file(File) :-
+        messageln(''),   messageln(''),
+        messageln(['Reading ',File]),
+	read_file(File).
+
+/* need to handle base names and such */
+read_file(File):- 
+	open(File,read,Istr),
+	repeat,
+	read_term(Istr,Term,[variable_names(Names)]),
+	instantiate_read_term(Names,Term),
+	assert_term(File,Term),
+	(Term == end_of_file -> true ; fail),
+	close(Istr),!.
+
+instantiate_read_term([],_Term).
+instantiate_read_term([Name = Var|Rest],Term):- 
+	Name = Var,
+	instantiate_read_term(Rest,Term).
+
+inc_ctr(N1):- 
+	'_#ctr'(N),
+	retractall('_#ctr'(_)),
+	N1 is N + 1,
+	assert('_#ctr'(N1)).
+inc_ctr(0):-
+	\+ '_#ctr'(_),
+	assert('_#ctr'(0)).
+
+
+assert_term(_,end_of_file):- !.
+assert_term(File,Term):- 
+	expand_term(Term,ETerm),
+	assert_term_1(ETerm,File).
+	
+assert_term_1((H :- T),_File):- !,
+	inc_ctr(N),
+	assert('_#clause'(rule(H,T),N)).
+assert_term_1((':-'(T)),_File):- !,
+	inc_ctr(N),
+	assert('_#clause'(directive(T),N)).
+assert_term_1(Term,_File):- 
+	inc_ctr(N),
+	assert('_#clause'(rule(Term,true),N)).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/*
+delete_itf_data(Base) :-
+        retractall(direct_export(Base,_,_,_,_)),
+        retractall(loads(Base,_,_)),
+        retractall(imports_pred_1(Base,_,_,_,_,_,_)),
+        retractall(decl(Base,_)),
+        retractall(uses_builtins(Base)),
+        retractall(tables(Base,_F,_A,_Type)),
+        retractall(hilog(Base,_F,_A)).
+%        retractall(time_of_itf<_data(Base, _)),
+%        retractall(defines_module(Base,_)),
+%        retractall(def_multifile(Base,_,_,_)),
+%        retractall(uses(Base,_)),
+%        retractall(adds(Base,_)),
+%        retractall(includes(Base,_)),
+%        retractall(reexports_from(Base, _)),
+%        retractall(imports_all_1(Base,_)),
+%        retractall(reexports_all(Base, _)),
+%        retractall(reexports(Base, _, _, _)),
+*/
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+messageln(X):- message(X),message('
+').
+
+read_file_reset:- 
+	retractall('_#clause'(_,_)),
+	retractall('_#ctr'(_)).
+
+get_atom_from_body(tnot(A),A):- !.
+get_atom_from_body(not(Seq),A):- !,
+	get_atom_from_body(Seq,A).
+get_atom_from_body(\+(Seq),A):- !,
+	get_atom_from_body(Seq,A).
+get_atom_from_body(','(Lit,_),A):- !,
+	get_atom_from_body(Lit,A).
+get_atom_from_body(','(_,Seq),A):- !,
+	get_atom_from_body(Seq,A).
+get_atom_from_body(A,A):- atomic(A).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Prettyprint (simple)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+prettyprint(Stream,Term):- 
+	telling(F), 
+	tell(Stream), 
+	numbervars(Term,0,_),
+	prettyprint_term(Term), tell(F).	
+
+prettyprint_term(rule(H,true)):- !,
+	write_term(H,[quoted(true),numbervars(true),ignore_ops(true)]),
+	writeln('.').
+prettyprint_term(rule(H,B)):- !,
+	write_term(H,[quoted(true),numbervars(true),ignore_ops(true)]),
+	writeln(':- '),
+	prettyprint_body(B,5),
+	writeln('.').
+prettyprint_term(directive(H)):-
+	write(':- '),writeq(H),writeln('.').
+prettyprint_term((':-'(H,B))):- !,
+	prettyprint_term(rule(H,B)).
+prettyprint_term((':-'(B))):- 
+	prettyprint_term(directive(B)).
+
+prettyprint_body(','(T,R),N):- !,
+	prettyprint_body(T,N),
+	writeln(','),
+	prettyprint_body(R,N).
+prettyprint_body('->'(T,R),N):- !,
+	tab(N),write('('),nl,
+	Atab is N + 2,
+	Ctab is N + 5,
+	prettyprint_body(T,Atab),
+	writeln(' ->'),
+	prettyprint_body(R,Ctab),
+	tab(N),write(')').
+prettyprint_body(';'('->'(One,Two),Three),N):- !,
+	tab(N),write('('),nl,
+	Atab is N + 2,
+	Ctab is N + 5,
+	prettyprint_body(One,Atab),
+	writeln(' ->'),
+	Ctab is N + 5,
+	prettyprint_body(Two,Ctab),nl,
+	tab(N),writeln(';'),
+	prettyprint_body(Three,Ctab),nl,
+	tab(N),write(')').
+prettyprint_body(';'(T,R),N):- !,
+	tab(N),write('('),nl,
+	Ctab is N + 5,
+	prettyprint_body(T,Ctab),
+	tab(N),writeln(';'),
+	prettyprint_body(R,Ctab),
+	tab(N),write(')').
+prettyprint_body('\+'(T),N):- !,
+	tab(N),write('\+ ('),write(T),write(')').
+prettyprint_body(T,N):- 
+	tab(N),write_term(T,[quoted(true),numbervars(true)]).
+
+end_of_file.
+
+Tls: checks, etc. shd. use meta_predicate.
+
+defined_in_source(Base, F, A) :-
+        multifile_pred(Base, F, A), !.
+
+process_decl(multifile(Spec), Base,_M,_VNs, Ln0, Ln1) :- !,
+        do_multifile(Spec, Base, Ln0, Ln1).
+
+do_multifile(Spec, Base, Ln0, Ln1) :-
+        sequence_contains(Spec, bad_spec_error(multifile, Ln0, Ln1), F, A),
+          ( retract(defines_pred(Base,F,A)) -> true ; true ),
+          ( current_fact(multifile_pred(Base,F,A)) -> true
+          ; assertz(multifile_pred(Base,F,A))
+          ),
+        fail.
+do_multifile(_, _, _, _).
+
+process_decl(set_prolog_flag(Flag, Value), Base,_M,_VNs, Ln0, Ln1) :- !,
+        do_set_pl_flag(Flag, Value, Base, Ln0, Ln1).
+
+do_set_pl_flag(Flag, Value, Base, Ln0, Ln1) :-
+        ( prolog_flag(Flag, Old, Value) ->
+            asserta(undo_decl(Base, set_prolog_flag(Flag,Value),
+                                         set_prolog_flag(Flag,Old)))
+        ; warning_failed_decl(Ln0, Ln1, set_prolog_flag(Flag, Value))
+        ).
+
+warning_failed_decl(Ln0, Ln1, Decl) :-
+        error_in_lns(Ln0, Ln1, warning, [Decl,' - declaration failed']).
+
+end_of_file.
+
+% At present, not including ensure_loaded automatically.
+% need to add tabled, hilog, etc.
+process_decl(export(Exports), Base,_M,_VNs, Ln0, Ln1) :- !,
+        assert_export_list(Exports, Base, Ln0, Ln1).
+process_decl(import(Module,Imports), Base,_M,_VNs, Ln0, Ln1) :- !,
+        do_import(Module, Imports, Base, Ln0, Ln1).
+process_decl(ensure_loaded(File), Base,_M,_VNs,_Ln0,_Ln1) :- !,
+        get_base_name(File, _, _, _),
+        assertz(adds(Base,File)).
+process_decl(dynamic(L), Base,_M,_VNs, Ln0, Ln1) :- !,
+        do_dyn_decl(L, Base, dynamic, Ln0, Ln1).
+process_decl(op(P, F, O), Base,_M,_VNs,_Ln0,_Ln1) :- !,
+        do_op(P, F, O, Base).
+
+assert_export_list(All, Base, _Ln0,_Ln1) :-
+        var(All), !,
+        assertz(exports_pred(Base, all, all)).
+assert_export_list([Exp|Exports], Base, Ln0, Ln1) :- !,
+        assert_export(Exp, Base, Ln0, Ln1),
+        assert_export_list(Exports, Base, Ln0, Ln1).
+assert_export_list([],_Base,_Ln0,_Ln1) :- !.
+assert_export_list(Exp, Base, Ln0, Ln1) :-
+        assert_export(Exp, Base, Ln0, Ln1).
+
+assert_export(F/A, Base,_Ln0,_Ln1) :-
+        atom(F), integer(A), !,
+        assertz(exports_pred(Base, F, A)).
+assert_export(Spec,_Base, Ln0, Ln1) :-
+        compiler_error(Ln0, Ln1, bad_export(Spec)).
+
+do_import(Module, Imports, Base, Ln0, Ln1) :-
+        atom(Module), !,
+        store_import_nocheck_list(Imports, Module, Base, Ln0, Ln1).
+do_import(Module, _, _, Ln0, Ln1) :-
+        compiler_error(Ln0, Ln1, bad_import(Module)).
+
+store_import_nocheck_list([I|Is], Module, Base, Ln0, Ln1) :- !,
+        store_import_nocheck(I, Module, Base, Ln0, Ln1),
+        store_import_nocheck_list(Is, Module, Base, Ln0, Ln1).
+store_import_nocheck_list([], _, _, _, _) :- !.
+store_import_nocheck_list(Bad, _, _, Ln0, Ln1) :-
+        compiler_error(Ln0, Ln1, bad_import_list(Bad)).
+
+store_import_nocheck(F/A, Module, Base, _, _) :-
+        atom(F), integer(A), !,
+        assertz(imports_nocheck(Base, Module, F, A)).
+store_import_nocheck(Bad, _, _, Ln0, Ln1) :-
+        compiler_error(Ln0, Ln1, bad_import_spec(Bad)).
+
+do_dyn_decl(Spec, Base, Decl, Ln0, Ln1) :-
+        sequence_contains(Spec, bad_spec_error(Decl, Ln0, Ln1), F, A),
+          defined_in_source(Base, F, A),
+          assert_dyn_decl(Base, F, A, Decl, Ln0, Ln1),
+        fail.
+do_dyn_decl(_, _, _, _, _).
+
+assert_dyn_decl(Base, F, A, Decl, Ln0, Ln1) :-
+        dyn_decl(Base, F, A, Decl2), !,
+        ( Decl2 = Decl -> true
+        ; compiler_error(Ln0, Ln1, incompatible_decl(F,A,Decl,Decl2))
+        ).
+assert_dyn_decl(Base, F, A, Decl,_Ln0,_Ln1) :-
+        assertz(dyn_decl(Base, F, A, Decl)).
+
+defined_in_source(Base, F, A) :-
+        multifile_pred(Base, F, A), !.
+defined_in_source(Base, F, A) :-
+        defines_pred(Base, F, A), !.
+defined_in_source(Base, F, A) :-
+        assertz(defines_pred(Base,F,A)).
+
+bad_spec_error(Spec, Decl, Ln0, Ln1) :-
+        compiler_error(Ln0, Ln1, badly_formed(Decl,Spec)).
+
+do_op(P, F, O, Base) :-
+        ( ensure_op_undone(P, F, O, Base),
+          op(P, F, O), ! % This can give errors
+        ; true).
+
+ensure_op_undone(Prec, F, Ops, Base) :-
+        integer(Prec), 0=<Prec, Prec=<1200,
+        nonvar(F),
+        operator_specifier(F),
+        atom_or_atom_list(Ops), !,
+        ensure_ops_undone(Ops, F, Prec, Base).
+ensure_op_undone(_, _, _, _). % do not fail to give errors
+
+ensure_ops_undone([Op|Ops], F, Prec, Base) :- !,
+        ensure_ops_undone(Op, F, Prec, Base),
+        ensure_ops_undone(Ops, F, Prec, Base).
+ensure_ops_undone([], _, _, _) :- !.
+ensure_ops_undone(Op, F, Prec, Base) :-
+        ( current_op(CPrec, F, Op) ->
+          asserta(undo_decl(Base,op(Prec,F,Op),op(CPrec,F,Op)))
+        ; asserta(undo_decl(Base,op(Prec,F,Op),op(0,F,Op)))
+        ).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- pred defines(Base, F, A, DefType, Meta)
+        # "The source @var{Base}.P defines predicate @var{F}/@var{A},
+           defined as @var{DefType} (static, implicit, dynamic, data or
+           concurrent) and with meta_predicate declaration @var{Meta}
+           (which can be 0 if it has not).  Generated by calling
+           @pred{comp_defines/1}.".
+
+:- pred already_have_itf(Base)
+        # "The itf file of source @var{Base}.pl was already read or generated
+           in this compilation.".
+
+:- pred exports_pred(Base, F, A). % Translates to direct_export/5
+
+cleanup_c_itf_data :-
+	retractall('_#processed'(_,_)),
+	retractall('_#ctr'(_)),
+	retractall('_#clause'(_,_)).
+
+:- pred defines_module(Base, Module)
+        # "The source @var{Base}.pl defines module @var{Module}.".
+
+del_non_itf_data(Base) :-
+        delete_aux_data(Base),
+        delete_file_data(Base).
+
+% These are deleted when computing imports_pred_1/7
+:- pred imports_expl(Base, ImpFile, F, A). % Translates to imports_pred_1
+
+delete_aux_data(Base) :-
+        retractall(imports_expl(Base, _, _, _)).
+
+:- pred clause_of(Base, Head, Body, VarNames, Source, Line0, Line1)
+        # "We have read from @var{Base}.pl (or included files) the
+           clause @var{Head} :- @var{Body}, which has variable names
+           @var{VarNames}, and is located in source @var{Source} (that
+           changes if clauses are from an included file) between lines
+           @var{Line0} and @var{Line1}.  In the special case that
+           @var{Head} is a number, @var{Body} is the body of a
+           declaration.".
+
+:- pred imports_nocheck(Base, Module, F, A)
+        # "The source @var{Base}.P imports predicate @var{F}/@var{A}
+           from module @var{Module} using @decl{import/2}.".
+
+delete_file_data(Base) :-
+        retractall(clause_of(Base,_,_,_,_,_,_)),
+        retractall(imports_nocheck(Base,_,_,_)),
+        retractall(defines_pred(Base,_,_)),
+%        retractall(meta_pred(Base,_,_,_)),
+        retractall(dyn_decl(Base,_,_,_)).
+
+:- pred comp_defines(Base)
+        # "Can be used in the @tt{TreatP} phase of the compilation
+          process to generate facts of @pred{defines/5} for source
+          @var{Base}.pl".
+
+comp_defines(Base) :-
+        defines_pred(Base, F, A),
+          def_type(Base, F, A, DefType),
+          (meta_pred(Base, F, A, Meta) -> true ; Meta = 0),
+          assertz(defines(Base,F,A,DefType,Meta)),
+          fail.
+comp_defines(_).
+
+get_file_itf(Base) :-
+        already_have_itf(Base), !.
+get_file_itf(Base) :-
+        file_data(Base, PlName, Dir),
+        new_file_status(Base, PlName, Dir, module, Status),
+        asserta(status(Base, Status)).
+
+/* change for XSB */
+import_builtins(Base) :-
+        uses(Base, engine(BT)),
+        builtin_module(BT),  !. % If one used explicitly all have to
+import_builtins(Base) :-
+        assertz(uses_builtins(Base)).
+
+gen_exports(Base) :-
+        exports_pred(Base, all, all), !,
+        retractall(exports_pred(Base, _, _)),
+        ( defines_pred(Base, F, A),
+            gen_export(Base, F, A),
+          fail
+        ; true
+        ).
+gen_exports(Base) :-
+        retract(exports_pred(Base, F, A)),
+          ( multifile_pred(Base, F, A) ->
+              error_in_lns(_,_,warning,
+                           ['no need to export multifile predicate ',~~(F/A)])
+          ; gen_export(Base, F, A)
+          ),
+        fail.
+gen_exports(_Base).
+
+gen_export(Base, F, A) :-
+        def_type(Base, F, A, DefType),
+        (meta_pred(Base, F, A, Meta) -> true ; Meta = 0),
+        assertz(direct_export(Base,F,A,DefType,Meta)).
+
+
+/* Two types of imports -- system and user. 
+gen_imports(Base) :- */
+process_read_data(RawData, Base, M, VNs, Sings, Pl, Ln0, Ln1) :-
+        expand_term(RawData, M, VNs, Data0),
+        expand_list(Data0, Data),
+        ( Data = end_of_file
+        ; process_expanded_data(Data, Base, M, VNs, Sings, Pl, Ln0, Ln1),
+          fail
+        ).
+
+
+new_file_status(Base, PlName, Dir, Type, Status) :-
+        extension_name_time(Base, '.itf', ItfName, ItfTime),
+        modif_time(PlName, PlTime), % system
+        ( ItfTime >= PlTime,
+          read_itf(ItfName, ItfTime, Base, Dir, Type) ->
+              Status = itf_read(ItfName,ItfTime)
+        ; read_record_file(PlName, Base, Dir, Type),
+          Status = file_read(ItfName)
+        ).
+
+extension_name_time(Base, Ext, File, Time) :-
+        concat_atom([Base, Ext], File),
+        modif_time0(File, Time). % system
+
+process_expanded_data((?- Goal), _, _, _, _, _, _, _) :- !,
+        call(Goal), !. % Done at compile time
+process_expanded_data((:- Decl), Base, M, VNs,_Sings, Pl, Ln0, Ln1) :- !,
+        ( process_decl(Decl, Base, M, VNs, Ln0, Ln1) -> true
+        ; error_in_lns(Ln0, Ln1, error, ['unknown declaration ',~~(Decl)])
+        ),
+        assertz(clause_of(Base, 1, Decl, VNs, Pl, Ln0, Ln1)).
+process_expanded_data((H :- B), Base,_M, VNs, Sings, Pl, Ln0, Ln1) :- !,
+        functor(H, F, A),
+        ( atom(F) -> true
+        ; error_in_lns(Ln0, Ln1, error, ['illegal clause']), fail
+        ),
+        ( wellformed_body(B, +, B1) -> true
+        ; error_in_lns(Ln0, Ln1, error, ['malformed body in ',''(F/A)]), fail
+        ),
+        defined_in_source(Base, F, A),
+        clause_check(F, A, Base, Ln0, Ln1),
+        singleton_check(Sings, F, A, Ln0, Ln1),
+        assertz(clause_of(Base, H, B1, VNs, Pl, Ln0, Ln1)).
+process_expanded_data(C, _, _, _, _, _, Ln0, Ln1) :- 
+        construct(C), !,
+        functor(C, F, A),
+        error_in_lns(Ln0, Ln1, error, ['attempt to redefine ',''(F/A)]).
+process_expanded_data(F, Base, M, VNs, Sings, Pl, Ln0, Ln1) :-
+        process_expanded_data((F:-true), Base, M, VNs, Sings, Pl, Ln0, Ln1).
+
+construct(true).
+construct((_ , _)).
+construct((_ ; _)).
+construct((_ -> _)).
+construct((\+ _)).
+construct(if(_, _, _)).
+construct((_ ^ _)).
+
+
+get_base_name(File, Base, PlName, Dir) :-
+        base_name(File, Base), !,
+        file_data(Base, PlName, Dir).
+get_base_name(File, Base, PlName, Dir) :-
+        compute_base_name(File, Base, PlName, Dir),
+        asserta(base_name_1(File, Base)),
+        asserta(file_data_1(Base, PlName, Dir)).
+
+/* used to distinguish system from non-system imports.
+base_name(F, B) :- base_name_0(F,B).
+base_name(F, B) :- base_name_1(F,B).
+
+file_data(B, P, D) :- file_data_0(B, P, D).
+file_data(B, P, D) :- file_data_1(B, P, D).
+
+compute_base_name(File, Base, PName, Dir) :-
+	parse_file_name(File,Dir,Base,Ext),
+	concat_atom([Base,'.',Ext],PName).
+
+%%%%%%%%%%%%%%%%%%%%%
+Not doing itf files yet.
+
+read_itf(ItfName, ItfTime, Base, Dir, Type) :-
+        working_directory(OldDir, Dir),
+        ( true ; working_directory(_, OldDir), fail ),
+        ( current_fact(time_of_itf_data(Base, ItfDataTime)),
+          ItfDataTime >= ItfTime ->
+            base_names_in_itf(ItfName, Base)
+        ; do_read_itf(ItfName, Base)
+        ),
+        defines_module(Base, M),
+        ( M = user(_), Type == module ->
+            compiler_error(_, _, module_missing)
+        ; true),
+        end_doing, !,
+        assertz(already_have_itf(Base)),
+        working_directory(_, OldDir).
+
+base_names_in_itf(ItfName, Base) :-
+        now_doing(['Checking data of ',ItfName]),
+        ( uses(Base, File)
+        ; adds(Base,File)
+        ; includes(Base,File)
+        ; loads(Base,File)
+        ; imports_pred_1(Base, _, _, _, _, _, File)
+        ),
+        do_get_base_name(File),
+        fail.
+base_names_in_itf(_,_).
+
+do_read_itf(ItfName, Base) :-
+        delete_itf_data(Base),
+        '$open'(ItfName, read, Stream),
+        current_input(CI),
+        set_input(Stream),
+        ( itf_version(V),
+          read(v(V,Format)), !
+        ; set_input(CI),
+          close(Stream),
+          fail
+        ),
+        now_doing(['Reading ',ItfName]),
+        read_itf_data_of(Format,Base),
+        set_input(CI),
+        time(Now),
+        close(Stream),
+        assertz(time_of_itf_data(Base,Now)).
+
+read_itf_data_of(Format,Base) :-
+        repeat,
+          do_read(Format,ITF),
+        ( ITF = end_of_file, !
+        ; itf_data(ITF, Base, File, Fact),
+          do_get_base_name(File),
+          assertz(Fact),
+          fail
+        ).
+
+do_read(f,Term) :- fast_read(Term), ! ; Term = end_of_file.
+do_read(r,Term) :- read(Term).
+
+% Catch file errors now
+do_get_base_name('.') :- !.
+do_get_base_name(user) :- !.
+do_get_base_name(File) :- get_base_name(File, _, _, _).
+
+itf_version(1).
+
+:- meta_predicate itf_data(?, ?, ?, fact).
+
+itf_data(m(M),             Base, user, defines_module(Base,M)).
+itf_data(e(F,A,Def,Meta),  Base, user, direct_export(Base,F,A,Def,Meta)).
+itf_data(m(F,A,Def),       Base, user, def_multifile(Base,F,A,Def)).
+itf_data(u(File),          Base, File, uses(Base,File)).
+itf_data(e(File),          Base, File, adds(Base,File)).
+itf_data(n(File),          Base, File, includes(Base,File)).
+itf_data(l(File),          Base, File, loads(Base,File)).
+% The following five has File in uses/2
+itf_data(h(File),          Base, user, reexports_from(Base,File)).
+itf_data(i(File,F,A,Df,Mt,EF),Base, EF,imports_pred_1(Base,File,F,A,Df,Mt,EF)).
+itf_data(i(File),          Base, user, imports_all_1(Base,File)).
+itf_data(r(File,F,A),      Base, user, reexports(Base,File,F,A)).
+itf_data(r(File),          Base, user, reexports_all(Base,File)).
+itf_data(d(Decl),          Base, user, decl(Base,Decl)).
+itf_data((+),              Base, user, uses_builtins(Base)).
+
+
+
+
+% TLS: hopefully I can avoid this...
+now_doing(M) :-
+        current_prolog_flag(verbose_compilation, VF),
+        now_doing_(VF, M).
+
+now_doing_(on, M)  :- message(['{'| M]).
+now_doing_(off, M) :- asserta(doing_what(M)).
+
+end_doing :-
+        current_prolog_flag(verbose_compilation, VF),
+        end_doing_(VF).
+
+end_doing_(on)  :- message('}').
+end_doing_(off) :-
+        retract(doing_what(M)), !,
+        ( retract(doing_written(M)) ->
+            message('}')
+        ; true
+        ).
+
+/* TLS -- save for whenever we have itf files
+needs_redoing(Full):- 
+	(  \+ '_#status(Full,_)
+	 ; 
+	   '_#status(Full,time(S1,S2)),
+	   file_time(Full,time(T1,T2)),
+    	   time(S1,S2) @< time(T1,T2)),
+	!.
+*/
+
+assert_term(_,end_of_file):- !.
+assert_term(File,Term):- 
+	Term = (':-'(H,T)),!,
+	inc_ctr(N),
+	assert('_#clause'(File,N,rule(H,T))).
+assert_term(File,Term):- 
+	Term = ('-->'(_H,_T)),!,
+	dcg(Term,Pterm),
+	Pterm = (':-'(H1,T1)),
+	inc_ctr(N),
+	assert('_#clause'(File,N,rule(H1,T1))).
+assert_term(File,Term):- 
+	Term = (':-'(T)),!,
+	inc_ctr(N),
+	assert('_#clause'(File,N,directive(T))).
+assert_term(File,Term):- 
+	inc_ctr(N),
+	assert('_#clause'(File,N,rule(Term,true))).
+
+/* Assuming for now that you're redoing everything when you call this. */
+process_files_from(Files) :-
+	read_file_reset,
+        process_files_from_1(Files).
+
+process_files_from_1([]) :- !.
+process_files_from_1([F|Fs]) :- !,
+        process_file_from(F),
+        process_files_from_1(Fs).
+process_files_from_1(File) :-
+        process_file_from(File).
+
+/* search_module will have to change to handle 'string' */
+process_file_from(File) :-
+ 	corrected_search_module(File,Dir,_Base,SrcName,IsLib),
+	concat_atom([Dir,SrcName],Full),
+        ('_#processed'(Full, _Islib) -> 
+	    true
+	  ; 
+	    read_record_file(Full),
+            asserta('_#processed'(Full, IsLib))).
+

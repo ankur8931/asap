@@ -1,0 +1,161 @@
+/* File:      ccs.P
+** Author(s): C.R. Ramakrishnan
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: ccs.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+/* Encoding of SOS semantics of value-passing CCS.     */
+
+:- import newdef/2, defmap/3, mem/2 from usermod.
+
+/** 
+    trans_rec(P, A, Q): process with name P makes an A-transition to
+			become process Q.
+**/
+
+:- table trans_rec/3.
+trans_rec(P, Act_a, Q) :- 
+	newdef(P, R), trans(R, Act_a, Q).
+
+/**
+    trans(P, A, Q): process expression P makes a N transition to become
+			expression Q
+**/
+
+:- export trans/3.
+
+% code(C) is a pure computation.
+trans(code(C), _, code) :- call(C).
+
+% nil is empty computation.
+trans(nil, _, code).
+
+% in(X), out(X) and action(X) are atomic communication actions
+% in(X) and out(X) are complements of each other, action(X) is
+% used for special cases when X has no complement.
+
+trans(in(X), in(X), nil).
+trans(out(X), out(X), nil).
+
+%% accept in/out(Port, Data) format -- Yifei
+trans(in(X,D), in(X,D), nil).
+trans(out(X,D), out(X,D), nil).
+
+trans(action(Act), action(Act), nil).
+
+% Conditional
+trans(cond(C, P1, P2), Act, Q) :-
+	(call(C) -> trans(P1, Act, Q)
+		  ; trans(P2, Act, Q)
+	).
+
+% Prefix:
+trans(pref(P1, P2), Act, Q) :-
+	trans(P1, Act, Q1),
+	(Q1 == code -> trans(P2, Act, Q)
+		; (Q1 == nil -> Q = P2 ; Q = pref(Q1, P2))
+	).
+
+% Choice:
+trans(choice(P, Q), Act_a, R)	:- trans(P, Act_a, R) ; trans(Q, Act_a, R).
+
+% Parallel:
+/*
+trans(par(end, P), Act_a, Q)	:- !, trans(P, Act_a, Q).	% -- Yifei
+trans(par(P, end), Act_a, Q)	:- !, trans(P, Act_a, Q).	% -- Yifei
+*/
+
+trans(par(P, Q), Act_a, par(P1, Q1))	:-	trans_par(P,Q, Act_a, P1,Q1).
+
+/*
+trans(par(P, Q), Act_a, R) :-
+	trans_par(P,Q, Act_a, P1,Q1),
+	par(P1,Q1,R).
+
+par(end, P, P) :- !.
+par(P, end, P) :- !.
+par(P, Q, par(P,Q)).
+/*
+par(P1, Q1, R) :-
+	P1 == end 
+	-> R = Q1
+	; (Q1 == end -> R = P1 ; R = par(P1, Q1)).
+/*
+trans(par(P, Q), Act_a, R) :-			%% Yifei
+	P == end
+	-> trans(Q, Act_a, R)
+	;  (Q == end
+	    ->	trans(P, Act_a, R)
+	    ;   (trans_par(P,Q, Act_a, P1,Q1), R = par(P1,Q1))
+	   ).
+*/
+trans_par(P, Q, Act_a, P1, Q) :- trans(P, Act_a, P1).
+trans_par(P, Q, Act_a, P, Q1) :- trans(Q, Act_a, Q1).
+trans_par(P, Q, tau, P1, Q1) :- trans_join(P, Q, P1, Q1).
+
+trans_join(P, Q, P1, Q1) :-
+				trans(P, Act_a, P1),
+				complement(Act_a, Act_b),
+				trans(Q, Act_b, Q1).
+
+% axioms for complement: in(X) and out(X) are complements of each other.
+complement(in(X), out(X)).
+complement(out(X), in(X)).
+
+complement(in(X,D), out(X,D)).
+complement(out(X,D), in(X,D)).
+
+% Restriction:
+trans(rest(P,L), Act_a, rest(P1,L)) :-	
+	(nonvar(Act_a) -> \+ restrict(L, Act_a), trans(P, Act_a, P1)
+			; trans(P, Act_a, P1), \+ restrict(L, Act_a)).
+
+% axioms for Restrict.
+:- index restrict/2-2.
+
+restrict(L, in(V)) :- mem(L, V).
+restrict(L, out(V)) :- mem(L, V).
+
+restrict(L, in(V,_)) :- mem(L, V).
+restrict(L, out(V,_)) :- mem(L, V).
+
+restrict(L, action(V)) :- mem(L, V).
+
+% Relabelling:
+trans(relab(P, F), Act_b, relab(P1, F))	:-
+	(nonvar(Act_b) -> map(F, Act_a, Act_b), trans(P, Act_a, P1)
+			; trans(P, Act_a, P1), map(F, Act_a, Act_b)).
+
+% axioms for map
+:- index map/3-3.
+map(F, out(V1), out(V2)) :- fullmap(F, V1, V2).
+map(F, in(V1), in(V2)) :- fullmap(F, V1, V2).
+
+map(F, out(V1,D), out(V2,D)) :- fullmap(F, V1, V2).
+map(F, in(V1,D), in(V2,D)) :- fullmap(F, V1, V2).
+
+map(F, action(X), action(Y)) :- fullmap(F, X, Y).
+map(_F, tau, tau).
+
+fullmap(F, X, Y) :- (defmap(F, X, Y) -> true ; X = Y).
+
+% recursion:
+trans(proc(P), Act_a, Q) :- trans_rec(P, Act_a, Q).

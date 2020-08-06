@@ -1,0 +1,2206 @@
+/* File:      tables.P
+** Author(s): Theresa Swift, Prasad Rao, Kostis Sagonas, Ernie Johnson
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: tables.P,v 1.55 2009/09/07 21:09:46 tswift Exp $
+** 
+*/
+
+
+/*----------------------------------------------------------------------*/
+/* NOTE: This file HAS TO be compiled with the "sysmod" option.         */
+/*----------------------------------------------------------------------*/
+
+:- compiler_options([sysmod,optimize,xpp_on,spec_off]).
+
+#include "builtin.h"
+#include "table_status_defs.h"
+#include "table_inspection_defs.h"
+#include "heap_defs_xsb.h"
+#include "psc_defs.h"
+#include "flag_defs_xsb.h"
+#include "incr_xsb_defs.h"
+
+/*----------------------------------------------------------------------*/
+
+/* Change Evaluation Method for Tabled Predicate
+   --------------------------------------------- */
+use_variant_tabling(CommaList) :-
+	set_eval_method_for_comma(CommaList,VARIANT_EVAL_METHOD).
+
+use_subsumptive_tabling(CommaList) :-
+	set_eval_method_for_comma(CommaList,SUBSUMPTIVE_EVAL_METHOD).
+
+set_eval_method_for_comma((PS1,PS2),EvalMethod) :-
+	!, set_eval_method_for_comma(PS1,EvalMethod),
+	set_eval_method_for_comma(PS2,EvalMethod).
+set_eval_method_for_comma(PredSpec,EvalMethod) :-
+	set_tabled_eval_for_pred(PredSpec,EvalMethod).
+
+/*
+ * Setting of the evaluation method will fail if calls exist in the
+ * Call Trie.
+ */
+set_tabled_eval_for_pred(PredSpec,Method) :-
+	( PredSpec = P/N -> functor(Term,P,N); Term = PredSpec ),
+	( set_tabled_eval(Term,Method), fail; true ).
+
+set_tabled_eval(Predicate,EvalMethod) :-
+	set_tabled_eval(Predicate,EvalMethod).
+
+/* Here, if a predicate is static, and non-tabled we throw an error,
+   otherwise a no-op */
+add_table(Spec) :-
+	mpa_to_skel(Spec,Call),
+	term_psc(Call,Psc),
+	((psc_type(Psc, Type),Type =:= T_PRED) -> /* static and loaded */
+	    ((psc_tabled(Psc, Tabled),Tabled \== 0) ->
+		true
+	      ; permission_error(table,static_code,Spec,(table)/1) )
+	  ; psc_set_tabled(Psc,1)).  %% set it as tabled
+
+retract_table(Spec) :-
+	mpa_to_skel(Spec,Call),
+	term_psc(Call,Psc),
+	psc_set_tabled(Psc,0).  %% set it as non-tabled
+	
+/* Mode can be INCREMENTAL, NONINCREMENTAL, or OPAQUE */
+add_incr_table(Spec,Mode) :-
+	mpa_to_skel(Spec,Call),
+	term_psc(Call,Psc),	
+	(predicate_has_tables(Psc) ->
+	   permission_error(add_incremental_tabling,predicate_with_tables,Spec,(table)/1) 
+	 ; psc_set_incr(Psc,Mode)).
+
+/*----------------------------------------------------------------------*/
+
+/*
+ * To obtain info about both subsumptive and variant predicates.
+ * See the file ../emu/builtin.c for a description of the valid
+ * combinations of values for PredType, CallType, and AnsSetStatus.
+ */
+
+table_state(Call, PredType, CallType, AnsSetStatus) :-
+%    writeln(table_state_called(table_state(Call, PredType, CallType, AnsSetStatus))),
+	(Call = M:Goal -> term_new_mod(M,Goal,NewGoal) ; Call = NewGoal),
+	table_status(NewGoal, PredTypeCode, CallTypeCode, AnsSetStatusCode,_SF),
+	predicate_type_code(PredTypeCode, PredType),
+	call_type_code(CallTypeCode, CallType),
+	answer_set_status_code(AnsSetStatusCode, AnsSetStatus).
+
+table_status(_Call, _PredType, _CallType, _AnsSetStatus,_SubgoalFrame) :-
+	'_$builtin'(TABLE_STATUS).
+
+predicate_type_code(UNTABLED_PREDICATE,      undefined).
+predicate_type_code(VARIANT_EVAL_METHOD,     variant).
+predicate_type_code(SUBSUMPTIVE_EVAL_METHOD, subsumptive).
+
+call_type_code(UNDEFINED_CALL, undefined).
+call_type_code(PRODUCER_CALL,  producer).
+call_type_code(SUBSUMED_CALL,  subsumed).
+call_type_code(NO_CALL_ENTRY,  no_entry).
+
+answer_set_status_code(INCR_NEEDS_REEVAL,  incremental_needs_reeval).
+answer_set_status_code(UNDEFINED_ANSWER_SET,  undefined).
+answer_set_status_code(COMPLETED_ANSWER_SET,  complete).
+answer_set_status_code(INCOMPLETE_ANSWER_SET, incomplete).
+
+/*----------------------------------------------------------------------*/
+/*
+ * Builtins for supporting negation and suspensions.
+ */
+
+get_ptcp(PTCP) :- get_ptcp(PTCP).
+
+is_incomplete(_ProducerSubgoalFrame,_PTCP) :- '_$builtin'(IS_INCOMPLETE).
+
+slg_not(ProducerSF) :- slg_not(ProducerSF).
+
+%lrd_success(ProducerSF,Subgoal) :- lrd_success(ProducerSF,Subgoal).
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+tfindall(T, Call, Result) :-
+	table_state(Call,PredType,_CallType,AnsSetStatus),
+	( PredType \== undefined ->
+	  ( AnsSetStatus == complete ->
+	      findall(T,Call,Result)
+          ; (AnsSetStatus == undefined ; AnsSetStatus == incremental_needs_reeval) ->
+	      ( call(Call), fail ; tfindall(T,Call,Result) )
+	  ; AnsSetStatus == incomplete ->
+	      table_error('tfindall/3 is in a possible loop.  Cannot evaluate non-stratified tfindall/3')  
+/*	      get_ptcp(PTCP),
+	      get_producer_call(Call,ProdSF,_CallAT),
+	      is_incomplete(ProdSF,PTCP),
+	      findall(T,Call,Result)
+*/	  )
+	; abort(['Illegal (untabled?) subgoal to tfindall/3: ', Call])
+	).
+
+:- export 't not'/1.
+'t not'(Goal):- tnot(Goal).
+
+/* Need to Handle module calls (not sure if done properly before) */
+/* need to refactor to distinguish completed from non-completed with call-entry */
+%:- import writeln/1 from standard.
+tnot(Subgoal) :-
+	table_inspection_function(TNOT_SETUP,Subgoal,PredType,CallType,AnsSetStatus,SF,PTCP),
+%	writeln(table_inspection_function(TNOT_SETUP,Subgoal,PredType,CallType,AnsSetStatus,SF,PTCP)),
+%	table_status(Subgoal,PredType,CallType,AnsSetStatus,SF),
+	(PredType == VARIANT_EVAL_METHOD -> 
+	    t_not_variant(Subgoal,AnsSetStatus,SF,PTCP)
+	 ;  % PredType == SUBSUMPTIVE_EVAL_METHOD ->
+	      (CallType == NO_CALL_ENTRY -> 
+		  (AnsSetStatus == COMPLETED_ANSWER_SET -> 
+		      t_not_subsumptive_no_sf_comp(Subgoal)
+		    ; t_not_subsumptive_no_sf_incomp(Subgoal) )
+	        ; (AnsSetStatus == COMPLETED_ANSWER_SET -> % has call entry
+  	  	      t_not_subsumptive_sf_comp(Subgoal,SF,AnsSetStatus)
+		    ; t_not_subsumptive_sf_incomp(Subgoal,SF,AnsSetStatus) ) ) ).
+
+t_not_variant(Subgoal,AnsSetStatus,SF,PTCP):- 
+%	writeln(t_not_variant(Subgoal,AnsSetStatus,SF,PTCP)),
+%	    get_ptcp(PTCP),
+	    ( AnsSetStatus < 0 ->  % i.e. UNDEFINED_ANSWER_SET or INCR_NEEDS_REEVAL
+	        (tcall(Subgoal), fail 
+	          ;  get_producer_call(Subgoal,ProducerSF,_AnswerTmplt),
+		     is_incomplete(ProducerSF,PTCP),
+		     slg_not(ProducerSF) 
+		 )
+          ;  %get_producer_call(Subgoal,ProducerSF,_AnswerTmplt),
+	     ensure_answer_completed(AnsSetStatus,Subgoal,SF),
+	     is_incomplete(SF,PTCP),slg_not(SF) ).
+
+ensure_answer_completed(AnsSetStatus,Subgoal,SF) :-
+	(AnsSetStatus =\= COMPLETED_ANSWER_SET
+	 ->	true		% not completed
+	 ;	stat_flag(ANSWER_COMPLETION,AC),
+		(AC =:= 0	% not doing answer_completion
+		 ->	true
+		 ;	is_answer_completed(SF,SAC),
+			(SAC =:= 1
+			 ->	true
+			 ;	%writeln(userout,'AC in slg_not '(Subgoal)),
+				excess_vars(Subgoal,[],[],Vars),
+				Tmp =.. [ret|Vars],
+				stat_set_flag(ANSWER_COMPLETION,0),
+				(answer_completion(SF,Tmp),
+				 fail
+				 ;	
+				 true
+				)
+			)
+		)
+	).
+
+% needs to be optimized!
+t_not_subsumptive_sf_comp(Subgoal,SF,_):- 
+%	mywriteln(t_not_subsumptive_sf_comp(Subgoal)),
+	get_producer_call(Subgoal,ProducerSF,AnswerTmplt),
+	(get_returns(ProducerSF,AnswerTmplt, RetLeaf) -> 
+	    table_inspection_function(CALL_SUBS_SLG_NOT,ProducerSF,RetLeaf,1,SF)
+	  ; table_inspection_function(CALL_SUBS_SLG_NOT,ProducerSF,RetLeaf,0,SF) ).
+
+t_not_subsumptive_sf_incomp(Subgoal,ConsumerSF,AnsSetStatus) :-
+	get_ptcp(PTCP),
+%	mywriteln(t_not_subsumptive_sf_incomp(Subgoal,ConsumerSF,PTCP,AnsSetStatus)),
+        ( AnsSetStatus == UNDEFINED_ANSWER_SET ->
+	    (   tcall(Subgoal), fail 
+	      ; t_not_subsumptive_sf_incomp_1(Subgoal,ConsumerSF,PTCP) )
+          ; t_not_subsumptive_sf_incomp_1(Subgoal,ConsumerSF,PTCP)  ).
+
+/* Succeed if no answers; SLG_NOT_CREATE_SF fails if unconditional
+   answer: otherwise it creates a new SF and delays negatively */
+t_not_subsumptive_no_sf_comp(Subgoal):- 
+%	mywriteln(t_not_subsumptive_no_sf_comp(Subgoal)),
+	get_producer_call(Subgoal,ProducerSF,Answertmplt),
+	(get_returns(ProducerSF,Answertmplt, RetLeaf) -> 
+	    table_inspection_function(CALL_SUBS_SLG_NOT,ProducerSF,RetLeaf,1,0)
+	  ; table_inspection_function(CALL_SUBS_SLG_NOT,ProducerSF,RetLeaf,0,0) ).
+
+/*
+%t_not_subsumptive_no_sf_incomp(Subgoal) :-
+%	writeln(t_not_subsumptive_no_sf_incomp(Subgoal)),
+%	get_ptcp(PTCP),
+%        (   tcall(Subgoal), fail 
+%          ; table_status(Subgoal,_PredType,_CallType,_AnsSetStatus,ConsumerSF),
+%	    get_producer_call(Subgoal,ProducerSF,_Answertmplt),
+%	    is_incomplete(ProducerSF,PTCP),
+%	    slg_not(ConsumerSF) ).
+*/
+
+t_not_subsumptive_no_sf_incomp(Subgoal) :-
+%	mywriteln(t_not_subsumptive_no_sf_incomp(Subgoal)),
+	get_ptcp(PTCP),
+        (   tcall(Subgoal), fail 
+          ; %table_status(Subgoal,_PredType,_CallType,_AnsSetStatus,ConsumerSF),
+%	table_state(Subgoal, PredType1, CallType1, AnsSetStatus1),
+%	mywriteln(table_state(Subgoal, PredType1, CallType1, AnsSetStatus1)),
+	table_status(Subgoal,_PredType,_CallType,_AnsSetStatus,ConsumerSF),
+	get_producer_call(Subgoal,ProducerSF,Answertmplt),
+	    is_incomplete(ProducerSF,PTCP),
+	    (get_returns(ProducerSF,Answertmplt, RetLeaf) -> 
+%		mywriteln(slgnot_with_return(Subgoal)),
+		table_inspection_function(CALL_SUBS_SLG_NOT,ProducerSF,RetLeaf,1,ConsumerSF)
+	    ;	%mywriteln(slgnot_without_return(Subgoal)),
+	        table_inspection_function(CALL_SUBS_SLG_NOT,ProducerSF,RetLeaf,0,ConsumerSF) ) ).
+
+t_not_subsumptive_sf_incomp_1(Subgoal,ConsumerSF,PTCP):- 
+%	writeln(t_not_subsumptive_1(Subgoal,ConsumerSF,PTCP)),
+	get_producer_call(Subgoal,ProducerSF,_Answertmplt),
+	is_incomplete(ProducerSF,PTCP),
+	((var(ConsumerSF) ; ConsumerSF == 0) -> 
+	    slg_not(ProducerSF) 
+	  ; slg_not(ConsumerSF)).
+
+
+/*
+'t not'(Subgoal) :-
+	table_state(Subgoal,PredType,CallType,AnsSetStatus),
+	( PredType \== undefined ->
+	    get_ptcp(PTCP),
+	    ( AnsSetStatus == undefined ->
+	        ( tcall(Subgoal), fail ; t_not(Subgoal,PredType,PTCP) )
+	    ; t_not(Subgoal,PredType,PTCP)
+	    )
+	; abort(['Illegal (untabled?) subgoal to ''t not''/1: ',Subgoal])
+	).
+
+t_not(Subgoal,PredType,PTCP) :-
+	get_producer_call(Subgoal,ProducerSF,AnswerTmplt),
+	is_incomplete(ProducerSF,PTCP),
+	( PredType == variant
+	  -> slg_not(ProducerSF)
+	  ;  fail_if(trie_get_return(ProducerSF,AnswerTmplt)),
+	     lrd_success(ProducerSF,Subgoal)
+	 ).
+*/
+
+/*
+%%:- import writeln/1 from standard.
+%%writeit(0).
+%writeit(1).
+%%mywriteln(Term):- writeit(If),(If =:= 1 -> writeln(Term); true).
+*/
+
+u_not(Goal) :-
+	(ground_and_acyclic(Goal) ->
+	   tnot(Goal)
+	 ; check_cyclic(Goal,'u_not/1',1),
+	   floundered(Goal)).
+
+:- import floundered_undefined/1 from xsbbrat.
+:- table floundered/1 as variant, opaque.
+floundered(_Goal):- floundered_undefined(a).
+
+:- table tunnumcall/1.
+:- use_variant_tabling tunnumcall(_).
+
+%% skolemized tnot.  Variables temporarily changed to ground and tnot 
+%% call is made.  Should give existential semantics to nonground negative
+%% calls.  That is
+%%	...:- sk_not(p(X)),...
+%% is like
+%%	... :- tnot(pp),...
+%%	pp :- p(X).
+%% where pp is a new proposition.
+
+not_exists(Goal):- sk_not(Goal).
+
+sk_not(Goal) :-
+	check_cyclic(Goal,'sk_not/1',1),
+	copy_term(Goal,Goal1),
+	numbervars(Goal1,0,_,[attvar(bind)]), 
+	%% is now ground, so no check necessary
+	tnot(tunnumcall(Goal1)).
+
+tunnumcall(GGoal) :-
+	unnumbervars(GGoal,VGoal),
+	call(VGoal).
+
+% we've got true and fail -- why not this?
+:- table undefined/0.
+undefined:- tnot(undefined).
+
+/*----------------------------------------------------------------------*/
+/* Predicates to retrieve information out of tables.                    */
+/*----------------------------------------------------------------------*/
+
+/*
+ * get_call(+CallTerm, -TableEntryHandle, -ReturnTemplate)
+ *   Performs an interpretive traversal of a Call Trie in searching
+ *   for a VARIANT of CallTerm.  If the call is present, then a
+ *   reference to the subgoal frame is returned as a handle to the
+ *   call's table entry, and the Answer Template is constructed as a
+ *   ret/n term in ReturnTemplate.
+ * 
+ * corresponds to TRIE_GET_CALL builtin
+ */
+
+get_call(CallTerm, TableEntryHandle, ReturnTemplate) :-
+	get_call(CallTerm, TableEntryHandle, ReturnTemplate).
+
+
+/*
+ * get_producer_call(+CallTerm, -TableEntryHandle, -ReturnTemplate)
+ *   Performs an interpretive traversal of a Call Trie, using the
+ *   tabling strategy of the given predicate, in searching for CallTerm.
+ *   Under both tabling strategies, a producer entry is identified --
+ *   i.e., a subgoal which maintains its own answer set.  If such a call
+ *   is present, then a reference to the subgoal frame is returned as a
+ *   handle to the producer's table entry, and the Answer Template of
+ *   CallTerm with respect to this producer is constructed as a ret/n
+ *   term in ReturnTemplate.
+ */
+
+get_producer_call(CallTerm, ProducerTableEntry, ReturnTemplate) :-
+	get_producer_call(CallTerm, ProducerTableEntry, ReturnTemplate).
+
+
+/*
+ * get_calls(#CallTerm, -TableEntryHandle, -ReturnTemplate)
+ *   Backtrackable predicate for selecting calls which UNIFY with
+ *   CallTerm.  Selections are made via a trie-code-directed traversal
+ *   of the Call Trie.  Each successful unification returns a subgoal
+ *   frame reference which serves as a handle to the call's table
+ *   entry.  Additionally, a return template for the resulting
+ *   (unified) call is constructed in the third argument as a ret/n
+ *   term.
+ *   There is some complication with the inlining of builtins which
+ *   perform trie-code-directed traversals.  Hence get_calls/1 is not
+ *   inlined and we explicitly invoke the builtin call.
+ */
+
+
+'_$$get_calls'(CallTerm,Handle,Template) :-
+	get_calls(CallTerm),
+	get_lastnode_cs_retskel(CallTerm, _Leaf, Handle, Template).
+
+/* 
+ * the argument to the following findall is folded into the
+ * predicate above so that get_lastnode_cs_retskel is inlined,
+ * thus avoiding a GC between get_calls & get_lastnode_cs_retskel
+
+The semantics of get_calls can be understood as follows: You can
+assume that each call is stored in an "asserted" predicate, called
+get_calls/3 in the form:
+
+get_calls(Call,Ptr,VarsInCall)
+
+Then a call to get_calls simply retrieves from this "stored" table as
+usual.
+
+For example, if a call of p(1,X,Y,X) were made to a tabled predicate
+p/4, then there would be a fact in get_calls of:
+
+get_calls(p(1,X,Y,X),12345,ret(X,Y)).
+
+Now if we invoke get_calls(p(A,1,B,C),_,RET), it will succeed with
+A=1, C=1, and RET=ret(1,B).
+
+Not that if RET is most-general, then no variables in the current call
+were instantiated and so it subsumes the call in the table.
+
+ */
+
+
+get_calls(CallTerm, Handle, Template) :-
+%   writeln(get_calls(CallTerm, Handle, Template)),
+	(nonvar(CallTerm),CallTerm = M:Goal -> term_new_mod(M,Goal,NewGoal) ; CallTerm = NewGoal),
+	findall('_$get_calls'(NewGoal,Handle,Template),
+		'_$$get_calls'(NewGoal,Handle,Template),
+		List),
+%writeln(get_calls_1(CallTerm, List)),
+	member('_$get_calls'(NewGoal,Handle,Template),List).
+
+
+get_calls(_CallTerm) :- '_$builtin'(TRIE_UNIFY_CALL).
+
+
+/*
+ * get_calls_for_table(+PredSpec,?Call)
+ *   The predicate information of PredSpec is used to identify the table
+ *   from which all calls are enumerated through backtracking and
+ *   unified with Call.  PredSpec can be the usual p/n form, or given as
+ *   a term: p(t1,...,tn).
+ */
+
+get_calls_for_table(PredSpec,Call) :-
+	( PredSpec = P/N
+	 ->	functor(Call,P,N)
+	 ; (PredSpec = M:Goal -> term_new_mod(M,Goal,PredSpec1) ; PredSpec = PredSpec1),
+	   term_psc(PredSpec1,PSC),
+	   term_new(PSC,Call)
+	        %% functor(PredSpec,P,N), functor(Call,P,N) ),
+	),
+	get_calls(Call, _CallStr, _RetSkel).
+
+
+%get_call_from_sf(+SF,-Call):- 
+:- export get_call_from_sf/2.
+get_call_from_sf(SF,Call):- 
+	table_inspection_function(GET_CALL_FROM_SF,SF,Call,_,_).
+			      
+/*
+ * get_returns(+TableEntryHandle,#ReturnTemplate)
+ * get_returns(+TableEntryHandle,#ReturnTemplate,-ReturnHandle)
+ *   Backtrackable predicate for selecting returns which UNIFY with
+ *   ReturnTemplate.  Selections are made via a trie-code-directed
+ *   traversal of the Answer Trie (representation of the answer set)
+ *   of the given table entry (subgoal frame reference).  For each
+ *   successful unification, a handle to the return (as an answer trie
+ *   node reference) is copied into the third argument.
+ *   There is some complication with the inlining of builtins which
+ *   perform trie-code-directed traversals.  Hence trie_get_return/2
+ *   is not inlined and we explicitly invoke the builtin call.
+ * 
+ *   Note that trie_get_return will not affect the delay list (a C
+ *   variable, delay_it, is set to ensure this).
+ */
+
+get_returns(TableEntry, ReturnTemplate) :-
+	findall('_$get_returns'(TableEntry,ReturnTemplate),
+		trie_get_return(TableEntry,ReturnTemplate),
+		ReturnsList),
+	% As ReturnTemplate may contain attributed variables (from the
+	% call), which may have been changed in the answer, directly
+	% calling member/2 may trigger attv interrupts.  To avoid this,
+	% we need to change all attributed variables in ReturnTemplate
+	% to free regular variables.
+	change_attv_to_var(ReturnTemplate),
+	member('_$get_returns'(TableEntry,ReturnTemplate),ReturnsList).
+
+
+:- dynamic '_$return'/1.
+:- index('_$return'/1,trie).
+
+get_unifiable_returns(TableEntry,Skel, Leaf) :-
+	\+ \+ (get_unifiable_returns_1(TableEntry, Skel, ReturnList),
+	       ReturnList \== [],
+	       t_assert_2('_$return'(ReturnList),_)),
+	system_retract_fact('_$return'(ReturnList)),
+%	    change_attv_to_var(ReturnTemplate),
+	member('_$get_returns'(TableEntry,Leaf),ReturnList).
+	
+get_unifiable_returns_1(TableEntry, Skel, ReturnsList):- 
+	findall('_$get_returns'(TableEntry,RetLeaf),
+		'_$$get_returns'(TableEntry,Skel,RetLeaf),
+		ReturnsList).
+
+'_$$get_returns'(TableEntry,RetTmplt,RetLeaf) :-
+	trie_get_return(TableEntry,RetTmplt),
+	get_lastnode_cs_retskel(_,RetLeaf,_,_).
+	
+get_returns(TableEntry, RetTmplt, RetLeaf) :-
+	findall('_$get_returns'(TableEntry,RetTmplt,RetLeaf),
+		'_$$get_returns'(TableEntry,RetTmplt,RetLeaf),
+		ReturnsList),
+	member('_$get_returns'(TableEntry,RetTmplt,RetLeaf),ReturnsList).
+
+/*
+ * change_attv_to_var(+ReturnTemplate)
+ *   Changes all the attributed variables in ReturnTemplate (ret/n) to
+ *   regular variables.
+ */
+ 
+change_attv_to_var(ReturnTemplate) :-
+	ReturnTemplate =.. [ret|Vars],
+	change_attv_to_var1(Vars).
+
+change_attv_to_var1([]).
+change_attv_to_var1([V|Vs]) :-
+	(is_attv(V)
+	 ->	delete_attributes(V)
+	 ;	true
+	),
+	change_attv_to_var1(Vs).	
+
+
+trie_get_return(TableEntryHandle,ReturnTemplate) :-
+	trie_get_return(TableEntryHandle,ReturnTemplate, 0).
+trie_get_return(_TableEntryHandle,_ReturnTemplate,_Delay) :-
+	'_$builtin'(TRIE_GET_RETURN).
+
+
+get_lastnode_cs_retskel(CallTerm, LastNode, SubgoalPtr, RetSkel) :-
+	get_lastnode_cs_retskel(CallTerm, LastNode, SubgoalPtr, RetSkel).
+
+
+/*
+ * get_returns_for_call(+CallTerm,?AnswerTerm)
+ *   Succeeds whenever CallTerm is a subgoal in the table and AnswerTerm
+ *   unifies with one of its answers.  Backtracks through all unifying
+ *   answers of CallTerm.
+ */
+
+get_returns_for_call(CallTerm,AnswerTerm) :-
+	copy_term(CallTerm,Call),
+	get_call(Call,SF,Return),	% vars of 'Call' are put into 'Return'
+	get_returns(SF,Return),		% instantiate vars of 'Return', and
+	AnswerTerm = Call.		%   hence of 'Call' as well
+
+
+/*
+ * get_residual(#CallTerm,?DelayList)
+ */
+
+get_residual(CallSkel, DelayList) :-
+	get_calls(CallSkel, S, R),
+	get_returns_and_dls(S, R, DLs),
+	( DLs == [] -> DelayList = []
+	; DLs = [DL] -> DelayList = DL
+	; member(DelayList, DLs)
+	).
+
+variant_get_residual(CallSkel, DelayList) :-
+	get_call(CallSkel, S, R),
+	get_returns_and_dls(S, R, DLs),
+	( DLs == [] -> DelayList = []
+	; DLs = [DL] -> DelayList = DL
+	; member(DelayList, DLs)
+	).
+
+'_$$get_returns_and_dls'(CallStr,RetSkel,DLs) :-
+	trie_get_return(CallStr,RetSkel),
+	get_lastnode_cs_retskel(_,Leaf,_,_),
+	get_delay_lists(Leaf,DLs).
+	
+get_returns_and_dls(CallStr, RetSkel, DLs) :-
+	'_$$get_returns_and_dls'(CallStr,RetSkel,DLs).
+/*	findall('_$get_returns_and_dls'(CallStr,RetSkel,DLs),
+		'_$$get_returns_and_dls'(CallStr,RetSkel,DLs),
+		List),
+	member('_$get_returns_and_dls'(CallStr,RetSkel,DLs),List).*/
+
+get_delay_lists(Leaf, DLs) :- get_delay_lists(Leaf, DLs).
+
+%------------
+
+get_returns_and_tvs(TableEntry, ReturnTemplate,TV) :-
+	findall('_$$get_returns_and_tvs'(TableEntry,ReturnTemplate,TV),
+	        '_$$get_returns_and_tvs'(TableEntry,ReturnTemplate,TV),
+	      	ReturnsList),
+	% As ReturnTemplate may contain attributed variables (from the
+	% call), which may have been changed in the answer, directly
+	% calling member/2 may trigger attv interrupts.  To avoid this,
+	% we need to change all attributed variables in ReturnTemplate
+	% to free regular variables.
+	change_attv_to_var(ReturnTemplate),
+	member('_$$get_returns_and_tvs'(TableEntry,ReturnTemplate,TV),ReturnsList).
+
+'_$$get_returns_and_tvs'(CallStr,RetSkel,TV) :-
+	trie_get_return(CallStr,RetSkel),
+	get_lastnode_cs_retskel(_,Leaf,_,_),
+	is_conditional_answer(Leaf,IsCond),
+	(IsCond = 1 -> TV = u ; TV = t).
+	
+'_$$get_returns_and_tvs'(CallStr,RetSkel,Leaf,TV) :-
+	trie_get_return(CallStr,RetSkel),
+	get_lastnode_cs_retskel(_,Leaf,_,_),
+	is_conditional_answer(Leaf,IsCond),
+	(IsCond = 1 -> TV = u ; TV = t).
+	
+is_conditional_answer(Leaf,IsCond):-
+	table_inspection_function(IS_CONDITIONAL_ANSWER,Leaf,IsCond,_,_).
+
+/*----------------------------------------------------------------------*/
+/* Predicates to remove information from tables.			*/
+/*----------------------------------------------------------------------*/
+
+:- import reinitialize_undefineds/0 from xsbbrat.
+%:- import current_prolog_flag/2 from curr_sym.
+abolish_all_tables :- 
+	   abolish_table_info,
+	   reinitialize_undefineds.
+
+abolish_table_pred(Spec,Options) :-
+	check_nonvar(Spec,abolish_table_pred/2,1),
+	(Spec = M:Goal -> 
+	    (Goal = F/A -> functor(TermIn,F,A) ; TermIn = Goal),
+	    term_new_mod(M,TermIn,Term)
+	  ; (Spec = F/A -> functor(Term,F,A) ; Term = Spec)),
+	check_abolish_options_list(Options,ActionType,abolish_table_pred/2),
+	abolish_table_pred_bi(Term,ActionType).
+
+abolish_table_pred(Spec) :- abolish_table_pred(Spec,[]).
+
+/*
+abolish_table_pred(Spec) :-
+	check_nonvar(Spec,abolish_table_pred/1,1),
+	(Spec = M:Goal -> 
+	    (Goal = F/A -> functor(TermIn,F,A) ; TermIn = Goal),
+	    term_new_mod(M,TermIn,Term)
+	  ; (Spec = F/A -> functor(Term,F,A) ; Term = Spec)),
+	abolish_table_pred_bi(Term,ABOLISH_TABLES_DEFAULT).
+*/
+
+abolish_table_pred_bi(_TIF,_Action) :-
+	'_$builtin'(ABOLISH_TABLE_PREDICATE).
+
+:- dynamic invalidate_table_for/2.
+invalidate_tables_for(DynSkel,Mode) :-
+	invalidate_table_for(DynSkel,Mode),
+	fail.
+invalidate_tables_for(_DynSkel,_).
+
+abolish_module_tables(_Predicate) :-
+	'_$builtin'(ABOLISH_MODULE_TABLES).
+
+abolish_table_subgoals(Call,Options) :-
+	check_abolish_options_list(Options,ActionType,abolish_table_subgoals/2),
+	abolish_table_subgoals_internal(Call,ActionType).
+abolish_table_subgoals(Call) :-
+	abolish_table_subgoals_internal(Call,ABOLISH_TABLES_DEFAULT).
+
+abolish_table_subgoal(Call,Options) :-
+	check_abolish_options_list(Options,ActionType,abolish_table_subgoalb/2),
+	abolish_table_subgoal_internal(Call,ActionType).
+abolish_table_subgoal(Call) :-
+	abolish_table_subgoal_internal(Call,ABOLISH_TABLES_DEFAULT).
+
+check_abolish_options_list(Options,_ActionType,Pred):- 
+	check_nonvar(Options,Pred,2),
+	fail.
+check_abolish_options_list([],ActionType,_Pred):- !,
+	(var(ActionType) -> ActionType = ABOLISH_TABLES_DEFAULT ; true).
+check_abolish_options_list([Option|_Rest],ActionType,Pred):- !,
+	check_nonvar(Option,Pred,2),
+	(Option = abolish_tables_transitively -> 
+	    ActionType = ABOLISH_TABLES_TRANSITIVELY
+	  ; (Option = abolish_tables_singly -> 
+	       ActionType = ABOLISH_TABLES_SINGLY
+	     ; domain_error([abolish_tables,transitively,
+	                    abolish_tables_singly],Option,Pred,2,'') ) ).
+check_abolish_options_list(Culprit,_ActionType,Pred):- 
+	type_error(list,Culprit,Pred,2).
+
+/* TLS: Action on call subsumption is to delete producer for consumer
+   calls. get_calls/3 automatically finds all producers, so there is
+   no action we need to take for consumer calls.
+
+   Note that if tables are abolished transitively, a check needs to be
+   made to determine whether the pointer to the unifying call still exists. */
+abolish_table_subgoals_internal(Call,Action) :-
+    check_cyclic(Call,'abolish_table_subgoals/1',1), 
+    (Call = M:Goal -> term_new_mod(M,Goal,NewGoal) ; Call = NewGoal),
+    current_prolog_flag(table_gc_action,GCAction),
+    get_calls(NewGoal,Handle,_Template), 
+    (GCAction = abolish_tables_transitively ->
+      check_if_subgoal_still_exists(NewGoal,Handle) 
+    ; true),
+    table_state(Handle,_PredType,CallType,AnsSetStatus), 
+    CallType \== subsumed, 
+    ( AnsSetStatus == undefined -> 
+      table_error(['abolishing undefined tabled call ',Call]) 
+    ; AnsSetStatus == incomplete ->
+      table_error(['abolishing incomplete tabled call ',Call])
+    ; abolish_table_subgoal_bi(Handle,Action) ),
+    fail.
+abolish_table_subgoals_internal(_Call,_Action).
+
+:- export check_if_subgoal_still_exists/2.
+check_if_subgoal_still_exists(NewGoal,Handle):- 
+      '_$$get_calls'(NewGoal,Handle1,_Template),
+      Handle1 = Handle,
+      !.
+
+%---------
+abolish_table_subgoal_internal(Call,Action) :-
+    check_cyclic(Call,'abolish_table_subgoal/1',1), 
+    (Call = M:Goal -> term_new_mod(M,Goal,NewGoal) ; Call = NewGoal),
+    get_call(NewGoal,Handle,_Template), 
+    table_state(Handle,_PredType,CallType,AnsSetStatus), 
+    CallType \== subsumed, 
+    ( AnsSetStatus == undefined -> 
+      table_error(['abolishing undefined tabled call ',Call]) 
+    ; AnsSetStatus == incomplete ->
+      table_error(['abolishing incomplete tabled call ',Call])
+    ; abolish_table_subgoal_bi(Handle,Action) ),!.
+abolish_table_subgoal_internal(_Call,_Action).
+
+abolish_table_subgoal_bi(_Handle,_Action) :-
+	'_$builtin'(ABOLISH_TABLE_CALL).
+
+abolish_nonincremental_tables(Option):- 
+     ((Option = on_incomplete(X) ; Option = [on_incomplete(X)]) -> 
+       (X = skip -> C_action = SKIP_ON_INCOMPLETE
+        ; (X = error -> C_action = ERROR_ON_INCOMPLETE
+           ; domain_error([skip,' error'],Option,abolish_nonincremental_tables,1,'') ) )
+           ; domain_error([on_incomplete/1],Option,abolish_nonincremental_tables,1,'') ),
+       table_inspection_function(ABOLISH_NONINCREMENTAL_TABLES,C_action,_Two,_Three,_Four).
+
+:- export abolish_nonincremental_tables.
+abolish_nonincremental_tables:- 
+       table_inspection_function(ABOLISH_NONINCREMENTAL_TABLES,ERROR_ON_INCOMPLETE,_Two,_Three,_Four).
+
+%:- export abolish_incremental_call_single/1.
+%abolish_incremental_call_single(CallTerm):- 
+%    get_call(CallTerm, Handle, _ReturnTemplate),
+%    table_inspection_function(ABOLISH_INCREMENTAL_CALL_SINGLE,Handle,_Two,_Three,_Four).
+    
+/*
+ * delete_return(+TableEntryHandle,+ReturnHandle)
+ *   Deletes the return, referenced as a leaf of an answer trie, from
+ *   the answer set in the table entry, referenced as a subgoal frame
+ *   pointer.
+ */
+
+delete_return(TableEntryHandle,ReturnHandle) :-
+	trie_delete_return(TableEntryHandle,ReturnHandle,ANSWER_SUBSUMPTION).
+
+delete_return(SubgoalFrame,AnswerTrieLeaf,Type) :-
+	trie_delete_return(SubgoalFrame,AnswerTrieLeaf,Type).
+
+trie_delete_return(_SubgoalFrame,_AnswerTrieLeaf,_Type) :-
+	'_$builtin'(TRIE_DELETE_RETURN).
+
+
+/*----------------------------------------------------------------------*/
+/* trie assert related predicates - I am not sure they are still needed */
+/* probably kept just for backwards compatibility - Kostis.             */
+/*----------------------------------------------------------------------*/
+
+trie_dynamic(X) :- dynamic(X), add_trie_index(X).
+trie_assert(Term) :- t_assert(Term, _Flag).
+trie_assert(Term,Flag) :- t_assert(Term,Flag).
+trie_retract(X) :- retract(X).
+trie_retract_nr(X) :- retract_nr(X).
+trie_retract_all(X) :- retractall(X).
+
+
+/*======================================================================*/
+/* builtins to get (and change) trie nodes - they belong somewhere else */
+/*======================================================================*/
+
+force_answer_true(Goal) :-
+	findall(Leaf,get_leaves(Goal,Leaf),Leaves),
+	(Leaves == []
+	 ->	permission_error('True forcing','a false goal',Goal,(table)/1)
+	 ;	(member(Leaf,Leaves),
+		 force_truth_value(Leaf,'true'),
+		 fail
+		 ;
+		 true
+		)
+	).
+
+force_answer_false(Goal) :-
+	findall(p(Leaf,DLs),get_leaves_and_dls(Goal,Leaf,DLs),Leaves),
+	(member(p(Leaf,DLs),Leaves),
+	 (DLs == []
+	  ->	 permission_error('False forcing','a true goal',Goal,(table)/1)
+	  ;	 force_truth_value(Leaf,'false'),
+		 fail
+		 ;
+		 true
+		)
+	).
+
+get_leaves(Goal,Leaf) :-
+	get_calls(Goal,CallStr,RetSkel),
+	trie_get_return(CallStr,RetSkel),
+	get_lastnode_cs_retskel(_,Leaf,_,_).
+
+get_leaves_and_dls(Goal,Leaf,DLs) :-
+	get_calls(Goal,CallStr,RetSkel),
+	trie_get_return(CallStr,RetSkel),
+	get_lastnode_cs_retskel(_,Leaf,_,_),
+	get_delay_lists(Leaf,DLs).
+
+force_truth_value(AnsLeafNode,TruthValue) :-
+	force_truth_value(AnsLeafNode,TruthValue).
+
+predicate_has_tables(Psc):-
+	table_inspection_function(GET_PRED_CALLTRIE_PTR,Psc,Ptr,_,_),
+%	writeln(ptr(Ptr)),
+	Ptr \== 0.
+
+get_current_scc(SubgoalFrame,Number):-
+	table_inspection_function(GET_CURRENT_SCC,SubgoalFrame,Number,_,_).
+
+get_callsto_number(SubgoalFrame,Number):- 
+	table_inspection_function(GET_CALLSTO_NUMBER,SubgoalFrame,Number,_,_).
+
+get_answer_number(SubgoalFrame,Number):- 
+	table_inspection_function(GET_ANSWER_NUMBER,SubgoalFrame,Number,_,_).
+
+/* Purely for testing */
+:- export subg_get_visitors_number/1.
+:- import writeln/1 from standard.
+subg_get_visitors_number(Subg):- 
+	get_call(Subg, SubgoalFrame,_),
+	get_visitors_number(SubgoalFrame,Number),
+	writeln(visitors_nbr(Subg,Number)),
+	fail.
+subg_get_visitors_number(_Subg).
+
+get_visitors_number(SubgoalFrame,Number):- 
+	table_inspection_function(GET_VISITORS_NUMBER,SubgoalFrame,Number,_,_).
+
+early_complete_on_nth(SubgoalFrame,Number):- 
+	table_inspection_function(EARLY_COMPLETE_ON_NTH,SubgoalFrame,Number,_,_).
+
+early_complete_on_delta(SubgoalFrame,New,Old,Epsilon):- 
+	(New - Old < Epsilon ->
+	    table_inspection_function(EARLY_COMPLETE,SubgoalFrame,_,_,_)
+	 ;  true).
+
+print_incomplete_tables:- 
+	table_inspection_function(PRINT_COMPLETION_STACK,-1,_,_,_).
+
+print_incomplete_tables(Stream):- 
+	check_open_stream_or_alias(Stream,print_incomplete_tables/1,1,output,Stream1),
+	table_inspection_function(PRINT_COMPLETION_STACK,Stream1,_,_,_).
+
+get_scc_dumpfile(F):- 
+	table_inspection_function(GET_SCC_DUMPFILE,F,_,_,_).
+
+check_variant(Term):- 
+	table_inspection_function(CHECK_VARIANT,Term,0,_,_).
+
+check_variant(Term,DontCares):- 
+	table_inspection_function(CHECK_VARIANT,Term,DontCares,_,_).
+
+:- export set_tif_property/3, get_tif_property/3.
+
+get_tif_property(Term,Property,Value):- 
+	tif_translate(Property,Prop),
+	table_inspection_function(GET_TIF_PROPERTY,Term,Prop,Value,_).
+
+set_tif_property(Term,Property,Value):- 
+	tif_translate(Property,Prop),
+	table_inspection_function(SET_TIF_PROPERTY,Term,Prop,Value,_).
+
+tif_translate(subgoal_depth,SUBGOAL_DEPTH).
+tif_translate(answer_depth,ANSWER_DEPTH).
+tif_translate(intern,INTERNING_GROUND).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Forest Logging
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+log_all_forest_start :-
+	start_forest_view(userout).
+
+log_all_forest_start(Options):- 
+	check_log_forest_options(Options,File),
+	start_forest_view(File).
+
+%% it is defined to stop log forest, since we have no Call passed in
+%% it is necessary in order to stop it
+log_all_forest_end :-
+	stop_forest_view.
+log_all_forest_flush :-
+	flush_forest_view.
+
+log_forest(Call):- 
+	start_forest_view(userout),
+	call(Call),
+	stop_forest_view.
+
+log_forest(Call,Options):- 
+	check_log_forest_options(Options,File),
+	start_forest_view(File),
+	call(Call),
+	stop_forest_view.
+
+check_log_forest_options(Options,_File):- 
+	check_nonvar(Options,log_forest/2,2),
+	fail.
+check_log_forest_options([],File):-
+	(var(File) -> File = userout ; true).
+check_log_forest_options([Option|_Rest],File):- !,
+	check_nonvar(Option,log_forest/2,2),
+	(Option = file(LogFile) -> File = LogFile
+	     ; domain_error([file/1],Option,log_forest/2,2,'') ).
+check_log_forest_options(Culprit,_File):- 
+	type_error(list,Culprit,log_forest/2,2).
+
+start_forest_view(File):-
+	table_inspection_function(START_FOREST_VIEW,File,_,_,_),
+	set_prolog_flag(backtrace_on_error,off),
+	set_prolog_flag(ctrace,on).
+
+stop_forest_view:-
+	table_inspection_function(STOP_FOREST_VIEW,_,_,_,_),
+	set_prolog_flag(ctrace,off),
+	set_prolog_flag(backtrace_on_error,on).
+
+flush_forest_view:-
+	table_inspection_function(FLUSH_FOREST_VIEW,_,_,_,_).
+
+set_forest_logging_for_pred(PredSpec,Val):- 
+ 	  (PredSpec = Mod:PredSpec1  -> 
+             (PredSpec1 = F/A -> functor(TermIn,F,A) ; TermIn = PredSpec1),
+	     term_new_mod(Mod,TermIn,Term)
+	  ; 
+          (PredSpec = F/A -> functor(Term,F,A) ; Term = PredSpec)),
+          term_psc(Term,PSC),
+	  (Val = on -> Num = 0
+	   ; Val = off -> Num = 1
+	   ; domain_error((on,off),Val,set_forest_logging_for_pred/2,1) ),
+          table_inspection_function(SET_FOREST_LOGGING_FOR_PRED,PSC,Num,_,_),
+	  !.
+set_forest_logging_for_pred(PredSpec,_Val):- 
+	type_error(predicate_or_term_indicator,PredSpec,set_forest_logging_for_pred/2,1).
+
+load_forest_log(File):- 
+%	ensure_loaded(term_abstract),
+	dynamic(pus_smpl/4), 	dynamic(puc_smpl/5), 
+	dynamic(ns_smpl/3),	dynamic(nf_smpl/3),
+	dynamic(cmp/3),
+	dynamic(del/3),
+	dynamic(nc/4),
+	dynamic(ar/4),	dynamic(dar/4),
+	dynamic(na/3),	dynamic(nda/4),
+	index(tc/4,[*(1),*(2)]),
+	index(nc/4,[*(1),*(2)]),
+	index(na/3,[2]),
+	index(nda/4,[2]),
+	index(ar/4,[2,3]),
+	index(dar/4,[2,3]),
+	index(ta/2,[1,2]),
+%	index(cmp/3,[*(1),2]),
+	index(cmp/3,trie),
+	load_dync(File,a).
+
+:- import tc/4, cmp/3, nc/4, del/3  from usermod.
+:- import ns_smpl/3, nf_smpl/3, pus_smpl/4, puc_smpl/5 from usermod.
+:- import na/3, nda/4 from usermod.
+
+forest_log_overview:- 
+	total_subgoals(TotSubg),total_sccs(TotSCCs),
+	format("There were ~1D subgoals in ~1D (completed) SCCs.~n",[TotSubg,TotSCCs]),
+	count_ecs(Len),
+	format("   ~1D subgoals were early-completed.~n",[Len]),
+	total_noncompleted_subgoals(NonComp),
+	format("   ~1D subgoals were not completed in the log.~n",[NonComp]),
+	count_pos_calls(Calls,New,Incomplete,Completed),
+	format("   There were a total of ~1D positive tabled subgoal calls:~n",[Calls]),
+	format("      ~1D were calls to new subgoals~n",[New]),
+	format("      ~1D were calls to incomplete subgoals~n",[Incomplete]),
+	format("      ~1D were calls to complete subgoals~n",[Completed]),
+	count_neg_calls(NCalls,NNew,NIncomplete,NCompleted),
+	format("   There were a total of ~1D negative tabled subgoal calls:~n",[NCalls]),
+	format("      ~1D were calls to new subgoals~n",[NNew]),
+	format("      ~1D were calls to incomplete subgoals~n",[NIncomplete]),
+	format("      ~1D were calls to complete subgoals~n",[NCompleted]),
+	count_delays_and_simpls(NDelays,NSimpl),
+	format("There were a total of ~1D negative delays~n",[NDelays]),
+	format("There were a total of ~1D simplifications~n",[NSimpl]),
+	count_answers(NU,NC),
+	format("There were a total of ~1D unconditional answers derived:~n",[NU]),
+	format("There were a total of ~1D conditional answers derived:~n",[NC]),
+	nl,
+	report_sccs.
+
+:- export forest_log_overview_1/1.
+forest_log_overview_1(CondLen):-
+	findall(1,unsimplified(_A,_B), Conds),
+	length(Conds,CondLen).
+
+three_valued_sccs(L):-
+	setof(Scc,B^S^S1^Ct^(unsimplified(B,S),cmp(S1,Scc,Ct),variant(S,S1)),L).
+
+unsimplified(_Binding,Subgoal):- 
+	del(Subgoald,_caller,_DelCtr),
+	nda([],Subgoal,_Delays,Ctr),
+	variant(Subgoald,Subgoal),
+	\+ (	na([],Subgoal1,Ctr1),
+		Ctr1 > Ctr,
+%		variant(Binding,Binding1),
+		variant(Subgoal,Subgoal1) ).
+
+count_pos_calls(Calls,New,Incomplete,Complete):- 
+	findall(1,tc(_,_,_,_),CallList),length(CallList,Calls),
+	findall(1,tc(_,_,new,_),NewList),length(NewList,New),
+	findall(1,tc(_,_,incmp,_),IncmpList),length(IncmpList,Incomplete),
+	findall(1,tc(_,_,cmp,_),CmpList),length(CmpList,Complete).
+
+count_neg_calls(Calls,New,Incomplete,Complete):- 
+	findall(1,nc(_,_,_,_),CallList),length(CallList,Calls),
+	findall(1,nc(_,_,new,_),NewList),length(NewList,New),
+	findall(1,nc(_,_,incmp,_),IncmpList),length(IncmpList,Incomplete),
+	findall(1,nc(_,_,cmp,_),CmpList),length(CmpList,Complete).
+
+count_ecs(Len):- 
+	findall(1,cmp(_,ec,_),L),
+	length(L,Len).
+
+total_sccs(N):-
+	setof(SCC,Term^Ctr^(cmp(Term,SCC,Ctr),SCC \= ec),SCClist),!,
+	length(SCClist,N).
+total_sccs(0).
+
+total_subgoals(N):-
+	setof(Ctr,Term^SCC^(cmp(Term,SCC,Ctr),SCC \= ec),Goallist),
+	length(Goallist,N),!.
+total_subgoals(0).
+
+total_noncompleted_subgoals(N):- 
+	cmp_defined,
+	setof(Ctr1,S1^S2^_SCC^_Ctr2^((tc(S1,S2,new,Ctr1) ; nc(S1,S2,new,Ctr1)),
+	                 \+ check_variant(cmp(S1,_SCC,_Ctr2),2)),GoalList),!,
+	length(GoalList,N).
+total_noncompleted_subgoals(N):- 
+	\+ cmp(_,_,_),
+	setof(Ctr1,S1^S2^((tc(S1,S2,new,Ctr1) ; nc(S1,S2,new,Ctr1))),GoalList),
+	length(GoalList,N).
+total_noncompleted_subgoals(0).
+
+cmp_defined:- cmp(_,_,_),!.
+
+count_delays_and_simpls(LenD,LenS):- 
+	findall(1,del(_,_,_),LD),	length(LD,LenD),
+	findall(1,some_simplification(_) ,LS),
+	length(LS,LenS).
+
+some_simplification(Ctr):- ns_smpl(_,_,Ctr).
+some_simplification(Ctr):- nf_smpl(_,_,Ctr).
+some_simplification(Ctr):- pus_smpl(_,_,_,Ctr) .
+some_simplification(Ctr):- puc_smpl(_,_,_,_,Ctr).
+
+count_answers(LenU,LenC):- 
+	findall(1,na(_,_,_),LU),
+	length(LU,LenU),
+	findall(1,nda(_,_,_,_) ,LC),
+	length(LC,LenC).
+
+%----------------
+
+report_sccs:- 
+	setof(scc(Len,SCC),get_scc_length(SCC,Len),SCCs),
+	bagof(SCC,member(scc(Len,SCC),SCCs),LenList),
+	length(LenList,Length),
+	write('Number of SCCs with '),write(Len),write(' subgoals is '),writeln(Length),
+%	writeln(scc(Len,Length)),
+	fail.
+report_sccs.
+
+get_scc_length(SCC,Len):- 
+	bagof(Goal,Ctr^(cmp(Goal,SCC,Ctr),SCC \== ec),Goals),
+	length(Goals,Len).
+%	writeln(scc(SCC,Len)),
+%	fail.
+
+%----------------
+
+analyze_an_scc(Scc,File):-
+	count_subgoals_in_scc(Scc,Subgoals),
+	count_backlinks_in_scc(Scc,Links,Ninks),
+	TotLinks is Subgoals+Links+Ninks-1,
+	Density is (Subgoals+Links)/Subgoals,
+	format("There are ~1D subgoals and ~1D links (average of ~f edges per subgoal) within the SCC~n",
+		[Subgoals,TotLinks,Density]),
+	count_delays(Scc,Delays),
+	format("There are ~1D negative edges resulting in ~1D delays and 0 simplifications~n",
+		[Ninks,Delays]),
+	nl,count_preds(Scc),
+	nl,report_links(Scc,File).
+
+count_delays(Scc,Len):- 
+	findall(1,scc_has_delay(Scc),List),
+	length(List,Len).
+
+scc_has_delay(Scc):- 
+	del(_Called,Caller,_Ctr),
+	check_variant(cmp(Caller,Scc,_Ctr1),1).
+
+analyze_an_scc(Scc,File,Abstraction_in):-
+	functor(Abstraction_in,F,A),
+	(F = ':',A = 2 -> 
+	    arg(1,Abstraction_in,Module),arg(2,Abstraction_in,Abstraction) 
+	  ; Module = usermod,Abstraction = Abstraction_in),
+	count_subgoals_in_scc(Scc,Subgoals),
+	count_backlinks_in_scc(Scc,Links,Ninks),
+	Density is (Subgoals+Links)/Subgoals,
+	format("There are ~1D subgoals and ~1D links (average of ~f edges per subgoal) within the SCC~n",
+		[Subgoals,Links,Density]),
+	format("There are ~1D negative edges resulting in 0 delays and 0 simplifications~n",
+		[Ninks]),
+	nl,count_preds(Scc,Module,Abstraction),
+	nl,report_links(Scc,File,Module,Abstraction).
+
+count_subgoals_in_scc(Scc,Num):-
+	findall(1,cmp(_T,Scc,_),Ones),
+	length(Ones,Num).
+
+count_backlinks_in_scc(SCC,Lnum,Nnum):-
+	findall(1,backlink_in_scc(_,SCC),Links),
+	findall(1,negbacklink_in_scc(_,SCC),Ninks),
+	length(Links,Lnum),
+	length(Ninks,Nnum).
+
+backlink_in_scc(T1,Scc):- 
+	(tc(T1,_T2,incmp,_) ; nc(T1,_T2,incmp,_)),check_variant(cmp(T1,Scc,_),1).
+negbacklink_in_scc(T1,Scc):- 
+	nc(T1,_T2,State,_),State \== cmp, check_variant(cmp(T1,Scc,_),1).
+
+%----------------
+
+count_preds(S):- 
+	setof(pred(C,P),count_preds_1(S,P,C),Preds),
+	member(pred(C,P),Preds),
+	format("There are ~1D subgoals in the SCC for the predicate ",[C]),
+	P = F/A,
+	write(F),write('/'),writeln(A),
+%	writeln(Thre are pred(P,C)),
+	fail.
+count_preds(_).
+
+count_preds(S,Module,Abstraction):- 
+	setof(pred(C,P),count_preds_1(S,P,C,Module,Abstraction),Preds),
+	member(pred(C,P),Preds),
+	format("There are ~1D subgoals in the SCC for the predicate ~q~n",[C,P]),
+	fail.
+count_preds(_,_,_).
+
+count_preds_1(S,F/A,C):- 
+	bagof(F1/A1,Term^Ctr^(cmp(Term,S,Ctr), 
+  	             get_functor(Term,F/A),
+		     F1 = F,A1 = A),
+	        Fs),
+	length(Fs,C).
+
+:- import '='/2 from standard.
+count_preds_1(S,New,C,Module,Abstraction):- 
+	bagof(New1,Term^Ctr^(cmp(Term,S,Ctr), 
+	                     abstract_term(Term,New,Module,Abstraction),
+	                     New = New1),
+	      As),
+	length(As,C).
+
+abstract_term(Term,Abs,Module,Abstraction):-
+	copy_term(Abstraction,Abstraction1),
+	arg(1,Abstraction1,Term),
+	call_c(Module:Abstraction1),
+	arg(2,Abstraction1,Abs).
+
+/*
+abstract_term(Term,Abs,Abstraction):-
+	copy_term(Abstraction,Abstraction1),
+	arg(1,Abstraction1,Term),
+	call_c(usermod:Abstraction1),
+	arg(2,Abstraction1,Abs).
+*/
+%----------------
+
+report_links(S,File):-
+	bagof(Link,count_links_1(S,Link),List),
+	parsort(List,[asc(1),asc(2)],0,List1),
+	count_occs(List1,Occs),
+	report_links_1(Occs,File).
+
+report_links(S,File,Module,Abstraction):-
+	bagof(Link,count_links_1(S,Link,Module,Abstraction),List),
+	parsort(List,[asc(1),asc(2)],0,List1),
+	count_occs(List1,Occs),
+	report_links_1(Occs,File).
+
+report_links_1(Occs,File):-
+	tell(File),
+	(  member((From,To)-Count,Occs),
+	   write('Calls from '),write(From),write(' to '),write(To),
+	   format(" : ~1D~n",[Count]),
+	   fail
+	 ; 
+	   true),
+	told.
+
+count_links_1(S,(F1/A1,F2/A2)):- 
+	(tc(T1,T2,State,_Ctr),State \= cmp ; nc(T1,T2,State,_Ctr),State \= cmp),
+	check_variant(cmp(T1,S,_),1),
+	check_variant(cmp(T2,S,_),1),
+	get_functor(T1,F1/A1),
+	get_functor(T2,F2/A2).
+
+count_links_1(S,(Abstr1,Abstr2),Module,Abstraction):- 
+	(tc(T1,T2,State,_Ctr),State \= cmp ; nc(T1,T2,State,_Ctr),State \= cmp),
+	check_variant(cmp(T1,S,_),1),
+	check_variant(cmp(T2,S,_),1),
+	copy_term(Abstraction,Abstraction1),
+	copy_term(Abstraction,Abstraction2),
+	abstract_term(T1,Abstr1,Module,Abstraction1),
+	abstract_term(T2,Abstr2,Module,Abstraction2).
+/*
+	arg(1,Abstraction1,T1),
+	call_c(usermod:Abstraction1),
+	arg(2,Abstraction1,Abstr1),
+	arg(1,Abstraction2,T2),
+	call_c(usermod:Abstraction2),
+	arg(2,Abstraction2,Abstr2).
+*/
+
+
+count_occs(L,[H-Occs|Rest]):-
+	count_occs_1(L,Rem,H,Occs),
+	(Rem = [] -> 
+		Rest = []
+	     ;  count_occs(Rem,Rest)).
+	
+count_occs_1(L,Rem,H,Occs):-
+	L = [H|T],
+	count_occs_2(T,H,Rem,1,Occs).
+
+count_occs_2([],_H,[],Occs,Occs):- !.
+count_occs_2([H|T],H,Rem,OccsIn,Occs):-!,
+	OccsMid is OccsIn + 1,
+	count_occs_2(T,H,Rem,OccsMid,Occs).
+count_occs_2(L,_H,L,Occs,Occs).
+
+%----------------
+% Including some very simple flora translations.
+
+get_functor(T,F/Outarg):-
+        functor(T, '_$_$_flora''mod''main''tblflapply',_Arg),!,
+	term_arg(T,1,F),
+	term_arg(T,2,App),
+%	arg(1,T,F),
+%	arg(2,T,App),
+	nonvar(App),functor(App,_,Outarg).
+get_functor(T,F/Arg):-
+        functor(T,F,Arg).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Analysis of Current State
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% :- export get_compl_stack_info/2.
+%%% get_compl_stack_info(SubgList,SCCList):- 
+%%% 	get_sdg_info(0,SubgList),
+%%% 	writeln(SubgList),
+%%%         get_sdg_info(SubgList,SCCList).
+	
+get_sdg_info(List):- 
+	get_sdg_info(0,List).
+
+%:- import writeln/1 from standard.
+
+get_sdg_info(CSF,Rest):- 
+	table_inspection_function(INCOMPLETE_SUBGOAL_INFO,CSF,NewCSF,Level,SF,CallsTo,Answers,IsNegCall,GenParent),
+	(SF == 0 -> 
+	   Rest = []
+	;  get_call_from_sf(SF,Subgoal),
+%	   writeln(gisi(CSF,NewCSF,Level,SF,CallsTo,Answers,Subgoal,IsIncr)),
+	   table_inspection_function(GET_POS_AFFECTS,SF,PosSFList_1,_,_,_,_,_),
+	   (IsNegCall == 1 -> 
+	      remove_gencon_cp(PosSFList_1,GenParent,PosSFList_2)
+	    ; PosSFList_1 = PosSFList_2),
+	    sort(PosSFList_2,PosSFList),
+	    table_inspection_function(GET_NEG_AFFECTS,SF,NegSFList_1,_,_,_,_,_),
+	    sort(NegSFList_1,NegSFList) ),
+	    (var(Rest) -> 
+	       (NewCSF = 0 -> 
+	          Rest = [subgoal(Subgoal,Level,SF,CallsTo,Answers,PosSFList,NegSFList)]
+	        ; Rest = [subgoal(Subgoal,Level,SF,CallsTo,Answers,PosSFList,NegSFList)|Rest1],
+	          get_sdg_info(NewCSF,Rest1) )
+	      ; true).
+
+remove_gencon_cp([],_Genparent,[]).
+remove_gencon_cp([SF|Rest],SF,Rest):- !.
+remove_gencon_cp([H|T],Genparent,[H|T1]):- 
+	remove_gencon_cp(T,Genparent,T1).
+
+get_sdg_subgoal_info(List):- 
+	get_sdg_subgoal_info(0,List).
+
+get_sdg_subgoal_info(CSF,Rest):- 
+	table_inspection_function(INCOMPLETE_SUBGOAL_INFO,CSF,NewCSF,Level,SF,CallsTo,Answers,_IsNegCall,_GenParent),
+	(SF == 0 -> 
+	   Rest = []
+	;  get_call_from_sf(SF,Subgoal)
+%	   writeln(gisi(CSF,NewCSF,Level,SF,CallsTo,Answers,Subgoal,IsIncr)),
+%	   table_inspection_function(GET_POS_AFFECTS,SF,PosSFList_1,_,_,_,_,_),
+%	   (IsNegCall == 1 -> 
+%	      remove_gencon_cp(PosSFList_1,GenParent,PosSFList_2)
+%	    ; PosSFList_1 = PosSFList_2),
+%	    sort(PosSFList_2,PosSFList),
+%	    table_inspection_function(GET_NEG_AFFECTS,SF,NegSFList_1,_,_,_,_,_),
+%	    sort(NegSFList_1,NegSFList) 
+            ),
+	    (var(Rest) -> 
+	       (NewCSF = 0 -> 
+	          Rest = [subgoal(Subgoal,Level,null,CallsTo,Answers,[],[])]
+	        ; Rest = [subgoal(Subgoal,Level,null,CallsTo,Answers,[],[])|Rest1],
+	          get_sdg_subgoal_info(NewCSF,Rest1) )
+	      ; true).
+
+%-------------
+
+morph_dep_graph(SdgIn,Abstr,SdgOut):-	
+	check_ground(Abstr,morph_dep_graph/3,2),
+	(Abstr = Module:Call -> 
+	   check_atom(Module,morph_dep_graph/3,2),
+	   check_atom(Call,morph_dep_graph/3,2)
+	 ; check_atom(Abstr,morph_dep_graph/3,2),Module = usermod,Call = Abstr ),
+	check_var(SdgOut,morph_dep_graph/3,3),
+	new_trie(SFMapSubg),new_trie(AbsMapSF),
+	morph_dep_graph_1(SdgIn,Module,Call,SFMapSubg,AbsMapSF,SdgOut).
+
+morph_dep_graph_1(SdgIn,Module,Call,SFMapSubg,AbsMapSF,SdgOut):- 
+	morph_dep_graph_init_tries(SdgIn,Module,Call,SFMapSubg,AbsMapSF),
+	morph_dep_graph_nodes(SdgIn,SFMapSubg,AbsMapSF,Sdg1),
+	sort(Sdg1,Sdg2),
+	merge_sdg_nodes(Sdg2,SdgOut),
+	delete_trie(SFMapSubg),
+	delete_trie(AbsMapSF),
+	!.
+morph_dep_graph_1(SdgIn,_AbsMod,_AbsCall,SFMapSubg,AbsMapSF,_SdgOut):- 
+	delete_trie(SFMapSubg),delete_trie(AbsMapSF),
+	misc_error(['Improper form for input SDG: ',SdgIn]).
+
+:- import ':'/2 from standard.
+morph_dep_graph_init_tries([],_AbsMod,_AbsCall,_SFMapSubg,_AbsMapSF).
+morph_dep_graph_init_tries([subgoal(Subgoal,_Level,SF,_CallsTo,_Answers,_PosSFList,_NegSFList)|Rest],
+	                    AbsMod,AbsCall,SFMapAbs,AbsMapSF):- 
+%	writeln(call(AbsMod:AbsCall,Subgoal,AbsSubg)),
+	call((AbsMod:AbsCall),Subgoal,AbsSubg),
+%	writeln(called(AbsMod:AbsCall,Subgoal,AbsSubg)),
+	trie_intern(p(SF,AbsSubg),SFMapAbs),
+	gensym(AbsCall,Sym),
+        trie_intern(p(AbsSubg,Sym),AbsMapSF),
+	morph_dep_graph_init_tries(Rest,AbsMod,AbsCall,SFMapAbs,AbsMapSF).
+%	(trie_interned(p(AbsSubg,_,_),AbsMapSF) -> 
+%	    writeln(trie_interned(p(AbsSubg,SF),AbsMapSF))
+%	  ; gensym(abs,Sym),
+%	    trie_intern(p(AbsSubg,Sym),AbsMapSF) ),
+
+morph_dep_graph_nodes([],_SFMapAbs,_AbsMapSF,[]).
+morph_dep_graph_nodes([subgoal(_Subgoal,_Level,SF,_CallsTo,_Answers,PosSFList,NegSFList)|RestIn],SFMapAbs,AbsMapSF,
+	    [subgoal(AbsSubg,none,Key,_CallsTo,_Answers,PosKeyList,NegKeyList)|RestOut]):- 
+	cut_trie_interned(p(SF,AbsSubg),SFMapAbs),
+	cut_trie_interned(p(AbsSubg,Key),AbsMapSF),
+	rename_affects_edges(PosSFList,SFMapAbs,AbsMapSF,PosKeyList),
+	rename_affects_edges(NegSFList,SFMapAbs,AbsMapSF,NegKeyList),
+	morph_dep_graph_nodes(RestIn,SFMapAbs,AbsMapSF,RestOut).
+
+/*
+%%debug_trie_interned(Goal,Trie):- 
+%%	findall(Goal,trie_interned(Goal,Trie),List),
+%%	(List = [_] -> true ; writeln(List)),
+%%	trie_interned(Goal,Trie).
+*/
+cut_trie_interned(Goal,Trie):- 
+	trie_interned(Goal,Trie),!.
+	
+
+rename_affects_edges([],_SFMapAbs,_AbsMapSF,[]).
+rename_affects_edges([SF|Rest],SFMapAbs,AbsMapSF,[Key|Rest1]):- 
+	cut_trie_interned(p(SF,AbsSubg),SFMapAbs),
+	cut_trie_interned(p(AbsSubg,Key),AbsMapSF),
+	rename_affects_edges(Rest,SFMapAbs,AbsMapSF,Rest1).
+
+merge_sdg_nodes([],[]).
+merge_sdg_nodes([subgoal(AbsSubg,none,Key,CallsTo,Answers,PosKeyList,NegKeyList)|RestIn],
+   	        [subgoal(AbsSubg,none,Key,CallsToOut,AnswersOut,PosKeyListOut,NegKeyListOut)|RestOut]):- 
+%	get_next_set(RestIn,Key,Set,RestMid),
+	get_next_set([subgoal(AbsSubg,none,Key,CallsTo,Answers,PosKeyList,NegKeyList)|RestIn],Key,Set,RestMid),
+	merge(Set,CallsTo,CallsToOut,Answers,AnswersOut,PosKeyList,PosKeyListOut,NegKeyList,NegKeyListOut),
+	merge_sdg_nodes(RestMid,RestOut).
+
+merge([],CallsTo,CallsTo,Answers,Answers,PosKeyList,PosKeyListOut,NegKeyList,NegKeyListOut):- 
+	flatten(PosKeyList,PosFlatList),sort(PosFlatList,PosKeyListOut),
+	flatten(NegKeyList,NegFlatList),sort(NegFlatList,NegKeyListOut).
+merge([subgoal(_AbsSubg,none,_Key,CallsTo,Answers,PosKeyList,NegKeyList)|RestIn],
+      CallsToIn,CallsToOut,AnswersIn,AnswersOut,PosKeyListIn,PosKeyListOut,NegKeyListIn,NegKeyListOut):- 
+	CallsToMid is CallsToIn + CallsTo,
+	AnswersMid is AnswersIn + Answers,
+	PosKeyListMid = [PosKeyListIn,PosKeyList],
+	NegKeyListMid = [NegKeyListIn,NegKeyList],
+        merge(RestIn,CallsToMid,CallsToOut,AnswersMid,AnswersOut,PosKeyListMid,PosKeyListOut,NegKeyListMid,NegKeyListOut).
+
+get_next_set([],_Key,[],[]).
+get_next_set([subgoal(AbsSubg,none,Key,CallsTo,Answers,KeyList,Neglist)|RestIn],Key,
+	     [subgoal(AbsSubg,none,Key,CallsTo,Answers,KeyList,Neglist)|RestSet],RestOut):- !,
+	get_next_set(RestIn,Key,RestSet,RestOut).
+get_next_set(List,_Key,[],List).
+
+%----------------
+
+print_sdg_info:- 
+	get_sdg_info(SDG),
+	print_sdg_info(SDG).
+
+print_sdg_info_modes:- 
+	get_sdg_info(SDG),
+	morph_dep_graph(SDG,tables:abstract_modes,SDGOut),
+%	writeln(SDGOut),
+	print_sdg_info(SDGOut).
+
+print_sdg_info_functor:- 
+	get_sdg_info(SDG),
+	morph_dep_graph(SDG,tables:abstract_functor,SDGOut),
+	print_sdg_info(SDGOut).
+
+print_sdg_info(SDG):- 
+	reverse(SDG,SDG1),
+        get_base_level(SDG1,Base),
+	get_subgoal_avl(SDG1,AVL), % writeln(avl(AVL)),
+	print_each_subgoal(SDG1,Base,AVL).
+
+print_each_subgoal([],_Base,_AVL).
+print_each_subgoal([subgoal(Subgoal,Level,_SF,CallsTo,Answers,PosSFList,NegSFList)|R],Base,AVL):- 
+        format("Subgoal: ~q~n",Subgoal),
+	(integer(Level) -> 
+	   Index is Level - Base,
+	   format("        SCC: ~d; Number of calls to this subgoal ~d; Number of answers ~d~n",[Index,CallsTo,Answers])
+         ; format("        Number of calls to this subgoal ~d; Number of answers ~d~n",[CallsTo,Answers]) ),
+	(PosSFList == [] -> true 
+          ; get_subgoal_list(PosSFList,AVL,PosSubgList),
+	    format("        Affects positively ",[]),
+	    print_subgoal_list(PosSubgList),nl),
+	(NegSFList == [] -> true 
+          ; get_subgoal_list(NegSFList,AVL,NegSubgList),
+	    format("        Affects negatively ",[]),
+	    print_subgoal_list(NegSubgList),nl),
+	print_each_subgoal(R,Base,AVL).
+
+get_subgoal_list([],_AVL,[]).
+get_subgoal_list([Key|KR],AVL,[Subg|SR]):- 
+	get_assoc(Key,AVL,Subg),
+	get_subgoal_list(KR,AVL,SR).
+
+print_subgoal_list([Subg]):- !,writeq(Subg).
+print_subgoal_list([Subg|R]):- !,writeq(Subg),write(' ; '),print_subgoal_list(R).
+
+get_base_level(SDG,Base):- 
+	SDG = [subgoal(_Subgoal,Level,_SF,_CallsTo,_Answers,_PosSFList,_NegSFList)|_],
+	(integer(Level) -> Base is Level - 1 ; Base = Level).
+
+get_subgoal_avl(SDG1,AVL):- 
+	get_kvs(SDG1,List),
+	list_to_assoc(List,AVL).
+
+get_kvs([],[]).
+get_kvs([subgoal(Subgoal,_Level,SF,_CallsTo,_Answers,_PosSFList,_NegSFList)|R],[SF-Subgoal|R1]):- 
+	get_kvs(R,R1).
+
+print_sdg_subgoal_info:-
+        get_sdg_subgoal_info(Subgoals),
+	writeln(about_to_copy),
+        print_sdg_subgoal_info(Subgoals).
+
+print_sdg_subgoal_info(SDG):-
+        reverse(SDG,SDG1),
+        get_subgoals_base_level(SDG1,Base),
+        print_each_subgoal_no_deps(SDG1,Base).
+
+:- import numbervars/1 from num_vars.
+:- import copy_term_nat/2 from basics.
+print_each_subgoal_no_deps([],_Base).
+print_each_subgoal_no_deps([subgoal(Subgoal_orig,Level,_Key,CallsTo,Answers,_PosDeps,_NegDeps)|R],Base):-
+        copy_term_nat(Subgoal_orig,Subgoal),
+        numbervars(Subgoal),
+        format("Subgoal: ~q~n",Subgoal),
+        (integer(Level) ->
+           Index is Level - Base,
+           format("        SCC: ~d; Number of calls to this subgoal ~d; Number of answers ~d~n",[Index,CallsTo,Answers])
+         ; format("        Number of calls to this subgoal ~d; Number of answers ~d~n",[CallsTo,Answers]) ),
+        print_each_subgoal_no_deps(R,Base).
+
+get_subgoals_base_level(SDG,Base):- 
+	SDG = [subgoal(_Subgoal,Level,_,_CallsTo,_Answers,_,_)|_],
+	(integer(Level) -> Base is Level - 1 ; Base = Level).
+
+%----------------
+
+sdg_scc_info([],[]).
+sdg_scc_info([subgoal(Subgoal,Level,SF,_CallsTo,Answers,PosList,NegList)|Rest],
+             [scc(Level,NumSubgoals,NumAnswers,NumPosEdges,NumNegEdges)|Rest1]):- 
+	sdg_scc_info_1([subgoal(Subgoal,Level,SF,_CallsTo,Answers,PosList,NegList)|Rest],
+	                                   Level,0,0,0,0,NumSubgoals,NumAnswers,NumPosEdges,NumNegEdges,ListMid),
+	sdg_scc_info(ListMid,Rest1).
+
+sdg_scc_info_1([],_SCCNum,Subgoals,Answers,PosCount,NegCount,Subgoals,Answers,PosCount,NegCount,[]).
+sdg_scc_info_1([subgoal(Subgoal,Level,SF,CallsTo,Answers,PosList,NegList)|Rest],SCCNum,
+                        InSubgoals,InAnswers,InPosCount,InNegCount,OutSubgoals,OutAnswers,OutPosCount,OutNegCount,ListOut):- 
+% writeln(sdg_scc_info_1([subgoal(Subgoal,Level,SF,CallsTo,Answers,PosList,NegList)|Rest],SCCNum,
+%                         InSubgoals,InAnswers,InPosCount,InNegCount,OutSubgoals,OutAnswers,OutPosCount,OutNegCount,ListOut)),
+	(Level \== SCCNum -> 
+	    ListOut = [subgoal(Subgoal,Level,SF,CallsTo,Answers,PosList,NegList)|Rest],
+	    InSubgoals = OutSubgoals,InAnswers = OutAnswers,InPosCount = OutPosCount,InNegCount = OutNegCount
+	  ; length(PosList,PosCount),MidPosCount is InPosCount+PosCount,
+	    length(NegList,NegCount),MidNegCount is InNegCount+NegCount,
+	    MidSubgoals is InSubgoals+1,MidAnswers is InAnswers + Answers,
+  	    sdg_scc_info_1(Rest,SCCNum,MidSubgoals,MidAnswers,MidPosCount,MidNegCount,
+	                  OutSubgoals,OutAnswers,OutPosCount,OutNegCount,ListOut)).
+
+%incr_eval_builtin(_BuiltinNo, _A, _B, _C) :-
+%	'_$builtin'(INCR_EVAL_BUILTIN).
+
+:- export abstract_modes/2,abstract_functor/2.
+
+abstract_functor(Term,F/A):- functor(Term,F,A).
+
+abstract_modes(Term,Moded):-
+	compound(Term),!,
+	Term =.. [F|Args],
+	abstract_modes_args(Args,NewArgs),
+	Moded =.. [F|NewArgs].
+abstract_modes(Term,Term).
+
+abstract_modes_args([],[]).
+abstract_modes_args([H|T],[M|TM]):-
+	(var(H) -> 
+	    M = v
+	  ; (ground(H) -> 
+	      M = g ; M = m) ),
+	abstract_modes_args(T,TM).
+
+%--------------------------------------------------------------------------------
+
+get_residual_sccs(Call,Answer,Scc):-
+	get_answer_leaf(Call,Answer,AnsLeaf),
+	get_residual_sccs_1(AnsLeaf,Scc_1),
+	process_sccs(Scc_1,Scc).
+
+get_residual_sccs(Call,Answer,Scc,Deps,Signs):-
+	get_answer_leaf(Call,Answer,AnsLeaf),
+	get_residual_sccs_1(AnsLeaf,Scc_1),
+	process_sccs(Scc_1,Scc),
+	get_scc_dependency_structure(Scc_1,Deps,Signs).
+
+%---------------
+
+get_residual_sccs_1(AnsLeaf,Scc):-
+	abolish_table_pred(trans_ans_depends_ptr(_,_)),
+%	setof(P,(trans_ans_depends_ptr(AnsLeaf,P) ; P = AnsLeaf),Ptrs),
+	setof(P,trans_ans_depends_ptr(AnsLeaf,P),Ptrs),
+%	writeln(ptrs(Ptrs)),
+	table_inspection_function(GET_RESIDUAL_SCCS, Ptrs, Scc,_,_).
+
+/*
+process_sccs([],[]).
+process_sccs([ret(Subgoal,Ptr,Comp)|T],[ret(Subgoal,Ans,Comp)|T1]):- 
+        (Ptr == 0 -> 
+	    Ans = Ptr
+	 ; process_scc_node(Subgoal,Ptr,Ans)),
+	 process_sccs(T,T1).
+*/
+
+process_sccs([],[]).
+process_sccs([ret(Subgoal,Ptr,Comp)|T],[ret(Subgoal,Ans,Comp)|T1]):- 
+        (Ptr == 0 -> 
+	    Ans = Ptr
+%	 ; true),
+	 ; process_scc_node(Subgoal,Ptr,Ans)),
+	 process_sccs(T,T1).
+
+%------
+
+get_scc_dependency_structure(List,Depends,Signs):- 
+%	writeln(list(List)),
+	partition_list(List,PartList),
+%	writeln(pl(PartList)),
+	scc_depends(PartList,Depends,[],Signs).
+
+partition_list(List,PartList):- 
+%	setof(ret(Index,Ans),Subgoal^member(ret(Subgoal,Ans,Index),List),Parts),
+	reverse_partition(List,Parts_dup),
+	sort(Parts_dup,Parts),
+	partition_list_1(Parts,PartList).
+
+reverse_partition([],[]).
+reverse_partition([ret(_S,A,I)|T],[ret(I,A)|T1]):- 
+	reverse_partition(T,T1).
+
+partition_list_1([],[]).
+partition_list_1([ret(N,S)|IRest],[List|ORest]):-
+	partition_list_2([ret(N,S)|IRest],N,List,IRest1),
+	partition_list_1(IRest1,ORest).
+	
+partition_list_2([],_N,[],[]).
+partition_list_2([ret(N,S)|R],N,[ret(N,S)|NR],RestOut):- !,
+	partition_list_2(R,N,NR,RestOut).
+partition_list_2([ret(M,S)|R],_N,[],[ret(M,S)|R]).
+
+scc_depends([Scc],In,In,[sign(Comp,Sign)]):- 
+	scc_self_depends(Scc,Comp,Sign),!.
+scc_depends([SCC|Rest],In,Out,[Sign|R]):- 
+	scc_depends_1(Rest,SCC,In,Mid,Sign),
+%	writeln(scc_depends(Rest,Mid,Out)),
+	scc_depends(Rest,Mid,Out,R).
+
+scc_depends_1([],Scc,In,In,sign(Comp,Sign)):- 
+	scc_self_depends(Scc,Comp,Sign),!.
+scc_depends_1([Scc1|R],Scc2,In,Out,Sign):-
+	(scc_depends_2(Scc1,Scc2,Depends) -> 
+	    In = [Depends|Mid1] 
+	  ; (scc_depends_2(Scc2,Scc1,Depends1) -> In = [Depends1|Mid1] ; In = Mid1) ),
+	scc_depends_1(R,Scc2,Mid1,Out,Sign).
+
+scc_depends_2(SCC1,SCC2,depends(Comp1,Comp2)):-
+	member(ret(Comp1,AnsPtr),SCC1),
+%	writeln(ret(Comp1,AnsPtr)),
+	AnsPtr \== 0,  % TLS: fix
+	table_inspection_function(IMMED_ANS_DEPENDS_PTRLIST, AnsPtr, PtrList,_,_),
+	member(ret(AnsPtr1,_),PtrList),
+	member(ret(Comp2,AnsPtr1),SCC2).
+
+scc_self_depends(SCC,Comp,neg):- 
+	member(ret(Comp,AnsPtr),SCC),
+%	writeln(ret(Comp,AnsPtr)),
+	AnsPtr \== 0,  % TLS: fix
+	table_inspection_function(IMMED_ANS_DEPENDS_PTRLIST, AnsPtr, PtrList,_,_),
+	member(ret(AnsPtr1,IS_SUBGOAL_FRAME),PtrList),
+	member(ret(_Comp,AnsPtr1),SCC),
+	!.
+scc_self_depends(SCC,Comp,no_neg):-
+	member(ret(Comp,_AnsPtr),SCC),!.
+
+%---------------
+
+process_scc_node(Goal,Leaf,G):-
+	copy_term(Goal,G),
+	get_call(G,SF,Template),
+	get_returns(SF,Template,L),
+	L = Leaf.
+
+:- export get_answer_dependencies/3.
+get_answer_dependencies(Call,Answer,Ptr):-
+	get_answer_leaf(Call,Answer,AnsLeaf),
+%	immed_ans_depends_ptr(AnsLeaf,Ptr).
+	trans_ans_depends_ptr(AnsLeaf,Ptr).
+
+:- export trans_ans_depends_ptr/2.
+:- import (table)/1 from standard.
+:- table trans_ans_depends_ptr/2 as variant.
+trans_ans_depends_ptr(CallPtr1,CallPtr2):-
+	immed_ans_depends_ptr(CallPtr1,CallPtr2).
+trans_ans_depends_ptr(CallPtr1,CallPtr2):-
+	trans_ans_depends_ptr(CallPtr1,CallPtr3),
+	immed_ans_depends_ptr(CallPtr3,CallPtr2).
+
+:- export immed_ans_depends_ptr/2.	
+immed_ans_depends_ptr(Ptr,Ptr2):-
+	table_inspection_function(IMMED_ANS_DEPENDS_PTRLIST, Ptr, PtrList,_,_),
+	member(ret(Ptr2,_),PtrList).		
+
+get_answer_leaf(Call,Answer,AnsLeaf):-
+	copy_term(Call,Call1),
+	get_call(Call1,SF,Return),	
+	get_returns(SF,Return,AnsLeaf),
+%	writeln((Call,Call1)),
+	Answer = Call1.
+
+%--------------------------
+
+:- export explain_u_val/3,explain_u_val/7.
+:- import brat_undefined/0 from xsbbrat.
+
+explain_u_val(Subgoal,Ans,Type):-
+	get_residual_sccs(Subgoal,Ans,Sccs,Deps,Signs),
+%	writeln(scc(Subgoal,Ans,Sccs,Deps,Signs)),
+	subgoal_scc_member(Sccs,Subgoal,Index),
+	explain_u_val(Subgoal,Ans,Sccs,Deps,Signs,Index,Type).
+
+explain_u_val(_Subgoal,_Ans,Sccs,_Deps,_Signs,_Index,unsafe_negation):-
+	memberchk(ret(floundered_undefined(_),_,_),Sccs).
+explain_u_val(_Subgoal,_Ans,Sccs,_Deps,_Signs,_Index,radial_restraint):-
+	memberchk(ret(brat_undefined,_,_),Sccs).
+explain_u_val(_Subgoal,_Ans,_Sccs,_Deps,Signs,Index,negative_loops(cycle)):-
+	memberchk(sign(Index,neg),Signs).
+explain_u_val(_Subgoal,_Ans,_Sccs,_Deps,Signs,Index,negative_loops(dependent)):-
+	memberchk(sign(I,neg),Signs),I \== Index.
+
+:- import variant/2 from subsumes.
+subgoal_scc_member([],_Subgoal,-1). % -- want to succeed with non-matching index.
+subgoal_scc_member([ret(S,_,Index)|_],Subgoal,Index):- 
+	variant(S,Subgoal),!.
+subgoal_scc_member([_|R],Subgoal,Index):- 
+	subgoal_scc_member(R,Subgoal,Index).
+
+/*======================================================================*/
+% TRIPWIRE HANDLERS
+/*======================================================================*/
+:- import break_for_tripwires/1 from x_interp.
+:- import format/2 from format.
+
+%----
+
+:- export max_incomplete_subgoals_handler/0.
+:- import max_incomplete_subgoals_user_handler/0 from usermod.
+:- dynamic max_incomplete_subgoals_user_handler/0.
+
+max_incomplete_subgoals_handler:- 
+   max_incomplete_subgoals_user_handler,!.
+max_incomplete_subgoals_handler:- 
+   clause(max_incomplete_subgoals_user_handler,_),
+   warning('max_incomplete_subgoals_user_handler was called, but did not succeed.'),
+   !.
+max_incomplete_subgoals_handler:- 
+    max_incomplete_subgoals_default_handler.
+
+max_incomplete_subgoals_default_handler:- 
+   break_for_tripwires([tables:max_incomplete_subgoals_header]).
+
+max_incomplete_subgoals_header:- 
+  inc_subg_analysis_info(SubgNum,SCCNumber),
+  format("There are currently ~d incomplete tabled subgoals, which exceeds the limit set by the flag~n",
+         [SubgNum]),
+  format("'max_incomplete_subgoals'.  These subgoals are in ~d separate recursive components.~n",[SCCNumber]),
+  format("~n"),
+  format("~n  * To continue, reset the flag and then type Ctrl-d~n",[]),
+  format("  * To abort, enter the command 'abort/0'~n",[]),
+  format("  * To inspect the incomplete tabled subgoals, enter the command 'show_incomplete_subgoals'~n",[]),
+  format("  * Type 'explain(Term)' to get a textual explanation of the terminology used. ~n",[]).
+
+inc_subg_analysis_info(SubgNum,SCCNum):- 
+	get_sdg_info(SDG), %writeln(G),
+	length(SDG,SubgNum),
+	sdg_scc_info(SDG,SCCs), %writeln(S),
+	length(SCCs,SCCNum).
+
+%----
+
+:- export max_scc_subgoals_handler/0.
+:- import max_scc_subgoals_user_handler/0 from usermod.
+:- dynamic max_scc_subgoals_user_handler/0.
+
+max_scc_subgoals_handler:- 
+   max_scc_subgoals_user_handler,!.
+max_scc_subgoals_handler:- 
+   clause(max_scc_subgoals_user_handler,_),
+   warning('max_scc_subgoals_user_handler was called, but did not succeed.'),
+   !.
+max_scc_subgoals_handler:- 
+   max_scc_subgoals_default_handler.
+
+max_scc_subgoals_default_handler:- 
+	      break_for_tripwires([tables:max_scc_subgoals_header]).
+
+max_scc_subgoals_header:- 
+  current_prolog_flag(max_scc_subgoals,Max),
+  format("~n          WARNING!! XSB-oriented math-talk to follow.~n~n~n",[]),
+  scc_subg_analysis_info(NumSubgoals,TotEdges,NumAnswers),
+  format("A recursive component containing ~d incomplete tabled subgoals is currently under evaluation.~n",
+	 [NumSubgoals]), 
+  format("The size of this recursive component exceeds the limit of ~d set by the flag 'max_scc_subgoals'.~n",[Max]),
+  format("Together, the total number of dependency edges among all subgoals in this recursive component is ~d~n",[TotEdges]),
+  format("and the total number of answers for all subgoals in this component is ~d~n",[NumAnswers]),
+  format("~n  * To continue, reset the flag and then type Ctrl-d~n",[]),
+  format("  * To abort, enter the command 'abort/0'~n",[]),
+  format("  * To inspect the incomplete tabled subgoals, enter the command 'show_incomplete_subgoals'~n",[]).
+
+scc_subg_analysis_info(NumSubgoals,TotEdges,NumAnswers):- 
+	get_sdg_info(SDG), %writeln(SDG),
+	sdg_scc_info(SDG,SCCs), %writeln(SCCs),
+        get_last(SCCs,ThisSCC),
+	ThisSCC =  scc(_Level,NumSubgoals,NumAnswers,NumPosEdges,NumNegEdges),
+	TotEdges is NumPosEdges + NumNegEdges + NumSubgoals -1.  % not counting generator nodes
+
+get_last([Elt],Elt):- !.
+get_last([_A|B],Elt):- get_last(B,Elt).
+
+format(Msg):- format(Msg,[]).
+
+%----
+
+:- export max_table_subgoal_size_handler/0.
+:- import max_table_subgoal_size_user_handler/0 from usermod.
+:- dynamic max_table_subgoal_size_user_handler/0.
+
+max_table_subgoal_size_handler:- 
+     max_table_subgoal_size_user_handler,!.
+max_table_subgoal_size_handler:- 
+   clause(max_table_subgoal_size_user_handler,_),
+   warning('max_table_subgoal_size_user_handler was called, but did not succeed.'),
+   !.
+max_table_subgoal_size_handler:- 
+    max_table_subgoal_size_default_handler.
+
+max_table_subgoal_size_default_handler:- 
+	      break_for_tripwires([tables:max_table_subgoal_size_header]).
+
+max_table_subgoal_size_header:- 
+  current_prolog_flag(max_table_subgoal_size,Max),
+  format("~n          WARNING!! XSB-oriented math-talk to follow.~n~n~n",[]),
+  format("Subgoal called with size of ~d~n",[Max]),
+  format("~n  * To continue, reset the flag and then type Ctrl-d~n",[]),
+  format("  * To abort, enter the command 'abort/0'~n",[]),
+  format("  * To inspect the incomplete tabled subgoals, enter the command 'show_incomplete_subgoals'~n",[]).
+
+%----
+
+:- export max_table_answer_size_handler/0.
+:- import max_table_answer_size_user_handler/0 from usermod.
+:- dynamic max_table_answer_size_user_handler/0. 
+
+max_table_answer_size_handler:- 
+     max_table_answer_size_user_handler,!.
+max_table_answer_size_handler:- 
+   clause(max_table_answer_size_user_handler,_),
+   warning('max_table_answer_size_user_handler was called, but did not succeed.'),
+   !.
+max_table_answer_size_handler:- 
+    max_table_answer_size_default_handler.
+
+max_table_answer_size_default_handler:- 
+	      break_for_tripwires([tables:max_table_answer_size_header]).
+
+max_table_answer_size_header:- 
+  current_prolog_flag(max_table_answer_size,Max),
+  format("~n          WARNING!! XSB-oriented math-talk to follow.~n~n~n",[]),
+  format("Answer derived with size of ~d~n",[Max]),
+  format("~n  * To continue, reset the flag and then type Ctrl-d~n",[]),
+  format("  * To abort, enter the command 'abort/0'~n",[]),
+  format("  * To inspect the incomplete tabled subgoals, enter the command 'show_incomplete_subgoals'~n",[]).
+
+%----
+
+:- export max_answers_for_subgoal_handler/0.
+:- import max_answers_for_subgoal_user_handler/0 from usermod.
+:- dynamic max_answers_for_subgoal_user_handler/0. 
+
+max_answers_for_subgoal_handler:- 
+     max_answers_for_subgoal_user_handler,!.
+max_answers_for_subgoal_handler:- 
+   clause(max_answers_for_subgoal_user_handler,_),
+   warning('max_answers_for_subgoal_user_handler was called, but did not succeed.'),
+   !.
+max_answers_for_subgoal_handler:- 
+    max_answers_for_subgoal_default_handler.
+
+max_answers_for_subgoal_default_handler:- 
+	      break_for_tripwires([tables:max_answers_for_subgoal_header]).
+
+max_answers_for_subgoal_header:- 
+  current_prolog_flag(max_answers_for_subgoal,Max),
+  format("~d answers derived for a tabled subgoal~n",[Max]),
+  format("~n  * To continue, reset the flag and then type Ctrl-d~n",[]),
+  format("  * To abort, enter the command 'abort/0'~n",[]),
+  format("  * To inspect the incomplete tabled subgoals, enter the command 'show_incomplete_subgoals'~n",[]).
+
+%----
+
+:- export max_memory_handler/0.
+:- import max_memory_user_handler/0 from usermod.
+:- dynamic max_memory_user_handler/0.
+
+max_memory_handler:- 
+     max_memory_user_handler,!.
+max_memory_handler:- 
+   clause(max_memory_user_handler,_),
+   warning('max_memory_user_handler was called, but did not succeed.'),
+   !.
+max_memory_handler:- 
+    max_memory_default_handler.
+
+max_memory_default_handler:- 
+	      break_for_tripwires([tables:max_memory_header]).
+
+max_memory_header:- 
+  current_prolog_flag(max_memory,Max_mem),
+  format("~nThe maximum user-set memory of ~d has been exceeded~n",[Max_mem]),
+  format("Details can be seen by typing statistics/0~n",[]),
+  format("To support debugging and diagnosis, the limit has been increased by 20\%.~n",[]),
+  format("~n  * To continue set the flag to allow more memory, and then type Ctrl-d~n",[]),
+  format("  * To abort, enter the command 'abort/0'~n",[]).
+
+/*======================================================================*/
+% ANSWER COMPLETION CODE
+/*======================================================================*/
+
+/* Conditionally called after check_complete and in table_try, when
+answers are returned from a completed table and the subgoal may need
+answer completion. */
+%% answer_completion(+LeaderSubGoalFrameAddr,+Template)
+answer_completion(SGF,Template) :-
+	%%writeln(userout,answer_completion(SGF,Template)),
+	ac_loop(SGF,Template),	% iterate answer-completion
+	fail.			% not strictly nec since ac_loop will fail
+answer_completion(SGF,Template) :-
+	stat_set_flag(83,1),	% turn ANSWER_COMPLETION back on,
+				% was turned off in C before entry
+	trie_get_return(SGF,Template,1).
+
+ac_loop(SGF,Tmp) :-
+	%%print_residual_pgm(SGF,Tmp),
+	abolish_table_pred(eval_subgoal_in_residual(_,_),[abolish_tables_singly]),
+	stat_set_flag(103,0),  % reset SIMPLIFICATION_DONE
+	(eval_subgoal_in_residual(SGF,Tmp),fail ; true),
+	delete_answers_for_failing_calls,
+	stat_flag(103,SimpFlg),
+	(SimpFlg =:= 1
+	 ->	%%writeln(userout,iterate),
+		ac_loop(SGF,Tmp)
+	 ;	mark_succeeding_calls_as_answer_completed_and_fail
+	).
+
+delete_answers_for_failing_calls :-
+	get_calls(eval_subgoal_in_residual(ASGF,ATmp),ESGF,ETmp),
+	\+ trie_get_return(ESGF,ETmp,0),
+	get_returns(ASGF,ATmp,ALeaf),
+	force_truth_value(ALeaf,false),
+	%%writeq(userout,made_false(ASGF,ALeaf)),nl(userout),
+	fail.
+delete_answers_for_failing_calls.
+
+mark_succeeding_calls_as_answer_completed_and_fail :-
+	get_calls(eval_subgoal_in_residual(ASGF,ATmp),_,_),
+	once(get_returns(ASGF,ATmp)),
+	set_answer_completed(ASGF),
+	%writeln(userout,set_answer_completed(ASGF)),
+	fail.
+
+eval_dl_in_residual([]).
+eval_dl_in_residual([tnot G|Gs]) :- !,
+	get_call(G,SGF,Tmp),
+	tnot eval_subgoal_in_residual(SGF,Tmp),
+	eval_dl_in_residual(Gs).
+eval_dl_in_residual([G|Gs]) :-
+	(get_call(G,SGF,Tmp)
+	 ->	true
+	 ; excess_vars(G,[],[],Vars), % must be more general
+		get_calls(G,SGF,Tmp),
+		is_most_general_term(Vars)
+	 ->	true
+	 ;	writeln(userout,'MISSING CALL? '(G)),
+		fail
+	),	 
+	%%writeln(userout,goal(G,SGF,Tmp)),
+	eval_subgoal_in_residual(SGF,Tmp),
+	eval_dl_in_residual(Gs).
+	
+:- table eval_subgoal_in_residual/2 as variant,opaque.
+eval_subgoal_in_residual(Gs,Tmp) :-
+	(is_answer_completed(Gs)
+	 ->	true		%,writeln(userout,already_ac(Gs))
+	 ;	get_returns_and_dls(Gs,Tmp,DelayLists),
+		%%writeq(userout,dl(Gs,DelayLists)),nl(userout),
+		(DelayLists == []
+		 ->	true  %,writeln(userout,'MISSING DELAY LIST? '(Gs,Tmp))
+		 ;	member(DL,DelayLists),
+			eval_dl_in_residual(DL)
+		)
+	).
+
+set_answer_completed(SGF) :-
+	answer_completion_ops(1,SGF,_).
+
+is_answer_completed(SGF,Flag) :-
+	answer_completion_ops(2,SGF,Flag).
+
+is_answer_completed(SGF) :-
+	answer_completion_ops(2,SGF,Flag),
+	Flag =:= 1.
+
+answer_completion_ops(_Op,_SGF,_Res) :-
+	'_$builtin'(ANSWER_COMPLETION_OPS).
+
+/*************
+:- import nl/1, writeq/2 from standard.
+:- import write/2 from standard.
+:- import append/3 from basics.
+
+print_residual_pgm(Goal) :-
+	abolish_table_pred(print_residual_pgm(_,_,_)),
+	writeln(userout,''),
+	writeln(userout,'Residual Program:'),
+	get_calls(Goal,SGF,Tmp),
+	print_residual_pgm(Goal,SGF,Tmp).
+print_residual_pgm(_Goal) :- writeln(userout,end_of_pgm).
+
+print_residual_pgm(SGF,Tmp) :-
+	abolish_table_pred(print_residual_pgm(_,_,_)),
+	writeln(userout,''),
+	writeln(userout,'Residual Program:'),
+	print_residual_pgm(unknown,SGF,Tmp).
+print_residual_pgm(_SGF,_Tmp) :- writeln(userout,end_of_pgm).
+
+:- table print_residual_pgm/3 as variant, opaque.
+print_residual_pgm(Goal,SGF,Tmp) :-
+	get_returns_and_dls(SGF,Tmp,DelayLists),
+	nl(userout),
+	(DelayLists == []
+	 ->	print_clause([Goal,SGF,Tmp])
+	 ;	(member(DL,DelayLists),
+		 print_clause(([Goal,SGF,Tmp] :- DL)),
+		 fail
+		 ;
+		 true
+		),
+		(member(DL,DelayLists),
+		 member(Goal0,DL),
+		 (Goal0 = tnot(SGoal)
+		  ->	 true
+		  ;	 SGoal = Goal0
+		 ),
+		 (get_call(SGoal,SSGF,STmp)
+		  ->	 true
+		  ; excess_vars(SGoal,[],[],Vars), % must be more general
+		    get_calls(SGoal,SSGF,STmp),
+		    is_most_general_term(Vars)
+		  ->	 true
+		  ;	 fail
+		 ),
+		 print_residual_pgm(SGoal,SSGF,STmp)
+		)
+	),
+	fail.
+
+print_clause((Head:-Body)) :- !,
+	writeq(userout,Head),
+	writeln(userout,' :- '),
+	(append(_,[Goal|Goals],Body),
+	 write(userout,'    '),
+	 writeq(userout,Goal),
+	 (Goals == []
+	  ->	 writeln(userout,'.')
+	  ;	 writeln(userout,',')
+	 ),
+	 fail
+	 ;
+	 true
+	).
+print_clause(Head) :-
+	writeq(userout,Head),
+	writeln(userout,'.').
+
+/*======================================================================*/
+/* Deprecated (but maintained for backwards compatability) */
+
+abolish_table_call(Term,Options) :-
+	abolish_table_subgoals(Term,Options).
+abolish_table_call(Term) :-
+	abolish_table_subgoals(Term).
+
+/*======================================================================*/
+
+/* print to userout tabled predicates, and their number of calls and
+answers, for tabled predicate with non-zero calls. */
+
+dump_table_counts :-
+	table_counts(Module,Pred,Arity,CallCnt,AnsCnt),
+	CallCnt =\= 0,
+	write(userout,'Table Calls: '),
+	write(userout,CallCnt),
+	write(userout,', Answers: '),
+	write(userout,AnsCnt),write(userout,', '),
+	writeq(userout,Pred), write(userout,'/'),
+	write(userout,Arity),
+	write(userout,' '(Module)),
+	writeln(userout,'.'),
+	fail.
+
+/* return module, predicate, arity, number of calls, and number of
+answers, for all tabled predicates.  */
+
+table_counts(Module,Pred,Arity,CallCnt,AnsCnt) :-
+	current_predicate(Module:Pred/Arity),
+	Module:Pred/Arity \== usermod:':'/2, % messes up later calls
+	functor(Term,Pred,Arity),
+	predicate_property(Module:Term,tabled),
+	functor(UCall,Pred,Arity),
+	term_new_mod(Module,UCall,Call),
+	conset('_call_cntr',0),
+	conset('_ans_cntr',0),
+	(get_calls(Call,SF,Skel),
+	 coninc('_call_cntr'),
+	 get_returns(SF,Skel),
+	 coninc('_ans_cntr'),
+	 fail
+	 ;	
+	 conget('_call_cntr',CallCnt),
+	 conget('_ans_cntr',AnsCnt)
+	).
+
+
+end_of_file.
+
+:- export explain_u_val/4.
+:- import brat_undefined/0 from xsbbrat.
+explain_u_val(Call,Answer,Reason,Type):-
+	get_answer_leaf(Call,Answer,AnswerLeaf),
+%	brat_undefined,
+	get_answer_leaf(brat_undefined,brat_undefined,BratLeaf),
+	writeln(bl(BratLeaf)),
+	floundered_undefined(a),
+	get_answer_leaf(floundered_undefined(a),floundered_undefined(a),FlounderedLeaf),
+	writeln(fl(FlounderedLeaf)),
+	(trans_ans_depends_ptr(AnswerLeaf,_),fail ; true),
+	get_call(trans_ans_depends_ptr(AnswerLeaf,_),SF,_Return),	
+	explain_u_val_1(SF,BratLeaf,FlounderedLeaf,AnswerLeaf,Reason,Type).
+
+explain_u_val_1(SF,BratLeaf,_FlounderedLeaf,_AnswerLeaf,bounded_rationality,_Type):- 
+	get_returns(SF,ret(BratLeaf),_AnsLeaf).
+explain_u_val_1(SF,_BratLeaf,FlounderedLeaf,_AnswerLeaf,floundered,_Type):- 
+	get_returns(SF,ret(FlounderedLeaf),_AnsLeaf).
+%explain_u_val_1(SF,BratLeaf,FlounderedLeaf,AnswerLeaf,negative_loops,Type):- 
+
+/* ---------------------- end of file tables.P ------------------------ */
+/* 07/05/01  -- work area for functions under development */
+
+find_components(Call):- 
+	get_call(Call,CallStr,Return),	% vars of 'Call' are put into 'Return'
+	trie_get_return(CallStr,Return),
+	get_lastnode_cs_retskel(_,Leaf,_,_),
+	table_inspection_function(FIND_COMPONENTS,Leaf,_,_,_).
+
+find_forward_dependencies(Call):- 
+	get_call(Call,CallStr,Return),	% vars of 'Call' are put into 'Return'
+	trie_get_return(CallStr,Return),
+	get_lastnode_cs_retskel(_,Leaf,_,_),
+	table_inspection_function(FIND_FORWARD_DEPENDENCIES,Leaf,_,_,_).
+
+find_answers(Pred):- 
+	table_inspection_function(FIND_ANSWERS,Pred,_,_,_).
+
+print_ls :- table_inspection_function(PRINT_LS,_,_,_,_).
+print_tr :- table_inspection_function(PRINT_TR,_,_,_,_).
+print_heap(X,Y) :- table_inspection_function(PRINT_HEAP,X,Y,_,_).
+print_cp(_Title) :-table_inspection_function(PRINT_CP,Title,_,_,_).
+print_regs :- table_inspection_function(PRINT_REGS,_,_,_,_).
+print_all_stacks :- table_inspection_function(PRINT_ALL_STACKS,_,_,_,_).
+
+/* Right now, experimental for aggregs.P */
+	
+
+:- dynamic '_$return'/1.
+:- index('_$return'/1,trie).
+
+
+get_unifiable_returns(TableEntry,Skel, Leaf) :-
+	\+ \+ (get_unifiable_returns_1(TableEntry, Skel, ReturnList),
+	       ReturnList \== [],
+	       t_assert_2('_$return'(ReturnList),_)),
+	system_retract_fact('_$return'(ReturnList)),
+%	    change_attv_to_var(ReturnTemplate),
+	member('_$get_returns'(TableEntry,Leaf),ReturnList).
+	
+get_unifiable_returns_1(TableEntry, Skel, ReturnsList):- 
+	findall('_$get_returns'(TableEntry,RetLeaf),
+		'_$$get_returns'(TableEntry,Skel,RetLeaf),
+		ReturnsList).
+
+
+/*
+ * For [temporary] backward compatibility, redefine table_state/2 in
+ * terms of the newer table_state/4.
+ */
+
+table_state(Call, State) :-
+	table_state(Call, PredType, _CallType, AnsSetStatus),
+	(PredType == variant
+         -> ( AnsSetStatus == undefined
+             -> State = no_call_yet
+	     ;  State = AnsSetStatus )
+	 ; PredType == undefined -> State = undef
+        )
+

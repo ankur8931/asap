@@ -1,0 +1,34 @@
+
+To add a package do:
+
+1. Put the package in a new subdirectory.
+
+2. Write a short bootstrapping file: look at the existing ones in the
+   packages directory. Most likely, you can reuse an existing one by
+   changing the name of the package and the source directory.
+
+3. Add your package to  packages/Makefile, so it would be compiled with make.
+   Look into this file to see how it is done for the existing packages.
+
+4. Create a Makefile in the package source directory. Again, take a look at
+   the existing ones and modify appropriately.
+
+
+NOTE: If your package contains C code, things are more complex.
+      Take a look at the perlmatch package (perlmatch.P and perlmatch/)
+      for ideas.
+
+
+Note that XSB has a uniform way to provide information about various packages:
+the predicate package_configuration/2.
+
+Typically, a bootstrapping code would assert
+package_configuration(dir(<packageName>), <source-directory>).
+
+This is done through bootstrap_package/2. This function also asserts
+package_configuration(loaded(<packageName>), yes).
+when the package is loaded. This allows XSB to query which
+packages are installed.
+
+Your bootstrapping code might assert other things there, such as
+package_configuration(version(<packageName>), <version-number>).

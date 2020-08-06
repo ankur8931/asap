@@ -1,0 +1,282 @@
+/* a general purpose scanner for standardizing */
+:- export scan/2, scan/3, set_scan_pars/1, get_scan_pars/1.
+
+% :- import upper_case/2, letter_or_digit/1, whitespace/1, special_char/1,
+% 	digit/1, letter/1
+% 	from stdutils.
+
+
+:- import whitespace/1, special_char/1, digit/1, letter/1 from usermod.
+:- import xsb_configuration/2 from xsb_configuration.
+:- import concat_atom/2 from string.
+:- import integer/1 from standard.
+
+%%%%%%%% basic predicates %%%%%%%%%%%%%%%%%%%%%%%
+my_load_dyn(File) :-
+	xsb_configuration(install_dir,InstallDir),
+	concat_atom([InstallDir,'/lib/',File],FullName),
+	load_dyn(FullName).
+
+?- my_load_dyn(stdscan_defs).
+
+% uppercase
+upper_case(Ci,Co) :-
+	(Ci >= 0'a, Ci =< 122
+	 ->	Co is Ci - 32
+	 ;	Co = Ci
+	).
+
+letter_or_digit(L) :- letter(L).
+letter_or_digit(D) :- digit(D).
+
+
+%%%%%%%% parameters %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+:- dynamic set_case/2.
+:- retractall(set_case(_,_)), 
+	assert((set_case(Ci,Co) :- upper_case(Ci,Co))).
+
+:- dynamic set_case_in_lit/2.
+:- retractall(set_case_in_lit(_,_)),
+	assert(set_case_in_lit(C,C)).
+
+% tokenize_whitespace causes the scanner to return the token '' 
+% when it finds whitespace separating two tokens (unless the two
+% tokens are letter sequences; since two letter sequences can be two
+% tokens ONLY if they are separated by whitespace, such an indication
+% of whitespace would be redundant.)
+
+:- dynamic tokenize_whitespace/1.
+:- retractall(tokenize_whitespace(_)), 
+	assert(tokenize_whitespace(_)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+set_scan_pars([]).
+set_scan_pars([Par|Pars]) :-
+	set_scan_par(Par),
+	set_scan_pars(Pars).
+
+set_scan_par(whitespace) :- !,
+	retractall(tokenize_whitespace(_)),
+	assert(tokenize_whitespace(_)).
+set_scan_par(no_whitespace) :- !,
+	retractall(tokenize_whitespace(_)).
+set_scan_par(upper_case) :- !,
+	retractall(set_case(_,_)),
+	assert((set_case(Ci,Co) :- upper_case(Ci,Co))).
+set_scan_par(no_case) :- !,
+	retractall(set_case(_,_)),
+	assert(set_case(C,C)).
+set_scan_par(upper_case_in_lit) :- !,
+	retractall(set_case_in_lit(_,_)),
+	assert((set_case_in_lit(Ci,Co) :- upper_case(Ci,Co))).
+set_scan_par(no_case_in_lit) :- !,
+	retractall(set_case_in_lit(_,_)),
+	assert(set_case_in_lit(C,C)).
+set_scan_par(whitespace(Ws)) :-
+	add_to_whitespace(Ws).
+set_scan_par(letter(Ls)) :-
+	add_to_letter(Ls).
+set_scan_par(special_char(Ls)) :-
+	add_to_special_char(Ls).
+set_scan_par(Clause) :-
+	(Clause = (Head:-_Body)
+	 ->	true
+	 ;	Head = Clause
+	),
+	retractall(Head),
+	assert(Clause).
+
+remove_code(C) :-
+	retractall(whitespace(C)),
+	retractall(special_char(C)),
+	retractall(digit(C)),
+	retractall(letter(C)).
+
+add_to_letter([]) :- !.
+add_to_letter([L|Ls]) :- !,
+	remove_code(L),
+	assert(letter(L)),
+	add_to_letter(Ls).
+add_to_letter(L) :-
+	remove_code(L),
+	assert(letter(L)).
+
+add_to_whitespace([]) :- !.
+add_to_whitespace([W|Ws]) :- !,
+	remove_code(W),
+	assert(whitespace(W)),
+	add_to_whitespace(Ws).
+add_to_whitespace(W) :- 
+	remove_code(W),
+	assert(whitespace(W)).
+
+add_to_special_char([]) :- !.
+add_to_special_char([S|Ss]) :- !,
+	remove_code(S),
+	assert(special_char(S)),
+	add_to_whitespace(Ss).
+add_to_special_char(S) :- 
+	remove_code(S),
+	assert(special_char(S)).
+
+get_scan_pars([White,Case,Case_in_lit]) :-
+	(tokenize_whitespace(_)
+	 ->	White = tokenize_whitespace(_)
+	 ;	White = (tokenize_whitespace(_) :- fail)
+	),
+	clause(set_case(X,Y),Bod),
+	Case = (set_case(X,Y):-Bod),
+	clause(set_case_in_lit(X,Y),Bod2),
+	Case_in_lit = (set_case_in_lit(X,Y):-Bod2).
+
+%%%%%%%%%%%%%%%%%%%%% The Scanner %%%%%%%%%%%%%%%%%%%
+/* scan(+CodeList,+FieldSeparator,-TokenListList): given a list
+of codes, and a field separator, returns a list of token-lists,
+each containing the tokens between the separators. */
+
+scan(List,Sep,[Tokens|TokenList]) :-
+	(atom(Sep)
+	 ->	atom_codes(Sep,[Rsep])
+	 ;	Rsep = Sep
+	),
+	scan(List,Rsep,Rest,Tokens),
+	(Rest \== []
+	 ->	Rest = [Rsep|More],
+		scan(More,Rsep,TokenList)
+	 ;	TokenList = []
+	).
+
+scan(List,Tokens) :-
+	scan(List,-1,[],Tokens).
+
+% scan(+CodeList,+SepCode,-Rest,-TokenList)
+% The workhorse, returns a list of tokens to the next
+scan([],_,[],[]).
+scan([C0|Cs],Sep,Rest,Toks) :-
+	set_case(C0,C),
+	(C0 =:= Sep
+	 ->	Rest = [C0|Cs],
+		Toks = []
+	 ; whitespace(C)
+	 ->	scan_whitespace(Cs,Cso),
+		(tokenize_whitespace(_)
+		 ->	Toks = [''|Toksi]
+		 ;	Toks = Toksi
+		),
+		scan(Cso,Sep,Rest,Toksi)
+	 ; digit(C)
+	 ->	scan_numberlet(Cs,HasLet,Digs,[],Cso1),
+	    atom_codes(Num,[C|Digs]),
+		(var(HasLet)
+		 ->	Tok = integer(Num)
+		 ;	Tok = mixed(Num)
+		),
+		(tokenize_whitespace(_),Cso1 = [NC|Cso2],whitespace(NC)
+		 ->	scan_whitespace(Cso2,Cso3),
+			(Cso3 = [NNC|_],letter_or_digit(NNC)
+			 ->	Toks = [Tok|Tokso],
+				scan(Cso3,Sep,Rest,Tokso)
+			 ;	Toks = [Tok,''|Tokso],
+				scan(Cso3,Sep,Rest,Tokso)
+			)
+		 ;	Toks = [Tok|Tokso],
+			scan(Cso1,Sep,Rest,Tokso)
+		)
+	 ; letter(C)
+	 ->	scan_lettersnum(Cs,HasNum,LetterCodes,[],Cso1),
+		atom_codes(TokA,[C|LetterCodes]),
+		(var(HasNum)
+		 ->	Tok = TokA
+		 ;	Tok = mixed(TokA)
+		),
+		(tokenize_whitespace(_),Cso1 = [NC|Cso2],whitespace(NC)
+		 ->	scan_whitespace(Cso2,Cso3),
+			(Cso3 = [NNC|_],letter_or_digit(NNC)
+			 ->	Toks = [Tok|Tokso],
+				scan(Cso3,Sep,Rest,Tokso)
+			 ;	Toks = [Tok,''|Tokso],
+				scan(Cso3,Sep,Rest,Tokso)
+			)
+		 ;	Toks = [Tok|Tokso],
+			scan(Cso1,Sep,Rest,Tokso)
+		)
+	 ; delim(C,EndDel,Term)
+	 ->	scan_literal(Cs,EndDel,LitCodes,[],Cso),
+		atom_codes(Lit,LitCodes),
+		arg(1,Term,Lit),
+		Toks = [Term|Tokso],
+		scan(Cso,Sep,Rest,Tokso)
+	 ; special_char(C)
+	 ->	atom_codes(Tok,[C]),
+		Toks = [Tok|Tokso],
+		scan(Cs,Sep,Rest,Tokso)
+	 ;	write('Unrecognized char (ignored): '),
+		writeln(C),
+		scan(Cs,Sep,Rest,Toks)
+	).
+
+scan_whitespace([],[]) :- !.
+scan_whitespace(Csi,Cso) :-
+	Csi = [C|Cs],
+	(whitespace(C)
+	 ->	scan_whitespace(Cs,Cso)
+	 ;	Cso = Csi
+	).
+
+scan_numberlet([],_,Digs,Digs,[]).
+scan_numberlet([C0|Cs],HasLet,Digsi,Digso,Cso) :-
+	set_case(C0,C),
+	(digit(C)
+	 ->	Digsi = [C|Digs],
+		scan_numberlet(Cs,HasLet,Digs,Digso,Cso)
+	 ; letter(C)
+	 ->	Digsi = [C|Digs],
+		HasLet = haslet,
+		scan_numberlet(Cs,HasLet,Digs,Digso,Cso)
+	 ;	Digsi = Digso,
+	    Cso = [C|Cs]
+	).
+
+scan_literal([],EndDel,Lit,Lit,[]) :-
+	write('End of stream inside literal with terminating delimiter: '),
+	put(EndDel),
+	nl.
+scan_literal([C|Cs],EndDel,Liti,Lito,Cso) :-
+	(C == EndDel
+	 ->	Lito = Liti,
+		Cso = Cs
+	 ;	set_case_in_lit(C,Cr),
+		Liti = [Cr|Lit],
+		scan_literal(Cs,EndDel,Lit,Lito,Cso)
+	).
+
+scan_lettersnum([],_,Lets,Lets,[]) :- !.
+scan_lettersnum(Csi,HasNum,Letsi,Letso,Cso) :-
+	Csi = [C0|Cs],
+	set_case(C0,C),	
+	(letter(C)
+	 ->	set_case(C,Cr),
+		Letsi = [Cr|Lets],
+		scan_lettersnum(Cs,HasNum,Lets,Letso,Cso)
+	 ; digit(C)
+	 ->	Letsi = [C|Lets],
+		HasNum = hasnum,
+		scan_lettersnum(Cs,HasNum,Lets,Letso,Cso)
+	 ;	Letso = Letsi,
+		Cso = Csi
+	).
+
+delim(_,_,_) :- fail.
+%delim(0'',0'',squote(_)).
+%delim(0'",0'",dquote(_)).
+
+
+/*********
+for(I,I,H) :- I =< H.
+for(I,L,H) :- L < H, L1 is L+1, for(I,L1,H).
+
+pc(L,H) :- for(I,L,H),put(I),tab(1),writeln(I),fail.
+pcv(L,H,T) :- for(I,L,H),write(T),write('('),write(I),writeln(').'),fail.
+**********/
+
+

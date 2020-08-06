@@ -1,0 +1,52 @@
+
+?- [pcre].
+
+:- 
+	writeln(''),
+	writeln('Pattern: \d{5}-\d{4}\ [A-Z]{2}'), writeln('Subject: 1 New World Street 12345-6789 NY.'),
+	pcre:match('\d{5}-\d{4}\ [A-Z]{2}','1 New World Street 12345-6789 NY.',X,'bulk'),
+	write('Output: '),writeln(X),writeln('').
+	
+%% X = [match(12345-6789 NY,1 New World Street ,.,[])]
+
+%% Same example but with parenthesized expressions
+
+:- 
+	writeln('Pattern: (\d{5}-\d{4})\ [A-Z]{2}'), writeln('Subject: 1 New World Street 12345-6789 NY.'),
+	pcre:match('(\d{5}-\d{4})\ [A-Z]{2}','1 New World Street 12345-6789 NY.',X,'bulk'),
+	write('Output: '),writeln(X),writeln('').
+	
+%% X = [match(12345-6789 NY,1 New World Street ,.,[12345-6789])]
+
+:- 
+	writeln('Pattern: ([L-Z]in)'), writeln('Subject: Windows and Linux'),
+	pcre:match('([L-Z]in)','Windows and Linux',X,'bulk'),
+	write('Output: '),writeln(X),writeln('').
+	
+%% X = [match(Win,,dows and Linux,[Win]),match(Lin,Windows and ,ux,[Lin])]
+
+:- 
+	writeln('Pattern: ([[:digit:]]{3})-([[:digit:]]{2})-([[:digit:]]{4})'),
+	writeln('Subject: Example of an SSN might be 123-45-6789'),
+	pcre:match('([[:digit:]]{3})-([[:digit:]]{2})-([[:digit:]]{4})','Example of an SSN might be 123-45-6789',X,'bulk'),
+	write('Output: '),writeln(X),writeln('').
+	
+%% X = [match(123-45-6789,Example of an SSN might be ,,[123,45,6789])]
+
+:- 
+	writeln('Pattern: \A(\w{5})\s'), writeln('Subject: H3l10 is an alphanumeric word. $%&@# is not.'),
+	pcre:match('\A(\w{5})\s','H3l10 is an alphanumeric word. $%&@# is not.',X,'bulk'),
+	write('Output: '),writeln(X),writeln('').
+	
+%% X = [match(H3l10 ,,is an alphanumeric word. $%&@# is not.,[H3l10])]
+	
+:- 
+	writeln('Pattern: is'),
+	writeln('Subject: This is the issue of the Mississippi.'),
+	writeln('Substitution: was'),
+	pcre:substitute(is,'This is the issue of the Mississippi.','was',X),
+	write('Output: '),writeln(X),writeln('').
+	
+%% X = Thwas was the wassue of the Mwasswassippi.
+
+

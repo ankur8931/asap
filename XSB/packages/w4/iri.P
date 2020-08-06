@@ -1,0 +1,422 @@
+%% IRI References (version 1.0 / October 2002)
+%%
+%% This module implements the parsing of IRI references according to RFC 2396 and RFC 2732.
+%% It also resolves relative references with respect to a given base IRI.
+%%
+%% (c) 2003 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%
+%% Centro de Inteligência Artificial da Universidade Nova de Lisboa
+%% Quinta da Torre
+%% 2829-516 Caparica
+%% Portugal
+%%
+
+:- export parseIRIref/2.
+:- export parseIRIref/3.
+:- export resolveIRIref/3.
+
+
+:- export isIRIref/1.
+:- export isIRI/1.
+:- export isAbsoluteIRI/1.
+:- export isRelativeIRI/1.
+
+:- export getIRIrefScheme/2.
+:- export getIRIrefAuthority/2.
+:- export getIRIrefPath/2.
+:- export getIRIrefQuery/2.
+:- export getIRIrefFragment/2.
+
+:- export createEmptyIRIref/1.
+:- export createIRIref/6.
+
+:- export setIRIrefScheme/3.
+:- export setIRIrefAuthority/5.
+:- export setIRIrefPath/4.
+:- export setIRIrefQuery/3.
+:- export setIRIrefFragment/3.
+
+
+% Support predicates for conversion between atoms, strings and IRI references:
+:- export atom2iriref/2.
+:- export iriref2atom/2.
+
+:- export iriref2string/2.
+:- export iriref2string/3.
+
+:- export iri2uri/2.
+:- export iri2uri/3.
+
+:- export filename2uri/2.
+:- export filename2uri/3.
+
+:- ensure_loaded( iriparse ).
+:- ensure_loaded( utilities ).
+:- ensure_loaded( builtins ).
+
+:- import parse_iri_reference/5 from iriparse.
+:- import operating_system_type/1 from builtins.
+
+:- import append/3 from builtins.
+:- import reverse/2 from builtins.
+
+:- import ucs2utf8/3 from utilities.
+:- import atom2ucs/3 from utilities.
+
+
+parseIRIref( yes, String, IRIref ) :- 
+	!, parseIRIref( String, IRIref ).
+parseIRIref(  no, String, IRIref ) :- 
+	!, append( String, [-1], TermString ), 
+	   parseIRIref( TermString, IRIref ).
+
+
+parseIRIref( [First|RestString], IRIref ) :-
+	parse_iri_reference( First, RestString, IRIref, -1, [] ).
+
+isIRIref( iriref( _, _, _, _, _ ) ).
+
+isIRI( iriref( scheme(_), _, _, _, _ ) ).
+
+isAbsoluteIRI( iriref( scheme(_), _, _, _, [] ) ).
+
+isRelativeIRI( iriref( [], _, _, _, _ ) ).
+
+getIRIrefScheme( iriref( S, _, _, _, _ ), S ).
+getIRIrefAuthority( iriref( _, A, _, _, _ ), A ).
+getIRIrefPath( iriref( _, _, P, _, _ ), P ).
+getIRIrefQuery( iriref( _, _, _, Q, _ ), Q ).
+getIRIrefFragment( iriref( _, _, _, _, F ), F ).
+
+createEmptyIRIref( iriref( [], [], [], [], [] ) ).
+createIRIref( S, A, P, Q, F, iriref( S, A, P, Q, F ) ).
+
+setIRIrefScheme( iriref( _, A, P, Q, F ), Scheme, iriref( scheme(Scheme), A, P, Q, F ) ).
+setIRIrefAuthority( iriref( S, _, P, Q, F ), UserInfo, Host, Port, iriref( S, authority(UserInfo,Host,Port), P, Q, F ) ).
+setIRIrefPath( iriref( S, A, _, Q, F ), AbsRel, Path, iriref( S, A, path(AbsRel,Path), Q, F ) ) :- !, ( AbsRel = abs ; AbsRel = rel ).
+setIRIrefQuery( iriref( S, A, P, _, F ), Query, iriref( S, A, P, query(Query), F ) ).
+setIRIrefFragment( iriref( S, A, P, Q, _ ), Fragment, iriref( S, A, P, Q, fragment(Fragment) ) ).
+
+
+
+%% Algorith for resolving URIs (and IRIs), according to RFC2396bis
+/*
+      if defined(R.scheme) then
+         T.scheme    = R.scheme;
+         T.authority = R.authority;
+         T.path      = remove_dot_segments(R.path);
+         T.query     = R.query;
+      else
+         if defined(R.authority) then
+            T.authority = R.authority;
+            T.path      = remove_dot_segments(R.path);
+            T.query     = R.query;
+         else
+            if (R.path == "") then
+               T.path = Base.path;
+               if defined(R.query) then
+                  T.query = R.query;
+               else
+                  T.query = Base.query;
+               endif;
+            else
+               if (R.path starts-with "/") then
+                  T.path = remove_dot_segments(R.path);
+               else
+                  T.path = merge(Base.path, R.path);
+                  T.path = remove_dot_segments(T.path);
+               endif;
+               T.query = R.query;
+            endif;
+            T.authority = Base.authority;
+         endif;
+         T.scheme = Base.scheme;
+      endif;
+
+      T.fragment = R.fragment;
+*/
+
+%% Resolution of relative references
+%% resolveIRI( + RelURI, + BaseURI, - ResolvedURI )
+%% Implements the algorithm described in RFC 2396 (section 5.2) and RFC 2396 bis
+%%
+
+% It is an absolute IRI
+resolveIRIref( iriref( scheme(S), A, P, Q, F ), _, iriref( scheme(S), A, NewP, Q, F ) ) :- !,
+	remove_dot_segments( P, NewP ).
+
+% A network path
+resolveIRIref( iriref( [], authority(U,H,I), P, Q, F ), iriref(scheme(S),_,_,_,_), iriref( scheme(S), authority(U,H,I), NewP, Q, F ) ) :- !,
+	remove_dot_segments( P, NewP ).
+
+resolveIRIref( iriref( [], [], [], query(Q), F ), iriref(scheme(S),A,P,_,_), iriref( scheme(S), A, P, query(Q), F ) ) :- !.
+
+resolveIRIref( iriref( [], [], [], [], F ), iriref(scheme(S),A,P,Q,_), iriref( scheme(S), A, P, Q, F ) ) :- !.
+
+resolveIRIref( iriref( [], [], path(Type,Segments), Q, F ), iriref(scheme(S),A,P,_,_), iriref( scheme(S), A, NewP, Q, F ) ) :- !,
+	( Type = rel -> merge_path( P, path(Type,Segments), AuxPath ) ; AuxPath = path(Type,Segments) ), 
+	remove_dot_segments( AuxPath, NewP ).
+
+
+/* From RFC2396bis (merge path )
+
+   The pseudocode above refers to a merge routine for merging a
+   relative-path reference with the path of the base URI.  This is
+   accomplished as follows:
+
+   o  If the base URI's path is empty, then return a string consisting
+      of "/" concatenated with the reference's path component;
+      otherwise,
+
+   o  If the base URI's path is non-hierarchical, as indicated by not
+      beginning with a slash, then return a string consisting of the
+      reference's path component; otherwise,
+
+   o  Return a string consisting of the reference's path component
+      appended to all but the last segment of the base URI's path (i.e.,
+      any characters after the right-most "/" in the base URI path are
+      excluded).
+
+*/
+
+merge_path( [], path(rel,Segments), path(abs,Segments) ) :- !.
+merge_path( path(rel,_), path(rel,Segments), path(rel,Segments) ) :- !.
+merge_path( path(Type,BaseSegs), path(rel,RelSegs), path(Type,Segments) ) :- !,
+	join_components( BaseSegs, RelSegs, Segments ).
+
+join_components( [], Path, Path ) :- !.
+join_components( [_], Path, Path ) :- !. 	% last component of base URI should be removed
+join_components( [Seg|RestSegs], Rel, [Seg|Path] ) :- !,
+	join_components( RestSegs, Rel, Path ).
+
+remove_dot_segments( [], [] ) :- !.
+remove_dot_segments( path(Type,Path), path(Type,ResPath) ) :-
+	remove_dot_segmens( Path, [], RevPath ),
+	reverse( RevPath, ResPath ).
+
+% Compliance with RFC 2396, and keeping abnormal initial .. segments.
+% This is the expected behaviour according to WD - RDF Test Cases
+/*
+remove_dot_segmens( [], Stack, Stack ) :- !.
+remove_dot_segmens( [segment(".")], Stack, [segment("")|Stack] ) :- !.
+remove_dot_segmens( [segment("..")], [_|Stack], [segment("")|Stack] ) :- !.
+remove_dot_segmens( [segment(".")|RestSegs], Stack, Res ) :- !,
+	remove_dot_segmens( RestSegs, Stack, Res ).
+remove_dot_segmens( [segment("..")|RestSegs], [_|Stack], Res ) :- !,
+	remove_dot_segmens( RestSegs, Stack, Res ).
+remove_dot_segmens( [segment("..")|RestSegs], [], NewRes ) :- !,
+	remove_dot_segmens( RestSegs, [], Res ),
+	append( Res, [segment("..")], NewRes ).				% Inefficient, but only needed in abnormal examples!
+remove_dot_segmens( [segment(S)|RestSegs], Stack, Res ) :- !,	
+	remove_dot_segmens( RestSegs, [segment(S)|Stack], Res ).
+*/
+
+% Compliance with RFC 2396 and RFC 2396 bis, by removing abnormal initial .. segments
+% Simpler and more efficient implementation! But not compliant to RDF...
+
+
+remove_dot_segmens( [], Stack, Stack ) :- !.
+remove_dot_segmens( [segment(".")], Stack, [segment("")|Stack] ) :- !.
+remove_dot_segmens( [segment("..")], [], [segment("")] ) :- !.
+remove_dot_segmens( [segment("..")], [_|Stack], [segment("")|Stack] ) :- !.
+remove_dot_segmens( [segment(".")|RestSegs], Stack, Res ) :- !,
+	remove_dot_segmens( RestSegs, Stack, Res ).
+remove_dot_segmens( [segment("..")|RestSegs], [_|Stack], Res ) :- !,
+	remove_dot_segmens( RestSegs, Stack, Res ).
+remove_dot_segmens( [segment("..")|RestSegs], [], Res ) :- !,
+	remove_dot_segmens( RestSegs, [], Res ).
+remove_dot_segmens( [segment(S)|RestSegs], Stack, Res ) :- !,
+	remove_dot_segmens( RestSegs, [segment(S)|Stack], Res ).
+
+
+
+% Conversion of atoms to IRI references and vice-versa.
+
+atom2iriref( Atom, IRIRef ) :-
+	atom2ucs( Atom, IRIString, [-1] ),
+	parseIRIref( IRIString, IRIRef ).
+
+iriref2atom( IRIRef, Atom ) :-
+	iriref2string( IRIRef, IRIStr ),
+	atom_codes( Atom, IRIStr ).
+
+
+% Recomposition of IRI references to a String of Unicode characters
+
+iriref2string( IRIref, String ) :- iriref2string( IRIref, String, [] ).
+
+iriref2string( iriref( S, A, P, Q, F ), String, RestString ) :-
+	getScheme( S, String, Authority ),
+	getAuthority( A, Authority, Path ),
+	getPath( P, Path, Query ),
+	getQuery( Q, Query, Fragment ),
+	getFragment( F, Fragment, RestString ).
+
+getScheme( [], Scheme, Scheme ) :- !.
+getScheme( scheme(Scheme), String, RestString ) :- 
+	ucs2utf8( Scheme, String, [0':|RestString] ).
+
+getAuthority( [], Auth, Auth ) :- !.
+getAuthority( authority(UserInfo,Host,Port), [0'/,0'/|String], RestString ) :-
+	getUserInfo( UserInfo, String, HostString ), 
+	getHost( Host, HostString, PortString ),
+	getPort( Port, PortString, RestString ).
+
+getUserInfo( [], String, String ) :- !.
+getUserInfo( User, String, RestString ) :-
+	ucs2utf8( User, String, [0'@|RestString] ).
+
+getHost( [], String, String ) :- !.
+getHost( Host, String, RestString ) :- !,
+	ucs2utf8( Host, String, RestString ).
+	
+getPort( [], String, String ) :- !.
+getPort( Port, String, RestString ) :-
+	ucs2utf8( [0':|Port], String, RestString ).
+
+
+getPath( [], String, String ) :- !.
+getPath( path(rel,[Seg|RestSegs]), String, RestString ) :- !,
+	getSegment( Seg, String, AuxString ), !,
+	getComposedSegs( RestSegs, AuxString, RestString ). 
+getPath( path(abs,Path), String, RestString ) :- !,
+	getComposedSegs( Path, String, RestString ).
+
+getComposedSegs( [], String, String ) :- !.
+getComposedSegs( [S|RestSegs], [0'/|String], RestString ) :- 
+	getSegment( S, String, AuxString ), !,
+	getComposedSegs( RestSegs, AuxString, RestString ).
+
+getSegment( segment( S ), String, RestString ) :- 
+	ucs2utf8( S, String, RestString ).
+
+getQuery( [], Query, Query ) :- !.
+getQuery( query(Query), String, RestString ) :- 
+	ucs2utf8( [0'?|Query], String, RestString ).
+
+getFragment( [], Fragment, Fragment) :- !.
+getFragment( fragment(Fragment), String, RestString ) :- 
+	ucs2utf8( [0'#|Fragment], String, RestString ).
+
+
+% Conversion of filenames to URIs
+
+filename2uri( FileString, URIString ) :-
+	filename2uri( FileString, URIString, [] ).
+
+filename2uri( FileString, URIString, RestString ) :-
+	operating_system_type( OS ),
+	( OS = windows -> URIString = [0'f,0'i,0'l,0'e,0':,0'/,0'/|PathString] ; URIString = [0'f,0'i,0'l,0'e,0':|PathString] ),
+	filename2uri( FileString, OS, PathString, RestString ).
+
+filename2uri( [], _, RestURI, RestURI ) :- !.
+filename2uri( [92|RestChars], windows, [0'/|URI], RestURI ) :- !,		% Character \
+	filename2uri( RestChars, windows, URI, RestURI ).
+filename2uri( [Char|RestChars], OS, URI, RestURI ) :-
+	excludeduric( Char ), !,
+	escapeoctet( Char, URI, AuxURI ), !,
+	filename2uri( RestChars, OS, AuxURI, RestURI ).
+filename2uri( [Char|RestChars], OS, [Char|URI], RestURI ) :-
+	!, filename2uri( RestChars, OS, URI, RestURI ).
+
+
+% Conversion of IRIs to URIs
+
+iri2uri( String, URI ) :-
+	iri2uri( String, URI, [] ).
+
+iri2uri( [], RestURI, RestURI ) :- !.
+iri2uri( [IRIChar|RestIRIChars], URI, RestURI ) :- 
+	iric2uri( IRIChar, URI, AuxURI ),
+	!, iri2uri( RestIRIChars, AuxURI, RestURI ).
+
+iric2uri( Code, String, RestString ) :-
+	Code < 16'80, !, 
+	( excludeduric( Code ) -> escapeoctet( Code, String, RestString ) ; String = [Code|RestString] ).
+iric2uri( Code, String, RestString ) :-
+	Code < 16'07FF, !, 
+	Byte1 is 16'C0 \/ ( Code >> 6 ),
+	Byte2 is 16'80 \/ ( Code /\ 16'3F ),
+	escapeoctet( Byte1, String, Rest1 ),
+	escapeoctet( Byte2, Rest1, RestString ).
+iric2uri( Code, String, RestString ) :-
+	Code < 16'FFEF, !, 
+	Byte1 is 16'E0 \/ ( Code >> 12 ),
+	Byte2 is 16'80 \/ ( ( Code >> 6 ) /\ 16'3F),
+	Byte3 is 16'80 \/ ( Code /\ 16'3F),
+	escapeoctet( Byte1, String, Rest1 ),
+	escapeoctet( Byte2, Rest1, Rest2 ),
+	escapeoctet( Byte3, Rest2, RestString ).
+iric2uri( Code, String, RestString ) :-
+	Code =< 16'10FFFF, !,
+	Byte1 is 16'F0 \/ ( Code >> 18 ),
+	Byte2 is 16'80 \/ ( ( Code >> 12 ) /\ 16'3F),
+	Byte3 is 16'80 \/ ( ( Code >>  6 ) /\ 16'3F),
+	Byte4 is 16'80 \/ ( Code /\ 16'3F),
+	escapeoctet( Byte1, String, Rest1 ),
+	escapeoctet( Byte2, Rest1, Rest2 ),
+	escapeoctet( Byte3, Rest2, Rest3 ),
+	escapeoctet( Byte4, Rest3, RestString ).
+
+
+/* Excluded URI characters:
+
+      invisible   = CTL / SP / %x80-FF
+
+   The angle-bracket ("<" and ">") and double-quote (") characters are
+   excluded because they are often used as the delimiters around a URI
+   in text documents and protocol fields.  The percent character ("%")
+   is excluded because it is used for the encoding of escaped (Section
+   2.4) characters.
+
+      delims      = "<" / ">" / "%" / DQUOTE
+
+   Other characters are excluded because gateways and other transport
+   agents are known to sometimes modify such characters.
+
+      unwise      = "{" / "}" / "|" / "\" / "^" / "`"
+	
+
+*/	 
+
+:- export excludeduric/1.
+
+excludeduric( 0'  ) :- !.
+excludeduric( 0'< ) :- !.
+excludeduric( 0'> ) :- !.
+%excludeduric( 0'% ) :- !.		% In order to preserve %s in the original IRI, since they are also excluded in IRI
+excludeduric( 0'" ) :- !.
+excludeduric( 0'{ ) :- !.
+excludeduric( 0'} ) :- !.
+excludeduric( 0'| ) :- !.
+excludeduric( 16'5C ) :- !.		% Character 0'\
+excludeduric( 0'^ ) :- !.
+excludeduric( 0'` ) :- !.
+excludeduric( X ) :- ((X >= 16'7F, X =< 16'FF) ; X < 16'20), !.
+
+% Escaping of excluded characters:
+
+escapeoctet( Code, [0'%,C2,C1|RestString], RestString ) :- 
+	H2 is Code >> 4,
+	H1 is Code /\ 16'F,
+	hex2char( H2, C2 ),
+	hex2char( H1, C1 ).
+
+hex2char( 0, 0'0 ).
+hex2char( 1, 0'1 ).
+hex2char( 2, 0'2 ).
+hex2char( 3, 0'3 ).
+hex2char( 4, 0'4 ).
+hex2char( 5, 0'5 ).
+hex2char( 6, 0'6 ).
+hex2char( 7, 0'7 ).
+hex2char( 8, 0'8 ).
+hex2char( 9, 0'9 ).
+hex2char( 10, 0'A ).
+hex2char( 11, 0'B ).
+hex2char( 12, 0'C ).
+hex2char( 13, 0'D ).
+hex2char( 14, 0'E ).
+hex2char( 15, 0'F ).
+
+

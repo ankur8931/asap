@@ -1,0 +1,13 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : NIST = http://www.nist.gov/RDFschema/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = John_Smith],[element(http://www.nist.gov/RDFschema/ : Weight,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[ID = weight_001],[element(http://www.nist.gov/RDFschema/ : Units,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : resource = http://www.nist.gov/units/pounds],[]),element(value,[xmlns = ],[200])])])])])
+
+----------RDF----------
+
+[description(description,about(John_Smith),[http://www.nist.gov/RDFschema/ : Weight = description(description,id(#weight_001),[http://www.nist.gov/RDFschema/ : Units = description(description,about(http://www.nist.gov/units/pounds),[]),value = literal(200)])])]
+
+--------Triples--------
+
+{#weight_001, http://www.nist.gov/RDFschema/Units, http://www.nist.gov/units/pounds}
+{#weight_001, value, literal(200)}
+{John_Smith, http://www.nist.gov/RDFschema/Weight, #weight_001}

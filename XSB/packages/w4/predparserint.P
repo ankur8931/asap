@@ -1,0 +1,56 @@
+
+:- [parserexp].
+
+production( Head, Body ) :-
+	production( Head, Body, _ ).
+
+production( Head, Body, Type ) :- 
+	production( Head, AuxBody, _, Type ),
+	expand_body( AuxBody, Body ).
+
+expand_body( (A,B), Conj ) :- !,
+	expand_body( B, EB ),
+	expand_body_seq( A, EB, Conj ).
+expand_body( + A, EA ) :- !,
+	production( A, EA ).
+expand_body( A, A ) :- !.
+
+expand_body_seq( (A,B), Rest, Conj ) :- !,
+	expand_body_seq( B, Rest, EB ),
+	expand_body_seq( A, EB, Conj ).
+expand_body_seq( + A, Rest, Conj ) :- !,
+	production( A, EA ),
+	expand_body_seq( EA, Rest, Conj ).
+expand_body_seq( A, Rest, (A,Rest) ) :- !.
+
+
+all_rules_nonterminal( NonTerminal, Rules ) :-
+	setof( First-Rule, Rest^rules_non_terminal( NonTerminal, First, Rest, Rule ), Rules ).  
+
+
+rules_non_terminal( NonTerminal, First, Rest, ( NonTerminal --> RHS )  ) :-
+	production( NonTerminal, RHS ),
+	predictive_parser( NonTerminal, In, ( NonTerminal --> RHS ) ),
+	translate_symbols(In,[First|Rest]).
+
+predictive_parser( NonTerminal, Input, ( NonTerminal --> RHS ) ) :-
+	production( NonTerminal, RHS ),
+	first( RHS, Input ).
+
+predictive_parser( NonTerminal, Input, ( NonTerminal --> RHS ) ) :-
+	production( NonTerminal, RHS ),
+	nullable( RHS ),
+	follow( NonTerminal, Input ).
+
+not_ll(1) :- predictive_parser( NonTerminal, Input, P1 ), 
+         predictive_parser( NonTerminal, Input, P2 ), P1 \= P2.
+	
+
+translate_symbols( [], [] ) :- !.
+translate_symbols( [S|RestS], [In|RestIn] ) :-
+	translate_input( S, In ), !,
+	translate_symbols( RestS, RestIn ).
+
+translate_input( Symbol, [Symbol-Symbol] ) :- integer(Symbol), !.
+translate_input( Min-Max, [Min-Max] ) :- !.
+translate_input( [Int|RestInt], [Int|RestInt] ) :- !.

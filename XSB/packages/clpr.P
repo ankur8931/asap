@@ -1,0 +1,94 @@
+/* File:      clpqr.P
+** Author(s): Swift
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: clpr.P,v 1.11 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- import bootstrap_package/2 from packaging.
+
+:- export {}/1, entailed/1, maximize/1, minimize/1, sup/2, inf/2, sup/4, inf/4, filter_varlist/4,
+	bb_inf/3, bb_inf/5, clpr_portray_hook/1.
+
+{F}:- nf_r:{F}.
+entailed(C):- nf_r:entailed(C).
+bb_inf(A,B,C):- bb_r:bb_inf(A,B,C).
+bb_inf(A,B,C,D,E):- bb_r:bb_inf(A,B,C,D,E).
+sup(A,B):- bv_r:sup(A,B).
+inf(A,B):- bv_r:inf(A,B).
+sup(A,B,C,D):- bv_r:sup(A,B,C,D).
+inf(A,B,C,D):- bv_r:inf(A,B,C,D).
+maximize(A):- bv_r:maximize(A).
+minimize(A):- bv_r:minimize(A).
+
+:- bootstrap_package('clpqr', clpr).
+:- [dump].
+:- [itf].
+:- [geler].
+:- [class].
+
+:- import member/2 from basics.
+:- import install_constraint_portray_hook/4 from machine.
+:- import dump/3 from dump.
+
+:- install_constraint_portray_hook(clpr,Vars,Names,clpr_portray_varlist(Vars,Names)).
+:- import console_write/1, console_writeln/1 from standard.
+
+clpr_portray_varlist(Vars,Names):- 
+	filter_varlist(Vars,Names,V1,N1),
+	dump(V1,N1,Constraints),
+	member(C,Constraints),
+	console_write(' { '),
+	console_write(C),
+	console_writeln(' } '),
+	fail.
+clpr_portray_varlist(_V,_N).
+
+filter_varlist([],[],[],[]).
+filter_varlist([V1|R1],[N1|R2],[V1|R3],[N1|R4]):- 
+	var(V1),!,
+	filter_varlist(R1,R2,R3,R4).
+filter_varlist([_V1|R1],[_N1|R2],R3,R4):- 
+	filter_varlist(R1,R2,R3,R4).
+
+end_of_file.
+
+/*
+Baos old stuff:
+
+:- import bb_inf/3, bb_inf/5 from bb.
+:- import ordering/1 from ordering.
+:- import dump/3 from dump.
+:- import get_atts/2, put_atts/2 from atts.
+:- import dump/3 from dump.
+
+:- attribute class/1, order/1, lin/1, forward/1,
+	     type/1, strictness/1, nonzero/0,
+	     target/0, keep_indep/0, keep/0, class_atts/4.
+
+this_linear_solver(clpr).
+*/
+
+%:- xsb_configuration(packagesdir,Pdir),
+%   shell_to_list([ls,' ',Pdir,'/clpqr/nf_r.xwam'],F,G),
+%	(F = [] -> cd(clpqr),make_clpr,cd('..') ; true).
+:- import make_clpr/0 from clpr_make.
+:- import xsb_configuration/2 from xsb_configuration.
+

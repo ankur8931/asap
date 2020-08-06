@@ -1,0 +1,98 @@
+1. INCREMENTAL DECLARATIONS:
+
+  All table predicates that have to be maintained incrementally should
+  be declared as incr. 
+  e.g. in reach.P the predicate reach/2 is declared as tabled and incr_table-d.
+
+  :- incr_table reach/2.
+  
+  Also fact predicates that are changed (inserted or deleted) needs to
+  be declared as incrdynamic. e.g. edge/2 is declared incrdynamic. The fact
+  predicate also needs to be declared dynamic. see reach.P
+
+  
+
+2. MODIFICATIONS:
+
+  Modifications to the factbase can be done using the predicates
+  incr_assert/1, incr_retract/1. They take one argument i.e. the fact
+  that is asserted and deleted. After a set of incr_assert and
+  incr_retract calls the user can call update/1 to update the
+  tables. update/1 takes a variable as arguments and returns set of
+  changed tabled calls which can be used for notification in an
+  application. The calls incr_retract/1, incr_assert/1 and
+  update/1 need to be imported from module increval.
+
+  	
+
+3. A Sample running script is given below:
+
+
+dsaha@187-dhcp:~/y06/spring/cvsxsb/XSB/examples/incremental$ ../../bin/xsb
+[xsb_configuration loaded]
+[sysinitrc loaded]
+
+XSB Version 2.7.1+ (CVS) of March 5, 2005
+[i686-pc-linux-gnu; mode: optimal; engine: slg-wam; gc: indirection; scheduling: local]
+
+| ?- [reach].
+[reach loaded]
+
+yes
+| ?- reach(1,X).
+
+X = 4;
+
+X = 3;
+
+X = 2;
+
+no
+| ?- import incr_assert_inval/1, incr_retract_inval/1, incr_table_update/1 from increval.
+
+yes
+| ?- incr_assert_inval(edge(4,5)).
+
+yes
+| ?- incr_table_update(X).
+
+X = [reach(1,_h192),reach(3,_h204),reach(2,_h216),reach(4,_h228),reach(5,_h240)]
+
+yes
+| ?- reach(1,X).
+
+X = 5;
+
+X = 4;
+
+X = 3;
+
+X = 2;
+
+no
+| ?- incr_retract_inval(edge(4,5)).
+
+yes
+| ?- incr_table_update(X).
+
+X = [reach(1,_h194),reach(3,_h206),reach(2,_h218),reach(4,_h230)]
+
+yes
+| ?- reach(1,X).
+
+X = 4;
+
+X = 3;
+
+X = 2;
+
+no
+| ?- halt.
+
+End XSB (cputime 0.03 secs, elapsetime 58.18 secs)
+dsaha@187-dhcp:~/y06/spring/cvsxsb/XSB/examples/incremental$ 
+
+
+
+
+4. For more questions, examples please contact Diptikalyan Saha <dsaha@cs.sunysb.edu>

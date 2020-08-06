@@ -1,0 +1,79 @@
+/* File:      count.P
+** Author(s): C.R. Ramakrishnan, Yifei Dong
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: count.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+%% ------------------------------------------------------------------
+%%	reachable state
+:- table state/1.
+state(S) :- state(T), transition(T, _, S).
+state(S) :- start(S).
+
+%%-------------------------------------------------------------------
+%%	reachable transition
+:- table reachable_transitions/3.
+reachable_transitions(S,A,T) :- state(S), transition(S,A,T).
+
+%%-------------------------------------------------------------------
+%%	count number of all possible calls
+
+incr(Counter) :-
+	conget(Counter, N),
+	N1 is N + 1,
+	conset(Counter, N1).
+incr(Counter, DisplayIncrement) :-
+	conget(Counter, N),
+	N1 is N + 1,
+	conset(Counter, N1),
+	(0 is N1 mod DisplayIncrement ->
+		(write(N1), write(' '))
+	    ; true).
+zero(Counter) :-
+	conset(Counter, 0).
+
+count(C, _) :- zero(c), call(C), incr(c), fail.
+count(_, N) :- conget(c, N).
+
+count(C, _, D) :- zero(c), call(C), incr(c,D), fail.
+count(_, N, _) :- conget(c, N).
+
+write_count :- conget(c, N), write(N).
+
+%%-------------------------------------------------------------------
+%%	measure the cpu time of a predicate call
+
+checkit(P) :-
+	write('	'), write(P),
+	(call(P), R = ' is true.' ; R = ' is false.'),
+	writeln(R).
+
+timeit(P) :-
+	cputime(T0),
+	checkit(P),
+	cputime(T1),
+	T is T1 - T0,
+	write('time = '), write(T),
+	nl.
+
+retimeit(P) :-
+	abolish_all_tables,
+	timeit(P).

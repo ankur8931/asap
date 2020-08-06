@@ -1,0 +1,134 @@
+\subsection{Models for CDF Instances}~\label{sec:model}
+\begin{definition} \label{def:ont-th}
+Let $\cO$ be a CDF instance.  We define as $\cL_{\cO}$, the ontology
+language whose functions and constant symbols are restricted to the
+identifiers in $\cO$.  $TH(\cO)$ is the ontology theory over
+$\cL_{\cO}$ whose non-logical axioms consist of the core axioms and
+the instance axiom for each fact in $\cO$.
+% while $\cO^{\cI}$ is the theory over $\cL_{\cO}$ containing only the
+% instance axioms.  
+We say that an ontology structure $\cM$ is a model of $\cO$ if it is a
+model of $TH(\cO)$.
+
+If $\cO$ is Type-0 it is {\em well-typed} if each instance axiom is
+consistent with Core Axioms~\ref{ax:distinct} (Distinct Identifiers)
+and Axiom Schema~\ref{ax:downcl} (Downward Closure)
+\end{definition}
+
+\begin{theorem} \label{thm:equality}
+Let $\cO$ be a well-typed CDF instance containing no {\tt minAttr/4}
+or {\tt maxAttr/4} facts.  Then $\cO$ has a model.
+\end{theorem}
+\input{eqconstproof}
+%---------------------------------------------------------
+\mycomment{
+From a practical point of view, the Core
+Axioms~\ref{ax:distinct}-\ref{ax:nonnull}, and \ref{ax:downcl} can be
+checked in a simple manner directly from a CDF instance, while Core
+Axiom~\ref{ax:contained} is consistent with any CDF instance.
+Determining that Core Axiom~\ref{ax:implsc} holds in a CDF instance is
+less straightforward.  We now examine when a finite CDF instance
+translates into a consistent theory that has a finite model.  The
+notion of {\em conformability} is a syntactic property of a CDF
+instance $\cO$ that is used to ensure that the translation of $\cO$
+will satisfy Axiom~\ref{ax:implsc}.
+
+Let $\cO$ be a CDF instance.  Then an identifier $C$ is a {\em class
+identifier} if ${\tt class(Atom,C)} \in \cO$ for some $Atom$; an {\em
+object identifier} if ${\tt object(Atom,C)} \in \cO$ for some $Atom$;
+and a {\em relation identifier} if ${\tt relation(Atom,C)} \in \cO$
+for some $Atom$.
+}
+%-------------------------------------------------------------
+
+Theorem~\ref{thm:equality} indicates that any well-typed CDF instance
+has a model, but in order to satisfy the various axioms, the model may
+need to map a number of distinct identifiers into the same individual
+in the universe of the model.  Such a model may be an undesirable
+semantics for a CDF instance since using it for computation would
+require unification over various equality theories.  We therefore
+consider {\em freeness axioms}, which contains an axiom schema that
+specifies that equality does not hold for any pair of distinct
+constants or functions; and an axiom schema stating that no term can
+be equal to a subterm it contains.  These axioms are commonly used in
+logic programming (e.g. \cite{Lloy84}) and we do not include them
+here.
+
+\begin{definition}
+Let $\cO$ be a CDF instance.  A {\em free ontology theory} for $\cO$,
+$TH_F(\cO)$ is an ontology theory for $\cO$ extended with the freeness
+axioms.  An ontology structure for a free ontology theory is called a
+free model of $\cO$.
+\end{definition}
+
+Example~\ref{ex:equality} shows that CDF instances in which product
+identifiers occur may not give rise to free models.  We derive a
+condition for the existence of such models.
+
+\begin{definition} \label{def:conformable}
+Let $I$ and $I'$ be two identifiers occurring in a CDF instance $\cO$.
+Then $I'$ is reachable from $I$ in $\cO$ if $I = I'$ or if $isa(I',I)$
+is in $\cO$ or if $isa(I',I_n)$ is in $\cO$ and $I_n$ is reachable
+from $I$.  If either $I$ is reachable from $I'$ or $I'$ is reachable
+from $I$, $I$ and $I'$ are termed {\em connected}.
+
+An identifier $I$ {\em locally conforms to} an identifier $I'$ if 
+\begin{itemize}
+\item $I'$ is an atomic identifier; or 
+\item The argument of $I'$ is $f(I'_1,...,I'_n)$; the argument of  $I$
+is $f(I_1,...,I_n)$ and $I_i$ {\em locally conforms to} $I'_i$, for $1
+\leq i \leq n$.
+\end{itemize}
+$I$ and $I'$ are {\em conformable} if $I$ locally conforms to all
+identifiers from which $I'$ is reachable in $\cO$, and $I'$ locally
+conforms to identifiers from which $I$ is reachable in $\cO$.  An
+identifier $I$ is self-conforming if it is conformable with itself.
+\end{definition}
+%---------------------------------------------------------
+
+As will be shown, acceptability is necessary for a CDF instance to
+have a finite free model.
+
+%---------------------------------------------------------
+\begin{definition} \label{def:acceptable}
+A CDF instance $\cO$ is {\em acceptable} if
+\begin{enumerate}
+\item Each class or object identifier $I$ in $\cO$ is self-conforming; 
+
+%\item There is no product idenifier $C_P$ and identifier $C$ such that
+%there is a path from $C$ to $C_P$ in $\cO$ and $C$ occurs in $C_P$.
+
+\item Let $allAttr(I_1,R_1,I_3)$ or $maxAttr(I_1,R_1,I_3) \in \cO$,
+and $R_2$ reachable from $R_1$.  Then 
+\begin{enumerate}
+\item if $I_1$ and $I_2$ are connected, and $hasAttr(I_2,R_2,I_4), 
+allAttr(I_2,R_2,I_4),$ $minAttr(I_2,R_2,I_4,N)$ or
+$maxAttr(I_2,R_2,I_4,N) \in \cO$, then $I_3$ and $I_4$ are
+conformable.
+%
+\item if $classHasAttr(I_1,R_2,I_4) \in \cO$, then $I_3$ and $I_4$ are
+conformable. 
+\end{enumerate}
+\end{enumerate}
+\end{definition}
+
+%---------------------------------------------------------
+\begin{theorem} \label{thm:acceptable}
+Let $\cO$ be a finite well-typed CDF instance.  Then $\cO$ is
+acceptable and has a model iff $\cO$ has a finite free model.
+\end{theorem}
+\begin{proof}
+The proof is contained in the appendix.
+\end{proof}
+
+\begin{corollary} \label{thm:atomic}
+Let $\cO$ be a finite CDF instance in which no product identifiers
+occur.  Then $\cO$ has a finite free model iff $\cO$ has a model.
+\end{corollary}
+
+
+\begin{theorem} \label{thm:poly}
+Let $\cO$ be a finite CDF instance.  Then it can be determined in
+polynomial time whether there exists a finite free model for $\cO$.
+\end{theorem}
+

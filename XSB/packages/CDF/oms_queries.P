@@ -1,0 +1,656 @@
+:- compiler_options([ciao_directives,spec_off]).
+
+/* spec turned off to avoid double tabling message */
+
+:- document_export 
+	
+	q_class/2, q_object/2.
+
+%    attr/3,isa/2,immediate_attr/3,
+%    key_label/2,
+%    at_least/3, at_most/3,
+%    gt/2,gte/2,lt/2,lte/2,
+
+:- import length/2, ground/1 from basics.
+
+:- ensure_loaded(oms_init_oms).
+
+:- comment(module,
+"
+@section{A Query View for the OMS}
+
+The Internal View of the interface allows one to query and manipulate
+a given OMS state that consists of extensional facts and intensional
+rules.  While this view is efficient and powerful, it can be
+inconvenient at times, as it relies on internal forms of identifiers
+that can be difficult to use and debug.
+
+The External View of the interface permits the same functionality as
+the internal view, but uses external forms of identifiers as in
+Section @ref{}.  Many predicates in the External View adopt the
+convention is that a predicateif @tt{q_XXX/n} in the External View,
+has the same functionality as the predicate @tt{XXX/n} in the Internal
+View.  These include the following predicates which query a CDF state:
+
+@tt{    q_class/2, q_object/2,
+    q_subclass/2,q_subclass_nr/2,q_immediate_subclass/2,
+    q_memberof/2, q_immediate_memberof/2,
+    q_irel/3,q_immediate_irel/3,
+    q_schrel/3,q_immediate_schrel/3,
+    q_strel/3, q_immediate_strel/3,
+    q_attribute/3,q_immediate_attribute/3,
+    q_attribute_object/3}
+
+along with the following predicates which can be used to manipulate a
+CDF state.
+
+    q_newSubclass/2, q_newMemberof/2, 
+    q_newIrel/3, q_newSchrel/3, q_newStrel/3, 
+    q_newAttribute/3, q_newAttribute_object/3.
+
+Other predicates in the External View are documented individually.
+").
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Query Predicates.
+
+:- comment(q_class/2,"q_class(-Name,id(+Nid,+Source)) can be used to
+obtain the name of a class identifier.").
+
+q_class(Name,id(Nid,Source)):- 
+	class(_,Name,Nid,Source).
+
+:- comment(q_object/2,"q_object(-Name,id(+Nid,+Source)) can be used to
+obtain the name of an object identifier.").
+
+q_object(Name,id(Nid,Source)):- 
+	object(_,Name,Nid,Source).
+
+
+:- comment(q_attribute/3,"This predicate has the same behavior as
+@pred{attribute/3}, except that Native Ids and Source pairs are used
+instead of concept ids or object ids.").
+
+% + + ?
+q_attribute(id(Obj,Osrc),id(Rel,Rsrc),id(Attr,Asrc)) :- 
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_cid(Attr,Asrc,Tid),
+	attribute(Oid,Rid,Tid),
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_cid(Attr,Asrc,Tid).
+
+marshall_product_ids(In,Out):- 
+	(compound(In)  -> 
+	     In =.. [F|Ain],
+	     marshall_product_list(Ain,Aout),
+	     Out =.. [F|Aout]
+	  ;  In = Out).
+
+marshall_product_list([],[]).
+marshall_product_list([H|T],List):- 
+	(nonvar(H),H = id(N,S) -> List = [N,S|T1] ; List = [H|T1]),
+	marshall_product_list(T,T1).
+
+q_cvt_oid(Objin,Osrc,Oid) :-
+	marshall_product_ids(Objin,Obj),
+	(nonvar(Oid)
+	 ->	(ground(Obj)
+		 ->	true
+		 ;	object(Oid,_,Obj,Osrc)
+		)
+	 ; ground(Obj)
+	 ->	object(Oid,_,Obj,Osrc)
+	 ;	true
+	).
+	
+q_cvt_cid(Clsin,Csrc,Cid) :-
+	marshall_product_ids(Clsin,Cls),
+	(nonvar(Cid)
+	 ->	(ground(Cls)
+		 ->	true
+		 ;	class_cidbound(Cid,_,Cls,Csrc)
+		)
+	 ; ground(Cls)
+	 ->	class(Cid,_,Cls,Csrc)
+	 ;	true
+	).
+
+:- comment(q_immediate_attribute/3,"This predicate has the same
+behavior as @pred{immediate_attribute/3}, except that Native Ids and
+Sources are used instead of concept ids or object ids.").
+
+% + + ?
+q_immediate_attribute(id(Obj,Osrc),id(Rel,Rsrc),id(Attr,Asrc)):- 
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_cid(Attr,Asrc,Tid),
+	immediate_attribute(Oid,Rid,Tid),
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_cid(Attr,Asrc,Tid).
+
+:- comment(q_attribute_object/3,"This predicate has the same
+behavior as @pred{attribute_object/3}, except that Native Ids and
+Sources are used instead of concept ids or object ids.").
+
+:- table q_attribute_object/3.
+table_q_attribute_object(O,R,O1):- 
+	q_attribute_object(O,R,O1).
+
+% + + ?
+q_attribute_object(id(Obj,Osrc),id(Rel,Rsrc),id(AO,Asrc)):- 
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_oid(AO,Asrc,Tid),
+	attribute_object(Oid,Rid,Tid),
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_oid(AO,Asrc,Tid).
+
+:- table q_immediate_attribute_object/3.
+table_q_immediate_attribute_object(O,R,O1):- 
+	q_immediate_attribute_object(O,R,O1).
+
+q_immediate_attribute_object(id(Obj,Osrc),id(Rel,Rsrc),id(AO,Asrc)):- 
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_oid(AO,Asrc,Tid),
+	immediate_attribute_object(Oid,Rid,Tid),
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Rel,Rsrc,Rid),
+	q_cvt_oid(AO,Asrc,Tid).
+
+:- comment(q_memberof/2,"This predicate has the same behavior as
+@pred{memberof/2}, except that Native Ids and Sources are used instead
+of concept ids or object ids.").  
+
+% + +
+q_memberof(id(Obj,Osrc),id(Class,Csrc)):-
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Class,Csrc,Cid),
+	memberof(Oid,Cid),
+	q_cvt_oid(Obj,Osrc,Oid),
+	q_cvt_cid(Class,Csrc,Cid).
+
+:- comment(q_immediate_memberof/2,"This predicate has the same
+behavior as @pred{immediate_memberof/2}, except that Native Ids and
+Sources are used instead of concept ids.").
+
+% + +
+q_immediate_memberof(id(Nid1,Src1),id(Nid2,Src2)):- 
+	q_cvt_oid(Nid1,Src1,Num1),
+	q_cvt_cid(Nid2,Src2,Num2),
+	immediate_memberof(Num1,Num2),
+	q_cvt_oid(Nid1,Src1,Num1),
+	q_cvt_cid(Nid2,Src2,Num2).
+
+:- comment(q_irel/3,"This predicate has the same behavior as
+@pred{irel/3}, except that Native Ids and Sources are used instead of
+concept ids.").
+
+% + + ?
+q_irel(id(From,Fsrc),id(Rel,Rsrc),id(Targ,Tsrc)):- 
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum),
+	relationship(Cnum,Rnum,Tnum),
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum).
+
+:- comment(q_immediate_irel/3, "This predicate has the same behavior
+as @pred{immediate_irel/3}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+% + + ?
+q_immediate_irel(id(From,Fsrc),id(Rel,Rsrc),id(Targ,Tsrc)):- 
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum),
+	immediate_irel(Cnum,Rnum,Tnum),
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum).
+
+:- comment(q_strel/3,"This predicate has the same behavior as
+@pred{strel/3}, except that Native Ids and Sources are used instead of
+concept ids.").
+
+% + + ?
+q_strel(id(From,Fsrc),id(Rel,Rsrc),id(Targ,Tsrc)):- 
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum),
+	strel(Cnum,Rnum,Tnum),
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum).
+
+% + + ?
+q_immediate_strel(id(From,Fsrc),id(Rel,Rsrc),id(Targ,Tsrc)):- 
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum),
+	immediate_strel(Cnum,Rnum,Tnum),
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum).
+
+:- comment(q_schrel/3,"This predicate has the same behavior as
+@pred{schrel/3}, except that Native Ids and Sources are used instead
+of concept ids.").
+
+% + + ?
+q_schrel(id(From,Fsrc),id(Rel,Rsrc),id(Targ,Tsrc)):- 
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum),
+	schrel(Cnum,Rnum,Tnum),
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum).
+
+:- comment(q_immediate_schrel/3,"This predicate has the same behavior as
+@pred{immediate_schrel/3}, except that Native Ids and Sources are used
+instead of concept ids.").
+
+% + + ?
+q_immediate_schrel(id(From,Fsrc),id(Rel,Rsrc),id(Targ,Tsrc)):- 
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum),
+	immediate_schrel(Cnum,Rnum,Tnum),
+	q_cvt_cid(From,Fsrc,Cnum),
+	q_cvt_cid(Rel,Rsrc,Rnum),
+	q_cvt_cid(Targ,Tsrc,Tnum).
+
+:- comment(q_subclass_nr/2,"This predicate has the same behavior
+as @pred{subclass/2}, except that Native Ids and Sources are used
+instead of concept ids @em{but} is not reflexive --
+i.e. @tt{subclass(X,X)} is never true.").
+
+q_subclass_nr(Id1,Id2):- 
+	q_subclass(Id1,Id2),
+	Id1 \== Id2.
+
+:- comment(q_subclass/2,"This predicate has the same behavior
+as @pred{subclass/2}, except that Native Ids and Sources are used
+instead of concept ids.").
+
+%:- table q_subclass/2.
+ q_subclass(id(Nid1,Src1),id(Nid2,Src2)):- 
+	q_cvt_cid(Nid1,Src1,Num1),
+	q_cvt_cid(Nid2,Src2,Num2),
+	subclass(Num1,Num2),
+	q_cvt_cid(Nid1,Src1,Num1),
+	q_cvt_cid(Nid2,Src2,Num2).
+
+:- comment(q_immediate_subclass/2,"This predicate has the same
+behavior as @pred{immediate_subclass/2}, except that Native Ids and
+Sources are used instead of concept ids.").
+
+q_immediate_subclass(id(Nid1,Src1),id(Nid2,Src2)):- 
+	q_cvt_cid(Nid1,Src1,Num1),
+	q_cvt_cid(Nid2,Src2,Num2),
+	immediate_subclass(Num1,Num2),
+	q_cvt_cid(Nid1,Src1,Num1),
+	q_cvt_cid(Nid2,Src2,Num2).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Manipulation Predicates.
+
+:- comment(q_newSubclass/2,"This predicate has the same behavior as
+@pred{newSubclass/2}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+q_newSubclass(id(SNCid,SSrc),id(TNCid,TSrc)):- 
+	q_cvt_cid(SNCid,SSrc,SCid),
+	q_cvt_cid(TNCid,TSrc,TCid),
+	newSubclass(SCid,TCid).
+
+:- comment(q_newMemberof/2,"This predicate has the same behavior as
+@pred{newMemberof/2}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+q_newMemberof(id(SNOid,SSrc),id(TNCid,TSrc)):- 
+	q_cvt_oid(SNOid,SSrc,SOid),
+	q_cvt_cid(TNCid,TSrc,TCid),
+	newSubclass(SOid,TCid).
+
+:- comment(q_newIrel/3,"This predicate has the same behavior as
+@pred{newIrel/3}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+q_newIrel(id(SNCid,SSrc),id(RNCid,RSrc),id(TNCid,TSrc)):- 
+	q_cvt_cid(SNCid,SSrc,SCid),
+	q_cvt_cid(RNCid,RSrc,RCid),
+	q_cvt_cid(TNCid,TSrc,TCid),
+	newRelationship_omsext(SCid,RCid,TCid).
+
+:- comment(q_newSchrel/3,"This predicate has the same behavior as
+@pred{newSchrel/3}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+q_newSchrel(id(SNCid,SSrc),id(RNCid,RSrc),id(TNCid,TSrc)):- 
+	q_cvt_cid(SNCid,SSrc,SCid),
+	q_cvt_cid(RNCid,RSrc,RCid),
+	q_cvt_cid(TNCid,TSrc,TCid),
+	newSchrel(SCid,RCid,TCid).
+
+:- comment(q_newStrel/3,"This predicate has the same behavior as
+@pred{newStrel/3}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+q_newStrel(id(SNCid,SSrc),id(RNCid,RSrc),id(TNCid,TSrc)):- 
+	q_cvt_cid(SNCid,SSrc,SCid),
+	q_cvt_cid(RNCid,RSrc,RCid),
+	q_cvt_cid(TNCid,TSrc,TCid),
+	newStrel(SCid,RCid,TCid).
+
+:- comment(q_newAttribute/3,"This predicate has the same behavior as
+@pred{newAttribute/3}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+q_newAttribute(id(SNOid,SSrc),id(RNCid,RSrc),id(TNCid,TSrc)):- 
+	q_cvt_oid(SNOid,SSrc,SOid),
+	q_cvt_cid(RNCid,RSrc,RCid),
+	q_cvt_cid(TNCid,TSrc,TCid),
+	newStrel(SOid,RCid,TCid).
+
+:- comment(q_newAttribute_object/3,"This predicate has the same behavior as
+@pred{newAttribute/3}, except that Native Ids and Sources are
+used instead of concept ids.").
+
+q_newAttribute_object(id(SNOid,SSrc),id(RNCid,RSrc),id(TNOid,TSrc)):- 
+	q_cvt_oid(SNOid,SSrc,SOid),
+	q_cvt_cid(RNCid,RSrc,RCid),
+	q_cvt_oid(TNOid,TSrc,TOid),
+	newStrel(SOid,RCid,TOid).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Higher level interface (not updated recently).
+
+/* TLS: OMS shd probably be fixed so that we can't have an attribute
+   as well as an attribute object. */
+
+key_label(id(Nid,Src),Label):- class(_,Label,Nid,Src).
+key_label(id(Nid,Src),Label):- object(_,Label,Nid,Src).
+
+:-comment(attr/3,"@tt{attr(id(Obj,Osrc),id(Relation,Rsrc),id(Target,Tsrc))}
+finds all attributes and attribute_objects for the object with NID
+@tt{id(Obj,Src)} and source @tt{Obj,Osrc)}, using
+@pred{q_attribute/3} and @pred{q_attribute_object/3}.  Any
+instantiation pattern may be used.  ").
+
+
+:- table attr/3.
+attr(Objin,RCid,TObjin):- 
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	q_attribute(Objout,RCid,TObjout),
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	\+ more_specific_target(Objout,RCid,TObjout).
+attr(Objin,RCid,TObjin):- 
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	table_q_attribute_object(Objout,RCid,TObjout),
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout).
+attr(Objin,RCid,TObjin):- 
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	q_irel(Objout,RCid,TObjout),
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout).
+
+:- table immediate_attr/3.
+immediate_attr(Objin,RCid,TObjin):- 
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	q_immediate_attribute(Objout,RCid,TObjout),
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	\+ more_specific_target(Objout,RCid,TObjout).
+immediate_attr(Objin,RCid,TObjin):- 
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	table_q_immediate_attribute_object(Objout,RCid,TObjout),
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout).
+immediate_attr(Objin,RCid,TObjin):- 
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout),
+	q_immediate_irel(Objout,RCid,TObjout),
+	pop_out_object(Objin,Objout),
+	pop_out_object(TObjin,TObjout).
+
+
+more_specific_target(id(Source,Ssrc),id(Relation,Rsrc),id(Target,Tsrc)):- 
+	table_q_attribute_object(id(Source,Ssrc),id(Relation,Rsrc),
+					       id(Object,Osrc)),
+	q_memberof(id(Object,Osrc),id(Target,Tsrc)).
+
+pop_out_object(id(object(Obj,Src),'OMS'),id(Obj,Src)) :- nonvar(Obj), !.
+pop_out_object(Obj,Obj).
+
+:- comment(isa/2,"@tt{isa(id(Sub,Subsrc),id(Sup,Supsrc))} traverses
+the inheritance hierarchy using @pred{q_subclass/2} or
+@tt{q_memberof/2} predicates.  Any instantiation pattern may be
+used.").
+
+isa(id(One,Osrc),id(Two,Tsrc)):- 
+	q_subclass(id(One,Osrc),id(Two,Tsrc)).
+isa(Objin,id(Two,Tsrc)):- 
+	pop_out_object(Objin,Objout),
+	q_memberof(Objout,id(Two,Tsrc)).
+
+immediate_isa(B,C):- 
+	q_immediate_subclass(B,C).
+immediate_isa(B,C):- 
+	pop_out_object(B,B1),
+	q_immediate_memberof(B1,C).
+
+:- comment(at_least/3,"@tt{at_least(N,Var,Template)} succeeds if
+backtracking through @tt{Template} produces at least @tt{N} unique
+instantiations of @tt{Var}.  @tt{Template} should consist of an
+expresion in the OMS query language as described above. ").
+
+at_least(Num,Var,Template):- 
+	findall(Var,Template,Vlist),
+	sort(Vlist,Vsort),
+	length(Vsort,Vlen),
+	Vlen >= Num.
+
+:- comment(at_most/3,"@tt{at_most(N,Var,Template)} succeeds if
+backtracking through @tt{Template} produces at least @tt{N} unique
+instantiations of @tt{Var}.  @tt{Template} should consist of an
+expresion in the OMS query language as described above. ").
+
+at_most(Num,Var,Template):- 
+	findall(Var,Template,Vlist),
+	sort(Vlist,Vsort),
+	length(Vsort,Vlen),
+	Vlen =< Num.
+
+:- comment(lt/2,"This predicate should be used instead of @tt{</2} for
+comparing integers returned from the OMS, in order to correctly handle
+OMS primitive types.").
+
+lt(float(One),float(Two)):- One < Two.
+lt(integer(One),integer(Two)):- One < Two.
+
+:- comment(lte/2,"This predicate should be used instead of @tt{=</2} for
+comparing integers returned from the OMS, in order to correctly handle
+OMS primitive types.").
+
+lte(float(One),float(Two)):- One < Two.
+lte(integer(One),integer(Two)):- One < Two.
+
+:- comment(gt/2,"This predicate should be used instead of @tt{>/2} for
+comparing integers returned from the OMS, in order to correctly handle
+OMS primitive types.").
+
+gt(float(One),float(Two)):- One > Two.
+gt(integer(One),integer(Two)):- One > Two.
+
+:- comment(gte/2,"This predicate should be used instead of @tt{>=/2} for
+comparing integers returned from the OMS, in order to correctly handle
+OMS primitive types.").
+
+gte(float(One),float(Two)):- One > Two.
+gte(integer(One),integer(Two)):- One > Two.
+
+
+end_of_file.
+
+:- comment(module,
+"
+@section{A Query View for the OMS}
+
+The current version of the OMS has a well-defined programmer's
+interface, and this interface has been used successfully for several
+applications.  However in addition to a programmers' query language,
+it is useful to define a simpler, higher-level query language which is
+simple enough to be used by data analysts or by programmers with a
+limited knowledge of Prolog.  We state our background assumptions for
+a query language.
+
+@begin{itemize} @item The user should be exposed as little as possible
+to the internal view of the OMS -- no concept ids or object ids should
+be used; rather, queries should be made via native ids and sources.
+OMS primitive types, however, are visible to the user -- e.g., the
+integer 1234 is presented as integer(1234).
+
+@item Queries should primarily concern objects and their attributes.
+However, certain aspects of the OMS, such as the distinction between
+classes and objects, should be abstracted for a user writing a query.
+In order to make this abstraction @em{we assume that the NID/Source
+pair is unique for the set of objects and classes together}.  This is
+an additional assumption that OMS's normally need not satisfy.
+
+@item The form of the query language should be relatively simple.  It
+should not allow (arbitrary) recursion, should require a minimum of
+Prolog structures to be built and so on.  At the same time, the
+language should be powerful enough that most meaningful queries can be
+made by a user.
+
+@item The form of the query language should be similar to the
+constraint and rule system, that is under development for the OMS.
+
+@end{itemize}
+
+We introduce the OMS query language by example.  The English query
+@em{``Show me all manufacturers who have made at least 4 aluminum parts
+for the F-14''} would be queried as:
+
+@begin{verbatim}
+isa(id(Manf,Msrc),id(manufacturers,myont)),
+at_least(4,Part,(attr(id(Manf,Msrc),id(has_manufactured,Rsrc),id(Part,Psrc)),
+                 isa(id(Part,Psrc),id(parts,myont)),
+                 attr(id(Part,Psrc),id(has_material,Msrc),id(A,Asrc)),
+                 isa(id(A,Asrc),id(aluminum,myont)),
+                 attr(id(Part,Psrc),id(used_on_platform,myoot),
+                                    id('F-14',myont))))
+@end{verbatim}
+
+Note that in this query: 
+
+@begin{itemize}
+@item Prolog syntax is used.
+
+@item Prolog unification is used.  An explicit call to @tt{isa/2} is
+used to ensure that proper subclasses of aluminum are included in the
+query
+
+@item The distinction between OMS objects and classes is ignored.  The
+predicate @pred{isa/2} is used to represent @tt{memberof} relations
+for manufacturer and part objects, as well as @tt{subclass} relations
+for the class @tt{aluminum}.  The implementation does this by
+translating native id/source pairs (represented as @tt{id/2} terms)
+into internal concept or object ids and calling the internal
+predicates as described in @ref{Programmer's View of the OMS}.
+Similarly, @pred{attr/3} may access either @tt{attribute} or
+@tt{attribute_object} information.
+
+@item The query is essentially an @em{ACLQ} query, as will be explained
+in the (forthcoming) section on the OMS rule and constraint system.
+@end{itemize}
+
+While this query is relatively simple, it hides a few subtleties.
+
+@begin{itemize}
+
+@item All variables in the 3rd argument of @pred{at_least/3} are
+existential, as in @tt{findall/3} templates.
+
+@item Counting the number of @tt{has_manufactured} elements is based
+on the OMS operational inheritance semantics, @em{so that only the
+most specific set of classes or objects is counted}.  For instance in
+the query
+
+@tt{at_least(4,Mat,attr(Part,Psrc,has_material,Rsrc,Mat,Msrc))}
+
+@tt{Mat} may in principle be a class at one or another level of
+generality (e.g. @tt{Steel}, @tt{High-Carbon Steel}, or @tt{Steel
+Alloy 9672'}).  In this case, @tt{Mat} values counted are simply the
+values of the material returned by the OMS -- the most specific set of
+classes defined by the has_material attribute of a given part.
+
+@end{itemize}
+
+With this in mind, the query language for the OMS has the following
+form.
+
+@begin{itemize}
+@item Connectors -- Prolog and ',', or ';'.
+
+@item Logical meta-predicates @tt{not/1} (executed as \+/1)
+
+@item Numerical comparison predicates will be used in elements of type
+integer/1 and float/1.  Currently, these predicates are @pred{lt/2}
+for @tt{</2}, @pred{lte/2} for @tt{=</2}, @pred{gt/2} for @tt{>/2},
+and @pred{gte/2} for @tt{>=/2}.
+
+@item Data access predicates (and meta-predicates): 
+@begin{itemize}
+
+@item @tt{attr(id(Source,Ssrc),id(Relation,Rsrc),id(Target,Tsrc))}
+is true if one of the following conditions obtains:
+
+@tt{id(Source,Src)} is an object with an attribute relationship
+identified by @tt{id(Relation,Rsrc)} with a class value of
+@tt{id(Target,Tsrc)}, according to the OMS operational inheritance
+semantics.
+
+@tt{id(Source,Src)} is an object with an attribute_object
+relationship identified by @tt{id(Relation,Rsrc)} with an object value
+of @tt{id(Target,Tsrc)}, according to the OMS operational inheritance
+semantics.
+
+@tt{id(Source,Src)} is a class with an inheritable relationship
+identified by @tt{id(Relation,Rsrc)} with a class value of
+@tt{id(Target,Tsrc)}, according to the OMS operational inheritance
+semantics.
+
+@item @tt{isa(id(Element,Esrc),id(Class,Csrc))} is true if
+@tt{id(Element,Esrc)} is a class, and the @tt{subclass/2} predicate is
+true of the pair; otherwise it is true if @tt{id(Element,Esrc)} is an
+object, and the @tt{memberof/2} predicate is true of the pair.
+
+@item @tt{at_least(Integer,Var,Template)} The number of unique
+instantiations of @tt{Var} produced by backtracking through
+@tt{Template} is counted.  This predicate succeeds if that number is
+greater than or equal to @tt{Integer}.  OMS operational inheritance
+semantics is used to produce these bindings.
+
+@item @tt{at_most(Integer,Var,Template)}: The number of unique
+instantiations of @tt{Var} produced by backtracking through
+@tt{Template} is counted.  This predicate succeeds if that number is
+less than or equal to @tt{Integer}.  OMS operational inheritance
+semantics is used to produce these bindings.
+").
+

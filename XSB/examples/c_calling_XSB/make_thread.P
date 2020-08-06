@@ -1,0 +1,18 @@
+%% This compiles the examples below on Unix
+
+:- xsb_configuration(compiler_flags,CFLAGS),
+	xsb_configuration(loader_flags,LDFLAGS),
+	xsb_configuration(config_dir,CONFDIR),
+	xsb_configuration(emudir,Emudir),
+	xsb_configuration(compiler,Compiler),
+	str_cat(CONFDIR, '/saved.o/', ObjDir),
+
+	shell([Compiler, ' -c ', ' -I', Emudir, ' -I', CONFDIR, ' ', CFLAGS, ' cregs_thread.c ']),
+	shell([Compiler, ' -o ', './cretest_thread ',
+	       ObjDir, 'xsb.o ', ' cregs_thread.o ', LDFLAGS]),
+	writeln('You can find the executable in  ./cretest_thread'),
+
+	shell([Compiler, ' -c ', ' -I', Emudir, ' -I', CONFDIR, ' ', CFLAGS, ' cvarstring_thread.c ']),
+	shell([Compiler, ' -o ', './cvstest_thread ',
+	       ObjDir, 'xsb.o ', ' cvarstring_thread.o ', LDFLAGS]),
+	writeln('You can find the executable in  ./cvstest_thread').

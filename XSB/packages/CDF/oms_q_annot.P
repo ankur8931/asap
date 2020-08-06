@@ -1,0 +1,246 @@
+:- compiler_options([ciao_directives]).
+
+:- document_export  relaxing_query/3.
+
+:- [oms_queries].
+
+:- import ground/1 from basics.
+
+:- comment(module,"
+
+The OMS Query language (@ref{A Query View for the OMS}), allows a user
+to obtain objects and classes that fulfill certain search conditions
+from an OMS.  However, there are many cases in which either a) the OMS
+contains no objects or classes that fulfill a given set of conditions,
+or b) there are too many ways to satisfy the search conditions so that
+the various answers to a query need to be ordered in some manner.
+Such situations can be addressed by @em{query relaxation}.
+
+We introduce query relaxation by example.  Suppose we have the query
+
+@begin{verbatim}
+isa(Manf,id(manufacturers,myont)),
+attr(Manf,id(has_manufactured,myont),Part),
+isa(Part,id(parts,myont)),
+attr(Part,id(has_material,myont),A),
+isa(A,id(aluminum,myont)),
+attr(Part,id(used_on_platform,myont),id('F-14',dla))
+@end{verbatim}
+
+(cf. @ref{F-14 Example}) but a given OMS contains no such
+manufacturers.  Relevant information can still be obtained from an OMS
+by allowing the query to be ""relaxed"", which will allow a ""close""
+superset of the desired manufacturers to be returned.  Of course what
+it means for one query answer to be close to another, or the best way
+a query should be relaxed is specific to each query.  Therefore the
+query relaxation module allows relaxation to be performed by
+@em{widening} the classes to which elements of a query may belong.
+Other types of query relaxation may be fit into this framework, and
+may be implemented in this module as the need arises.  The idea is
+that query annotations indicate that the annotated subcomponents need
+not necessarily be directly satisfied for the entire query to be
+satisfied.  The annotation indicates how the subcomponent can be
+""partially"" satisfied and indicates a penalty to be applied if the
+query can indeed be only partially satisfied.  Penalties of components
+are summed across the entire query, and each answer to the entire
+query thus gets an associated penalty.  Thus an answer that completely
+satisfies the query gets a penalty of 0.
+
+For the sake of example, suppose that in the above query it is not
+absolutely crucial that a part be made out of aluminum.  In this case
+the query could be invoked as:
+
+@begin{verbatim}
+relaxing_query(
+    (isa(Manf,id(manufacturers,myont)),
+     attr(Manf,id(has_manufactured,myont),Part),
+     isa(Part,id(parts,myont)),
+     attr(Part,id(has_material,myont),A),
+     isa(A,id(aluminum,myont))::widen(10,Actual_mat)
+     attr(Part,id(used_on_platform,myont),id('F-14',dla))),
+    10,
+    Score)
+@end{verbatim}
+
+The predicate @tt{relaxing_query/3} consists of three arguments: a
+query annotated with weights; a cutoff; and a score.  In the annotated
+query, one literal has been annotated with the @em{relaxation term}
+@tt{widen(10,Actual_mat)}.  In our implementation of weighted queries,
+all components of the query @em{that are not weighted} @em{must} be
+satisfied.
+
+We describe by example the semantics for a weighed query.
+@footnote{The current implementation of relaxed query evaluation uses
+a meta-interpreter.  A future implemenation could be done through
+query transformation.}
+
+@begin{verbatim}
+relaxing_query(
+    (isa(Manf,id(manufacturers,myont)),
+     attr(Manf,id(has_manufactured,myont),Part),
+     isa(Part,id(parts,myont)),
+     attr(Part,id(has_material,myont),A),
+     widen(A,id(aluminum,myont)),widen(10,Actual_mat),Cutoff,0,Score),
+     attr(Part,id(used_on_platform,myont),id('F-14',dla))),
+	Cutoff,Score)
+@end{verbatim}
+
+The following forms of relaxation goals are supported:
+@begin{enumerate}
+
+@item 
+@tt{isa(Sub,Super)::widen(Penalty,Actual_Super)}
+
+whose modes are
+@tt{isa(+,?)::widen(+,-)},
+which has the two following usages.  
+
+@begin{itemize} 
+
+@item
+If @tt{Super} is bound on input, it is checked to see if
+@tt{isa(Sub,Super)} holds.  If not, the query fails.  Otherwise, if
+@tt{isa(Sub,Super)} holds, then the query first proceeds with no
+penalty.  Otherwise, the immediate superclass of @tt{Super} is
+obtained (and bound to Actual_Super), and the subgoal is satisfied
+with a penalty value given by @tt{Penalty}.  This relaxation continues,
+looking at larger and larger classes, applying the penalty at each
+relaxation step.  If the accumulated penalty exceeds the Cutoff at any
+time, the current query answer fails and another answer is sought.
+
+@item
+If @tt{Super} is not bound on input, @tt{widen/6} finds the most
+specific class of which @tt{Sub} is a subclass or member, and then
+proceeds as described above, now that Super is bound.
+
+@end{itemize}
+
+@item 
+@tt{attr(Sou,Rel,Targ)::widen(ArgNo,Penalty,Actual)}
+
+whose modes are
+@tt{attr(+,+,?)::widen(+,+,-)}.
+
+Currently @tt{ArgNo} @em{must} be the value 1, indicating relaxation
+on the first argument of @tt{attr}.
+
+If @tt{attr(Sou,Rel,Targ)} is immediately satisfiable (i.e., without
+using inheritance), then the subgoal succeeds with no penalty.
+Otherwise, an immediate superior, say @tt{SouSup}, of @tt{Sou} is
+found (i.e., a class immediately containing the object @tt{Sou} or the
+superclass immediately above the class @tt{Sou}.)  If
+@tt{attr(SouSup,Rel,Targ)} is immediately satisfiable, then the
+subquery succeeds with penalty value of @tt{Penalty} and with
+@tt{Actual} bound to @tt{SouSup}.  The process continues for each
+ancestor of @tt{Sou}, with an additional penalty of @tt{Penalty} for
+each step.
+
+@item
+@tt{attr(S,R,T)::opt(Penalty)}
+
+If @tt{attr(S,R,T)} succeeds then the subquery is satisfied with no
+penalty.  If @tt{attr(S,R,T)} fails, then the subquery succeeds with a
+penalty value given by @tt{Penalty}.
+
+@end{enumerate}
+
+").
+
+:- op(700,xfx,::).
+
+:- comment(relaxing_query/3, "
+
+@tt{relaxing_query(+Annot_Query,+Cutoff,?Penalty)} implements a
+meta-interpreter over evaluation of an OMS query to support query
+relaxation.  This allows subgoals within a query goal to be annotated
+to indicate that these subgoals can be relaxed, i.e. satisfied in
+other (less stringent) ways, and the entire query can still succeed.
+Nonstrict satisfaction of subgoals incurs penalties, which are summed
+over all the subgoals of a query.  If the sum of the penalties exceed
+a cutoff, then the global query fails.  @tt{Annot_Query} is the
+annotated query to evaluate; @tt{Cutoff} is the maximum allowed
+penalty sum that can be returned, and @tt{Penalty} is bound to the
+penalty value corresponding to the answer returned in the bindings of
+variables in @tt{Annot_Query}.
+
+").
+
+relaxing_query(Q,Cutoff,Penalty_out):- !,
+	relaxing_query(Q,Cutoff,0,Penalty_out).
+
+relaxing_query(','(A,B),Cutoff,Penalty_in,Penalty_out):- !,
+	relaxing_query(A,Cutoff,Penalty_in,Penalty_mid),
+	relaxing_query(B,Cutoff,Penalty_mid,Penalty_out).
+relaxing_query((A->B;C),Cutoff,Penalty_in,Penalty_out):- !,
+	(relaxing_query(A,Cutoff,Penalty_in,Penalty_mid)
+	 ->	relaxing_query(B,Cutoff,Penalty_mid,Penalty_out)
+	 ;	relaxing_query(C,Cutoff,Penalty_in,Penalty_out)
+	).
+relaxing_query(';'(A,B),Cutoff,Penalty_in,Penalty_out):- !,
+	(relaxing_query(A,Cutoff,Penalty_in,Penalty_out)
+	 ;	
+	 relaxing_query(B,Cutoff,Penalty_in,Penalty_out)
+	).
+relaxing_query('::'(isa(A,B),widen(Scale,Actual)),Cutoff,Pen_in,Pen_out):-!,
+	(ground(A) -> 
+	    true 
+	  ; oms_warning(relaxation,('relaxation attempted with non-ground subentity ',
+	                          isa(A,B)::widen(Scale,Actual))) ),
+	(ground(B) -> 
+	    weighted_isa_bb(A,B,Scale,Cutoff,Actual,Pen_in,Pen_out)
+	  ; weighted_isa_bf(A,B,Scale,Cutoff,Pen_in,Pen_out),
+	    Actual = B).	
+relaxing_query('::'(attr(A,B,C),widen(1,Scale,Actual)),Cutoff,Pen_in,Pen_out):-!,
+	(ground(A) -> 
+	    weighted_attr_1(A,B,C,Scale,Cutoff,Actual,Pen_in,Pen_out)
+	  ; oms_warning(relaxation,('relaxation attempted with non-ground arg 1',
+	                          attr(A,B,C)::widen(1,Scale,Actual))) ).
+relaxing_query('::'(attr(A,B,C),opt(Penalty)),Cutoff,Pen_in,Pen_out):-!,
+	(attr(A,B,C),
+	 Pen_out = Pen_in
+	 ;
+	 \+ attr(A,B,C),
+	 Pen_out is Pen_in + Penalty,
+	 Pen_out =< Cutoff
+	).
+relaxing_query(attr(A,B,C),_Cutoff,Penalty,Penalty):-!,
+	attr(A,B,C).
+relaxing_query(isa(A,B),_Cutoff,Penalty,Penalty):-!,
+	isa(A,B).
+relaxing_query(Goal,_Cutoff,Penalty,Penalty):-!,
+	call(Goal).
+
+weighted_attr_1(A,B,C,_Scale,_Cutoff,A,Pen_in,Pen_in):- 
+	immediate_attr(A,B,C).
+weighted_attr_1(A,B,C,Scale,Cutoff,Actual,Pen_in,Pen_out):- 
+	immediate_isa(A,A1),
+	Pen_mid is Pen_in + Scale,
+	Pen_mid  =< Cutoff,
+	weighted_attr_1_2(A1,B,C,Scale,Cutoff,Actual,Pen_mid,Pen_out).
+
+/* cannot be object, already stepped up at lease once */
+weighted_attr_1_2(A,B,C,_Scale,_Cutoff,A,Pen_in,Pen_in):- 
+	query_immediate_irel(A,B,C).
+weighted_attr_1_2(A,B,C,Scale,Cutoff,Actual,Pen_in,Pen_out):- 
+	query_immediate_subclass(A,A1),
+	Pen_mid is Pen_in + Scale,
+	Pen_mid  =< Cutoff,
+	weighted_attr_1(A1,B,C,Scale,Cutoff,Actual,Pen_mid,Pen_out).
+
+weighted_isa_bb(A,B,_Scale,_Cutoff,B,Pen_in,Pen_in):- 
+	isa(A,B).
+weighted_isa_bb(A,B,Scale,Cutoff,Actual,Pen_in,Pen_out):- 
+	immediate_isa(B,C),
+	Pen_mid is Pen_in + Scale,
+	Pen_mid  =< Cutoff,
+	weighted_isa_bb(A,C,Scale,Cutoff,Actual,Pen_mid,Pen_out).
+
+weighted_isa_bf(id(Nid,Src),Actual,Scale,Cutoff,Pen_in,Pen_out):- 
+	(object(_,_,Nid,Src) -> 
+	    query_immediate_memberof(id(Nid,Src),id(Cid,Csrc)),
+	    weighted_isa_bb(id(Nid,Src),id(Cid,Csrc),
+	                    Scale,Cutoff,Actual,Pen_in,Pen_out)
+	  ;
+	    weighted_isa_bb(id(Nid,Src),id(Nid,Src),
+	                    Scale,Cutoff,Actual,Pen_in,Pen_out) ).
+

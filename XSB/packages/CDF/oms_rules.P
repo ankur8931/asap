@@ -1,0 +1,122 @@
+
+:- comment(module,"
+The @tt{oms_rules} module (which currently exists only as
+documentation) proposes a format for rules whose semantics accords
+with that of the OMS, so that the rules can be manipulated and applied
+by OMS routines, in addition to being stored as OMS elements.  For
+now, however, apart from a brief discussion of their semantics, we
+consider only the syntax of the OMS rules, and defer discussion of
+their application and manipulaiton.
+
+OMS rules are based on @em{class expressions}, which are elements of
+Description Logics.  Indeed, from the viewpoint of a Description
+Logic, any ontology, with or without rules, can be seen as a set of
+class and relation expressions expressions, each of which is
+equivalent to a formula in a subset of first-order logic.  In the OMS
+schema, most uses of relationships, schrels, strels, and so on
+constitute a particular restricted version of class expressions.
+
+Inference rules in Description Logics are subset axioms.  For
+instance, the rule that ''an anodyzed part is made out of aluminum''
+can be written as an axiom that one class expression is a subset of
+another class expression.  One Prolog-style syntax for this is:
+
+@begin{center}
+     subset(class(part and exists(has_process anodyzed)),
+                class(exists(has_material aluminum)))
+@end{center}
+
+In English, this says that each object that is a @tt{part} and for
+which there exists a @tt{has_process} attribute to a subclass of
+@tt{anodyzed} also has a @tt{has_material} attribute to a subclass of
+@tt{aluminum}.  Ignoring sources, this can be interpreted in the
+terminology of the OMS as: 
+
+@begin{center}
+IF memberof(X,part) and attribute(X,has_process,anodyzed)
+THEN attribute(X,has_material,aluminum)
+@end{center}
+
+If the above rule were an association rule, quantitative 'certainty'
+information may need to be associated with the rule.
+
+    subset([has_precision(.92), has_support(60)]
+	   class(part and exists(has_process anodyzed)) subset
+                class(exists(has_material aluminum))
+
+Note that the support and precision are located in a separate argument
+from the ""pre-condition"" and the ""post-condition"".  This is because
+these elements are associated with the inference itself and so these
+elements cannot be manipulated within an algebra of class expressions.
+
+Note that, just as an ontology can be seen as a logical theory, an
+ontology with rules can also be seen as a logical theory.  This fact
+gives rule application and consistency checking a formal logical basis
+@footnote{From a theoreical point of view, the consistency of a finite
+ontology that is made up of class expressions over a given description
+logic, such as ACLQ, is decidable.  This is easy to see at an
+intuitive level.  Each description logic formula is designed to have
+the finite model property and so its consistency is decidable.  SInce
+there are a finite number of these formulas the consistency of the
+ontology as a whole is also decidable.  When rules are added to the
+ontology, the deductive closure of the rules may no longer be
+decidable}.
+
+@section{Syntax of Rules}
+
+Let N be a positive integer, CE1,CE2 be class expressions, A be an
+atomic class expression, R a relation, and Pr be an atomic relation.
+
+Rule ::= subset(CE1,CE2) | subset(List,CE1,CE2)
+
+Class_expression ::= A| CE1 and CE2 | CE1 or CE2 | not CE1 
+                               | exists(R,CE1) | all(R,CE1) | atmost(N,R,CE1) 
+			                | atleast(N,R,CE1)
+
+Relation ::= Pr | inv(R)
+
+List is a list of certainty terms, not further specified yet.
+
+@section{Discussion}
+
+Coding rules as class expressions has advantages and disadvantages
+over coding rules in Prolog.
+
+@begin{itemize}
+
+@item First, since class expressions are in the process of being
+incorporated into the OMS, and since class expressions can completely
+express information maintained by the OMS, rules can in principle be
+introspected within the OMS, and inference about such rules may be
+done from within the OMS.  While Prolog rules can be stored and
+maintained in the OMS via the OMS primitive class clause/2, the
+structure and meaning of such rules is hidden from the OMS.
+
+@item If certain restrictions are made about the form of rules, an OMS
+can be seen as a decidable logical theory, whose consistency can be
+checked via a variety of algorithms.  Furthermore, the semantics of
+class expressions (@cite{}) captures elements of OMS inheritance.
+Prolog style rules and also be seen as a logical theory, using a
+program's completion @cite{}, but the semantics of a program's
+completion does not directly reflect the semantics of inheritance in
+the OMS.
+
+@item Class expressions are variable-free, and it can be shown that
+class expressions interpreted in the predicates of the OMS have a
+particularly restricted pattern of variable usage.  In other words,
+one can write a Prolog rule using only OMS predicates that cannot be
+expressed as a class expression.  Furthermore, Prolog allows many
+predicates such as logical and arithmetic comparison that cannot be
+expressed via class expressions.
+
+@item Class expressions can be modelled using a Protege-like visual
+query interface, so that it is not impossible to believe that users
+will be able to create simple rules based on class expressions.
+@end{itemize}
+
+Thus, Prolog rules are more powerful than class expression rules, but
+their semantics is hidden from the OMS.  Class expression rules form a
+mechanism that can be used for many relatively simple inferences
+required by standardization, extraction and classification.
+ 
+").

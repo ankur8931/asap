@@ -1,0 +1,99 @@
+/* File:      ptqlex.P
+** Author(s): David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: ptqlex.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+% The PTQ lexicon
+
+:- export lex/3.
+
+% lex(Cat,Word,Attr).
+lex(det,a,_).
+lex(det,the,_).
+lex(det,every,_).
+
+lex(pro,him,gc(m,obj)).
+lex(pro,he,gc(m,sub)).
+lex(pro,her,gc(f,obj)).
+lex(pro,she,gc(f,sub)).
+lex(pro,it,gc(n,_)).
+
+lex(biv,runs,p(s,run)).
+lex(biv,run,p(i,run)).
+lex(biv,walks,p(s,walk)).
+lex(biv,walk,p(i,walk)).
+lex(biv,talks,p(s,talk)).
+lex(biv,talk,p(i,talk)).
+lex(biv,rises,p(s,rise)).
+lex(biv,rise,p(i,rise)).
+
+lex(bte,john,m).
+lex(bte,bill,m).
+lex(bte,mary,f).
+lex(bte,ninety,n).
+
+lex(btv,finds,p(s,find)).
+lex(btv,find,p(i,find)).
+lex(btv,loses,p(s,lose)).
+lex(btv,lose,p(i,lose)).
+lex(btv,eats,p(s,eat)).
+lex(btv,eat,p(i,eat)).
+lex(btv,loves,p(s,love)).
+lex(btv,love,p(i,love)).
+lex(btv,dates,p(s,date)).
+lex(btv,date,p(i,date)).
+lex(btv,is,p(s,be)).
+lex(btv,be,p(i,be)).
+lex(btv,seeks,p(s,seek)).
+lex(btv,seek,p(i,seek)).
+lex(btv,conceives,p(s,conceive)).
+lex(btv,conceive,p(i,conceive)).
+
+%btt(necessarily) --> word(necessarily). % wrong
+
+lex(bcn,man,m).
+lex(bcn,woman,f).
+lex(bcn,park,n).
+lex(bcn,fish,n).
+lex(bcn,pen,n).
+lex(bcn,unicorn,n).
+lex(bcn,price,n).
+lex(bcn,temperature,n).
+
+lex(biav,rapidly,_).
+lex(biav,slowly,_).
+lex(biav,voluntarily,_).
+lex(biav,allegedly,_).
+
+lex(pr,in,_).
+lex(pr,about,_).
+
+lex(bivt,[believes,that],p(s,believe_that)).
+lex(bivt,[believe,that],p(i,believe_that)).
+lex(bivt,[asserts,that],p(s,assert_that)).
+lex(bivt,[assert,that],p(i,assert_that)).
+
+lex(biviv,[tries,to],p(s,try_to)).
+lex(biviv,[try,to],p(i,try_to)).
+lex(biviv,[wishes,to],p(s,wish_to)).
+lex(biviv,[wish,to],p(i,wish_to)).
+

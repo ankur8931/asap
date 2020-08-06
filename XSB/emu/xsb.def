@@ -1,0 +1,151 @@
+EXPORTS
+Java_com_xsb_interprolog_NativeEngine_get_1bytes@8
+_Java_com_xsb_interprolog_NativeEngine_get_1bytes@8 = Java_com_xsb_interprolog_NativeEngine_get_1bytes@8
+Java_com_xsb_interprolog_NativeEngine_put_1bytes@24
+_Java_com_xsb_interprolog_NativeEngine_put_1bytes@24 = Java_com_xsb_interprolog_NativeEngine_put_1bytes@24
+Java_com_xsb_interprolog_NativeEngine_xsb_1close_1query@8
+_Java_com_xsb_interprolog_NativeEngine_xsb_1close_1query@8 = Java_com_xsb_interprolog_NativeEngine_xsb_1close_1query@8
+Java_com_xsb_interprolog_NativeEngine_xsb_1command_1string@12
+_Java_com_xsb_interprolog_NativeEngine_xsb_1command_1string@12 = Java_com_xsb_interprolog_NativeEngine_xsb_1command_1string@12
+Java_com_xsb_interprolog_NativeEngine_xsb_1init_1internal@12
+_Java_com_xsb_interprolog_NativeEngine_xsb_1init_1internal@12 = Java_com_xsb_interprolog_NativeEngine_xsb_1init_1internal@12
+Java_com_xsb_interprolog_NativeEngine_xsb_1interrupt@8
+_Java_com_xsb_interprolog_NativeEngine_xsb_1interrupt@8 = Java_com_xsb_interprolog_NativeEngine_xsb_1interrupt@8
+Java_com_xsb_interprolog_NativeEngine_xsb_1setDebug@12
+_Java_com_xsb_interprolog_NativeEngine_xsb_1setDebug@12 = Java_com_xsb_interprolog_NativeEngine_xsb_1setDebug@12
+c2p_chars@8
+_c2p_chars@8 = c2p_chars@8
+c2p_float@12
+_c2p_float@12 = c2p_float@12
+c2p_functor@12
+_c2p_functor@12 = c2p_functor@12
+c2p_int@8
+_c2p_int@8 = c2p_int@8
+c2p_list@4
+_c2p_list@4 = c2p_list@4
+c2p_nil@4
+_c2p_nil@4 = c2p_nil@4
+c2p_setfree@4
+_c2p_setfree@4 = c2p_setfree@4
+c2p_string@8
+_c2p_string@8 = c2p_string@8
+ctop_float@12
+_ctop_float@12 = ctop_float@12
+ctop_int@8
+_ctop_int@8 = ctop_int@8
+ctop_string@8
+_ctop_string@8 = ctop_string@8
+is_atom@4
+_is_atom@4 = is_atom@4
+is_attv@4
+_is_attv@4 = is_attv@4
+is_charlist@8
+_is_charlist@8 = is_charlist@8
+is_float@4
+_is_float@4 = is_float@4
+is_functor@4
+_is_functor@4 = is_functor@4
+is_int@4
+_is_int@4 = is_int@4
+is_list@4
+_is_list@4 = is_list@4
+is_nil@4
+_is_nil@4 = is_nil@4
+is_string@4
+_is_string@4 = is_string@4
+is_var@4
+_is_var@4 = is_var@4
+p2c_arity@4
+_p2c_arity@4 = p2c_arity@4
+p2c_chars@8
+_p2c_chars@8 = p2c_chars@8
+p2c_float@4
+_p2c_float@4 = p2c_float@4
+p2c_functor@4
+_p2c_functor@4 = p2c_functor@4
+p2c_int@4
+_p2c_int@4 = p2c_int@4
+p2c_string@4
+_p2c_string@4 = p2c_string@4
+p2p_arg@8
+_p2p_arg@8 = p2p_arg@8
+p2p_car@4
+_p2p_car@4 = p2p_car@4
+p2p_cdr@4
+_p2p_cdr@4 = p2p_cdr@4
+p2p_deref@4
+_p2p_deref@4 = p2p_deref@4
+p2p_new@0
+_p2p_new@0 = p2p_new@0
+p2p_unify@8
+_p2p_unify@8 = p2p_unify@8
+print_pterm@12
+_print_pterm@12 = print_pterm@12
+ptoc_float@4
+_ptoc_float@4 = ptoc_float@4
+ptoc_int@4
+_ptoc_int@4 = ptoc_int@4
+ptoc_longstring@4
+_ptoc_longstring@4 = ptoc_longstring@4
+ptoc_number@4
+_ptoc_number@4 = ptoc_number@4
+ptoc_string@4
+_ptoc_string@4 = ptoc_string@4
+reg_term@4
+_reg_term@4 = reg_term@4
+strip_names_from_path@8
+_strip_names_from_path@8 = strip_names_from_path@8
+varstring_create@4
+_varstring_create@4 = varstring_create@4
+varstring_init@4
+_varstring_init@4 = varstring_init@4
+win_xsbent@12
+_win_xsbent@12 = win_xsbent@12
+xsb@12
+_xsb@12 = xsb@12
+xsb_abort@0
+_xsb_abort@0 = xsb_abort@0
+xsb_basic_abort@4
+_xsb_basic_abort@4 = xsb_basic_abort@4
+xsb_bug@0
+_xsb_bug@0 = xsb_bug@0
+xsb_close@0
+_xsb_close@0 = xsb_close@0
+xsb_close_query@0
+_xsb_close_query@0 = xsb_close_query@0
+xsb_command@0
+_xsb_command@0 = xsb_command@0
+xsb_command_string@4
+_xsb_command_string@4 = xsb_command_string@4
+xsb_error@0
+_xsb_error@0 = xsb_error@0
+xsb_exit@0
+_xsb_exit@0 = xsb_exit@0
+xsb_get_last_answer_string@12
+_xsb_get_last_answer_string@12 = xsb_get_last_answer_string@12
+xsb_init@8
+_xsb_init@8 = xsb_init@8
+xsb_init_string@4
+_xsb_init_string@4 = xsb_init_string@4
+xsb_mesg@0
+_xsb_mesg@0 = xsb_mesg@0
+xsb_next@0
+_xsb_next@0 = xsb_next@0
+xsb_next_string@8
+_xsb_next_string@8 = xsb_next_string@8
+xsb_next_string_b@16
+_xsb_next_string_b@16 = xsb_next_string_b@16
+xsb_query@0
+_xsb_query@0 = xsb_query@0
+xsb_query_string@4
+_xsb_query_string@4 = xsb_query_string@4
+xsb_query_string_string@12
+_xsb_query_string_string@12 = xsb_query_string_string@12
+xsb_query_string_string_b@20
+_xsb_query_string_string_b@20 = xsb_query_string_string_b@20
+xsb_throw@4
+_xsb_throw@4 = xsb_throw@4
+xsb_timer_handler@16
+_xsb_timer_handler@16 = xsb_timer_handler@16
+xsb_warn@0
+_xsb_warn@0 = xsb_warn@0

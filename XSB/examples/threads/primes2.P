@@ -1,0 +1,44 @@
+prime(P,I) :- I < sqrt(P),!.
+prime(P,I) :- R is P mod I, R =:= 0, !, fail.
+prime(P,I) :- I1 is I - 1, prime(P,I1).
+
+prime(P) :- I is P - 1, prime(P, I ).
+
+list_primes(I,F,T,T) :- I > F, !.
+list_primes(I,F,[I|L],T) :- 
+	prime(I), !, 
+	I1 is I + 1, list_primes(I1, F, L,T).
+list_primes(I,F,L,T) :- 
+	I1 is I + 1, list_primes(I1,F,L,T).
+
+partition_space(N,H,H1) :-
+	H is N // 2, H1 is H + 1.
+	
+/* Sequential version */
+
+sequential( N ) :-
+	H is floor(N/2), H1 is H + 1,
+	list_primes( 1, H, L, L1 ),
+	list_primes( H1, N, L1, [] ),
+	writeln(L).
+
+/* Dual Thread prime number calculation */
+
+:- import thread_create/2, thread_join/2, thread_exit/1 from thread.
+
+worker( I, F, L, T ) :-
+	list_primes( I, F, L, T ),
+	thread_exit( primes(L,T) ).
+
+master( N )  :-
+	partition_space( N, H, H1 ),
+
+	thread_create( worker(1,  H, L,  L1), W1 ),
+	thread_create( worker(H1, N, L1, []), W2 ),
+
+	thread_join( W1, exited(primes(L,L1)) ),
+	thread_join( W2, exited(primes(L1,[])) ),
+
+	writeln( L ).
+	
+

@@ -1,0 +1,103 @@
+/* File:      plmchshell.P
+** Author(s): Jin Yu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: plmchshell.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+
+%------------------------------------------------------------------------------
+% This module imports all the external C functions, and loads the compiler
+% configuration module. 
+%
+%------------------------------------------------------------------------------
+
+%------------------------------------------------------------------------------
+% import XSB-Perl C interface
+%------------------------------------------------------------------------------
+
+:- export bulk_match__/3, get_match_result__/2.
+
+:- import do_bulk_match__/3, get_match_resultC__/2,
+	  get_bulk_match_result__/3, do_bulk_match__/3
+   from xsbpattern. 
+
+% configure package is necessary (construct xsbpattern.H and compile)
+:- [plmchconfig].
+
+
+%-----------------------------------------------------------------------------
+% bulk matching
+%
+% output is a list.
+%-----------------------------------------------------------------------------
+
+bulk_match__(Str,Pattern,List) :-
+	do_bulk_match__(Str,Pattern,NumOfMatches), 
+        get_list(NumOfMatches,NumOfMatches,List).          
+%% Collect all matches into a list
+get_list(0,0,[]).
+get_list(NumOfMatches,0,[]) :-
+        NumOfMatches > 0.
+get_list(NumOfMatches, Counter, [MatchVal | Rest]) :-
+	Counter > 0,
+	Counter1 is Counter - 1,
+        MatchSeqNumber is NumOfMatches - Counter, 
+	%% we need to pass NumOfMatches so get_bulk_match_result__ will
+	%% know when to stop and not coredump
+	get_bulk_match_result__( MatchSeqNumber, MatchVal, NumOfMatches ),
+        get_list(NumOfMatches, Counter1, Rest).  
+         
+
+%-----------------------------------------------------------------------------
+% get_match_result__
+%
+% Getting the perl pattern match results:
+%	$1,$2,...:input is the digital number,
+%  	PREMATCH,MATCH,POSTMATCH, LAST_PAREN_MATCH:
+%		 input is the atom,
+% This uses the following mapping:
+%	MATCH --> -1
+%       PREMATCH --> -2
+%	POSTMATCH --> -3
+%	LAST_PAREN_MATCH --> -4  
+%-----------------------------------------------------------------------------
+
+get_match_result__(A,X) :- 
+	integer(A),
+	A>0,
+	get_match_resultC__(A,X).
+get_match_result__(match,X) :- 
+     	get_match_resultC__(-1,X).
+get_match_result__(prematch,X) :- 
+	get_match_resultC__(-2,X).
+get_match_result__(postmatch,X) :-
+	get_match_resultC__(-3,X).
+get_match_result__(last_paren_match,X) :- 
+	get_match_resultC__(-4,X).
+get_match_result__(A,X) :- 
+	integer(A), 
+	A<0, 
+	X = 0,
+	fail.
+get_match_result__(A,X) :- 
+	not integer(A), 
+	X = 0,
+	fail.

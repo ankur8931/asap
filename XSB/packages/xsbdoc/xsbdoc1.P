@@ -1,0 +1,289 @@
+:- compiler_options([ciao_directives]).
+
+:- export xsbdoc/2,
+%	  main/0,	% to avoid a useinfer warning.
+	  test/1,make_distclean/0.
+
+:- import format/2 from format.
+
+:- import xsbdoc_bibfile/1,
+	  xsbdoc_component/1,
+	  xsbdoc_index/1, 
+	  xsbdoc_main/1,
+	  xsbdoc_option/1, 
+	  xsbdoc_papertype/1,
+	  xsbdoc_startpage/1
+	from usermod.
+
+:- import option_comment/2 from autodocformats.
+:- import corrected_search_module/5 from xsbdoc_term_proc.
+
+:- import concat_atom/2 from string.
+:- import flatten/2,member/2 from basics.
+:- import xsb_configuration/2 from xsb_configuration.
+
+:- import autodoc/7 from autodoc.
+
+:- dynamic refs_stream/1.
+:- dynamic xsbdoc_option/1.
+:- dynamic xsbdoc_index/1.
+:- dynamic xsbdoc_bibfile/1.
+:- dynamic xsbdoc_papertype/1.
+:- dynamic xsbdoc_startpage/1.
+:- dynamic xsbdoc_component/1.
+:- dynamic xsbdoc_main/1.
+
+%% ---------------------------------------------------------------------------
+%% Intro
+%% ---------------------------------------------------------------------------
+
+:- comment(title,"The xsbdoc Documentation Generator").
+
+:- comment(subtitle,"An Automatic Documentation Generator for XSB Programs").
+:- comment(subtitle,"Inspired by the Ciao lpdoc Document Generator").
+
+:- comment(author, "Terrance Swift").
+:- comment(author, "based in part on code and documentation by ").
+:- comment(author,"Manuel Hermenegildo and the CLIP Group").
+
+:- comment(copyright,"
+@em{This copyright needs to be worked out better before it can be released}.
+Copyright 2002 Terrance Swift/XSB Group, 
+Copyright @copyright{} 1996-99 Manuel Hermenegildo/The CLIP Group.
+
+@include{Copyright.Manuals}
+").
+
+:- comment(summary,"@include{README.xsbdoc}").
+
+:- comment(module,"@include{Intro.xsbdoc}
+
+ ").
+
+%% ---------------------------------------------------------------------------
+%% Body
+%% ---------------------------------------------------------------------------
+test(Type):- xsbdoc(xsbdoc_format,Type).
+
+/*
+Type can be dvi, ps, html, pdf
+makertf
+*/
+
+xsbdoc(Format_file,Generation_type):- 
+	clear_the_decks,
+	display_version,
+	throw_load_dyn(Format_file),
+	get_options(StartPage,PaperType,Opts),
+	get_components(Components),
+	component_texic(Components,Texics),
+	xsbdoc_main(Main),
+	corrected_search_module(Main,_Dir,Base,_Src,_Isl), 
+	findall(Index,xsbdoc_index(Index),Indices),
+            autodoc_fail(texinfo,Main,Indices,Texics,
+	             StartPage,PaperType,['-main'|Opts]),
+	xsbdoc_components(Components,Indices,Opts),
+	make_bibfiles(Base),
+        tex_commands(Base),
+	perform_generation_type(Generation_type,Base,Components),
+	!.
+xsbdoc(Format_file,_):- 
+	format("~nCould not process: ~w",[Format_file]).
+
+tex_commands(Base):-
+	writeln('entering tex commands'(Base)),
+	xsb_configuration(host_os,Type),
+	(Type == windows -> 
+	  shell_list(['tex -interaction=nonstopmode ',Base,'.texic']),
+	  writeln('entering texindex'(Base)),
+	  texinfo_the_files(Base),
+	  shell_list(['tex -interaction=nonstopmode ',Base,'.texic']) 
+	;
+	  shell_list(['tex -interaction=nonstopmode ',Base,'.texic']),
+	  writeln('entering texindex'(Base)),
+	  texinfo_the_files(Base),
+	  shell_list(['tex -interaction=nonstopmode ',Base,'.texic']) ).
+
+/*
+	  shell_list(['tex \\\nonstopmode\\\input ',Base,'.texic']),
+	  shell_list(['texindex ',Base,'.?? ']),
+	  shell_list(['tex \\\nonstopmode\\\input ',Base,'.texic']) ).
+*/
+texinfo_the_files(Base):- 
+	member(X,[pd,op,co,gl]),
+	writeln(['texindex ',Base,'.',X]),
+	shell_list(['texindex ',Base,'.',X]),
+	fail.
+texinfo_the_files(_Base).
+
+perform_generation_type(ascii,Main,List):- 
+	component_ascii([Main|List]),
+	shell_list(['mv -f ',Main,'.ascii ',Main,'.tempascii']),
+	add_spaces(List,Spacelist),
+	shell_list(['cat ',Main,'.tempascii ',Spacelist,' > ',Main,'.ascii']).
+perform_generation_type(dvi,_,_).
+perform_generation_type(ps,Base,_):- 
+	shell_list(['dvips ',Base,'.dvi -o ',Base,'.ps']).
+perform_generation_type(pdf,Base,_):- 
+	shell_list(['dvips ',Base,'.dvi -o ',Base,'.ps']),
+	shell_list(['ps2pdf ',Base,'.ps ',Base,'.pdf']).
+perform_generation_type(html,Main,List):- 
+	component_html([Main|List]),
+	concat_atom([Main,'_html'],Htmldir),
+	(file_exists(Htmldir) -> true ; 
+		shell_list(['mkdir ',Main,'_html']) ),
+	shell_list(['mv -f *.html ',Main,'_html']).
+	
+autodoc_fail(Q,W,E,R,T,Y,U):- 
+	autodoc(Q,W,E,R,T,Y,U),
+	fail.
+autodoc_fail(_,_,_,_,_,_,_).
+
+component_texic([],[]).
+component_texic([P|Prest],[Texic|Trest]):- 
+	corrected_search_module(P,_Dir,Base,_Src,_Isl), 
+	concat_atom([Base,'.texic'],Texic),
+	component_texic(Prest,Trest).
+
+xsbdoc_components(Components,Indices,Opts):- 
+	member(Comp,Components),
+	autodoc(texinfo,Comp,Indices,[],
+	             _StartPage,_PaperType,['-component'|Opts]),
+	fail.
+xsbdoc_components(_,_,_).
+
+component_html([]).
+component_html([P|T]):- 
+	corrected_search_module(P,_Dir,Base,_Src,_Isl), 
+	shell_list(['sh texi2html -expandinfo -split_chapter -menu ',
+		    Base,'.texic']),
+	component_html(T).
+
+component_ascii([]).
+component_ascii([P|T]):- 
+	corrected_search_module(P,_Dir,Base,_Src,_Isl), 
+	shell_list(['makeinfo  --no-validate --error-limit 100000 --force ',
+	            '--no-split --verbose --no-headers --fill-column=70 ',
+		    '--output=',Base,'.ascii ',Base,'.texic']),
+	component_ascii(T).
+
+add_spaces([],[]).
+add_spaces([File|R],[File,'.ascii '|R1]):- 
+	add_spaces(R,R1).
+
+throw_load_dyn(File):- 
+	load_dyn(File) -> true ; abort(('file not found ',File)).
+
+clear_the_decks:- 
+%%	retractall(user_library(_,_)),  % is no user_library/2, is user_library/1 in xsbdoc_term_proc
+	retractall(xsbdoc_bibfile(_)),
+	retractall(xsbdoc_component(_)),
+	retractall(xsbdoc_index(_)),
+	retractall(xsbdoc_main(_)),
+	retractall(xsbdoc_option(_)),
+	retractall(xsbdoc_papertype(_)),
+	retractall(xsbdoc_startpage(_)),
+	retractall(refs_stream(_)).
+
+get_options(StartPage,PaperType,Opts):- 
+	(xsbdoc_papertype(Paptype) -> 
+	    PaperType = Paptype 
+	  ; PaperType = letterpaper),
+	(xsbdoc_startpage(Start) -> 
+	    StartPage = Start
+	  ; StartPage = 1),
+	findall(X,(xsbdoc_option(X),
+                   option_comment(X,_)),Opts).
+
+display_version:- 
+	xsbdoc_version(Version),
+	format("xsbdoc ~s ",[Version]),
+	format("Using code modified from CLIP Group, T.U. of Madrid~n",[]).
+
+xsbdoc_version("1.0").
+
+get_components(Vals):- 
+	findall(Val,xsbdoc_component(Val),Vals).
+
+shell_list(List) :-
+	flatten(List,List0),
+	concat_atom(List0,AList), %shell doesn't use get_longstring, but parses list
+	shell(AList).
+
+make_bibfiles(Main):- 
+	shell_list(['chmod 664 ',Main,'.texic']),
+	shell_list(['chmod 664 ',Main,'.texic']),
+	shell('chmod 664 auto*.eps'),
+	findall(Bib,xsbdoc_bibfile(Bib),Bibs),
+	( Bibs \== [] -> 
+	    xsb_configuration(install_dir,Dir0),
+	    fix_if_cygwin(Dir0,Dir),
+	    concat_atom([Dir,'/packages/xsbdoc/'],XSBDoc),
+	    concat_atom([Main,'.refs.aux'],MainRefsAux),
+	    writeln('*** ---------------------------------------------------'),
+	    writeln('*** Generating refs.texic, resolving refs...'),
+	    writeln('*** ---------------------------------------------------'),
+      	    shell_list(['cat *.refs  > ',MainRefsAux]),
+	    open(MainRefsAux,append,MainStr),
+	    concat_atom(['\\bibstyle{',XSBDoc,'lpdoc} '],C1),
+	    writeln(MainStr,C1),
+	    concat_atom(['\\bibdata{'|Bibs],C2),
+	    concat_atom([C2,'} '],C3),
+	    writeln(MainStr,C3),
+	    close(MainStr),
+	    shell_list(['bibtex ',Main,'.refs']),
+	    shell_list(['mv ',Main,'.refs.bbl ',Main,'refs.texic'])
+	  ; 
+	    shell_list(['touch ',Main,'refs.texic']),
+	    % TLS the above seems to be necessary ?!?!
+	    writeln('No Bibfiles found')).
+
+make_distclean:- 
+	shell('rm -f *.aux *.blg *.cp *.cps *.fn *.fns *.gl *.gls *.ky *.kys'),
+	shell('rm -f *.co *.cos *.op *.ops'),
+	shell('rm -f *.log *.pd *.pds *.pg *.pgs *.refs *.texic *.toc '),
+	shell('rm -f *.tp *.tps *.vr *.vrs'),
+	shell('rm -f autodocXXXXXX *.tempascii').
+
+:- comment(version(0*1+1,2001/11/01),"Celebrating the first version with a brand-new comment!").
+
+:- comment(bug,"Variable names are not propagated in head patterns of
+                :- pred assertions..").
+
+:- comment(bug,"load_dyn/1, load_dync/1 directives should be doc'd at 
+		interface of module").	
+
+:- comment(bug,"Special indexing directives (e.g. tries) are not documented
+	        in predicate level documentation.  Other directives may also
+                be added to documentation").
+
+:- comment(bug,"Have not tested out _doc files; that more than one
+		bibfile can be used; that image files are
+		appropriately read.").
+
+fix_if_cygwin(Dir0,Dir) :-
+	(xsb_configuration(architecture,i686-pc-cygwin),
+	 atom_codes(Dir0,[Dr,0':'|Rest])
+	 ->     atom_codes(Dir,[0'/',Dr|Rest])
+	 ;      Dir = Dir0
+        ).
+
+end_of_file.
+
+report_usage :-
+	format(user,"Usage:~n~n",[]),
+	usage_message(Text), 
+	format(user,Text,[]),
+	format(user,"~nAcceptable index names:~n",[]),
+	( index_comment(Index,IText),
+          format(user,"    ~w~n    ~s~n~n",[Index,IText]),
+	  fail
+	; true ),
+	format(user,"~nAdditional options (MiscOpts):~n",[]),
+	( option_comment(Option,OText),
+          write((Option,OText)),nl,nl,
+	  fail
+	; true ).
+
+%% This is in narrow format because that way it looks nicer in a man page.
+

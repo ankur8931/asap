@@ -1,0 +1,174 @@
+
+
+            INSTALLATION SUMMARY
+            --------------------
+
+XSB Version:	   3.7.
+Code name:	   Clan MacGregor
+Release date:	   2016-07-06
+Configuration:	   x86_64-unknown-linux-gnu
+Installation date: Thu Aug  6 03:53:41 MST 2020
+
+  Build process is looking for XSB sources in:	  /home/ubuntu/asap/XSB
+  XSB should be installed in:			  /home/ubuntu/asap/XSB
+  Configuration-specific executables go in:	  /home/ubuntu/asap/XSB/config/x86_64-unknown-linux-gnu/bin
+  Configuration-specific libraries go in:	  /home/ubuntu/asap/XSB/config/x86_64-unknown-linux-gnu/lib
+  Object code goes in:				  /home/ubuntu/asap/XSB/config/x86_64-unknown-linux-gnu/saved.o
+  Site-specific code goes in:			  /home/ubuntu/asap/XSB/site
+  Site configuration-specific code goes in:	  /home/ubuntu/asap/XSB/site/config/x86_64-unknown-linux-gnu
+  XSB will be built with:			  gcc  -O3 -fno-strict-aliasing  -Wall -pipe
+  builtin.c will be built with: 		  gcc  -O3 -fno-strict-aliasing  -Wall -pipe
+  loader_xsb.c will be built with: 		  gcc  -O3 -fno-strict-aliasing  -Wall -pipe
+  emuloop.c will be built with: 		  gcc  -O3 -fno-strict-aliasing  -Wall -pipe
+  tr_utils.c will be built with:		  gcc  -O3 -fno-strict-aliasing  -Wall -pipe
+  Loader flags: 				  -lm -ldl -Wl,-export-dynamic -lpthread
+  Compilation mode:				  optimal
+  XSB abstract machine: 			  slg-wam
+  XSB scheduling strategy:			  local
+  Garbage Collection Stress-Test:		  no
+  Jumptable-based emulator loop:		  yes
+  Demand support:                                 no
+
+  Support for modular database drivers: 	  no
+  -- These drivers can also be configured later.
+  Native support for Oracle:			  no
+  Support for the old ODBC driver:		  no
+
+  Support for InterProlog's native engine:   	  no
+  -- JDK may not have been installed or
+  -- JAVA_HOME not set. You will still be able
+  -- to use InterProlog's subprocess engine.
+
+  POSIX regexp matching libraries:                yes
+  POSIX wildcard matching libraries:              yes
+
+  Curl support (HTTP protocol library):           yes
+  Curl C flags:        	                          -g -O2
+  Curl loader flags:                              
+
+  XPath support:				  yes
+  XPath C flags:				  -I/usr/include/libxml2
+  XPath loader flags:				  -L/usr/lib -lxml2
+
+  PCRE support (Perl pattern matching):           yes
+  PCRE C flags:        	                          -g -O2
+  PCRE loader flags:                              
+
+
+
+make[1]: Entering directory '/home/ubuntu/asap/XSB/emu'
+-e 
+Compiling XSB with gcc using -O3 -fno-strict-aliasing  -Wall -pipe
+
+-e 	[gcc] main_xsb.c
+-e 	[gcc] auxlry.c
+-e 	[gcc] biassert.c
+biassert.c: In function ‘dbgen_printinst3’:
+biassert.c:158:20: warning: type of ‘Opcode’ defaults to ‘int’ [-Wimplicit-int]
+ static inline void dbgen_printinst3(Opcode, Arg1, Arg2, Arg3)
+                    ^
+biassert.c:158:20: warning: type of ‘Arg1’ defaults to ‘int’ [-Wimplicit-int]
+biassert.c:158:20: warning: type of ‘Arg2’ defaults to ‘int’ [-Wimplicit-int]
+biassert.c:158:20: warning: type of ‘Arg3’ defaults to ‘int’ [-Wimplicit-int]
+biassert.c: In function ‘dbgen_printinst’:
+biassert.c:181:20: warning: type of ‘Opcode’ defaults to ‘int’ [-Wimplicit-int]
+ static inline void dbgen_printinst(Opcode, Arg1, Arg2)
+                    ^
+biassert.c:181:20: warning: type of ‘Arg1’ defaults to ‘int’ [-Wimplicit-int]
+biassert.c:181:20: warning: type of ‘Arg2’ defaults to ‘int’ [-Wimplicit-int]
+-e 	[gcc] builtin.c using -O3 -fno-strict-aliasing  -Wall -pipe
+-e 	[gcc] call_xsb.c
+-e 	[gcc] cinterf.c
+-e 	[gcc] conc_compl.c
+-e 	[gcc] debug_xsb.c
+-e 	[gcc] dis.c
+-e 	[gcc] dynload.c
+-e 	[gcc] dynamic_stack.c
+-e 	[gcc] deadlock.c
+-e 	[gcc] emuloop.c using -O3 -fno-strict-aliasing  -Wall -pipe
+-e 	[gcc] error_xsb.c
+-e 	[gcc] findall.c
+-e 	[gcc] function.c
+-e 	[gcc] hash_xsb.c
+-e 	[gcc] hashtable_xsb.c
+-e 	[gcc] heap_xsb.c
+-e 	[gcc] init_xsb.c
+-e 	[gcc] inst_xsb.c
+-e 	[gcc] io_builtins_xsb.c
+-e 	[gcc] loader_xsb.c using -O3 -fno-strict-aliasing  -Wall -pipe
+-e 	[gcc] memory_xsb.c
+-e 	[gcc] orient_xsb.c
+-e 	[gcc] pathname_xsb.c
+-e 	[gcc] psc_xsb.c
+-e 	[gcc] random_xsb.c
+-e 	[gcc] remove_unf.c
+-e 	[gcc] residual.c
+-e 	[gcc] rw_lock.c
+-e 	[gcc] scc_xsb.c
+-e 	[gcc] slgdelay.c
+-e 	[gcc] socket_xsb.c
+-e 	[gcc] string_xsb.c
+-e 	[gcc] storage_xsb.c
+-e 	[gcc] struct_manager.c
+-e 	[gcc] struct_intern.c
+-e 	[gcc] sub_delete.c
+-e 	[gcc] subp.c
+-e 	[gcc] system_xsb.c
+-e 	[gcc] table_stats.c
+-e 	[gcc] tables.c
+-e 	[gcc] thread_xsb.c
+thread_xsb.c: In function ‘init_message_queue’:
+thread_xsb.c:2010:9: warning: variable ‘pos’ set but not used [-Wunused-but-set-variable]
+   { int pos;
+         ^
+-e 	[gcc] timer_xsb.c
+-e 	[gcc] token_xsb.c
+-e 	[gcc] tr_utils.c using -O3 -fno-strict-aliasing  -Wall -pipe
+-e 	[gcc] trace_xsb.c
+-e 	[gcc] trie_lookup.c
+-e 	[gcc] trie_search.c
+-e 	[gcc] tries.c
+-e 	[gcc] tst_insert.c
+-e 	[gcc] tst_retrv.c
+-e 	[gcc] tst_unify.c
+-e 	[gcc] tst_utils.c
+-e 	[gcc] varstring.c
+-e 	[gcc] ubi_BinTree.c
+-e 	[gcc] ubi_SplayTree.c
+-e 	[gcc] hashtable.c
+-e 	[gcc] hashtable_itr.c
+-e 	[gcc] sha1.c
+-e 	[gcc] md5.c
+-e 	[gcc] url_encode.c
+-e 	[gcc] getMemorySize.c
+-e 	[gcc] incr_xsb.c
+-e 	[gcc] call_graph_xsb.c
+
+Making XSB executable /home/ubuntu/asap/XSB/config/x86_64-unknown-linux-gnu/bin/xsb 
+
+-e 	[gcc] -o /home/ubuntu/asap/XSB/config/x86_64-unknown-linux-gnu/bin/xsb -lm -ldl -Wl,-export-dynamic -lpthread 
+error_xsb.o: In function `print_incomplete_tables_on_abort.part.2':
+error_xsb.c:(.text+0x4e): warning: the use of `tempnam' is dangerous, better use `mkstemp'
+make[1]: Leaving directory '/home/ubuntu/asap/XSB/emu'
+make[1]: Entering directory '/home/ubuntu/asap/XSB/gpp'
+
+-e 	[gcc] gpp.c using  
+gpp.c: In function ‘findCommentEnd’:
+gpp.c:1303:7: warning: format not a string literal and no format arguments [-Wformat-security]
+       fprintf(C->out->f,endseq);
+       ^
+-e 	[gcc] -o gpp
+
+make[1]: Leaving directory '/home/ubuntu/asap/XSB/gpp'
+
+
+----------------- Warnings ------------------------
+While compiling XSB/cmplib:
+-------------------- End --------------------------
+----------------- Warnings ------------------------
+While compiling XSB/lib:
+-------------------- End --------------------------
+----------------- Warnings ------------------------
+While compiling XSB/syslib:
+-------------------- End --------------------------
+

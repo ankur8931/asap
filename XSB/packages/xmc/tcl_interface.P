@@ -1,0 +1,255 @@
+/* Code to manage interaction with TCL */
+
+% Set the prompts so tcl can interact with the toploop.
+:- prompt('| ?- 
+',_,'_$main_prompt'(_)),
+	prompt('
+:
+',_,'_$more_prompt'(_)),
+	prompt(' ? 
+:
+',_,'_$debug_prompt'(_)).
+
+% tell tcl to yoke a variable.
+tcl_xsb_var(Var) :-
+	tcl_command(['xsb_var ',Var]).
+
+% for XSB to set tcl (yoked) variables
+% always eagerly set over in tcl 
+tcl_set(Var,Val) :-
+	retractall(tcl_vars(Var,_)),
+	assert(tcl_vars(Var,Val)),
+	functor(Var,Varn,Arity),
+	(Arity > 0
+	 ->	arg(1,Var,Arg1),
+		tcl_element_list(2,Arity,Var,Element1),
+		Element = [Arg1|Element1]
+	 ;	Element = ''
+	),
+	tcl_command(['xsb_tcl_set ',Varn,' "',Element,'" ',tcl_val(Val)]).
+
+% To unset a yoked var, both in Prolog and in Tcl.
+tcl_unset(Var) :-
+	do_unset(Var),
+	tcl_command(['xsb_unset ',Var]).
+	
+do_unset(Var) :-
+	retractall(tcl_vars(Var,_)),
+	functor(Var1,Var,1),retractall(tcl_vars(Var1,_)),
+	functor(Var2,Var,2),retractall(tcl_vars(Var2,_)),
+	functor(Var3,Var,3),retractall(tcl_vars(Var3,_)),
+	functor(Var4,Var,4),retractall(tcl_vars(Var4,_)).
+
+% internal to send tcl a command
+tcl_command(List) :- write('|tcl-'),tcl_wl(List),nl.
+
+% internal to send a list as a tcl command
+tcl_wl([]) :- !.
+tcl_wl([Fld|Flds]) :- !,tcl_wl(Fld),tcl_wl(Flds).
+tcl_wl(tcl_val(Val)) :- !, tcl_write(Val).
+tcl_wl(Val) :- write(Val).
+
+tcl_write(Val) :- 
+	(Val == []
+	 -> write('{}')
+	 ; number(Val)
+	 ->	write(Val)
+	 ; Val = [F|R]
+	 ->	write('{'),
+		tcl_write(F),
+		tcl_wls(R),
+		write('}')
+	 ;	write('"'),write(Val),write('"')
+	).
+
+tcl_wls([]).
+tcl_wls([F|R]) :-
+	write(' '),
+	tcl_write(F),
+	tcl_wls(R).
+
+% internal, for tcl_set
+tcl_element_list(N,Ar,_Var,[]) :- N > Ar, !.
+tcl_element_list(N,Ar,Var,[',',Arg|Args]) :- 
+	arg(N,Var,Arg),
+	N1 is N+1,
+	tcl_element_list(N1,Ar,Var,Args).
+
+% set a ``tcl variable'' without telling tcl. Only internal or for debugging.
+xsb_set(Var,Val) :-
+	retractall(tcl_vars(Var,_)),
+	assert(tcl_vars(Var,Val)).
+
+% entry for tcl to set version of its vars here in XSB
+tcl_set_vars([]).
+tcl_set_vars([unset(Var),_Val|Rest]) :- !,
+	functor(Var,Pred,_),
+	do_unset(Pred),		% eliminate them all
+	tcl_set_vars(Rest).
+tcl_set_vars([Var,Val|Rest]) :-
+	(((Val @>= '0', Val @< '99999999')
+	    ; (Val @>='-0', Val @< '-99999999'))
+	 ->	name(Val,Chars),name(Rval,Chars)
+	 ;	Rval = Val
+	),
+	xsb_set(Var,Rval),
+	tcl_set_vars(Rest).
+
+% Convention: a tuple is stored in a tcl array: arr(nfields) is arity,
+% arr(I) is the Ith field in tuple (starting from 1).
+
+% This predicate constructs a tuple from array elements in tcl_vars
+tcl_tuple(Pred,Tuple) :-
+	Arname =.. [Pred,nfields],	% convention on arity in Pred(nfields)
+	tcl_vars(Arname,Arity),
+	functor(Tuple,Pred,Arity),
+	tcl_tuple1(1,Arity,Pred,Tuple).
+
+tcl_tuple1(I,Arity,Pred,Tuple) :-
+	(I > Arity
+	 ->	true
+	 ;	Vname =.. [Pred,I],
+		tcl_vars(Vname,Val),
+		arg(I,Tuple,Val),
+		I1 is I+1,
+		tcl_tuple1(I1,Arity,Pred,Tuple)
+	).
+
+update_tuple(Pred,IdList) :-
+	tcl_tuple(Pred,Tuple),
+	functor(Tuple,Pred,Arity),
+	functor(Ktuple,Pred,Arity),
+	equate_args(IdList,Tuple,Ktuple),
+	retractall(Ktuple),
+	assert(Tuple),
+	clear_vars(Pred).
+
+equate_args((K,Ks),Tuple,Ktuple) :- !,
+	arg(K,Tuple,Arg),
+	arg(K,Ktuple,Arg),
+	equate_args(Ks,Tuple,Ktuple).
+equate_args(K,Tuple,Ktuple) :-
+	arg(K,Tuple,Arg),
+	arg(K,Ktuple,Arg).
+
+
+tcl_vtop(Var,Pred) :-
+	Vf =.. [Var,nfields], tcl_vars(Vf,Arity),
+	abolish(Pred,Arity),
+	Vt =.. [Var,ntuples], tcl_vars(Vt,Ntuples),
+	get_assert(1,Ntuples,Arity,Var,Pred).
+
+get_assert(M,N,Arity,Var,Pred) :-
+	M > N
+	 ->	true
+	 ;	get_tuple_list(1,Arity,M,Var,List),
+		Tuple =.. [Pred|List],
+		assert(Tuple),
+		M1 is M + 1,
+		get_assert(M1,N,Arity,Var,Pred).
+
+get_tuple_list(N,Arity,Row,Var,List) :-
+	N > Arity
+	 ->	List = []
+	 ;	Vname =.. [Var,Row,N],
+		tcl_vars(Vname,Val),
+		List = [Val|List0],
+		N1 is N+1,
+		get_tuple_list(N1,Arity,Row,Var,List0).
+
+
+vars_to_tuple(Pred,Tuple) :-
+	Vf =.. [Pred,nfields], tcl_vars(Vf,Arity),
+	functor(Tuple,Pred,Arity),
+	vars_to_tuple(1,Arity,Pred,Tuple).
+
+
+vars_to_tuple(I,Arity,Pred,Tuple) :-
+	I > Arity
+	 ->	true
+	 ;	Vn =.. [Pred,I],
+		(tcl_vars(Vn,Val) -> true ; Val = ''),
+		arg(I,Tuple,Val),
+		I1 is I+1,
+		vars_to_tuple(I1,Arity,Pred,Tuple).
+
+tuple_to_vars(Pred,Tuple) :-		
+	Vf =.. [Pred,nfields], tcl_vars(Vf,Arity),
+	functor(Tuple,Pred,Arity),
+	tuple_to_vars(1,Arity,Pred,Tuple).
+
+
+tuple_to_vars(I,Arity,Pred,Tuple) :-
+	I > Arity
+	 ->	true
+	 ;	Vn =.. [Pred,I],
+		arg(I,Tuple,Val),
+		tcl_set(Vn,Val),
+		I1 is I+1,
+		tuple_to_vars(I1,Arity,Pred,Tuple).
+
+
+tcl_vtoptov(Pred) :-
+	vars_to_tuple(Pred,Stuple),
+	Stuple =.. [Pred|Args],
+	empty_to_var(Args,Sel),
+	Tuple =.. [Pred|Sel],
+	call(Tuple), !,
+	tuple_to_vars(Pred,Tuple).
+
+empty_to_var([],[]).
+empty_to_var([X|Xs],[Y|Ys]) :-
+	(X == ''
+	 ->	true
+	 ;	Y=X
+	),
+	empty_to_var(Xs,Ys).
+
+clear_vars(Pred) :-
+	Varity =.. [Pred,nfields],
+	tcl_vars(Varity,Arity),
+	clear_vars(Arity,Pred).
+
+clear_vars(Arity,Pred) :-
+	(Arity =< 0
+	 ->	true
+	 ;	Var =.. [Pred,Arity],
+		tcl_set(Var,''),
+		Arity1 is Arity-1,
+		clear_vars(Arity1,Pred)
+	).
+
+/*********** end of routines to send tuples back and forth *********/
+
+/* send a relation to tcl as though it were a query sent by tcl */
+send_relation(Query,Vars) :-
+	call(Query),
+	print_answer(Vars),
+	nl,writeln(':'),get0(_),get0(_),
+	fail.
+
+print_answer([]) :- !.
+print_answer([vv(Name, Val)|Tail]) :-
+	nl, write(Name),
+	write(' = '), write(Val),
+	print_answer(Tail).
+
+/*** make menu tree **/
+
+gen_menu_tree(WindowName,Tree) :-
+	tcl_command(['menu ',WindowName]),
+	functor(Tree,_Functor,Arity),
+	gen_menu_tree(0,Arity,WindowName,Tree).
+
+gen_menu_tree(N,Arity,WindowName,Tree) :-
+	(N =:= Arity
+	 ->	true
+	 ;	N1 is N+1,
+		arg(N1,Tree,Subtree),
+		functor(Subtree,Subf,_Subarity),
+		append(WindowName,['.m',N1],NewWindow),
+		tcl_command([WindowName,' add cascade -label ',
+			Subf,' -menu ',NewWindow]),
+		gen_menu_tree(NewWindow,Subtree),
+		gen_menu_tree(N1,Arity,WindowName,Tree)
+	).

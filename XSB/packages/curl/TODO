@@ -1,0 +1,3 @@
+
+Sometimes test_secure_crt and test_nonsecure timeout and this causes XSB to
+exit silently.

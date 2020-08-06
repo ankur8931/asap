@@ -1,0 +1,80 @@
+/* File:      globalvar.P
+** Author(s): Tom Schrijvers
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: globalvar.P,v 1.9 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+:- export globalvar/2.
+:- export pconset/2, pconget/2, pconinc/1, pconinc/2.
+
+:- import globalvar/1 from machine.
+:- import log_ith/3 from basics.
+:- import (dynamic)/1, assert/1, retract/1 from assert.
+:- import term_set_arg/4 from machine.
+:- import (index)/2 from standard.
+
+:- local '$globalvarmap'/2, '$globalvarindex'/1.
+
+:- dynamic '$globalvarmap'(_,_).
+:- index('$globalvarmap'(_,_),trie).
+:- dynamic '$globalvarindex'(_).
+:- index('$globalvarindex'(_),0).
+
+globalvar(Name,Var) :-
+	( '$globalvarmap'(Name,Index) ->
+		true
+	;
+		( retract('$globalvarindex'(MaxIndex)) ->
+			Index is MaxIndex + 1
+		;
+			Index = 1  %% 0 is used directly by dbclause
+		),
+		assert('$globalvarindex'(Index)),
+		assert('$globalvarmap'(Name,Index))
+	),
+	globalvar(G),
+	log_ith(Index,G,Var).
+
+/* The following predicates are similar to the conset predicates from
+gensym, but they are private to the thread.  Also, they require an
+initial conset that is not backtracked over, since the values are
+stored in the heap.  These are about 6-7 times slower than the conset
+versions. */
+
+pconset(Name,Val) :-
+	globalvar(Name,OldTerm),
+	OldTerm = term(_),
+	term_set_arg(OldTerm,1,Val,1).
+
+pconget(Name,Val) :-
+	globalvar(Name,term(Val)).
+
+pconinc(Name) :-
+	globalvar(Name,Term),
+	Term = term(OldVal),
+	NewVal is OldVal + 1,
+	term_set_arg(Term,1,NewVal,1).
+
+pconinc(Name,Inc) :-
+	globalvar(Name,Term),
+	Term = term(OldVal),
+	NewVal is OldVal + Inc,
+	term_set_arg(Term,1,NewVal,1).

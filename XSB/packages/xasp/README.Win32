@@ -1,0 +1,80 @@
+The XASP package now compiles and runs under Windows.
+
+* Requirements:
+- SMODELS 2.27 
+- Recent version of the Cygwin environment
+
+* Steps:
+- Get XSB
+- Patch & compile SMODELS
+- Configure XSB 
+
+
+* Get XSB:
+
+You must get the latest version of XSB from CVS. You can use the
+following command:
+
+$ cvs -d :pserver:anonymous@cvs.xsb.sf.net:/cvsroot/xsb login
+(type enter when prompted for a password)
+$ cvs -d :pserver:anonymous@cvs.xsb.sf.net:/cvsroot/xsb co XSB
+
+(In the following, I assume that XSB is installed in $XSB.)
+
+* Patch & compile SMODELS:
+
+First, uncompress smodels-2.27.tar.gz in some directory, say
+/cygdrive/c/smodels-2.27 (that is, c:\smodels-2.27). After that, you
+must apply the patch provided with this package. This patch enables
+the creation of a DLL from SMODELS. Below is a sample session (system
+output omitted) with the required commands:
+
+$ cd /cygdrive/c/smodels-2.27
+$ cat $XSB/packages/xasp/patch-smodels-2.27 | patch -p1
+$ make lib
+
+After that, you should have a file called 'smodels.dll' in the current
+directory, as well as a file called 'smodels.a'. You should make the
+former "visible" to Windows. Two alternatives are either (a) change
+the PATH environment variable to contain c:\smodels-2.27, or (b) copy
+smodels.dll to some other directory in your PATH (such as c:\windows,
+for instance). I recommend copying the file to
+$XSB/config/i686-pc-cygwin/bin, since that directory has to be in your
+PATH in order to make XSB fully functional.
+
+* Configure XSB
+
+In order to properly configure XSB, you must tell it where the SMODELS
+sources and library (the smodels.a file) are. Besides, you must
+compile XSB such that it doesn't use the Cygwin DLL (using the
+-mno-cygwin option for gcc). The following is a sample command:
+
+$ cd $XSB/build
+$ ./configure --enable-no-cygwin \
+	--with-smodels="/cygdrive/c/smodels-2.27"
+
+After the configuration succeeds, compile XSB. First, compile the
+executable:
+
+$ ./makexsb
+
+And then the XSB DLL:
+
+$ ./makexsb cygdll
+
+Finally, compile the XASP package. You have two options, here. If you
+don't mind compiling all packages in XSB, just type:
+
+$ ./makexsb packages
+
+Otherwise, compile only XASP by typing:
+
+$ cd ../packages/xasp
+$ make module
+
+If you have any problems or questions, send them to:
+xsb-users@lists.sourceforge.net
+
+Good luck!
+Luís Castro
+

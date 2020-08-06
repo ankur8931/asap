@@ -1,0 +1,63 @@
+% Predicate Index commands, based on:
+% LATEX VERSION 2.09 <4 Aug 1988>
+% Copyright (C) 1988 by Leslie Lamport
+% Hacked by Steve Kelem, May 26, 1990
+\makeatletter
+%       ****************************************
+%       *       PREDICATE INDEX COMMANDS       *
+%       ****************************************
+%
+% \makepredindex ==
+%   BEGIN
+%    if \@filesw = T
+%      then  open file \jobname.PDX as \@predindexfile
+%          \predindex ==  BEGIN \@bsphack 
+%                               \begingroup
+%                                 \protect{X} == \string X\space  
+%                                   %% added 3 Feb 87 for \predindex commands 
+%                                   %% in \footnotes
+%                                  re-\catcode special characters to 'other'
+%                                  \@wrpredindex
+%    fi
+%   END  
+%
+%  \@wrpredindex{ITEM} ==
+%    BEGIN
+%        write of {\indexentry{ITEM}{page number}}
+%      \endgroup
+%      \@esphack
+%    END
+
+%  INITIALIZATION:
+%
+%  \predindex == BEGIN \@bsphack 
+%                  \begingroup
+%                     re-\catcode special characters (in case '%' there)
+%                     \@index
+%            END
+%              
+%  \@index{ITEM} == BEGIN \endgroup \@esphack END
+%
+
+\def\thepredindex#1{\@restonecoltrue\if@twocolumn\@restonecolfalse\fi
+\columnseprule \z@
+\columnsep 35pt\twocolumn[#1]
+    \@mkboth{PREDICATE INDEX}{PREDICATE INDEX}\thispagestyle{plain}\parindent\z@
+    \parskip\z@ plus .3pt\relax\let\item\@idxitem}
+
+\def\endthepredindex{\if@restonecol\onecolumn\else\clearpage\fi}
+
+\def\makepredindex{\if@filesw \newwrite\@predindexfile
+  \immediate\openout\@predindexfile=\jobname.pdx
+  \def\predindex{\@bsphack\begingroup
+             \def\protect####1{\string####1\space}\@sanitize
+             \@wrpredindex\@predindexfile}\typeout
+  {Writing predicate index file \jobname.pdx }\fi}
+
+\def\@wrpredindex#1#2{\let\thepage\relax
+   \xdef\@gtempa{\write#1{\string
+      \indexentry{#2}{\thepage}}}\endgroup\@gtempa
+   \if@nobreak \ifvmode\nobreak\fi\fi\@esphack}
+
+\def\predindex{\@bsphack\begingroup \@sanitize\@index}
+\makeatother

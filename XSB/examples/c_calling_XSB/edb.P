@@ -1,0 +1,62 @@
+:- compiler_options([xpp_on]).
+#define MODELLERVERSION  0.1216
+
+p(a,b,c).
+p(1,2,3).
+p([1,2],[3,4],[5,6]).
+p(A,_B,A).
+
+r(c,b,a).
+r(3,2,1).
+r([5,6],[3,4],[1,2]).
+r(_A,B,B).
+
+p_err(a,b,c).
+p_err(1,2,3):- functor(_X,_Y,_Z).
+p_err([1,2],[3,4],[5,6]).
+p_err(A,_B,A).
+
+r_err(c,b,a).
+r_err(3,2,1):- functor(_X,a,a).
+r_err([5,6],[3,4],[1,2]).
+r_err(_A,B,B).
+
+test_p:- findall(C,p(_,_,C),Clist),writeln(p(Clist)).
+test_r:- findall(C,r(_,_,C),Clist),writeln(r(Clist)).
+
+ll_test_p:- findall(C,p(_,_,C),Clist),writeln(ll_p(Clist)),fail.
+ll_test_r:- findall(C,r(_,_,C),Clist),writeln(ll_r(Clist)),fail.
+
+test_p_fail:- findall(C,p(p,_,C),Clist),C \= [], writeln(p(Clist)).
+test_r_fail:- findall(C,r(r,_,C),Clist),C \= [], writeln(r(Clist)).
+
+test_p_err:- functor(_X,_Y,_Z).
+test_r_err:- functor(X,a,a).
+
+
+pregs(a,b,c).
+pregs(d,e,f).
+pregs(g,h,i).
+pregs(j,k,l).
+
+rregs(1,2,3).
+rregs(4,5,6).
+rregs(7,8,9).
+rregs(10,11,12).
+
+pregs_err(a,b,c).
+pregs_err(d,e,f):- functor(_,_,_).
+pregs_err(g,h,i).
+pregs_err(j,k,l).
+
+rregs_err(1,2,3).
+rregs_err(4,5,6):- functor(_,_,_).
+rregs_err(7,8,9).
+rregs_err(10,11,12).
+
+%
+%	versionMessage
+%
+versionMessage :-
+	writeln('*** Modeller ').
+

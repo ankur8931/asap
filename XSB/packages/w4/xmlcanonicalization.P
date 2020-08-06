@@ -1,0 +1,323 @@
+%%% XML Canonical Form ( Version 1.0/October 2002)
+%%%
+%%% The WWWW project (http://centria.di.fct.unl.pt/~cd/w4) !!!
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%% Given a document representation in XML, this module generates the corresponding exclusive canonical XML document, as
+%%% per W3C Recommendation Canonical XML Version 1.0 (http://www.w3.org/TR/2001/REC-xml-c14n-20010315) and 
+%%% W3C Recommendation Exclusive XML Canonicalization Version 1.0 (http://www.w3.org/TR/2002/REC-xml-exc-c14n-20020718/)
+%%%
+%%% The implementation only processes entire subtrees of a XML document, obtained from the W4 XML DOM Representation.
+%%%
+%%% It assumes that comments and PIs are within the document element content, and thus does not add leading and trailing &xA; characters.
+%%% These are taken care if the document item is used to start the canonicalization process.
+%%%
+%%% Orphan namespace nodes are not processed.
+%%%
+%%% This implementation follows the non-normative constrained implementation of the Exclusive XML Canonicalization Recommendation
+%%%
+
+:- import member/2 from basics.
+
+:- import isNodeList/1 from xmldom.
+:- import isEmptyNodeList/1 from xmldom.
+:- import getHeadNodeList/2 from xmldom.
+:- import getTailNodeList/2 from xmldom.
+
+:- import isDocument/1 from xmldom.
+:- import getDocumentChildren/2 from xmldom.
+
+:- import isDocumentType/1 from xmldom.
+
+:- import isElement/1 from xmldom.
+:- import getElementName/4 from xmldom.
+:- import getElementChildren/2 from xmldom.
+:- import getElementAttributes/3 from xmldom.
+:- import getElementInScopeNamespaces/2 from xmldom.
+
+
+:- import isAttribute/1 from xmldom.
+:- import getAttributeName/4 from xmldom.
+:- import getAttributeValue/2 from xmldom.
+
+
+:- import isComment/1 from xmldom.
+:- import getCommentContent/2 from xmldom.
+
+:- import isPI/1 from xmldom.
+:- import getPITarget/2 from xmldom.
+:- import getPIContent/2 from xmldom.
+
+:- import isCharData/1 from xmldom.
+:- import getCharData/2 from xmldom.
+
+:- import createNamedMap/1 from xmldom.
+:- import isEmptyNamedMap/1 from xmldom.
+:- import getFirstNamedMap/3 from xmldom.
+:- import getRestNamedMap/2 from xmldom.
+:- import setNamedItem/4 from xmldom.
+:- import setNewNamedItem/4 from xmldom.
+:- import getNamedItem/3 from xmldom.
+
+:- import ucs2utf8/3 from utilities.
+:- import atom2utf8/2 from utilities.
+:- import atom2utf8/3 from utilities.
+:- import utf8code/3 from utilities.
+
+% General conversion predicate to the canonical form
+% exclusive_canonical_XML( +Item, + WithComments, + IncPrefixes, Text )
+% 
+% The Item argument is the XML Infoset Item to convert to Exclusive XML Canonical form. The Item argument can be any of the following: 
+% - Document Item
+% - An element item
+% - Character Data
+% - Attribute
+% - Processing Instruction
+% - Comment
+% - or a Node List of the above.
+%
+% If a PI or a comment are passed in the Item argument, no trailing nor leading 0xA character is added. 
+% 
+% The flag WithComments can be either yes or no. If yes, then comments are included in the canonical form; otherwise are removed.
+%
+% The IncPrefixes is a list of atoms (prefixes) corresponding to the paramente InclusiveNamespaces Prefix List in Exclusive XML Canonicalization.
+% The atom '' represents the default namespace token.
+%
+% The octet sequence of UTF-8 character codes is returned in the Text argument.
+%
+% exclusive_canonical_XML( +Item, + WithComments, + IncPrefixes, Text, RestText ) is as above, except that it is returned a difference list.
+%
+
+:- export exclusive_canonical_XML/4.
+:- export exclusive_canonical_XML/5.
+
+exclusive_canonical_XML( Item, Comments, IncPrefixes, Text ) :-
+	exclusive_canonical_XML( Item, Comments, IncPrefixes, Text, [] ).
+
+exclusive_canonical_XML( Item, Comments, IncPrefixes, Text, RestText ) :-
+	createNamedMap( Empty ),
+	setNamedItem( Empty, '', '', NSRendered ),
+	( isNodeList(Item) 
+	->	nodeListCanonicalization( Item, Comments, IncPrefixes, NSRendered, in, Text, RestText )
+	; 	canonicalization( Item, Comments, IncPrefixes, Empty, in, Text, RestText ) 
+	).
+
+
+
+% Main conversion predicate:
+canonicalization( Item, Comments, IncPrefixes, NSRendered, _, Text, RestText ) :-
+	isElement( Item ), !,
+	canonicalElementItem( Item, Comments, IncPrefixes, NSRendered, in, Text, RestText ).
+
+canonicalization( Item, _, _, _, _, Text, RestText ) :-
+	isCharData( Item ), !,
+	canonicalCharItem( Item, Text, RestText).
+
+canonicalization( Item, _, _, _, _, Text, RestText ) :-
+	isAttribute( Item ), !,
+	canonicalAttributeItem( Item, _, _, Text, RestText ).
+
+canonicalization( Item, _, _, _, InDocument, Text, RestText ) :-
+	isPI( Item ), !,
+	canonicalProcessingInstructionItem( InDocument, Item, Text, RestText ).
+
+canonicalization( Item, Comments, _, _, InDocument, Text, RestText ) :-
+	isComment( Item ), !,
+	( Comments = yes -> canonicalCommentItem( InDocument, Item, Text, RestText) ; Text = RestText ). 
+
+canonicalization( Item, Comments, IncPrefixes, _, _, Text, RestText ) :-
+	isDocument( Item ), !,
+	canonicalDocumentItem( Item, Comments, IncPrefixes, Text, RestText ).
+
+canonicalization( Item, _, _, _, _, Text, Text ) :-
+	isDocumentType( Item ), !.
+
+
+% Treatement of Document Item and Node List. Mark that Comments and PIs are well-processed in the
+% prolog and epilog of a document.
+
+canonicalDocumentItem( Doc, Comments, IncPrefixes, Text, RestText ) :-
+	getDocumentChildren( Doc, Children ),
+	createNamedMap( Empty ),
+	setNewNamedItem( Empty, '', '', NSRendered ),
+	nodeListCanonicalization( Children, Comments, IncPrefixes, NSRendered , before, Text, RestText ).
+
+
+nodeListCanonicalization( Nodes, Comments, IncPrefixes, NSRendered, InDocument, Text, RestText ) :-
+	getHeadNodeList( Nodes , Item ),
+	canonicalization( Item, Comments, IncPrefixes, NSRendered, InDocument, Text, AuxText ),
+	inDocument( InDocument, Item, NewInDocument ), 
+	getTailNodeList( Nodes , RestNodes ), !,
+	nodeListCanonicalization( RestNodes, Comments, IncPrefixes, NSRendered, NewInDocument, AuxText, RestText ).
+nodeListCanonicalization( Nodes, _, _, _, _, RestText, RestText ) :-
+	isEmptyNodeList( Nodes ).
+
+inDocument( before, Item, after ) :- isElement( Item ), !.
+inDocument( InDocument, _, InDocument ) :- !.
+
+
+% Element Nodes: If the element is in the node-set, then the result is an open angle bracket (<), the element QName, 
+% the result of processing the namespace axis, the result of processing the attribute axis, a close angle bracket (>), 
+% the result of processing the child nodes of the element that are in the node-set (in document order), 
+% an open angle bracket, a forward slash (/), the element QName, and a close angle bracket. 
+
+
+canonicalElementItem( Element, Comments, IncPrefixes, NSRendered, in, Text, RestText  ) :-
+	getElementName( Element, Namespace, LocalName, Prefix ),
+	getElementChildren( Element, Children ),
+	getElementAttributes( Element, Attributes, _ ), 
+	getElementInScopeNamespaces( Element, InScopeNamespaces ),
+
+	Text = [0'<'|OpenTag],
+	canonicalQName( Prefix, LocalName, OpenTag, NSText ),
+	createNamedMap( Empty ),
+	canonicalAttributes( Attributes, Empty, UsedPrefixes, AttribText, [0'>|Content] ),
+	setNewNamedItem( UsedPrefixes, Prefix, Namespace, VisUsedPrefixes ),
+	canonicalNamespaces( InScopeNamespaces, VisUsedPrefixes, IncPrefixes, NSRendered, NewNSRendered, NSText, AttribText ),
+	nodeListCanonicalization( Children, Comments, IncPrefixes, NewNSRendered, in, Content, [0'<,0'/|CloseTag] ),
+	canonicalQName( Prefix, LocalName, CloseTag, [0'>|RestText] ).
+	
+
+% The attribute Items are stored in a named map, already sorted by the pair (namespace,localname) as guaranteed by the XML Parser. 
+% We just have to traverse them and collect the visibly used prefixes and corresponding namespace names.
+
+canonicalAttributes( Attributes, UsedPrefixes, NewUsedPrefixes, AttribText, RestText ) :-
+	getFirstNamedMap( Attributes, _, Attrib ), !,
+	canonicalAttributeItem( Attrib, Prefix, Namespace, AttribText, AuxText ),
+	( Prefix \= '' -> setNewNamedItem( UsedPrefixes, Prefix, Namespace, AuxUsedPrefixes ) ; AuxUsedPrefixes = UsedPrefixes ),
+	getRestNamedMap( Attributes, RestAttributes ),
+	canonicalAttributes( RestAttributes, AuxUsedPrefixes, NewUsedPrefixes, AuxText, RestText ).
+canonicalAttributes( Attributes, UsedPrefixes, UsedPrefixes, RestTerms, RestTerms ) :-
+	isEmptyNamedMap( Attributes ).
+
+
+% Attribute Nodes: a space, the node's QName, an equals sign, an open quotation mark (double quote), the modified string value, and a close quotation mark (double quote). 
+% The string value of the node is modified by replacing all ampersands (&) with &amp;, all open angle brackets (<) with &lt;, all quotation mark characters with &quot;, 
+% and the whitespace characters #x9, #xA, and #xD, with character references. 
+% The character references are written in uppercase hexadecimal with no leading zeroes (for example, #xD is represented by the character reference &#xD;). 
+
+canonicalAttributeItem( Attribute, Prefix, Namespace, Text, RestText ) :- !,
+	getAttributeName( Attribute , Namespace, LocalName, Prefix ),
+	getAttributeValue( Attribute , Value ),
+	Text = [0' |QNameText],
+	canonicalQName( Prefix, LocalName, QNameText, [0'=,0'"|ModifValue] ),
+	escapeAttribValue( Value, ModifValue, [0'"|RestText] ).
+
+escapeAttribValue( [], Text, Text ) :- !.
+escapeAttribValue( [Code|RestCodes], Text, RestText ) :- 
+	escapeAttribChar( Code, Text, AuxText ), !,
+	escapeAttribValue( RestCodes, AuxText, RestText ).
+
+
+escapeAttribChar( 16'9, [0'&,0'x,0'9,0';|RestText], RestText ) :- !.
+escapeAttribChar( 16'A, [0'&,0'x,0'A,0';|RestText], RestText ) :- !.
+escapeAttribChar( 16'D, [0'&,0'x,0'D,0';|RestText], RestText ) :- !.
+escapeAttribChar( 0'&, [0'&,0'a,0'm,0'p,0';|RestText], RestText ) :- !.
+escapeAttribChar( 0'<, [0'&,0'l,0't,0';|RestText], RestText ) :- !.
+escapeAttribChar( 0'", [0'&,0'q,0'u,0'o,0't,0';|RestText], RestText ) :- !.
+escapeAttribChar( Code, Text, RestText ) :- utf8code( Code, Text, RestText ).
+
+% Handling of Namespace Declarations:
+
+canonicalNamespaces( InScopeNamespaces, VisUsedPrefixes, IncPrefixes, NSRendered, NewNSRendered, Text, RestText ) :-
+	getFirstNamedMap( InScopeNamespaces, Prefix, Namespace ), !,
+	canonicalNamespace( Prefix, Namespace, VisUsedPrefixes, IncPrefixes, NSRendered, AuxNSRendered, Text, AuxText ),
+	getRestNamedMap( InScopeNamespaces, RestInScopeNamespaces ),
+	canonicalNamespaces( RestInScopeNamespaces, VisUsedPrefixes, IncPrefixes, AuxNSRendered, NewNSRendered, AuxText, RestText ).
+canonicalNamespaces( RestInScopeNamespaces, _, _, NSRendered, NSRendered, Text, Text ) :-
+	isEmptyNamedMap( RestInScopeNamespaces ).
+
+
+canonicalNamespace( Prefix, Namespace, VisUsedPrefixes, IncPrefixes, NSRendered, NewNSRendered, Text, RestText ) :-
+	( getNamedItem( VisUsedPrefixes, Prefix, Namespace ) ; member( Prefix, IncPrefixes ) ), !,	% Condition 1
+	( getNamedItem( NSRendered, Prefix, Namespace )									% Condition 2
+	-> 	NewNSRendered = NSRendered,										
+		Text = RestText
+	;
+		setNamedItem(  NSRendered, Prefix, Namespace, NewNSRendered ),
+		canonicalNamespaceAttrib( Prefix, Namespace, Text, RestText )
+	).
+canonicalNamespace( _, _, _, _, NSRendered, NSRendered, Text, Text ).
+
+
+canonicalNamespaceAttrib( 'xml', 'http://www.w3.org/XML/1998/namespace', Text, Text ) :- !.
+canonicalNamespaceAttrib( '', Namespace, Text, RestText ) :- !,
+	Text = [0' |QNameText],
+	canonicalQName( '', xmlns, QNameText, [0'=,0'"|ModifValue] ),
+	atom2utf8( Namespace, Value ),
+	escapeAttribValue( Value, ModifValue, [0'"|RestText] ).
+canonicalNamespaceAttrib( Prefix, Namespace, Text, RestText ) :- !,
+	Text = [0' |QNameText],
+	canonicalQName( xmlns, Prefix, QNameText, [0'=,0'"|ModifValue] ),
+	atom2utf8( Namespace, Value ),
+	escapeAttribValue( Value, ModifValue, [0'"|RestText] ).
+ 
+
+% Text Nodes: the string value, except all ampersands are replaced by &amp;, all open angle brackets (<) are replaced by &lt;, 
+% all closing angle brackets (>) are replaced by &gt;, and all #xD characters are replaced by &#xD;. 
+
+canonicalCharItem( CharData, Text, RestText ) :-
+	getCharData( CharData, String ),
+	escapeCharData( String, Text, RestText ).
+
+escapeCharData( [], Text, Text ) :- !.
+escapeCharData( [Code|RestCodes], Text, RestText ) :- 
+	escapeChar( Code, Text, AuxText ), !,
+	escapeCharData( RestCodes, AuxText, RestText ).
+
+
+escapeChar( 0'&, [0'&,0'a,0'm,0'p,0';|RestText], RestText ) :- !.
+escapeChar( 0'<, [0'&,0'l,0't,0';|RestText], RestText ) :- !.
+escapeChar( 0'>, [0'&,0'g,0't,0';|RestText], RestText ) :- !.
+escapeChar( 16'D, [0'&,0'x,0'D,0';|RestText], RestText ) :- !.
+escapeChar( Code, Text, RestText ) :- utf8code( Code, Text, RestText ).
+
+% Processing Instruction (PI) Nodes: The opening PI symbol (<?), the PI target name of the node, a leading space and the string value if it is not empty, 
+% and the closing PI symbol (?>). If the string value is empty, then the leading space is not added. 
+% Also, a trailing #xA is rendered after the closing PI symbol for PI children of the root node with a lesser document order than the document element, 
+% and a leading #xA is rendered before the opening PI symbol of PI children of the root node with a greater document order than the document element. 
+
+canonicalProcessingInstructionItem( after, Item, [16'A|Text], RestText ) :-
+	canonicalProcessingInstructionItem( in, Item, Text, RestText ).
+canonicalProcessingInstructionItem( before, Item, Text, RestText ) :- !,
+	canonicalProcessingInstructionItem( in, Item, Text, [16'A|RestText] ).
+canonicalProcessingInstructionItem( in, PI, Text, RestText ) :- !,
+	Text = [0'<,0'?|TargetString],
+	getPITarget( PI, Target),
+	atom2utf8( Target, TargetString, RestPIString ),
+	getPIContent( PI, Content ),
+	( Content = [] 
+	-> 	RestPIString = ClosePI 
+	; 	RestPIString = [0' |ContentString],
+		ucs2utf8( Content, ContentString, ClosePI )
+	),
+	ClosePI = [0'?,0'>|RestText].
+
+% Comment Nodes: Nothing if generating canonical XML without comments. 
+% For canonical XML with comments, generate the opening comment symbol (<!--), the string value of the node, and the closing comment symbol (-->). 
+% Also, a trailing #xA is rendered after the closing comment symbol for comment children of the root node with a lesser document order than the document element, 
+% and a leading #xA is rendered before the opening comment symbol of comment children of the root node with a greater document order than the document element. 
+
+canonicalCommentItem( after, Item, [16'A|Text], RestText ) :-
+	canonicalCommentItem( in, Item, Text, RestText ).
+canonicalCommentItem( before, Item, Text, RestText ) :- !,
+	canonicalCommentItem( in, Item, Text, [16'A|RestText] ).
+canonicalCommentItem( in, C, Text, RestText ) :- !,
+	Text = [0'<,0'-,0'-|CommentText],
+	getCommentContent( C, Value ),
+	ucs2utf8( Value, CommentText, [0'-,0'-,0'>|RestText] ).
+	
+
+canonicalQName( '', LocalName, Name, RestName ) :- !,
+	atom2utf8( LocalName, Name, RestName ).
+canonicalQName( Prefix, LocalName, QName, RestQName ) :- !,
+	atom2utf8( Prefix, QName, [0':|LName] ),
+	atom2utf8( LocalName, LName, RestQName ).
+
+

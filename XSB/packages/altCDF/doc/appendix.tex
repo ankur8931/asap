@@ -1,0 +1,323 @@
+\chapter{Notes and Ideas}
+
+\section{Default Reasoning}
+
+CDF allows various types of reasoning under incomplete information.
+To take an example of how CDF supports incomplete information from a
+Type-0 level, consider that Examples~\ref{ex:suture1}
+to~\ref{ex:hasAttr} imply~\footnote{
+In this section we use semantic identifiers.}
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> hasAttr(oid(suture547466),rid(hasPointStyle),cid(pointStyle))
+\end{tabbing}
+} }
+%
+\noindent
+In other words, that {\tt oid(suture547466)} has a point style, but it
+is not known exactly what that point style is.  At the Type-1 level,
+the goal
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> ?-
+consistentWith(oid(suture547466),exists(rid(hasPointStyle),cid(scalpelPoint))).
+\end{tabbing}
+} }
+%
+\noindent
+will succeed, indicating that statement ``{\tt oid(suture547466)}
+has a point style of {\tt cid(scalpelpoint)}'' is consistent with the
+CDF instance, although not implied by it.  
+
+In many cases, it may be useful to make a statement like {\em If a
+{\tt cid(absorbableSuture)} has no known point style, then assume that
+its point style is a {\tt cid(scalpelPoint)''}}.  Such a statement can
+be seen as a type of non-monotonic inference, and there have been many
+proposals to add various sorts of non-monotonic reasoning to ontology
+systems using default logic~\cite{BaaH95,BaaH95a} or non-monotonic
+negation~\cite{KiLW95}.  
+
+Given the design of CDF there are various considerations to make for
+adding non-monotonic reasoning.  On the one hand, the use of
+intensional rules, based on XSB's implementation of well-founded
+semantics gives a fairly general approach to implementing
+non-monotonic reasoning.  To make a statement like the one above, a
+user could add the rules: 
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> hasAttr\_int(X,rid(hasPointStyle),cid(scalpelpoint)) :-  \\
+\> \> isa(X,cid(absorbableSuture)), \\
+\> \> tnot(hasNonScalpelPoint(X)). \\
+\> \\
+\> hasNonScalpelPoint(X):-  \\
+\> \> 	hasAttr(X,rid(hasPointStyle),Point),  \\
+\> \> 	Point \== cid(scalpelPoint).
+\end{tabbing}
+} }
+%
+\noindent
+There are several problems with such an approach.  First,
+implementation of this simple default rule requires a level of XSB
+programming that is beyond most domain experts.  Second, such a rule,
+added in an ad hoc manner, would be difficult to integrate into the
+CDF prover.  Third, this approach does not take into account the fact
+that multiple default rules might be applicable to a given object.
+
+Our approach to default reasoning within CDF is based on the
+assumption that the most common use for default reasoning within a
+desription logic is to allow default properties to be assigned to
+objects in a given class.  Accordingly, we provide the predicate
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> defaultHasAttr(Source,Relation,Target)
+\end{tabbing}
+} }
+%
+\noindent
+The predicate {\tt immed\_hasAttr/3} (Section~\ref{sec:instance}
+then have a third clause added to it as follows:
+{\small {\tt 
+\begin{tabbing}
+foo\=foo\=foo\=foo\=foo\=foo\=foooo\=foooooooooooooooo\=\kill
+\> immed\_hasAttr(Source,Relation,Target):-  \\ 
+\> \> 	defaultHasAttr(Source,Relation,Target), \\
+\> \> 	tnot(conflictingHasAttr(Source,Relation,Target)). \\
+\> \\
+\> conflictingHasAttr(Source,Relation,Target):-  \\
+\> \> hasAttr(SourceAlt,RelationAlt,TargetAlt), \\
+\> \> isa(SourceAlt,Source), \\
+\> \> isa(Relation,RelationAlt), \\
+\> \> not isa(Target,TargetAlt).
+\end{tabbing}
+} }
+%
+Thus {\tt defaultHasAttr(Source,Relation,Target)} would take effect if
+there were no {\tt hasAttr/3} relation (possibly depending on a
+separate default relation) with a more specific source, a more general
+relation, and a target that was not more general than {\tt Target}.
+Also note that the addition of default rules may make answers to a
+Type-0 query undefined in the well-founded semantics.
+
+{\sc Example -- overriding inheritance based on more specific sources}
+
+{\sc Example -- Nixon diamond leading to 3-valued model.}
+
+{\sc need to work through examples with CDFTP}.
+
+\section{Number Restrictions}
+
+${\cal ALC}(\circ)$ can be seen to be decidable by reduction to
+$\cL^2$.  Consider the formula $exists(R \circ S \circ T,C)$ which
+translates to 
+\[
+\exists X_1,X_2,X_3 [R(X_0,X_1) \wedge S(X_1,X_2) \wedge T(X_2,X_3)
+	\wedge C(X_3)
+\]
+Which is equivalent to 
+\[
+\exists X_1 [R(X_0,X_1) \wedge \exists X_2 [S(X_1,X_2) \wedge 
+	\exists X_3 [T(X_2,X_3) \wedge C(X_3) ] ] ]
+\]
+which is equivalent to 
+\[
+\exists X_1 [R(X_0,X_1) \wedge \exists X_0 [S(X_1,X_0) \wedge 
+	\exists X_1 [T(X_0,X_1) \wedge C(X_1) ] ] ]
+\]
+Such a proof, extended to induction on formulas would be much simpler
+than that provided in \cite{BaaS99}. The proofs of ${\cal
+ALCN}(\circ)$, and ${\cal ALCQ}(\circ)$ are similar.
+
+However, consider ${\cal ALC}(\circ,\sqcup)$.  The formula $exists((R
+\sqcup T \circ S),C)$ is equivalent to 
+\[
+\exists X_1,X_2 [(R(X_0,X_1) \vee (S(X_0,X_2) \wedge T(X_2,X_1)))
+	\wedge C(X_1)]
+\]
+which is not in $\cL^2$ as $X_1$ is connected by $S$ to $X_0$ and by
+$T$ to $X_1$.  So the question is what subsets of $\cL^3$ are
+decidable, and whether they can be expressed in ${\cal
+ALC(\circ,\sqcup)}$.  In addition, there is the question of whether
+such subclasses differ between $\cC^3$ and $\cL^3$.
+
+\section{2-Variable Logics}
+
+Questions: Assume a Graph whose edges are labelled $R_i$ and whose
+nodes, $a \in A$, have properties $P_i$.
+
+\begin{enumerate}
+\item Does a have an outgoing $E_i$ edge to a vertex in $P$?
+\begin{itemize}
+\item ML/ALC:  \[ (\cA,a) \models \diamond_i P \]
+\item $\cL^2$: \[ (\cA,a) \models 
+	\exists X_1 [ R(a,X_1) \wedge P(X_1) ] \]
+\end{itemize}
+
+\item Do all vertices that can be reached from a by traversing one
+$E_2$ edge have the above property?
+\begin{itemize}
+\item ML/ALC:  \[ (\cA,a) \models \square_2 \diamond_i P \]
+\item $\cL^2$: \[ (\cA,a) \models \forall X_1 [R_2(a,X_1) \wedge
+	( \exists X_2 [ R_i(X_1,X_2) \wedge P(X_2)) ] ] \]
+\end{itemize}
+
+\item Is there an $E_i$ path of length 17 from a that ends with a
+	vertex in $P$?
+\begin{itemize}
+\item ML/ALC:  \[ (\cA,a) \models \diamond_i \diamond_i ... \diamond_i P \]
+\item $\cL^2$: \[ (\cA,a) \models 
+	\exists X_1 [ R_i(a,X_1) \wedge (R_i(X_1,X_2) (\wedge ... 
+			(\wedge (R_i(X_{16},X_{17}) \wedge P(X_1) ] \]
+\end{itemize}
+\item Is there an incoming $E_i$ edge at a
+\begin{itemize}
+\item ML/ALC: cannot do within the language, although you can extend
+			the language to capture this -- need ${\cal ALCI}$
+\item $\cL^2$: \[ (\cA,a) \models 
+	\exists X_1 [ R_i(X_1,a) \wedge P(X_1) ] \]
+\end{itemize}
+\item Is there a vertex linked to a by both an $E_1$ edge and an $E_2$
+edge? 
+\begin{itemize}
+\item Need ${\cal ALCQHI}$, where $R_1 \subseteq R \wedge R_2 \subseteq R$
+\[ atMost(1,R^-,\top) \wedge exists(R_1^-,\top) \wedge exists(R_2^-,\top)
+\]
+\item $\cL^2$: \[ (\cA,a) \models 
+	\exists X_1 [ R_1(X_1,a) \wedge R_2(X_1,a) ] \]
+\end{itemize}
+\item Is every vertex in $P$ reachable from a on an E-path of length at most 3.
+\item Is it possible to reach $P$ from a on an $E_i$ path?
+\item Do all $E_1$ paths from a eventially hit $P_1$ and before hitting
+$P_1$ pass only through vertices in $P_2$? 
+\end{enumerate}
+
+\paragraph{Pebble Games}
+Naturally, FO$^2$-morphisms can be described by a 2-pebble game.  The
+idea is that player 2 has a winning strategy for k-move games if two
+structures satisfy exactly the same FO2 formulas of quantifier rank k.
+If the number of responses for player 2 matches the number of
+challenges, it is a bijective pebble game, and captures morphisms for
+C2.  If the game is weakened to accessability, it captures morphisms
+for modal logic.  That is, ML requires only a 1-pebble game along
+accessability relations where E-accessable relations are matched.  And
+this is a ... bisimulation.  Graded MLs (ALCQ) requres that the
+matching be a bijection.
+
+\paragraph{Other 2 variable logics}
+$TC^2$ has a transitive closure operator.  Let $\phi(x,y)$ be a
+formula.  Then $[\phi]_{TC}(a,b)$ is true if (a,b) is in the
+transitive closure of $(a_1,a_2)$ s.t. $\cM \models \phi(a_1,a_2)$.
+While $TC^2$ formulas syntactically have only two variables, it is not
+a 2-variable logic in the EF sense.  To see this, note that a
+structure consisting of two non-directed graphs each w. 3 vertices is
+EF-indistinguishable from a structure consisting of a single
+non-directed graph with 6 vertices.  However there are $TC^2$ formulas
+that can distinguish between these two.
+
+$FP^2$ is 2-variable fixed-point logic.  I.e. if $\phi(X,x)$ is
+positive in $X$, then $[\mu X,x]\phi(X,x)$ is the lfp of the equation
+$S = a:phi(S,a)$.  Would be good to have a better definition.
+
+$CL^2$ is $FO^2$ extended with $<>^*$ and []*.  Semantically this is a
+restriction of fixed-point logic.  $\psi_1(x) = (<\chi>^*\phi)(x)$ and
+its semantics is $\mu X [ \phi \vee <\chi>X]$.  $\psi_2(x) =
+([\chi]^*\phi)(x)$, and its semantics is $\mu X [ \phi \vee [\chi]X]$.
+
+Are these logics closed under negation?  It appears that $TC^2 \subset
+CL^2$, but I'm not sure.
+
+\[ FO^2 \subset CL^2 \subset FP^2 \]
+\[ML \subset F0^2, CTL \subset CL^2, CTL \subset TC^2, MMC \subset FP^2 \]
+\[ ML \subset CTL \subset MMC \]
+
+%----------------------------------------------------------------------------------------------
+\paragraph{Complexity and Satistfiability of $FO^2$}
+
+To prove decidability (and complexity) of $FO^2$ use the following
+reductions.  First, introduce predicates
+\[ \psi_i(x) \lra \exists y \phi(y) ; \psi_i(x) \lra \forall y \phi(y) \]
+
+So basically, we keep replacing nested quantifiers by adding new
+conjuncts that are equivalences.  This unravels the formula to
+$\forall \forall$ and $\forall \exists$ expressions..  This reduction
+is P-time and we end up with a sentence of the form
+\[
+\forall x \forall y \phi_0 \wedge^{m}_{i = 1} \forall x \exists y \phi_i
+\]
+
+An atomic (or basic) {\em n-type} is a maximally consistent set of
+atomic formulas in at most $n$ variables in a given language L.  Let
+$S$ be a structure, then any sequence of individuals in $S$ has a
+unique n-type.
+
+Let $\alpha$ be the set of 1 types in $\cL$, and $\beta$ the set of
+2-types in $\cL$.  $\alpha_{\cA}$, $\beta_{\cA}$ are the 1/2 types
+satisfied in $\cA$.  For a quantifier-free $FO^2$ formula $\phi$,
+$\beta_{\phi}$ is the set of 2 types $\beta$ such that $\beta \models
+\phi$.
+
+Note that the Scott-Normal Form sentence 
+\[
+ \forall X_0,X_1 [\phi_0] \wedge_{i = 1}^m \forall X_0 \exists X_1 \phi_i
+\]
+is true in $\cA$ iff $\beta_{\cA} \subseteq \beta_{\phi_0}$ and for
+each $i$, for each individual $a \in A$, there is some $b \not = a$,
+such that $type_{\cA}(a,b) \in \beta_{\phi_i}$.  An element $a \in A$
+is a {\em king} if its 1-type is unique in $\cA$.
+
+The model construction procedure for $FO^2$ is as follows.  First,
+guess the kings in $\cA$.  Next, guess the court for the kings (to
+satisfy the $\forall \exists$ formulas.  Then do a circular guessing
+for $\forall \exists$ formulas among three boxes of elements
+(types). Each of these boxes has $m$ elements a guessed set of
+non-royal 1-types.
+
+
+%----------------------------------------------------------------------------------------------
+\paragraph{Complexity and Satistfiability of $C^2$}
+
+An additional transformation is needed.  Transform
+$\exists^{>n}x\phi(x)$ in the following manner.  Introduce singleton
+sets as follows.
+\[ \forall x \vee^n_{i=1} Si(x) \Ra \phi(x) \wedge 
+\forall x \wedge_{i \not = j} \neg (S_i(x) \wedge S_j(x)) 
+\wedge^n_{i = 1}\exists^{=1} x S_i(x)
+\]
+This reduction is exponential (if $n$ is binary) and produces
+\[
+\forall x \forall y \phi_0 \wedge^{m}_{i = 1} \forall x \exists^{=1} y \phi_i
+\]
+
+%----------------------------------------------------------------------------------------------
+\section{Covers}
+\[ all(R,C) = \forall X_1 [R(X_0,X_1) \Ra C(X_1)] \]
+
+\[ exists(R,C) = \exists X_1 [R(X_0,X_1) \wedge C(X_1)] \]
+
+\[ covers(R,C) = \forall X_1 [C(X_1) \Ra R(X_0,X_1)] \]
+
+\section{3-sat and ASP}
+
+Let $\{C_1,...,C_n\}$ be a 3-sat problem where each $C_i$ consists of
+literals $L_{i1},L_{i2},L_{i3}$.  Translate this set to an ASP program
+$P$
+%
+\begin{verbatim}
+     A :- C_1,...,C_n.
+
+     C_i :- L'_i1.
+     C_i :- L'_i2.
+     C_i :- L]_i3.
+\end{verbatim}
+
+Where $L'_{ij} = L_{ij}$ if $L_{ij}$ is positive and $L'_{ij} =
+not\_A_{ij}$ if $L_{ij} = A_{ij}$ for some atom $A_{ij}$.  Add rules of
+the form 
+\begin{verbatim}
+    A_ij:- not not_A_ij
+    not_A_ij:- not A_ij
+\end{verbatim}
+Clearly the 3-sat problem can be linearly translated to $P$.

@@ -1,0 +1,5 @@
+
+p ::= action(a); p.
+
+f1 += <-b>tt.
+f2 += <-a>tt.

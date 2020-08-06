@@ -1,0 +1,261 @@
+\section{XNMR}
+
+\subsection{Introduction}
+
+The XNMR package attempts to provide an unified environment for
+several forms of non-monotonic reasoning. It consists of a new
+top-loop for XSB which benefits from the integration of XSB with the
+stable model generator SMODELS \cite{NiSi97} and XSB to compute
+stable and answer set semantics for logic programs.
+
+\paragraph*{The XNMR Top-Loop}
+
+The XNMR top-loop is the interface between XNMR and the user. It adds
+extra functionalities to the standard top-loop of XSB to provide means
+to compute different semantics  for Prolog programs.
+
+There are two distinct modes for the XNMR top-loop. The \texttt{nmr}
+mode allows for the computation of (partial) stable model semantics
+and answerset semantics of normal logic programs. The
+\texttt{answerset} mode is designed to compute the a non-explosive
+partial answerset semantics of logic programs with explicit negation.
+
+\subsection{The \texttt{nmr} mode}
+
+The \texttt{nmr} mode is the default mode of XNMR. It provides support
+for computing the stable model and answerset semantics of normal logic
+programs. This mode can be identified by the \verb#nmr| ?-# prompt. If
+you change the mode to a different one, you can come back to
+\texttt{nmr} mode using the predicate \texttt{set\_nmr\_mode/0}.
+
+The prompt works much like a standard Prolog top-level. The difference
+arises when the user issues a query which has an answer that depends
+on undefined goals, i.e. a non-empty delay list. In this case, the
+user can either ignore the delay list and assume the query (with the
+given instantiations for the variables) is undefined under the
+well-founded semantics, or it can ask XNMR to call SMODELS to compute
+different semantics for the residual program.
+
+Three options are available in such cases: 
+
+\begin{enumerate}
+
+\item[`s'] computes and prints all (partial) stable models of the residual
+  program, one at a time;
+
+\item[`t'] computes and prints the (partial) stable models of the residual
+  program where the query is true, one at a time;
+
+\item[`a'] computes the answerset semantics of the residual program,
+  ie. it says \verb#yes# if the query is true in all stable models of the
+  residual program; in this mode, the - symbol, prepended to
+  predicates, denote their negative counterpart.
+
+%{\sc TLS: what symbol are you using for explicit negation?}
+% -p is the explicit negative counterpart of p  --lfcastro
+
+\end{enumerate}
+
+Figure~\ref{fig:stable} shows the `s' operator in action. The
+`exwfs.P' program is shown in figure~\ref{fig:exwfs}. 
+
+At the ``more answers'' prompt, when there is a delay list, the user
+can type \verb#s<cr># and obtain the stable models of the residual program.
+Note that one model is computed and printed at each time. After a
+model is printed, the user can ask for the next one by typing \verb#;<cr>#,
+or she can give up by pressing only \verb#<cr>#.
+
+\begin{figure}
+\label{fig:exwfs}
+\centering
+\scriptsize
+%\begin{boxedverbatim} TLS: manual did not have include file.
+\begin{verbatim}
+:- table win/1, p/0, q/0, r/0.
+
+win(X) :- move(X,Y), tnot(win(Y)).
+
+move(a,b).
+move(b,a).
+move(b,c).
+move(c,d).
+
+p :- tnot(q).
+q :- tnot(p).
+r :- p.
+r :- q.
+\end{verbatim}
+%\end{boxedverbatim}
+\caption{The exwfs.P program.}
+\end{figure}
+
+
+\begin{figure}
+\label{fig:stable}
+\centering
+\scriptsize
+%\begin{boxedverbatim} TLS: manual did not have include file.
+\begin{verbatim}
+> xsb xnmr
+[xsb_configuration loaded]
+[sysinitrc loaded]
+[packaging loaded]
+[sModels loaded]
+
+XSB Version 2.01 (Gouden Carolus) of August 20, 1999
+[i686-pc-linux-gnu; mode: optimal; engine: chat; scheduling: batched]
+nmr| ?- [exwfs].
+[exwfs loaded]
+
+yes
+nmr| ?- win(X).
+
+X = c ? ;
+
+X = b
+DELAY LIST = [tnot(win(a))] ? s
+
+Stable Models: 
+  {win(a)} ? ;
+
+  {win(b)} ? ;
+  no
+
+X = a
+DELAY LIST = [tnot(win(b))] ? s
+
+Stable Models: 
+  {win(b)} ? ;
+
+  {win(a)} ? ;
+  no
+
+no
+nmr| ?- 
+\end{verbatim}
+%\end{boxedverbatim}
+\caption{Using the `s' operator}
+\end{figure}
+
+
+Figure~\ref{fig:tstable} shows the use of the `t' option. Note that
+the models computed with this option form a subset of the models
+computed with the `s' option, namely those models where the query is
+true.
+
+\begin{figure}
+\label{fig:tstable}
+\centering
+\scriptsize
+%\begin{boxedverbatim} TLS: manual did not have include file.
+\begin{verbatim}
+lfmobile:~/Programs/Prolog/WFS> xsb xnmr
+[xsb_configuration loaded]
+[sysinitrc loaded]
+[packaging loaded]
+[sModels loaded]
+
+XSB Version 2.01 (Gouden Carolus) of August 20, 1999
+[i686-pc-linux-gnu; mode: optimal; engine: chat; scheduling: batched]
+nmr| ?- [exwfs].
+[exwfs loaded]
+
+yes
+nmr| ?- win(X).
+
+X = c ? ;
+
+X = b
+DELAY LIST = [tnot(win(a))] ? t
+
+Stable Models: 
+  {win(b)} ? ;
+  no
+
+X = a
+DELAY LIST = [tnot(win(b))] ? t
+
+Stable Models: 
+  {win(a)} ? ;
+  no
+
+no
+nmr| ?- 
+\end{verbatim}
+%\end{boxedverbatim}
+\caption{Using the `t' operator}
+\end{figure}
+
+Finally, figure~\ref{fig:answerset} shows one application of the `a'
+operation, to compute the answerset semantics of the residual
+program. You can see that, when we use `s' to compute the stable
+models of the residual program, all computed models have the query as
+true. Therefore, it's clear that the query is true under the answerset
+semantics of the residual program. 
+
+\begin{figure}
+\label{fig:answerset}
+\centering
+\scriptsize
+%\begin{boxedverbatim} TLS: manual did not have include file.
+\begin{verbatim}
+[xsb_configuration loaded]
+[sysinitrc loaded]
+[packaging loaded]
+[sModels loaded]
+
+XSB Version 2.01 (Gouden Carolus) of August 20, 1999
+[i686-pc-linux-gnu; mode: optimal; engine: chat; scheduling: batched]
+nmr| ?- [exwfs].
+[Compiling ./exwfs]
+[exwfs compiled, cpu time used: 0.2490 seconds]
+[exwfs loaded]
+
+yes
+nmr| ?- r.
+
+DELAY LIST = [q]
+DELAY LIST = [p] ? s
+
+Stable Models: 
+  {r; q} ? ;
+
+  {r; p} ? ;
+  no
+
+no
+nmr| ?- r.
+
+DELAY LIST = [q]
+DELAY LIST = [p] ? a
+  yes
+
+no
+nmr| ?- 
+\end{verbatim}
+%\end{boxedverbatim}
+\caption{Using the `a' option}
+\end{figure}
+
+\subsection{The \texttt{answerset} mode}
+
+The \texttt{answerset} mode is entered using the predicate
+\texttt{set\_answerset\_mode/0}. This mode has been designed to deal
+with logic programs with explicit negation.
+
+Explicit negated predicates are represented by prepending their names
+with \verb#-#. For example, if \verb#p# is a predicate, its
+explicitly-negated counterpart is \verb#-p#.
+
+In this mode, when a query is issued, XNMR computes the answerset
+semantics for all possible instantiations of the given query, and says
+\verb#yes# to all instantiations which are true under this semantics. 
+
+After that, XNMR performs the same computation for the
+explicitly-negated counterpart of the query. It, then, says \verb#no# to
+all computed instantiations. 
+
+It is assumed that the knowledge about all other instantiations not
+shown is unknown.
+
+

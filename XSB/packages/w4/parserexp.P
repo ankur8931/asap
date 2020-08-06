@@ -1,0 +1,84 @@
+:- op( 500, fx, '?' ).
+
+non_terminal( Symbol ) :-
+	\+ terminal( Symbol, _ ).
+
+terminal( [H|T], [H|T] ) :- !.
+terminal( [H|T]/[_|_], [H|T] ) :- !.
+
+:- table nullable/1.
+
+nullable( [] ) :- !.
+nullable( {_} ) :- !.
+nullable( (!) ) :- !.
+nullable( (Symbol,RestSymbols) ) :- !,
+	non_terminal( Symbol ),
+	nullable( Symbol ),
+	nullable( RestSymbols ).
+nullable( +NonTerminal ) :- !, nullable( NonTerminal ). 
+nullable( NonTerminal ) :-
+	non_terminal( NonTerminal ),
+	production( NonTerminal, RHS ), 
+	nullable( RHS ).
+
+:- table first/2.
+
+first( ? Terminal, T ) :- 
+	!, terminal( Terminal, T ).
+first( Terminal, T ) :-
+	terminal( Terminal, T ), !.
+first( ( Symbol, _ ), Terminal ) :-
+	first( Symbol, Terminal ).
+first( ( Symbol, RestSymbols ), Terminal ) :- !,
+	nullable( Symbol ),
+	first( RestSymbols, Terminal ).
+first( + NonTerminal, Terminal ) :- !, first( NonTerminal, Terminal ).
+first( NonTerminal, Terminal ) :-
+	non_terminal( NonTerminal ),
+	copy_term( NonTerminal, NonTerminal1 ),
+	production( NonTerminal1, RHS ),
+	first( RHS, Terminal ).
+
+:- table follow/2.
+
+follow( Start, [EOF] ) :-
+	start( Start ),
+	eof(EOF).
+
+follow( NonTerminal, Symbol ) :-
+	occurs_in_rhs( NonTerminal, LHS, RHS ),
+%	write( ( LHS --> RHS ) ), nl,
+	follow_rhs( RHS, NonTerminal, LHS, Symbol ).
+
+follow_rhs( ( NonTerminal1, RestSymbols), NonTerminal, _, Symbol ) :-
+	unify( NonTerminal, NonTerminal1),
+	first( RestSymbols, Symbol ).
+
+follow_rhs( ( NonTerminal1, RestSymbols), NonTerminal, LHS, Symbol ) :-
+	unify( NonTerminal1, NonTerminal ),
+	nullable( RestSymbols ), 
+	follow( LHS, Symbol ).
+
+follow_rhs( (_, RestSymbols ), NonTerminal, LHS, Symbol ) :- !,
+	follow_rhs( RestSymbols, NonTerminal, LHS, Symbol ).
+
+follow_rhs( NonTerminal1, NonTerminal, LHS, Symbol ) :-
+	unify( NonTerminal, NonTerminal1),
+	follow( LHS, Symbol ).
+
+
+:- table occurs_in_rhs/3.
+
+occurs_in_rhs( Symbol, LHS, RHS ) :-
+	production( LHS, RHS ),
+	member_sequence( RHS, Symbol ).
+
+member_sequence( ( FirstSymbols, _ ), Symbol ) :-
+	member_sequence( FirstSymbols, Symbol ).
+member_sequence( ( _, RestSymbols ), Symbol ) :- !,
+	member_sequence( RestSymbols, Symbol ).
+member_sequence( + Symbol, Symbol ) :- !.
+member_sequence( Symbol1, Symbol ) :- unify(Symbol,Symbol1 ), !.
+	
+
+unify( Term1, Term2 ) :- \+ \+ ( Term1 = Term2 ).

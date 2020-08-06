@@ -1,0 +1,248 @@
+
+% verification of (one line)cache-(single cell)memory system with constraints
+
+% to run:
+% $ xsb
+% ?- [vc1m].
+% ?- verify(cm,[A,V,D, MA,MV], error,[PA]), show_atts([MA,PA]).
+% % i.e. MA \= PA --> returns with MA and PA attributed with neq(MA,PA), or
+% ?- verify(cm,[A,V,D, MA,MV], error,[MA]).
+% % i.e. MA = PA --> the answer is 'no'
+%
+
+:- import append/3 from basics.
+:- table reach/5.
+
+% construct a product of A1 and A2 with initial location (Ls1,Ls2)
+% and the set of final locations {(Ld1,Ld2)},
+% and look for a run from (Ls1,Ls2) to a (Ld1i,Ld2i) in {(Ld1,Ld2)}
+% variables in Vd are attributed with the constraints that must hold
+% for the run to exist
+verify(A1,V1, A2,V2) :-
+	init((A1,A2), Ls),
+	final((A1,A2), Ld),
+	append(V1,V2, Vs),
+	reach((A1,A2), Ls,Vs, Ld,_Vd).
+
+
+% look for a run from start location Ls to destination location Ld
+reach(A, Ls,Vs, Ld,Vd) :-
+	take_trans(A, Ls,Vs, Ld,Vd).
+reach(A, Ls,Vs, Ld,Vd) :-
+	take_trans(A, Ls,Vs, Lm,Vm),
+	project_constr(Vm,Vm),
+	reach(A, Lm,Vm, Ld,Vd),
+	project_constr(Vd,Vd).
+
+
+% take a single transition in automaton A, from location Ls with variables Vs
+% to location Ld with variables Vd, labeled with action Act and condition Constr
+take_trans(A, Ls,Vs, Ld,Vd) :-	
+	inv(A, Ls,Vs),
+	trans(A, Ls,Vs, _Act, Constr, Ld,Vd),
+	all_true(Constr),
+	inv(A, Ld,Vd).
+
+
+%% pose constraints
+all_true([]).
+all_true([C|Cs]) :-
+	call(C),
+	all_true(Cs).
+
+%% project constraints
+project_constr([],_).
+project_constr([X|Xs],L) :-
+	project1(X,L),
+	project2(X,L),
+	project_constr(Xs,L).
+
+
+%
+% construction of a product of two automata, A1 and A2
+%
+
+% initial location
+init((A1,A2), (L1,L2)) :-
+	init(A1, L1),
+	init(A2, L2).
+
+
+% invariants on variables at each location
+inv((A1,A2), (L1,L2),V) :-
+	inv(A1, L1,V1),
+	inv(A2, L2,V2),
+	append(V1,V2, V).
+
+
+% transition relation
+trans((A1,A2), (Ls1,Ls2),Vs, Act, Constr, (Ld1,Ld2),Vd) :-
+	trans(A1, Ls1,Vs1, Act, Constr1, Ld1,Vd1),
+	trans(A2, Ls2,Vs2, Act, Constr2, Ld2,Vd2),
+	append(Vs1,Vs2, Vs),
+	append(Constr1,Constr2, Constr),
+	append(Vd1,Vd2, Vd).
+
+
+% set of final locations
+final((A1,A2), (L1,L2)) :-
+	final(A1,L1),
+	final(A2,L2).
+
+
+
+%%
+%% EFA for (one line)cache-(single cell)memory system
+%%
+
+% initial location
+init(cm, s0).
+
+% invariants on variables at each location
+inv(cm, s0,[_CA,_CV,_CD, _MA,_MV]).
+inv(cm, s1,[_CA,_CV,_CD, _MA,_MV, _A,_V]).
+inv(cm, s2,[_CA,_CV,_CD, _MA,_MV, _A,_V]).
+inv(cm, s3,[_CA,_CV,_CD, _MA,_MV, _A]).
+inv(cm, s4,[_CA,_CV,_CD, _MA,_MV, _A]).
+
+
+% transition relation
+
+%
+% write
+%
+
+% receive request to write value V to address A
+trans(cm, s0,[CA,CV,CD, MA,MV], write(A,V), [], s1,[CA,CV,CD, MA,MV, A,V]).
+
+% (i) A is in cache: update cache value to V and set dirty bit to 1
+trans(cm, s1,[CA,_CV,_CD, MA,MV, A,V], tau, [], s0,[CA,V,1, MA,MV]) :-
+   A = CA.
+
+% (ii) A is not in cache, but the cache value has not been modified:
+% replace cache contents with the tuple (A,V,1)
+trans(cm,
+      s1,[CA,_CV,0, MA,MV, A,V],
+      tau,
+      [neq(A,CA)],
+      s0,[A,V,1, MA,MV]).
+
+% (iii) A is not in cache, but cache address is different from that in memory:
+% replace cache contents with the tuple (A,V,1)
+trans(cm,
+      s1,[CA,_CV,_CD, MA,MV, A,V],
+      tau,
+      [neq(A,CA), neq(CA,MA)],
+      s0,[A,V,1, MA,MV]).
+
+% (iv) A is not in cache, cache value has been modified,
+% and cache address is the same as the address in the memory: 
+% update value in the memory to current cache value
+trans(cm,
+      s1,[MA,CV,1, MA,_MV, A,V],
+      tau,
+      [neq(A,MA)],
+      s2,[MA,CV,1, MA,CV, A,V]).
+% write new tuple, with dirty bit set to 1, to the cache
+trans(cm, s2,[_CA,_CV,_CD, MA,MV, A,V], tau, [], s0,[A,V,1, MA,MV]).
+
+
+%
+% read
+%
+
+% receive request to read a value from address A
+trans(cm, s0,[CA,CV,CD, MA,MV], read_addr(A), [], s3,[CA,CV,CD, MA,MV, A]).
+
+% (i) A is in cache: match V with cache value
+trans(cm,
+      s3,[A,CV,CD, MA,MV, A],
+      read_val(CV),
+      [],
+      s0,[A,CV,CD, MA,MV]).
+
+% (ii) A is not in cache, and
+% CV has not been modified, and
+% A is in memory:
+%
+% bring to cache and return the memory value, set dirty bit to 0
+trans(cm,
+      s3,[CA,_CV,0, A,MV, A],
+      read_val(MV),
+      [neq(CA,A)],
+      s0,[A,MV,0, A,MV]).
+
+% (iii) A is not in cache, and
+% CA is different from MA, and
+% A is in memory:
+%
+% bring to cache and return the memory value, set dirty bit to 0
+trans(cm,
+      s3,[CA,_CV,_CD, A,MV, A],
+      read_val(MV),
+      [neq(CA,A)],
+      s0,[A,MV,0, A,MV]).
+
+% (iv) A is not in cache, and
+% CA is different from MA, and
+% A is not in memory:
+%
+% return and assign to A in the cache, with CD = 0, an arbitrary value V
+trans(cm,
+      s3,[CA,_CV,_CD, MA,MV, A],
+      read_val(V),
+      [neq(A,CA), neq(CA,MA), neq(A,MA)],
+      s0,[A,V,0, MA,MV]).
+
+% (v) A is not in cache, and
+% cache value has been modified and cache address is in memory:
+% write cache value to memory
+trans(cm,
+      s3,[MA,CV,1, MA,_MV, A],
+      tau,
+      [neq(A,MA)],
+      s4,[MA,CV,1, MA,CV, A]).
+% return and assign to A in the cache, with CD = 0, an arbitrary value
+trans(cm, s4,[_CA,_CV,_CD, MA,MV, A], read_val(V), [], s0,[A,V,0, MA,MV]).
+
+
+% set of final locations
+final(cm, s0).
+
+%---------------------------------------------------------------------------%
+
+%%
+%% EFA for incorrect behavior of cache-memory system:
+%% read from memory address A after a write fo a value V to A, without
+%% other writes to A in between, yields value different V1 than V
+%%
+
+
+% initial location
+init(error, t0).
+
+
+% ivariants on variables at each location
+inv(error, t0,[_PA]).
+inv(error, t1,[_PA,_PV]).
+inv(error, t2,[_PA,_PV]).
+inv(error, t3,[_PA]).
+
+
+% transition relation
+trans(error, t0,[PA], _, [], t0,[PA]).
+
+trans(error, t0,[PA], write(PA,PV), [], t1,[PA,PV]).
+
+trans(error, t1,[PA,PV], Act, [], t1,[PA,PV]) :-
+	Act \= write(PA,_).
+
+trans(error, t1,[PA,PV], read_addr(PA), [], t2,[PA,PV]).
+
+trans(error, t2,[PA,PV], tau, [], t2,[PA,PV]).
+
+trans(error, t2,[PA,PV], read_val(V), [neq(PV,V)], t3, [PA]).
+
+
+% set of final locations
+final(error, t3).

@@ -1,0 +1,114 @@
+/*
+** File: packages/rdf/option.P
+** Author: Aneesh Ali
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C): 2010, University of Amsterdam
+** Copyright (C) The Research Foundation of SUNY, 2011
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+:- import memberchk/2 from basics.
+:- import select/3 from lists.
+
+:- export 
+	option/2,
+	option/3, 
+	select_option/3, 
+	select_option/4.
+
+%%	option(?Option, +OptionList, +Default)
+%
+%	Get  an  option  from  a  OptionList.  OptionList  can  use  the
+%	Name=Value as well as the Name(Value) convention.
+%
+%	@param Option	Term of the form Name(?Value).
+
+option(Opt, Options, Default) :-	% make option processing stead-fast
+	arg(1, Opt, OptVal),
+	ground(OptVal), !,
+	functor(Opt, OptName, 1),
+	functor(Gen, OptName, 1),
+	option(Gen, Options, Default),
+	Opt = Gen.
+option(Opt, Options, _) :-
+	get_option(Opt, Options), !.
+option(Opt, _, Default) :-
+	arg(1, Opt, Default).
+
+%%	option(?Option, +OptionList)
+%
+%	Get  an  option  from  a  OptionList.  OptionList  can  use  the
+%	Name=Value as well as the Name(Value) convention. Fails silently
+%	if the option does not appear in OptionList.
+%
+%	@param Option	Term of the form Name(?Value).
+
+option(Opt, Options) :-			% make option processing stead-fast
+	arg(1, Opt, OptVal),
+	nonvar(OptVal), !,
+	functor(Opt, OptName, 1),
+	functor(Gen, OptName, 1),
+	option(Gen, Options),
+	Opt = Gen.
+option(Opt, Options) :-
+	get_option(Opt, Options), !.
+
+
+get_option(Opt, Options) :-
+	memberchk(Opt, Options), !.
+get_option(Opt, Options) :-
+	functor(Opt, OptName, 1),
+	arg(1, Opt, OptVal),
+	memberchk(OptName=OptVal, Options), !.
+
+
+%%	select_option(?Option, +Options, -RestOptions) is semidet.
+%
+%	Get and remove option from an option list. As option/2, removing
+%	the matching option from  Options   and  unifying  the remaining
+%	options with RestOptions.
+
+select_option(Opt, Options0, Options) :-	% stead-fast
+	arg(1, Opt, OptVal),
+	nonvar(OptVal), !,
+	functor(Opt, OptName, 1),
+	functor(Gen, OptName, 1),
+	select_option(Gen, Options0, Options),
+	Opt = Gen.
+select_option(Opt, Options0, Options) :-
+	get_option(Opt, Options0, Options), !.
+
+
+get_option(Opt, Options0, Options) :-
+	select(Opt, Options0, Options), !.
+get_option(Opt, Options0, Options) :-
+	functor(Opt, OptName, 1),
+	arg(1, Opt, OptVal),
+	select(OptName=OptVal, Options0, Options), !.
+
+%%	select_option(?Option, +Options, -RestOptions, +Default) is det.
+%
+%	Get and remove option with   default  value. As select_option/3,
+%	but if Option is not  in  Options,   its  value  is unified with
+%	Default and RestOptions with Options.
+
+select_option(Option, Options, RestOptions, _Default) :-
+	select_option(Option, Options, RestOptions), !.
+select_option(Option, Options, Options, Default) :-
+	arg(1, Option, Default).
+

@@ -1,0 +1,36 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Sample Programs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+:- op(1200,xfx,<-).
+:- op(1000,xfy,and).
+:- op(1000,xfy,or).
+
+% ex. ?- meta(sp(a,X):[min,T]).
+sp(X,Y) : [min,D1] <- sp(X,Z): [min,D2], edge(Z,Y,D), D1 is D2 + D.
+sp(X,Y) : [min,C] <- edge(X,Y,C).
+
+edge(a,d,1).
+edge(d,e,1).
+edge(e,c,1).
+edge(a,b,1).
+edge(b,a,1).
+edge(b,c,4).
+
+/* shows off XSB's lack of precision */
+% ex. ?- meta(p:[max,Y]).
+p: [max,Y] <- Y=0.
+p: [max,Y] <- p: [max,X],Y is (1+X)/2.
+
+% ex: ?- meta(r(X):[set,Y]).
+r(X):[set,V] <- q(X) : [set,V].
+
+% ex: ?- meta(p:[set,Y]).
+p:[set,V] <- q(_X) : [set,V].
+
+q(a) : [set,[a]] <- true.
+q(b) : [set,[b]] <- true.
+
+q(a,_X):[set,[a]] <- true.
+q(_X,b):[set,[b]] <- true.
+
+

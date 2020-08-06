@@ -1,0 +1,15 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[xmlns : dc = http://purl.org/metadata/dublin_core#,xmlns = http://www.w3.org/TR/REC-mathml,http://www.w3.org/1999/02/22-rdf-syntax-ns# : about = http://mycorp.com/papers/NobelPaper1],[element(http://purl.org/metadata/dublin_core# : Title,[http://www.w3.org/1999/02/22-rdf-syntax-ns# : parseType = Literal],[Ramifications of ,element(http://www.w3.org/TR/REC-mathml : apply,[],[element(http://www.w3.org/TR/REC-mathml : power,[],[]),element(http://www.w3.org/TR/REC-mathml : apply,[],[element(http://www.w3.org/TR/REC-mathml : plus,[],[]),element(http://www.w3.org/TR/REC-mathml : ci,[],[a]),element(http://www.w3.org/TR/REC-mathml : ci,[],[b])]),element(http://www.w3.org/TR/REC-mathml : cn,[],[2])]), to World Peace
+    ]),element(http://purl.org/metadata/dublin_core# : Creator,[],[David Hume])])])
+
+----------RDF----------
+
+[description(description,about(http://mycorp.com/papers/NobelPaper1),[http://purl.org/metadata/dublin_core# : Title = literal(type(rdf : XMLLiteral,[Ramifications of ,element(http://www.w3.org/TR/REC-mathml : apply,[],[element(http://www.w3.org/TR/REC-mathml : power,[],[]),element(http://www.w3.org/TR/REC-mathml : apply,[],[element(http://www.w3.org/TR/REC-mathml : plus,[],[]),element(http://www.w3.org/TR/REC-mathml : ci,[],[a]),element(http://www.w3.org/TR/REC-mathml : ci,[],[b])]),element(http://www.w3.org/TR/REC-mathml : cn,[],[2])]), to World Peace
+    ])),http://purl.org/metadata/dublin_core# : Creator = literal(David Hume)])]
+
+--------Triples--------
+
+{http://mycorp.com/papers/NobelPaper1, http://purl.org/metadata/dublin_core#Title, literal(type(http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral,[Ramifications of ,element(http://www.w3.org/TR/REC-mathml : apply,[],[element(http://www.w3.org/TR/REC-mathml : power,[],[]),element(http://www.w3.org/TR/REC-mathml : apply,[],[element(http://www.w3.org/TR/REC-mathml : plus,[],[]),element(http://www.w3.org/TR/REC-mathml : ci,[],[a]),element(http://www.w3.org/TR/REC-mathml : ci,[],[b])]),element(http://www.w3.org/TR/REC-mathml : cn,[],[2])]), to World Peace
+    ]))}
+{http://mycorp.com/papers/NobelPaper1, http://purl.org/metadata/dublin_core#Creator, literal(David Hume)}

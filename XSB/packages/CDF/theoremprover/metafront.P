@@ -1,0 +1,325 @@
+/*
+:- export metafront/2.
+*/
+
+:- import tp_gensym/2,reset_gennum/0, tp_gennum/1 from tp_utils.
+:- import call_c/1 from standard.
+
+/*
+   without atleast(N,R,C) and atmost(N,R,C) this is the logic ALCN
+   with them, it is ALCQ.
+   Adding relational intersection gives ALCQR
+   Adding inverse roles gives ALCQI
+*/
+
+/* Used to enable generation of rel hierarchy rules through at_most
+   (which does not create new variable */
+:- dynamic am_visited_rel/2.
+:- dynamic am_visited_invrel/2.
+
+/* Ground existential closure in arg 3 of visited_rel.  Used to gen
+   negative calls.  */
+:- dynamic negated_rel/2.
+:- index(negated_rel/2,1,17).
+%:- index(negated_rel/2,trie).
+
+/* Ground existential closure in arg 1 of visited_rel.  Used to gen
+   negative calls.  */
+:- dynamic negated_invrel/2.
+
+:- dynamic visited_invrel/3.
+:- index(visited_invrel/2,trie).
+
+/* Translates DL form to a type of query form, 
+   and marks all relations and scs visited.  */
+
+metafront(Expr,Expr1):- 
+	reset_gennum,
+	Var = x,
+	setup_globals(Var),
+	metafront_1(Expr,Var,Expr1).
+
+setup_globals(Var):-
+	abolish_all_tables,
+	retractall(am_visited_rel(_,_)),
+	retractall(am_visited_invrel(_,_)),
+	reset_metafront_trie,
+	retractall(visited_invrel(_,_,_)),
+	retractall(negated_rel(_,_)),
+	retractall(negated_invrel(_,_)),
+	assert_visited_rel(null,null,Var).
+
+metafront_1(','(Term,R),Var,','(T1,R1)):- !,
+	metafront_1(Term,Var,T1),
+	metafront_1(R,Var,R1).
+metafront_1(';'(D1,D2),Var,';'(D1out,D2out)):- !,
+	metafront_1(D1,Var,D1out),
+	metafront_1(D2,Var,D2out).
+metafront_1(not(C),V,Output):- !,
+	metafront_1_not(C,V,Output).
+metafront_1(exists(inv(Rel),C),V,exists_inv(Rel,V,Onew,Oset)):- !,
+	get_new_invrel_vars(V,Rel,Vset,Vnew),
+	instantiate_invrels(Vset,V,Rel,C,Vnew,Oset,Onew).
+metafront_1(exists(Rel,C),V,exists(Rel,V,Onew,Oset)):- !,
+	get_new_rel_vars(V,Rel,Vset,Vnew),
+	instantiate_rels(Vset,V,Rel,C,Vnew,Oset,Onew).
+
+metafront_1(all(inv(Rel),C),V,Output):- !,
+	(C = omsroot -> 
+             Output = true
+	   ;   
+	     Output = allinvrel(V,Rel,C),
+	     assert_if_not(negated_invrel(V,Rel)) ).
+metafront_1(all(Rel,C),V,Output):- !,
+	(C == omsroot -> 
+             Output = true
+	   ;   
+	     Output = allrel(V,Rel,C),
+	     assert_if_not(negated_rel(V,Rel)) ).
+metafront_1(at_least(N,Rel),V,Out):- !,
+	metafront_1(at_least(N,Rel,omsroot),V,Out).
+metafront_1(at_most(N,Rel),V,Out):- !,
+	metafront_1(at_most(N,Rel,omsroot),V,Out).
+
+metafront_1(at_least(0,_Rel,_),_V,true):- !.
+metafront_1(at_least(N,inv(Rel),C),V,
+                           at_least(N,invrel(V,Rel,_),Cold,Cnew)):- !,
+	assert_q_invrel_domain(N,V,Rel,C,Cold,Cnew).
+metafront_1(at_least(N,Rel,C),V,at_least(N,rel(V,Rel,_),Cold,Cnew)):- !,
+	assert_q_rel_domain(N,V,Rel,C,Cold,Cnew).
+metafront_1(at_most(0,Rel,C),V,Out):- !,
+	metafront_1_not(exists(Rel,C),V,Out).
+metafront_1(at_most(N,inv(Rel),C),V,at_most(N,invrel(V,Rel,_),C)):- !,
+	assert_if_not(am_visited_invrel(V,Rel)).
+metafront_1(at_most(N,Rel,C),V,at_most(N,rel(V,Rel,_),C)):- !,
+	assert_if_not(am_visited_rel(V,Rel)).
+metafront_1(Term,V,mo(V,Term)):- 
+	assert_visited_mo(V,Term).
+
+metafront_1_not(','(Term,R),Var,';'(T1,R1)):- !,
+	metafront_1_not(Term,Var,T1),
+	metafront_1_not(R,Var,R1).
+metafront_1_not(';'(D1,D2),Var,','(D1out,D2out)):- !,
+	metafront_1_not(D1,Var,D1out),
+	metafront_1_not(D2,Var,D2out).
+metafront_1_not(not(C),V,Output):- !,
+	metafront_1(C,V,Output).
+metafront_1_not(exists(inv(Rel),C),V,Output):- !,
+	(C = top -> 
+             Output = not(invrel(V,Rel))
+	   ;   
+             Output = notallinvrel(V,Rel,C)),
+	assert_if_not(negated_invrel(V,Rel)).
+metafront_1_not(exists(Rel,C),V,Output):- !,
+	(C = top -> 
+             Output = not(rel(V,Rel))
+	   ;   
+             Output = notallrel(V,Rel,C)),
+	assert_if_not(negated_rel(V,Rel)).
+metafront_1_not(all(inv(Rel),C),V,Output):- !,
+	get_new_invrel_vars(V,Rel,Vset,Vnew),
+	instantiate_neg_invrels(Vset,V,Rel,C,Vnew,Output).
+metafront_1_not(all(Rel,C),V,Output):- !,
+	get_new_rel_vars(V,Rel,Vset,Vnew),
+	instantiate_neg_rels(Vset,V,Rel,C,Vnew,Output).
+metafront_1_not(at_least(N,Rel),V,Out):- !,
+	metafront_1_not(at_least(N,Rel,omsroot),V,Out).
+metafront_1_not(at_least(0,_Rel,_),_V,_Out):- !,
+	abort('not(at_least(0,Rel)) encountered').
+metafront_1_not(at_least(1,Rel,C),V,Out):- !,
+	metafront_1_not(exists(Rel,C),V,Out).
+metafront_1_not(at_least(N,inv(Rel),C),V,at_most(N1,invrel(V,Rel,_),C)):- !,
+	N1 is N - 1,
+	assert_if_not(am_visited_invrel(V,Rel)).
+metafront_1_not(at_least(N,Rel,C),V,at_most(N1,rel(V,Rel,_),C)):- !,
+	N1 is N - 1,
+	assert_if_not(am_visited_rel(V,Rel)).
+
+metafront_1_not(at_most(N,Rel),V,Out):- !,
+	metafront_1_not(at_most(N,Rel,omsroot),V,Out).
+metafront_1_not(at_most(N,inv(Rel),C),V,
+                                at_least(N1,invrel(V,Rel,_),Cold,Cnew)):- !,
+	N1 is N + 1,
+	assert_q_invrel_domain(N1,V,Rel,C,Cold,Cnew).
+metafront_1_not(at_most(N,Rel,C),V,at_least(N1,rel(V,Rel,_),Cold,Cnew)):- !,
+	N1 is N + 1,
+	assert_q_rel_domain(N1,V,Rel,C,Cold,Cnew).
+metafront_1_not(Term,V,not(mo(V,Term))):-
+	assert_visited_mo(V,Term).
+
+%-------------------------
+/*
+get_new_rel_vars(V,Rel,[],Ynew):-
+	tp_gensym(y,Ynew),
+	assert_visited_rel(V,Rel,Ynew).
+*/
+
+get_new_rel_vars(V,Rel,Yset,Ynew):-
+	findall(Y,visited_rel(V,Rel,Y),Yset),
+	tp_gensym(y,Ynew),
+	assert_visited_rel(V,Rel,Ynew).
+
+
+instantiate_rels([],V,Rel,C,Vnew,true,Onew):- !,
+	instantiate_rel(V,Rel,C,Vnew,Onew).
+instantiate_rels([LastNew],V,Rel,C,Vnew,Output,NewOutput):- !,
+	instantiate_rel(V,Rel,C,LastNew,Output),
+	instantiate_rel(V,Rel,C,Vnew,NewOutput).
+instantiate_rels([Vold|Vset],V,Rel,C,Vnew,';'(O1,O2),New):- 
+	instantiate_rel(V,Rel,C,Vold,O1),
+	instantiate_rels(Vset,V,Rel,C,Vnew,O2,New).
+
+instantiate_rel(V,Rel,C,Vnew,O1):- 
+	(C == omsroot -> 
+	     O1 = rel(V,Rel,Vnew)
+	   ; 
+	     metafront_1(C,Vnew,Cnew),
+	     O1 = ','(rel(V,Rel,Vnew),Cnew) ).
+
+%----------------------
+get_new_invrel_vars(V,Rel,Yset,Ynew):-
+	(findall(Y,visited_invrel(V,Rel,Y),Yset),
+             tp_gensym(y,Ynew),
+	     assert(visited_invrel(V,Rel,Ynew)) ).
+
+instantiate_invrels([],V,Rel,C,Vnew,true,Onew):- !,
+	instantiate_invrel(V,Rel,C,Vnew,Onew).
+instantiate_invrels([LastNew],V,Rel,C,Vnew,Output,NewOutput):- !,
+	instantiate_invrel(V,Rel,C,LastNew,Output),
+	instantiate_invrel(V,Rel,C,Vnew,NewOutput).
+instantiate_invrels([Vold|Vset],V,Rel,C,Vnew,';'(O1,O2),New):- 
+	instantiate_invrel(V,Rel,C,Vold,O1),
+	instantiate_invrels(Vset,V,Rel,C,Vnew,O2,New).
+
+instantiate_invrel(V,Rel,C,Vnew,O1):- 
+	(C == omsroot -> 
+	     O1 = invrel(V,Rel,Vnew)
+	   ; 
+	     metafront_1(C,Vnew,Cnew),
+	     O1 = ','(invrel(V,Rel,Vnew),Cnew) ).
+
+%----------------------
+
+instantiate_neg_invrels([],V,Rel,C,Vnew,Output):- !,
+	instantiate_neg_invrel(V,Rel,C,Vnew,Output).
+instantiate_neg_invrels(Vset,V,Rel,C,Vnew,';'(O1,O2)):- 
+	instantiate_neg_invrel(V,Rel,C,Vnew,O1),
+	instantiate_neg_invrel_list(Vset,V,Rel,C,O2).
+
+instantiate_neg_invrel_list([Vold],V,Rel,C,O1):- !,
+	instantiate_neg_invrel(V,Rel,C,Vold,O1).
+instantiate_neg_invrel_list([Vold|Rest],V,Rel,C,';'(O1,O2)):- !,
+	instantiate_neg_invrel(V,Rel,C,Vold,O1),
+	instantiate_neg_invrel_list(Rest,V,Rel,C,O2).
+	
+instantiate_neg_invrel(V,Rel,C,Vnew,O1):- 
+	(C == omsroot -> 
+	     O1 = invrel(V,Rel,Vnew)
+	   ; 
+	     metafront_1_not(C,Vnew,Cnew),
+	     O1 = ','(invrel(V,Rel,Vnew),Cnew) ).
+
+%----------------------
+
+instantiate_neg_rels([],V,Rel,C,Vnew,Output):- !,
+	instantiate_neg_rel(V,Rel,C,Vnew,Output).
+instantiate_neg_rels(Vset,V,Rel,C,Vnew,';'(O1,O2)):- 
+	instantiate_neg_rel(V,Rel,C,Vnew,O1),
+	instantiate_neg_rel_list(Vset,V,Rel,C,O2).
+
+instantiate_neg_rel_list([Vold],V,Rel,C,O1):- !,
+	instantiate_neg_rel(V,Rel,C,Vold,O1).
+instantiate_neg_rel_list([Vold|Rest],V,Rel,C,';'(O1,O2)):- !,
+	instantiate_neg_rel(V,Rel,C,Vold,O1),
+	instantiate_neg_rel_list(Rest,V,Rel,C,O2).
+	
+instantiate_neg_rel(V,Rel,C,Vnew,O1):- 
+	(C == omsroot -> 
+	     O1 = rel(V,Rel,Vnew)
+	   ; 
+	     metafront_1_not(C,Vnew,Cnew),
+	     O1 = ','(rel(V,Rel,Vnew),Cnew) ).
+
+%----------------------
+
+assert_q_rel_domain(N,V,Rel,C,OldOut,NewOut):-
+	findall(Var,visited_rel(V,Rel,Var),OldVars),
+	assert_q_rel_domain_1(N,V,Rel,NewVars),
+	assert_q_rel_domain_2(OldVars,C,OldOut),
+	assert_q_rel_domain_2(NewVars,C,NewOut).
+
+assert_q_rel_domain_1(0,_,_,[]):- !.
+assert_q_rel_domain_1(N,V,Rel,[Y|Rest]):- 
+	N1 is N - 1,
+	tp_gensym(y,Y),
+	assert_visited_rel(V,Rel,Y),
+	assert_q_rel_domain_1(N1,V,Rel,Rest).
+
+assert_q_rel_domain_2([],_,[]).
+assert_q_rel_domain_2([Var|R],C,[lambda(Var,Cnew)|R1]):- 
+	metafront_1(C,Var,Cnew),
+	assert_q_rel_domain_2(R,C,R1).
+
+%----------------------
+
+assert_q_invrel_domain(N,V,Rel,C,OldOut,NewOut):-
+	findall(Var,visited_invrel(V,Rel,Var),OldVars),
+	assert_q_invrel_domain_1(N,V,Rel,NewVars),
+	assert_q_invrel_domain_2(OldVars,C,OldOut),
+	assert_q_invrel_domain_2(NewVars,C,NewOut).
+
+assert_q_invrel_domain_1(0,_,_,[]):- !.
+assert_q_invrel_domain_1(N,V,Rel,[Y|Rest]):- 
+	N1 is N - 1,
+	tp_gensym(y,Y),
+	assert(visited_invrel(V,Rel,Y)),
+	assert_q_invrel_domain_1(N1,V,Rel,Rest).
+
+assert_q_invrel_domain_2([],_,[]).
+assert_q_invrel_domain_2([Var|R],C,[lambda(Var,Cnew)|R1]):- 
+	metafront_1(C,Var,Cnew),
+	assert_q_invrel_domain_2(R,C,R1).
+
+%----------------------
+
+assert_if_not(Term):- 
+	(call_c(Term) -> true ; asserta(Term)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/*
+:- import t_assert/2 from assert.
+*/
+
+:- dynamic metafront_trie/1.
+%:- index(visited_rel/3,trie).
+
+:- import delete_trie/1, new_trie/1, trie_intern/5, trie_interned/4 	
+	from intern.
+
+reset_metafront_trie:- 
+	(metafront_trie(F) -> delete_trie(F),
+			        retractall(metafront_trie(_)) ; true),
+	new_trie(A),
+	assert(metafront_trie(A)).
+
+assert_visited_rel(One,Two,Three):- 
+	metafront_trie(F),
+	trie_intern(visited_rel(One,Two,Three),F,_,_,_).
+
+visited_rel(One,Two,Three):- 
+	metafront_trie(F),
+	trie_interned(visited_rel(One,Two,Three),F,_,_).
+
+%:- dynamic visited_sc/2.
+
+assert_visited_mo(One,Two):- 
+	metafront_trie(F),
+	trie_intern(visited_mo(One,Two),F,_,_,_).
+
+visited_mo(One,Two):- 
+	metafront_trie(F),
+	trie_interned(visited_mo(One,Two),F,_,_).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+end_of_file.

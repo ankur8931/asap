@@ -1,0 +1,136 @@
+/* File:      singleton.P
+** Author(s): Sagonas
+** Modified by Swift to support read_term.
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: singlton.P,v 1.14 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+
+/*======================================================================*/
+/*  singleton_check(+Clause, +VariableList).				*/
+/*============================================================*/
+
+singleton_check(X, _) :- var(X), !.
+singleton_check([], _) :- !.
+singleton_check([Cl|Cls], VariableList) :- !,
+	singleton_check(Cl, VariableList),
+	singleton_check(Cls, VariableList).
+singleton_check(Clause, VariableList) :-
+	( Clause = (_ :- _)  ->	'singleton check'(Clause, VariableList)
+	; Clause = (H --> B),nonvar(H) ->
+			( H =.. HL, append(HL, [[],[]], NHL), NH =.. NHL,
+			  'singleton check'((NH :- B), VariableList), fail
+			; true
+			)
+	; Clause = (':-'(_)) ->	true
+	; Clause = ('?-'(_)) ->	true
+	; /* FACT */		'singleton check'((Clause :- true),VariableList)
+	).
+
+'singleton check'(_, []) :- 
+	!.	% This captures clauses with no variables to be checked, 
+		% (for example ground clauses, or clauses that contain
+		% only underscores as variables), where VariableList is
+		% variable and no singleton test is needed.
+'singleton check'(Clause, VariableList) :-
+	once(singleton_warnings(Clause, VariableList)),
+	fail.	% Undo numbervars' side-effects and reclaim all space used.
+'singleton check'(_, _).
+
+singleton_warnings(Clause, VariableList) :-
+	numbervars_cmplib(Clause, 1, NumberOfVars),
+	N is NumberOfVars - 1,
+	log_ith(0,Occurences,N),
+	calculate_occurences(Clause, Occurences),
+	Clause = (Head :- _),
+	hilog_functor(Head, P, A),
+	write_singleton_warnings(VariableList, Occurences, P, A).
+
+/* TLS: This is used for read_term */
+calculate_singleton(Clause,VarList,Occurences) :-
+	copy_term((Clause,VarList),(Clause1,VarList1)),
+	numbervars_cmplib(Clause1, 1, NumberOfVars),
+	N is NumberOfVars - 1,
+	log_ith(0,Occ,N),
+	calculate_occurences(Clause1, Occ),
+	process_raw_occurences(VarList,VarList1,Occ,Occurences).
+
+process_raw_occurences([],_, _, []):- !.
+%process_raw_occurences([_],_, _, []):- !.
+process_raw_occurences([vv(Name,Var)|R],[vv(Name,'_$cmplib_var'(N))|R1],Occ, Occurences) :-
+	atom_codes(Name, CharList),
+	( CharList = [95|_] ->	% variable Var begins with an "_"
+                Occurences = NewOccurences
+	  ; log_ith(N, Occ, OccCount),
+	    ( OccCount == found('at least twice') -> 
+  	        Occurences = NewOccurences
+	      ; Occurences = [Name = Var|NewOccurences] )
+	),
+	process_raw_occurences(R, R1, Occ, NewOccurences).
+
+calculate_occurences(Term, Occurences) :-
+	functor(Term, _, Arity),
+	'calculate occurences'(Term, 0, Arity, Occurences).
+
+'calculate occurences'(_, N, N, _) :- 
+	!.
+'calculate occurences'(Term, N, Arity, Occurences) :-
+	NewN is N + 1,
+	arg(NewN, Term, Arg),	% We cannot use ll_arg/3 here (Term may be a list)
+	( Arg = '_$cmplib_var'(Number) ->
+		( integer(Number) ->
+			log_ith(Number, Occurences, OccCount),
+			( var(OccCount) -> OccCount = found(_)
+			; OccCount = found(Times) -> 
+				( var(Times) -> Times = 'at least twice'
+				; true
+				)
+			)
+		; functor(Arg, _, ArgArity),
+		  'calculate occurences'(Arg, 0, ArgArity, Occurences)
+		)
+	; atomic(Arg) -> 
+		true
+	; functor(Arg, _, ArgArity),
+	  'calculate occurences'(Arg, 0, ArgArity, Occurences)
+	),
+	'calculate occurences'(Term, NewN, Arity, Occurences).
+
+write_singleton_warnings(VariableList, Occurences, P, A):- 
+	(option(singleton_warnings_off) -> 
+	    true
+	  ; write_singleton_warnings_1(VariableList, Occurences, P, A) ).
+
+write_singleton_warnings_1([], _, _, _) :-
+	!.	% This captures the open-end of VariableList.
+write_singleton_warnings_1([vv(VarName,'_$cmplib_var'(N))|Rest],Occurences, P, A) :-
+	atom_codes(VarName, CharList),
+	( CharList = [95|_] ->	% variable Var begins with an "_"
+		true		% (underscore), so its OK, ignore it!.
+	; log_ith(N, Occurences, OccCount),
+	  ( OccCount == found('at least twice') -> true
+	  ; (warning(('Singleton variable ', VarName,
+		     ' in a clause of ', P, '/', A))
+	  )
+	) ),
+	write_singleton_warnings_1(Rest, Occurences, P, A).
+

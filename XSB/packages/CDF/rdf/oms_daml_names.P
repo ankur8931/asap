@@ -1,0 +1,37 @@
+/**name_table(  rdf,     'http://www.w3.org/1999/02/22-rdf-syntax-ns').
+name_table(  rdfs,    'http://www.w3.org/2000/01/rdf-schema').
+name_table(  xsd,     'http://www.w3.org/2000/10/XMLSchema').
+name_table(  daml,    'http://www.daml.org/2001/03/daml+oil').
+name_table(  service, 'http://www.daml.org/services/daml-s/0.7/Service.daml').
+name_table(  profile, 'http://www.daml.org/services/daml-s/0.7/Profile.daml'). 
+name_table(  process, 'http://www.daml.org/services/daml-s/0.7/Process.daml'). 
+name_table(  process, 'http://www.daml.org/services/daml-s/2001/10/Process.daml').
+name_table(  service, 'http://www.daml.org/services/daml-s/2001/10/Service.daml').
+name_table(  profile, 'http://www.daml.org/services/daml-s/2001/10/Profile.daml').
+
+name_table(  cougaar, 'http://www.alpine.bbn.com/~aleung/cougaar.daml'). 
+name_table(  cougaar, 'file://C:/alp/cougaar/servicediscovery/data/serviceprofiles/cougaar.daml').
+name_table(  cougaar, 'file://C:/cougaar/servicediscovery/data/serviceprofiles/cougaar.daml').
+name_table(  time,    'http://www.ai.sri.com/daml/ontologies/time/Time.daml').
+name_table(  ultralog,'ultralog').
+name_table(  unspsc,  'unspsc').
+name_table(  naics,   'naics').
+****/
+
+
+%%daml_property('DAML Properties','http://www.daml.org/2001/03/daml+oil').
+daml_property('DatatypeProperty','http://www.daml.org/2001/03/daml+oil').
+daml_property('DataProperty','http://www.daml.org/2001/03/daml+oil').
+daml_property('Property','http://www.daml.org/2001/03/daml+oil').
+daml_property('Property','http://www.w3.org/1999/02/22-rdf-syntax-ns').
+daml_property('ObjectProperty','http://www.daml.org/2001/03/daml+oil').
+daml_property('TransitiveProperty','http://www.daml.org/2001/03/daml+oil').
+daml_property('UniqueProperty','http://www.daml.org/2001/03/daml+oil').
+
+daml_strel('label','http://www.w3.org/2000/01/rdf-schema').
+daml_strel('label','http://www.daml.org/2001/03/daml+oil').
+daml_strel('comment','http://www.w3.org/2000/01/rdf-schema').
+daml_strel('comment','http://www.daml.org/2001/03/daml+oil').
+daml_strel('cardinality','http://www.daml.org/2001/03/daml+oil').
+daml_strel('maxCardinality','http://www.daml.org/2001/03/daml+oil').
+daml_strel('onProperty','http://www.daml.org/2001/03/daml+oil').

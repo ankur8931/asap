@@ -1,0 +1,100 @@
+:-(dynamic(attribute_ext(A,B,C,D,E,F))).
+:-(dynamic(attribute_object_ext(A,B,C,D,E,F))).
+:-(dynamic(class_ext(A,B,C))).
+:-(dynamic(memberof_ext(A,B,C,D))).
+:-(dynamic(object_ext(A,B,C))).
+:-(dynamic(relationship_ext(A,B,C,D,E,F))).
+:-(dynamic(schrel_ext(A,B,C,D,E,F))).
+:-(dynamic(strel_ext(A,B,C,D,E,F))).
+:-(dynamic(subclass_ext(A,B,C,D))).
+:-(index(attribute_ext(A,B,C,D,E,F),'.'(328449,[]),17)).
+:-(index(attribute_object_ext(A,B,C,D,E,F),'.'(328449,[]),17)).
+:-(index(class_ext(A,B,C),'.'(1,'.'(2,'.'(3,[]))),17)).
+:-(index(memberof_ext(A,B,C,D),'.'(1,'.'(1027,[])),17)).
+:-(index(object_ext(A,B,C),'.'(2,[]),17)).
+:-(index(relationship_ext(A,B,C,D,E,F),'.'(197121,[]),17)).
+:-(index(schrel_ext(A,B,C,D,E,F),'.'(197121,[]),17)).
+:-(index(strel_ext(A,B,C,D,E,F),'.'(197121,[]),17)).
+:-(index(subclass_ext(A,B,C,D),'.'(513,'.'(1027,[])),17)).
+attribute_ext(o2,test,r4,test,c12,test).
+attribute_object_ext(o2,test,r2,test,o12,test).
+attribute_object_ext(o2,test,r4,test,o12,test).
+class_ext('AINT/1',aint(A),'OMS').
+class_ext('ATOM/1',atom(A),'OMS').
+class_ext('CARDINAL/1',cardinal(A),'OMS').
+class_ext('CLAUSE/2',clause(A,B),'OMS').
+class_ext('Definition','Definition','OMS').
+class_ext('Descriptions','Descriptions','OMS').
+class_ext('FLOAT/1',float(A),'OMS').
+class_ext('INTEGER/1',integer(A),'OMS').
+class_ext('Necessary Condition','Necessary Condition','OMS').
+class_ext('OBJECT/1',object(A,B),'OMS').
+class_ext('OMS Inheritable Relationships','OMS Inheritable Relationships','OMS').
+class_ext('OMS Primitive Types','OMS Primitive Types','OMS').
+class_ext('OMS Relations','OMS Relations','OMS').
+class_ext('OMS Root','OMS Root','OMS').
+class_ext('OMS Set-Valued Relations','OMS Set-Valued Relations','OMS').
+class_ext('Sufficient Condition','Sufficient Condition','OMS').
+class_ext([],[],'OMS').
+class_ext(c1,c1,test).
+class_ext(c11,c11,test).
+class_ext(c12,c12,test).
+class_ext(c13,c13,test).
+class_ext(c2,c2,test).
+class_ext(c3,c3,test).
+class_ext(myf,f(c2,test,g(integer(1),'OMS',c11,test),test),test).
+class_ext(myg,g(integer(1),'OMS',c11,test),test).
+class_ext(r1,r1,test).
+class_ext(r2,r2,test).
+class_ext(r3,r3,test).
+class_ext(r4,r4,test).
+memberof_ext(o1,test,c1,test).
+memberof_ext(o11,test,c11,test).
+memberof_ext(o12,test,c12,test).
+memberof_ext(o13,test,c13,test).
+memberof_ext(o2,test,c2,test).
+memberof_ext(o3,test,c3,test).
+memberof_ext(or1,test,r1,test).
+memberof_ext(or2,test,r2,test).
+memberof_ext(or3,test,r3,test).
+object_ext(o1,o1,test).
+object_ext(o11,o11,test).
+object_ext(o12,o12,test).
+object_ext(o13,o13,test).
+object_ext(o2,o2,test).
+object_ext(o3,o3,test).
+object_ext(or1,or1,test).
+object_ext(or2,or2,test).
+object_ext(or3,or3,test).
+relationship_ext(c1,test,r1,test,f(c2,test,g(integer(1),'OMS',c11,test),test),test).
+relationship_ext(c2,test,r2,test,c12,test).
+relationship_ext(f(c2,test,g(integer(1),'OMS',c11,test),test),test,r1,test,c1,test).
+schrel_ext(c1,test,r2,test,c12,test).
+strel_ext(c1,test,'Descriptions','OMS',c11,test).
+subclass_ext('Definition','OMS','OMS Inheritable Relationships','OMS').
+subclass_ext('Descriptions','OMS','OMS Set-Valued Relations','OMS').
+subclass_ext('Necessary Condition','OMS','OMS Inheritable Relationships','OMS').
+subclass_ext('OMS Inheritable Relationships','OMS','OMS Relations','OMS').
+subclass_ext('OMS Primitive Types','OMS','OMS Root','OMS').
+subclass_ext('OMS Relations','OMS','OMS Root','OMS').
+subclass_ext('OMS Set-Valued Relations','OMS','OMS Relations','OMS').
+subclass_ext('Sufficient Condition','OMS','OMS Inheritable Relationships','OMS').
+subclass_ext([],'OMS','OMS Primitive Types','OMS').
+subclass_ext(aint(A),'OMS','OMS Primitive Types','OMS').
+subclass_ext(atom(A),'OMS','OMS Primitive Types','OMS').
+subclass_ext(c1,test,c2,test).
+subclass_ext(c11,test,c12,test).
+subclass_ext(c12,test,c13,test).
+subclass_ext(c13,test,'OMS Root','OMS').
+subclass_ext(c2,test,c3,test).
+subclass_ext(c3,test,'OMS Root','OMS').
+subclass_ext(cardinal(A),'OMS','OMS Primitive Types','OMS').
+subclass_ext(clause(A,B),'OMS','OMS Primitive Types','OMS').
+subclass_ext(f(c2,test,g(integer(1),'OMS',c11,test),test),test,c2,test).
+subclass_ext(float(A),'OMS','OMS Primitive Types','OMS').
+subclass_ext(integer(A),'OMS','OMS Primitive Types','OMS').
+subclass_ext(object(A,B),'OMS','OMS Primitive Types','OMS').
+subclass_ext(r1,test,r2,test).
+subclass_ext(r2,test,r3,test).
+subclass_ext(r3,test,'OMS Inheritable Relationships','OMS').
+subclass_ext(r4,test,'OMS Inheritable Relationships','OMS').

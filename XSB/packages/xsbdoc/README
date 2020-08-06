@@ -1,0 +1,28 @@
+
+To generate the XSBDOC manual, make sure you have texinfo installed
+(it usually present in Linuxes and academic departments, haven't
+checked Cygwin).
+
+1. cd to the doc subdirectory.
+
+2. invoke xsb, and load the xsbdoc package by the command
+
+?- [xsbdoc].
+
+3. execute the command 
+
+?- xsbdoc(xsbdoc_format,ps).
+
+for postscript
+
+?- xsbdoc(xsbdoc_format,pdf).
+
+for pdf
+
+?- xsbdoc(xsbdoc_format,html).
+
+for html, or
+
+?- xsbdoc(xsbdoc_format,ascii).
+
+for ascii.

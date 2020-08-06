@@ -1,0 +1,93 @@
+#! /bin/sh
+
+# @configure_input@
+
+# Invoke as 'makexsb args'
+
+# In argument --config-tag=<suffix> is given,
+# then  '-<suffix>'  is attached to the configuration name.
+# This can be used for building different versions 
+# of XSB (with different features turned on) under the same architecture.
+
+## File:      makexsb.in
+## Author(s): kifer
+## Contact:   xsb-contact@cs.sunysb.edu
+## 
+## Copyright (C) The Research Foundation of SUNY, 1998
+## 
+## XSB is free software; you can redistribute it and/or modify it under the
+## terms of the GNU Library General Public License as published by the Free
+## Software Foundation; either version 2 of the License, or (at your option)
+## any later version.
+## 
+## XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+## WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+## FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+## more details.
+## 
+## You should have received a copy of the GNU Library General Public License
+## along with XSB; if not, write to the Free Software Foundation,
+## Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+##
+## $Id: makexsb.in,v 1.15 2011-11-23 20:47:28 kifer Exp $
+## 
+##
+
+if test -f buildxsb.lock ; then
+   echo "***Build lock exists: another configure/makexsb is probably running.
+***Wait until the previous build is complete.
+***If this is a stale lock, remove ./buildxsb.lock and run configure again."
+   exit 1
+fi
+
+touch buildxsb.lock
+trap 'rm buildxsb.lock; exit 1' 1 2 15
+
+test -f ../emu/private_builtin.c || \
+   cp private_builtin.in ../emu/private_builtin.c
+
+makeargs=
+force_devel=
+if test -d CVS -a -f CVS/Entries; then
+    force_devel=yes
+fi
+
+for option
+do
+    case $option in
+      --conf*=* ) suffix=`echo $option | sed -e 's/-.*=/-/'`
+      ;;
+      fast|devel|superdevel|all|packages|module|dynmodule|smodels|install|clean|distclean|configclean|cygdll)
+	 force_devel=
+	 makeargs="$makeargs $option"
+      ;;
+      *) makeargs="$makeargs $option"
+      ;;
+    esac
+done
+
+if test "$force_devel" = "yes"; then
+    makeargs="$makeargs devel"
+fi
+
+#config=`@topdir@/build/config.guess`
+#dir=@topdir@/config/`@topdir@/build/config.sub $config`${suffix}
+config=`./config.guess`
+#dir=@topdir@/config/`./config.sub $config`${suffix}
+dir=../config/`./config.sub $config`${suffix}
+makefile=${dir}/topMakefile
+
+
+if test -r "$makefile" ; then
+   echo ""
+   echo "make -f ${makefile}  $makeargs"
+   echo ""
+   make -f ${makefile}  $makeargs
+else
+   echo "${makefile}: does not exist or is not readable."
+   echo "Have you configured XSB for this architecture?"
+   echo ""
+fi
+
+rm -f  buildxsb.lock
+rm -f  Makefile

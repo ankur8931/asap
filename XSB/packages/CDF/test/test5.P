@@ -1,0 +1,8 @@
+
+% Testing proper dumping of structured classes.
+
+test:- 
+	dump_omsext(test5dir),
+	shell('sh get_diff.sh test5dir').
+
+end_of_file.

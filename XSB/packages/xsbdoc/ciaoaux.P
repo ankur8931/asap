@@ -1,0 +1,86 @@
+
+:- compiler_options([xpp_on,ciao_directives]).
+
+:- export  (data)/1, display/2, 
+	  error_message/1, error_message/2, 
+	  list_concat/2, 
+	  note_message/1, optional_message/2,
+	  pop_prolog_flag/1,  push_prolog_flag/1,
+	  set_libs/1,
+	  xsbdoc_error/1,
+	  xsbdoc_warning/1.
+
+:- import format/2 from format.
+:- import warning/1,messageln/2, message/2 from standard.
+:- import member/2 from basics.
+:- import concat_atom/2 from string.
+
+#include "flag_defs_xsb.h"
+#include "standard.h"
+
+% TLS: handle so I can set_libs.
+set_libs([]).
+
+data(_).
+
+pop_prolog_flag(X):- warning((pop_prolog_flag(X),' is a no-op')).
+
+push_prolog_flag(X):- warning((push_prolog_flag(X),' is a no-op')).
+
+/* TLS: the following has a slightly different semantics from flatten */
+
+:- pred dlist(List,DList,Tail) # "@var{List} is the result of removing
+   @var{Tail} from the end of @var{DList} (makes a difference list from
+   a list).".
+
+dlist([], X, X).
+dlist([X|Y], [X|L], T) :- dlist(Y, L, T).
+
+:- pred list_concat(list(LL,list),list(L)) # "@var{L} is the
+   concatenation of all the lists in @var{LL}.".
+
+list_concat([],[]).
+list_concat([L|RL],Head) :- 
+	dlist(L,Head,Tail),
+	list_concat(RL,Tail).
+
+
+% TLS: perhaps this is not the way to do it, but ciao display/2 is a kernal 
+% predicate.
+
+display(Str,Term):- write(Str,Term).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Messages
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% TLS: waiting until we have Ports and Streams correlated in order to
+% do more.
+
+error_message(Format):-
+	write('Error: '),
+	format(Format,[]).
+
+error_message(Format,Args):-
+	write('Error: '),
+	format(Format,Args).
+
+note_message(Format):- 
+	messageln(Format,STDMSG).
+
+optional_message(Message,Opts):- 
+	member('-v',Opts),!,
+	(atomic(Message)
+	 ->	writeln(Message)
+	 ;	concat_atom(Message,MessageAtom),
+		writeln(MessageAtom)
+	).
+optional_message(_Message,_Opts).
+
+xsbdoc_warning(Message):- 
+	message('++Warning[xsbdoc]: ', STDWARN),
+	messageln(Message, STDWARN).
+
+xsbdoc_error(Message):- 
+	message('++Warning[xsbdoc]: ', STDERR),
+	messageln(Message, STDERR).

@@ -1,0 +1,260 @@
+%--------------------------------------------------------------------
+
+:- import numbervars/1 from num_vars.
+
+%--------------------------------------------------------------------
+
+:- table path/2.
+path(X,Y) :- path(X,Z), edge(Z,Y).
+path(X,Y) :- edge(X,Y).
+
+edge(1,2).
+edge(2,2).
+edge(2,4).
+edge(2,3).
+edge(3,5).
+
+%--------------------------------------------------------------------
+
+:- table table_ordered_goal/1.
+
+table_ordered_goal(X):- ordered_goal(X).
+
+ordered_goal(one).
+ordered_goal(two).
+ordered_goal(three).
+ordered_goal(four).
+
+%--------------------------------------------------------------------
+%:- table same_generation/2.
+same_generation(X,X).
+same_generation(X,Y) :- cyl(X,Z), same_generation(Z,Z),cyl(Y,Z).
+
+:- index(cyl/2,[1,2]).
+
+/*
+The cylinder data (in the file cyl.P) can be thought of as a
+rectangular matrix of elements where each element in row $N$ has links
+to a certain number of elements in row $N+1$.  The 24x24x2 cylinder
+then, is an array of 24x24 nodes, where each of the nodes in each row
+(except the last) is connected to two elements in the next higher row.
+Executing this query using tabling is more than three orders of
+magnitude faster than using Prolog, since Prolog will search a
+complete binary tree of depth 24
+*/
+%--------------------------------------------------------------------
+:- table cut_p/1,cut_q/1,cut_r/0,cut_s/0.
+
+cut_p(X):- cut_q(X),once(cut_r).
+cut_r:- cut_s.
+cut_s:- cut_q(_).
+cut_q(1).       cut_q(2).
+
+examp_once(Term):- call(Term),!.
+
+%--------------------------------------------------------------------
+:- table cut_a/1,cut_b/1.
+
+cut_a(X):- cut_b(X).
+cut_a(a1).
+
+cut_b(b1).
+cut_b(X):- cut_a(X).
+
+%--------------------------------------------------------------------
+
+genlist(0,[]):-!.
+genlist(N,[N|T]):-
+	N1 is N - 1,
+	genlist(N1,T).
+
+prolog_append([],L,L).
+prolog_append([H|T],L,[H|T1]) :- prolog_append(T,L,T1).
+
+:- table(table_append/3).
+table_append([],L,L).
+table_append([H|T],L,[H|T1]) :- table_append(T,L,T1).
+
+%--------------------------------------------------------------------
+
+:- table mut_ret_a/2, mut_ret_b/2.
+mut_ret_a(X,Y):- mut_ret_d(X,Y).
+mut_ret_a(X,Y):- mut_ret_b(X,Z),mut_ret_c(Z,Y).
+
+mut_ret_b(X,Y):- mut_ret_c(X,Y).
+mut_ret_b(X,Y):- mut_ret_a(X,Z),mut_ret_d(Z,Y).
+
+mut_ret_c(2,2).
+mut_ret_c(3,3).
+
+mut_ret_d(0,1).
+mut_ret_d(1,2).
+mut_ret_d(2,3).
+
+%--------------------------------------------------------------------
+
+:- table win/1.
+win(X):- move(X,Y),tnot(win(Y)).
+
+pwin(X):- move(X,Y),\+ pwin(Y).
+
+%--------------------------------------------------------------------
+
+lrd_p:- lrd_q,tnot(lrd_r),tnot(lrd_s).
+lrd_q:- lrd_r,tnot(lrd_p).
+lrd_r:- lrd_p,tnot(lrd_q).
+lrd_s:-tnot(lrd_p),tnot(lrd_q),tnot(lrd_r). 
+
+%--------------------------------------------------------------------
+
+ngr_p:- \+ ngr_p(_).
+
+ngr_p(a).
+
+:- table ngr_tp/1.
+ngr_tp:- tnot(ngr_tp(_)).
+
+ngr_tp(a).
+
+ngr_skp:- sk_not(ngr_tp(_)).
+
+%--------------------------------------------------------------------
+
+:- table simpl_p/1,simpl_r/0,simpl_s/0.
+simpl_p(_X):- tnot(simpl_s).
+
+simpl_s:- tnot(simpl_r).
+simpl_s:- simpl_p(_X).
+
+simpl_r:- tnot(simpl_s),simpl_r.
+
+%--------------------------------------------------------------------
+:- table ac_p/1,ac_r/0,ac_s/0.
+ac_p(X):- ac_p(X).
+ac_p(_X):- tnot(ac_s).
+
+ac_s:- tnot(ac_r).
+ac_s:- ac_p(_X).
+
+ac_r:- tnot(ac_s),ac_r.
+%--------------------------------------------------------------------
+
+:- table ppgte_p/0,ppgte_q/0,ppgte_r/0,ppgte_s/0,ppgte_t/0,ppgte_u/0,ppgte_v/0.
+ppgte_p:- ppgte_q.
+ppgte_p:- ppgte_r.
+
+ppgte_q:- ppgte_s.
+ppgte_q:- ppgte_t.
+
+ppgte_r:- ppgte_u.
+ppgte_r:- ppgte_v.
+
+ppgte_s:- undefined.
+ppgte_t:- undefined.
+ppgte_u:- undefined.
+ppgte_v:- undefined.
+
+%:- table undefined/0.
+%undefined:- tnot(undefined).
+
+%--------------------------------------------------------------------
+
+:- table path/3.
+path(X,Y,C) :- path(X,Z,C1), edge(Z,Y,C2),C is C1 + C2.
+path(X,Y,C) :- edge(X,Y,C).
+
+:- import filterReduce1/4, filterReduce/4 from aggregs.
+
+shorter_path(X,Y,C) :- filterReduce1(sp(X,Y),min,infinity,C).
+
+sp(X,Y,C) :- shorter_path(X,Z,C1),
+             edge(Z,Y,C2),C is C1 + C2.
+sp(X,Y,C) :- edge(X,Y,C).
+
+shortest_path(X,Y,C) :- filterReduce(sp1(X,Y),min,infinity,C).
+
+sp1(X,Y,C) :- shortest_path(X,Z,C1), edge(Z,Y,C2),C is C1 + C2.
+sp1(X,Y,C) :- edge(X,Y,C).
+
+min(X,Y,Y):- \+ number(X),!.
+min(X,Y,X):- \+ number(Y),!.
+min(One,Two,Min):- One > Two -> Min = Two ; Min = One.
+
+edge(1,2,1).
+edge(2,2,1).
+edge(2,3,1).
+edge(2,4,1).
+edge(3,5,2).
+edge(4,5,1).
+
+%--------------------------------------------------------------------
+
+end_of_file.
+%--------------------------------------------------------------------
+
+% ex5
+ex5_p:- \+ ex5_p(_).
+
+ex5_p(a).
+
+
+:- table ex5_tp/1.
+ex5_tp:- tnot(ex5_tp(_)).
+
+ex5_tp(a).
+
+ex5_pr:- \+((ex5_r,ex5_p(_))).
+
+:- dynamic ex5_r/0.
+:- dynamic ex5_tr/0.
+
+:- table ex5_tr/0.
+
+ex5_tpr:- tnot((ex5_tr,ex5_tp(b))).
+
+%--------------------------------------------------------------------
+
+:- table ex6_p/1,ex6_q/1,ex6_r/0,ex6_s/0.
+ex6_p(X):- ex6_q(X).
+
+ex6_q(1):- ex6_r,tnot(ex6_s).
+ex6_q(1):- tnot(ex6_s),ex6_r.
+
+ex6_r:- tnot(ex6_q(1)),ex6_q(1).
+
+ex6_s:- tnot(ex6_q(1)).
+
+end_of_file.
+
+bench_win:-
+	writeln('------------------------------------------'),
+	cputime(T),
+	bench_win_1(100),cputime(T1),Tot is T1 - T, writeln(Tot).
+
+bench_win_1(0):-!.
+bench_win_1(N):-
+	abolish_all_tables,
+	(win(1),fail; true),
+	N1 is N - 1,
+	bench_win_1(N1).
+
+bench_prolog_win:-
+	writeln('------------------------------------------'),
+	cputime(T),
+	prolog_win_1(100),cputime(T1),Tot is T1 - T, writeln(Tot).
+
+prolog_win_1(0):-!.
+prolog_win_1(N):-
+	abolish_all_tables,
+	(pwin(1),fail; true),
+	N1 is N - 1,
+	prolog_win_1(N1).
+
+
+%--------------------------------------------------------------------
+:- table p1/1,q1/1,r1/0,s1/0.
+
+p1(X):- q1(X),tnot(r1).
+r1:- tnot(s1).
+s1:- q1(_).
+q1(1).  q1(2).

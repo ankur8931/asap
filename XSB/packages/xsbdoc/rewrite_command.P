@@ -1,0 +1,671 @@
+:- compiler_options([ciao_directives]).
+
+:- export rewrite_command/4.
+
+:- import error_message/2, list_concat/2,xsbdoc_warning/1 from ciaoaux.
+:- import member/2 from basics.
+
+:- import typeindex/5, texinfo_escape_ats_etc/2 from autodocformats.
+:- import rewrite_docstring/4 from autodoc.
+
+%% ---------------------------------------------------------------------------
+:- comment(rewrite_command(Format,Command,Indices,NewCommand),
+   "Defines the translation between the special commands which can
+   appear in strings inside assertions and the formatting
+   target. @var{Indices} is a list of index names (the indices to be
+   generated).").
+
+:- pred rewrite_command(Format,Command,Indices,NewCommand) 
+   :  (Format=texinfo,stringcommand(Command), list(Indices,atom)) 
+   => string(NewCommand)
+
+   # "Defines the translation between the special commands which can
+      appear in strings inside assertions and texinfo.".
+%% ---------------------------------------------------------------------------
+
+%% Commands with special translation
+%% Concept definition index entry
+
+rewrite_command(texinfo,A,B,C):- 
+	rewrite_texinfo_command(A,B,C).
+
+ascii_blank_lines(0,"") :- !.
+ascii_blank_lines(N,[0'\n | R]) :-
+	N1 is N-1,
+	ascii_blank_lines(N1,R).
+
+%% ---------------------------------------------------------------------------
+:- pred rewrite_command(Format,Command,Indices,NewCommand) 
+   : (Format=html,stringcommand(Command), list(Indices,atom)) 
+   => string(NewCommand) 
+
+   # "Defines the translation between the special commands which can
+      appear in strings inside assertions and html. This is still
+      somewhat incomplete.".
+%% ---------------------------------------------------------------------------
+
+rewrite_command(html,A,B,C):- 
+	rewrite_html_command(A,B,C).
+
+html_blank_lines(0,"") :- !.
+html_blank_lines(N,[0'<,0'B,0'R,0'>,0' |R]) :-
+	N1 is N-1,
+	html_blank_lines(N1,R).
+
+%% ---------------------------------------------------------------------------
+:- pred rewrite_command(Format,Command,Indices,NewCommand) 
+   : (Format=ascii,stringcommand(Command), list(Indices,atom)) 
+   => string(NewCommand) 
+
+   # "Defines the translation between the special commands which can
+      appear in strings inside assertions and ascii.".
+%% ---------------------------------------------------------------------------
+
+rewrite_command(ascii,A,B,C):- 
+	rewrite_ascii_command(A,B,C).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+rewrite_texinfo_command(index(RBody),Indices,NewAll) :-
+	!,
+	rewrite_docstring(texinfo,Indices,RBody,Body),
+	(  ( member(concept,Indices); Indices=[all] ),
+	   typeindex(concept,Index,_,_,_)
+	-> list_concat([ "\n@", Index, " ", Body ], T0 )
+	;  T0 = [] ),
+	(  ( member(global,Indices); Indices=[all] ),
+	   typeindex(global,UIndex,_,_,_)
+	-> list_concat([ T0, "\n@", UIndex, " ", Body ], T1)
+	;  T1 = T0),
+	list_concat([ T1,"\n@emph{", Body, "}" ], NewAll).
+%% Concept definition index entry (NOT including the body in-line)
+rewrite_texinfo_command(cindex(RBody),Indices,NewAll) :-
+	!,
+	rewrite_docstring(texinfo,Indices,RBody,Body),
+	(  ( member(concept,Indices); Indices=[all] ),
+	   typeindex(concept,Index,_,_,_)
+	-> list_concat([ "\n@", Index, " ", Body ], T0 )
+	;  T0 = [] ),
+	(  ( member(global,Indices); Indices=[all] ),
+	   typeindex(global,UIndex,_,_,_)
+	-> list_concat([ T0, "\n@", UIndex, " ", Body ], T1)
+	;  T1 = T0),
+	list_concat([ T1, "\n" ], NewAll).
+%% Reference to concept (NOT emphasized, goes only to global)
+rewrite_texinfo_command(concept(RBody),Indices,NewAll) :-
+	!,
+%% Concepts should appear only once in the concept index
+	rewrite_docstring(texinfo,Indices,RBody,Body),
+	(  ( member(global,Indices); Indices=[all] ),
+	   typeindex(global,UIndex,_,_,_)
+	-> list_concat([ "\n@", UIndex, " ", Body ], T0)
+	;  T0 = []),
+	list_concat([ T0, "\n", Body ], NewAll).
+%% Predicate/Application/Property/Type/Operator/Library/File/etc. references
+rewrite_texinfo_command(Command,Indices,NewAll) :-
+	Command =.. [Type,RBody],
+	codetype(Type),
+	!,
+	rewrite_docstring(texinfo,Indices,RBody,Body),
+	(  ( member(global,Indices); Indices=[all] ),
+	   typeindex(global,UIndex,_,_,_)
+	-> list_concat([ "\n@", UIndex, " ", Body, "\n" ],T1) 
+	;  T1 = []),
+	list_concat( [ T1, "@code{", Body, "}" ], NewAll).
+rewrite_texinfo_command(section(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(texinfo,Indices,RBody,Body),
+	list_concat([ "\n\n@node ", Body, ", next,  previous,  up", 
+	              "\n@comment node-name, next,  previous,  up",
+	              "\n@section ", Body, "\n" ], NewAll).
+rewrite_texinfo_command(subsection(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(texinfo,Indices,RBody,Body),
+	list_concat([ "\n\n@node ", Body, ", next,  previous,  up",
+	              "\n@comment node-name, next,  previous,  up",
+	              "\n@subsection ", Body, "\n" ], NewAll).
+%% Other commands with special translation
+rewrite_texinfo_command(sp(NS),_,NewCommand) :- !, 
+	list_concat([ "\n@sp ", NS, "\n" ], NewCommand).
+rewrite_texinfo_command(p(""),_,"\n\n") :- !.
+rewrite_texinfo_command(noindent(""),_,"\n@noindent\n") :- !.
+rewrite_texinfo_command(begin("itemize"),_,"\n@itemize @bullet{}\n") :- !.
+rewrite_texinfo_command(begin("enumerate"),_,"\n@enumerate \n") :- !.
+rewrite_texinfo_command(begin("description"),_,"\n@table @asis\n") :- !.
+rewrite_texinfo_command(begin("cartouche"),_,"\n@cartouche \n") :- !.
+rewrite_texinfo_command(item(""),_,"\n@item ") :- !.
+rewrite_texinfo_command(item(S),Indices,NewCommand) :- !,
+	rewrite_docstring(texinfo,Indices,S,NS),
+	list_concat([ "\n@item ", NS, "\n" ], NewCommand).
+rewrite_texinfo_command('}',_,"@}") :- !.
+rewrite_texinfo_command('{',_,"@{") :- !.
+rewrite_texinfo_command('@',_,"@@") :- !.
+rewrite_texinfo_command(end("itemize"),_,"\n@end itemize \n") :- !.
+rewrite_texinfo_command(end("enumerate"),_,"\n@end enumerate \n") :- !.
+rewrite_texinfo_command(end("description"),_,"\n@end table \n") :- !.
+rewrite_texinfo_command(end("cartouche"),_,"\n@end cartouche \n") :- !.
+rewrite_texinfo_command(begin("verbatim"),_,"\n@smallexample ") :- !.
+%% Was: (but this tended to insert extra blank line at the end of an example)
+%% rewrite_texinfo_command(end("verbatim"),_,"\n@end smallexample \n") :- !.
+rewrite_texinfo_command(end("verbatim"),_,"@end smallexample \n") :- !.
+rewrite_texinfo_command(today(""),_,"@today ") :- !.
+% rewrite_texinfo_command(hfill(""),_,"\n@iftex\n@hfill \n@end iftex\n") :- !.
+rewrite_texinfo_command(hfill(""),_,"@hfill ") :- !.
+rewrite_texinfo_command(iso(""),_,"@key{ @bullet{} ISO @bullet{} }") :- !.
+%% Special body: escape @s!
+rewrite_texinfo_command(includeverbatim(Body),_,NBody) :- 
+	!,
+	texinfo_escape_ats_etc(Body,NBody).
+rewrite_texinfo_command('`'([X]),_,[0'@,0'`,X]) :- !.
+%% Special case for i
+rewrite_texinfo_command(''''("i"),_,"@\'{@dotless{i}}") :- !.
+%%rewrite_texinfo_command(''''([X]),_,[0'@,0'\',X]) :- !.   %%%!!!!! DSW, this broke it on cygwin..
+rewrite_texinfo_command('^'([X]),_,[0'@,0'^,X]) :- !.
+rewrite_texinfo_command('..'([X]),_,[0'@,0'",X]) :- !.
+rewrite_texinfo_command('~'([X]),_,[0'@,0'~,X]) :- !.
+rewrite_texinfo_command('='([X]),_,[0'@,0'=,X]) :- !.
+rewrite_texinfo_command(uref(URL),_,NBody) :- !,
+	list_concat([ "@uref{", URL, "}" ], NBody).
+rewrite_texinfo_command(uref(Text,URL),Indices,NBody) :- !, 
+	rewrite_docstring(texinfo,Indices,Text,RText),
+	list_concat([ "@uref{", URL, ",", RText, "}" ],NBody).
+rewrite_texinfo_command(email(Address),_,NBody) :- !,
+	list_concat([ "@email{", Address, "}" ],NBody).
+rewrite_texinfo_command(email(Text,Address),Indices,NBody) :- !, 
+	rewrite_docstring(texinfo,Indices,Text,RText),
+	list_concat( [ "@email{", Address, ",", RText, "}" ],NBody).
+rewrite_texinfo_command(image(IFile),_,NBody) :- !,
+	list_concat( [ "@image{", IFile, "}" ], NBody).
+rewrite_texinfo_command(image(IFile,Width,Height),_,NBody) :- !,
+	list_concat( [ "@image{", IFile, ",", Width, 
+	               "pt,", Height, "pt}" ], NBody).
+%% Commands with a more or less direct translation to a texinfo command
+rewrite_texinfo_command(Command,Indices,NewAll) :-
+	rewrite_command_body_texinfo(Command,NewCommand,RBody),
+	rewrite_docstring(texinfo,Indices,RBody,NewBody),
+	!,
+	list_concat( [ "@", NewCommand, "{", NewBody, "}" ], NewAll).
+rewrite_texinfo_command(Command,_Indices,Command) :-
+	error_message("could not rewrite command ~w into texinfo format",[Command]),
+	fail.
+
+rewrite_command_body_texinfo(footnote(Body),"footnote",Body) :- !.
+rewrite_command_body_texinfo(bf(Body),"strong",Body) :- !.
+rewrite_command_body_texinfo(em(Body),"emph",Body) :- !.
+rewrite_command_body_texinfo(tt(Body),"code",Body) :- !.
+rewrite_command_body_texinfo(key(Body),"key",Body) :- !.
+%% A variable in a program
+rewrite_command_body_texinfo(var(Body),"code",Body) :- !.
+rewrite_command_body_texinfo(ref(Body),"ref",Body) :- !.
+%% Accents, etc.
+rewrite_command_body_texinfo('.'([X]),"dotaccent",[X]) :- !.
+rewrite_command_body_texinfo('u'([X]),"u",[X]) :- !.
+rewrite_command_body_texinfo('v'([X]),"v",[X]) :- !.
+rewrite_command_body_texinfo('H'([X]),"H",[X]) :- !.
+rewrite_command_body_texinfo('t'([X,Y]),"tieaccent",[X,Y]) :- !.
+rewrite_command_body_texinfo('c'([X]),",",[X]) :- !.
+rewrite_command_body_texinfo('d'([X]),"udotaccent",[X]) :- !.
+rewrite_command_body_texinfo('b'([X]),"ubaraccent",[X]) :- !.
+rewrite_command_body_texinfo('oe'(""),"oe","") :- !.
+rewrite_command_body_texinfo('OE'(""),"OE","") :- !.
+rewrite_command_body_texinfo('ae'(""),"ae","") :- !.
+rewrite_command_body_texinfo('AE'(""),"AE","") :- !.
+rewrite_command_body_texinfo('aa'(""),"aa","") :- !.
+rewrite_command_body_texinfo('AA'(""),"AA","") :- !.
+rewrite_command_body_texinfo('o'(""), "o" ,"") :- !.
+rewrite_command_body_texinfo('O'(""), "O" ,"") :- !.
+rewrite_command_body_texinfo('l'(""), "l" ,"") :- !.
+rewrite_command_body_texinfo('L'(""), "L" ,"") :- !.
+rewrite_command_body_texinfo('ss'(""),"ss","") :- !. 
+rewrite_command_body_texinfo('?'(""), "questiondown" ,"") :- !.
+rewrite_command_body_texinfo('!'(""), "exclamdown" ,"") :- !.
+rewrite_command_body_texinfo('i'(""), "dotless" ,"i") :- !.
+rewrite_command_body_texinfo('j'(""), "dotless" ,"j") :- !.
+rewrite_command_body_texinfo(copyright(""), "copyright" ,"") :- !.
+rewrite_command_body_texinfo(bullet(""), "bullet" ,"") :- !.
+rewrite_command_body_texinfo(result(""), "result" ,"") :- !.
+rewrite_command_body_texinfo(Command,CommandNameS,Body) :-
+	Command =.. [CommandName,Body],
+	atom_codes(CommandName,CommandNameS),
+	atom_codes(Text,Body),
+	xsbdoc_warning(['unrecognized command in string (passed on): ',
+	        '@',CommandName,'{',Text,'}']).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Concept definition index entry: handled below, with em(...)
+%% rewrite_command(html,index(Body),_,Body) :-
+%% 	!.
+%% Concept definition index entry (NOT including the body in-line)
+rewrite_html_command(cindex(_Body),_,"") :-
+	!.
+%% Reference to concept (NOT emphasized, goes only to global)
+rewrite_html_command(concept(Body),_,Body) :-
+	!.
+%% Predicate/Application/Property/Type/Operator/Library/File/etc. references
+rewrite_html_command(Command,Indices,NewAll) :-
+	Command =.. [Type,RBody],
+	codetype(Type),
+	!,
+	rewrite_docstring(html,Indices,RBody,Body),
+	list_concat([ "<tt>", Body, "</tt>" ], NewAll).
+rewrite_html_command(subsection(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(html,Indices,RBody,Body),
+	list_concat([ "<h3>", Body, "</h3>\n" ],NewAll).
+rewrite_html_command(section(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(html,Indices,RBody,Body),
+	list_concat([ "<h2>", Body, "</h2>\n" ],NewAll).
+%% Other commands with special translation
+rewrite_html_command(sp(NS),_,NewCommand) :- !, 
+	number_codes(N,NS),
+	N1 is N+1,
+	html_blank_lines(N1,NewCommand).
+
+
+rewrite_html_command(p(""),_,"<p>") :- !.
+rewrite_html_command(noindent(""),_,"") :- !.
+rewrite_html_command(begin("itemize"),_,"<UL>\n") :- !.
+rewrite_html_command(begin("enumerate"),_,"<OL>\n") :- !.
+rewrite_html_command(begin("description"),_,"<DL>\n") :- !.
+/*
+rewrite_html_command(begin("cartouche"),_,
+	"\n<TABLE CELLPADDING=3 BORDER=""1""><TR><TD ALIGN=""CENTER"">\n") :-!.
+*/
+
+rewrite_html_command(begin("cartouche"),_,L):- !,
+	atom_codes(
+	     '\n<TABLE CELLPADDING=3 BORDER="1"><TR><TD ALIGN="CENTER">\n',L).
+rewrite_html_command(item(""),_,"<LI>") :- !.
+rewrite_html_command(item(S),Indices,NewCommand) :- !,
+	rewrite_docstring(html,Indices,S,NS),
+	list_concat([ "<DT>", NS, "<dd>" ], NewCommand).
+rewrite_html_command(footnote(Text),Indices,NBody) :- !,
+	rewrite_docstring(html,Indices,Text,RText),
+	list_concat([ "<P><B>Note:</B> ", RText, "<P>"], NBody).
+
+rewrite_html_command('}',_,"}") :- !.
+rewrite_html_command('{',_,"{") :- !.
+rewrite_html_command('@',_,"@") :- !.
+rewrite_html_command(end("itemize"),_,"</UL>\n") :- !.
+rewrite_html_command(end("enumerate"),_,"</OL>\n") :- !.
+rewrite_html_command(end("description"),_,"</DL>\n") :- !.
+/*
+rewrite_html_command(end("cartouche"),_,"\n</TD></TR></TABLE>\n") :-!.
+*/
+rewrite_html_command(end("cartouche"),_,L) :-!,
+	atom_codes('\n</TD></TR></TABLE>\n',L).
+
+rewrite_html_command(begin("verbatim"),_,"<pre>") :- !.
+rewrite_html_command(end("verbatim"),_,"</pre>\n") :- !.
+rewrite_html_command(today(""),_,"<date>") :- !.
+rewrite_html_command(hfill(""),_,"") :- !.
+rewrite_html_command(includeverbatim(Body),_,Body) :- !.
+
+rewrite_html_command('`'([X]),_,[0'&,X,0'g,0'r,0'a,0'v,0'e,0';]) :- !.
+rewrite_html_command(''''([X]),_,[0'&,X,0'a,0'c,0'u,0't,0'e,0';]) :- !.
+rewrite_html_command('^'([X]),_,[0'&,X,0'c,0'i,0'r,0'c,0';]) :- !.
+rewrite_html_command('..'([X]),_,[0'&,X,0'u,0'm,0'l,0';]) :- !.
+rewrite_html_command('~'([X]),_,[0'&,X,0't,0'i,0'l,0'd,0'e,0';]) :- !.
+
+rewrite_html_command('='([X]),_,[X]) :- !.
+rewrite_html_command('.'([X]),_,[X]) :- !.
+rewrite_html_command('u'([X]),_,[X]) :- !.
+rewrite_html_command('v'([X]),_,[X]) :- !.
+rewrite_html_command('H'([X]),_,[X]) :- !.
+rewrite_html_command('t'([X,Y]),_,[X,Y]) :- !.
+rewrite_html_command('c'([X]),_,[X]) :- !.
+rewrite_html_command('d'([X]),_,[X]) :- !.
+rewrite_html_command('b'([X]),_,[X]) :- !.
+rewrite_html_command('oe'(""),_,"oe") :- !.
+rewrite_html_command('OE'(""),_,"OE") :- !.
+rewrite_html_command('ae'(""),_,"ae") :- !.
+rewrite_html_command('AE'(""),_,"AE") :- !.
+
+rewrite_html_command('aa'(""),_,L):- !,
+	atom_codes('&acirc;',L).
+rewrite_html_command('AA'(""),_,L):- !,
+	atom_codes('&Acirc;',L).
+
+/*
+rewrite_html_command('aa'(""),_,[0'&,0'a,0'c,0'i,0'r,0'c,0';]) :- !.
+rewrite_html_command('AA'(""),_,[0'&,0'A,0'c,0'i,0'r,0'c,0';]) :- !.
+*/
+
+rewrite_html_command('o'(""),_,"o") :- !.
+rewrite_html_command('O'(""),_,"O") :- !.
+rewrite_html_command('l'(""),_,"l") :- !.
+rewrite_html_command('L'(""),_,"L") :- !.
+rewrite_html_command('ss'(""),_,"ss") :- !. 
+rewrite_html_command('?'(""),_,"?") :- !.
+rewrite_html_command('!'(""),_,"!") :- !.
+rewrite_html_command('i'(""),_,"i") :- !.
+rewrite_html_command('j'(""),_,"j") :- !.
+rewrite_html_command(copyright(""),_,"(c)") :- !.
+
+rewrite_html_command(iso(""),_,
+                "<B>[<FONT COLOR=""#FF0000"">ISO</FONT>]</B>"):-!.
+rewrite_html_command(bullet(""),_,"*") :- !.
+rewrite_html_command(result(""),_,"=>") :- !.
+rewrite_html_command(uref(Body),Indices,NBody) :- !,
+	rewrite_docstring(html,Indices,Body,RBody),
+	list_concat([ "<A HREF=""", RBody, """>", RBody, "</A>" ], NBody).
+rewrite_html_command(uref(Text,URL),Indices,NBody) :- !, 
+	rewrite_docstring(html,Indices,URL,RURL),
+	rewrite_docstring(html,Indices,Text,RText),
+	list_concat([ "<A HREF=""", RURL, """>", RText, "</A>" ], NBody).
+rewrite_html_command(email(Body),Indices,NBody) :- !,
+	rewrite_docstring(html,Indices,Body,RBody),
+	list_concat([ "<A HREF=""mailto:", RBody,""">&lt;", RBody,"&gt;</A>" ],
+                      NBody).
+rewrite_html_command(email(Text,Address),Indices,NBody) :- !, 
+	rewrite_docstring(html,Indices,Address,RAddress),
+	rewrite_docstring(html,Indices,Text,RText),
+	list_concat([ "<A HREF=""mailto:", RAddress, """>", RText, "</A>" ],
+	              NBody).
+rewrite_html_command(image(IFile),Indices,NBody) :- !,
+	rewrite_docstring(html,Indices,IFile,RIFile),
+	list_concat([ "<IMG SRC=""", RIFile, ".jpg"">" ], NBody).
+rewrite_html_command(image(IFile,Width,Height),Indices,NBody) :- !,
+	rewrite_docstring(html,Indices,IFile,RIFile),
+	list_concat([ "<IMG SRC=""", RIFile, ".jpg"" WIDTH=", Width, 
+                      " HEIGHT=", Height, ">" ], NBody).
+%% Commands with a more or less direct translation to an html command
+rewrite_html_command(Command,Indices,NewAll) :-
+	rewrite_command_body_html(Command,NewCommand,RBody),
+	rewrite_docstring(texinfo,Indices,RBody,NewBody),
+	list_concat([ "<", NewCommand, ">", NewBody, "</", NewCommand, ">" ],
+	            NewAll),
+	!.
+rewrite_html_command(Command,_Indices,Command) :-
+	error_message("could not rewrite command ~w into html format",[Command]),
+	fail.
+
+rewrite_command_body_html(bf(Body),"b",Body) :- !.
+rewrite_command_body_html(em(Body),"i",Body) :- !.
+rewrite_command_body_html(index(Body),"i",Body) :- !.
+rewrite_command_body_html(tt(Body),"tt",Body) :- !.
+rewrite_command_body_html(key(Body),"tt",Body) :- !.
+rewrite_command_body_html(var(Body),"i",Body) :- !.
+rewrite_command_body_html(ref(Body),"i",Body) :- !.
+rewrite_command_body_html(Command,CommandNameS,Body) :-
+	Command =.. [CommandName,Body],
+	atom_codes(CommandName,CommandNameS),
+	atom_codes(Text,Body),
+	xsbdoc_warning(['unrecognized command in string (passed on): ',
+	        '@',CommandName,'{',Text,'}']).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Concept definition index entry
+rewrite_ascii_command(index(Body),_,Body) :-
+	!.
+%% Reference to concept (NOT emphasized, goes only to global)
+rewrite_ascii_command(cindex(_Body),_,"") :-
+	!.
+%% Reference to concept (NOT emphasized, goes only to global)
+%% Concept index entry (NOT emphasized)
+rewrite_ascii_command(concept(Body),_,Body) :-
+	!.
+%% Predicate/Property/Type/Operator/Library/etc. references
+rewrite_ascii_command(Command,Indices,Body) :-
+	Command =.. [Type,RBody],
+	codetype(Type),
+	!,
+	rewrite_docstring(ascii,Indices,RBody,Body).
+rewrite_ascii_command(subsection(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(ascii,Indices,RBody,Body),
+	list_concat([ "\n\n**", Body, "\n" ],NewAll).
+rewrite_ascii_command(section(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(ascii,Indices,RBody,Body),
+	list_concat([ "\n\n***", Body, "\n" ],NewAll).
+%% Other commands with special translation
+rewrite_ascii_command(sp(NS),_,NewCommand) :- !, 
+	number_codes(N,NS),
+	N1 is N+1,
+	ascii_blank_lines(N1,NewCommand).
+rewrite_ascii_command(p(""),_,"\n\n") :- !.
+rewrite_ascii_command(noindent(""),_,"") :- !.
+rewrite_ascii_command(begin("itemize"),_,"\n\n") :- !.
+rewrite_ascii_command(begin("enumerate"),_,"\n\n") :- !.
+rewrite_ascii_command(begin("description"),_,"\n\n") :- !.
+rewrite_ascii_command(begin("cartouche"),_,"\n-----------\n") :- !.
+rewrite_ascii_command(item(""),_,"\n - ") :- !.
+rewrite_ascii_command(item(S),Indices,NewAll) :- !,
+	rewrite_docstring(ascii,Indices,S,NS),
+	list_concat([ "\n - ", NS, ": " ], NewAll).
+rewrite_ascii_command(footnote(Text),Indices,NBody) :- !, 
+	rewrite_docstring(ascii,Indices,Text,RText),
+	list_concat([ "\n\nNote: ", RText, "\n\n" ], NBody).
+rewrite_ascii_command('}',_,"}") :- !.
+rewrite_ascii_command('{',_,"{") :- !.
+rewrite_ascii_command('@',_,"@") :- !.
+rewrite_ascii_command(end("itemize"),_,"\n\n") :- !.
+rewrite_ascii_command(end("enumerate"),_,"\n\n") :- !.
+rewrite_ascii_command(end("description"),_,"\n\n") :- !.
+rewrite_ascii_command(end("cartouche"),_,"\n-----------\n") :- !.
+rewrite_ascii_command(begin("verbatim"),_,"\n\n") :- !.
+rewrite_ascii_command(end("verbatim"),_,"\n\n") :- !.
+rewrite_ascii_command(today(""),_,"<date>") :- !.
+rewrite_ascii_command(hfill(""),_,"") :- !.
+rewrite_ascii_command(includeverbatim(Body),_,Body) :- !.
+rewrite_ascii_command('`'([X]),_,[0'`,X]) :- !.
+rewrite_ascii_command(''''([X]),_,[0'",X]) :- !.
+rewrite_ascii_command('^'([X]),_,[0'^,X]) :- !.
+rewrite_ascii_command('..'([X]),_,['..',X]) :- !.
+rewrite_ascii_command('~'([X]),_,[0'~,X]) :- !.
+rewrite_ascii_command('='([X]),_,[X]) :- !.
+rewrite_ascii_command('.'([X]),_,[X]) :- !.
+rewrite_ascii_command('u'([X]),_,[0':,X]) :- !.
+rewrite_ascii_command('v'([X]),_,[0'v,X]) :- !.
+rewrite_ascii_command('H'([X]),_,[X]) :- !.
+rewrite_ascii_command('t'([X,Y]),_,[X,Y]) :- !.
+rewrite_ascii_command('c'([X]),_,[0',,X]) :- !.
+rewrite_ascii_command('d'([X]),_,[X]) :- !.
+rewrite_ascii_command('b'([X]),_,[X]) :- !.
+rewrite_ascii_command('oe'(""),_,"oe") :- !.
+rewrite_ascii_command('OE'(""),_,"OE") :- !.
+rewrite_ascii_command('ae'(""),_,"ae") :- !.
+rewrite_ascii_command('AE'(""),_,"AE") :- !.
+rewrite_ascii_command('aa'(""),_,"aa") :- !.
+rewrite_ascii_command('AA'(""),_,"AA") :- !.
+rewrite_ascii_command('o'(""),_,"o") :- !.
+rewrite_ascii_command('O'(""),_,"O") :- !.
+rewrite_ascii_command('l'(""),_,"l") :- !.
+rewrite_ascii_command('L'(""),_,"L") :- !.
+rewrite_ascii_command('ss'(""),_,"ss") :- !. 
+rewrite_ascii_command('?'(""),_,"?") :- !.
+rewrite_ascii_command('!'(""),_,"!") :- !.
+rewrite_ascii_command('i'(""),_,"i") :- !.
+rewrite_ascii_command('j'(""),_,"j") :- !.
+rewrite_ascii_command(copyright(""),_,"(c)") :- !.
+rewrite_ascii_command(iso(""),_,"[*ISO*]") :- !.
+rewrite_ascii_command(bullet(""),_,"*") :- !.
+rewrite_ascii_command(result(""),_,"=>") :- !.
+rewrite_ascii_command(bf(Body),_,Body) :- !.
+rewrite_ascii_command(em(Body),_,Body) :- !.
+rewrite_ascii_command(tt(Body),_,Body) :- !.
+rewrite_ascii_command(var(Body),_,Body) :- !.
+rewrite_ascii_command(ref(Body),_,Body) :- !.
+rewrite_ascii_command(uref(Body),Indices,RBody) :- !,
+	rewrite_docstring(ascii,Indices,Body,RBody).
+rewrite_ascii_command(uref(Text,URL),Indices,NBody) :- !, 
+	rewrite_docstring(ascii,Indices,URL,RURL),
+	rewrite_docstring(ascii,Indices,Text,RText),
+	list_concat([ RText, " (", RURL, ")" ], NBody).
+rewrite_ascii_command(email(Body),Indices,RBody) :- !,
+	rewrite_docstring(ascii,Indices,Body,RBody).
+rewrite_ascii_command(email(Text,Address),Indices,NBody) :- !, 
+	rewrite_docstring(ascii,Indices,Address,RAddress),
+	rewrite_docstring(texinfo,Indices,Text,RText),
+	list_concat([ RText, " (", RAddress, ")" ], NBody).
+rewrite_ascii_command(image(IFile),Indices,NBody) :- !, 
+	rewrite_docstring(ascii,Indices,IFile,RIFile),
+	list_concat([ "[Image: ", RIFile, "]" ], NBody).
+rewrite_ascii_command(image(IFile,_,_),Indices,NBody) :- !, 
+	rewrite_ascii_command(image(IFile),Indices,NBody).
+rewrite_ascii_command(Command,_,Body) :-
+	Command =.. [CommandName,Body],
+	!,
+	xsbdoc_warning(['unrecognized command ',CommandName,
+			'in string (passed on ',Body,')']).
+
+codetype(lib).
+codetype(apl).
+codetype(pred).
+%% codetype(func).
+codetype(prop).
+codetype(regtype).
+codetype(decl).
+codetype(op).
+codetype(modedef).
+codetype(file).
+codetype(global).
+
+end_of_file.
+
+%% ---------------------------------------------------------------------------
+:- pred rewrite_command(Format,Command,Indices,NewCommand) 
+   : (Format=man,stringcommand(Command),list(Indices,atom)) 
+   => string(NewCommand) 
+
+   # "Defines the translation between the special commands which can
+      appear in strings inside assertions and man.".
+%% ---------------------------------------------------------------------------
+
+rewrite_command(man,A,B,C):- 
+	rewrite_man_command(A,B,C).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Concept definition index entry: handled below, with em(...)
+%% rewrite_command(man,index(Body),_,Body) :-
+%% 	!.
+%% Concept definition index entry (NOT including the body in-line)
+rewrite_man_command(cindex(_Body),_,"") :- !.
+%% Reference to concept (NOT emphasized, goes only to global)
+rewrite_man_command(concept(Body),_,Body) :-
+ 	!.
+%% Predicate/Property/Type/Operator/Library/etc. references
+rewrite_man_command(Command,Indices,NewAll) :-
+	Command =.. [Type,RBody],
+	codetype(Type),
+	!,
+	rewrite_docstring(man,Indices,RBody,Body),
+	list_concat([ "\n.B ", Body, "\n" ], NewAll).
+rewrite_man_command(subsection(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(man,Indices,RBody,Body),
+	list_concat([ ".SH 2 ", Body, "\n" ], NewAll).
+rewrite_man_command(section(RBody),Indices,NewAll) :- 
+	!,
+	rewrite_docstring(man,Indices,RBody,Body),
+	list_concat([ "\n.SH 1 ", Body, "\n" ], NewAll).
+%% Other commands with special translation
+rewrite_man_command(sp(NS),_,NewCommand) :- !, 
+	number_codes(N,NS),
+	N1 is N+1,
+	ascii_blank_lines(N1,NewCommand).
+rewrite_man_command(p(""),_,"\n\n") :- !.
+rewrite_man_command(noindent(""),_,"") :- !.
+rewrite_man_command(begin("itemize"),_,"\n.(l F\n") :- !.
+rewrite_man_command(begin("enumerate"),_,"\n.(l F\n") :- !.
+rewrite_man_command(begin("description"),_,"\n.(l F\n") :- !.
+rewrite_man_command(begin("cartouche"),_,"\n\n") :- !.
+rewrite_man_command(item(""),_,"\n* ") :- !.
+rewrite_man_command(item(S),Indices,NewAll) :- !,
+	rewrite_docstring(man,Indices,S,NS),
+	list_concat([ "\n* ", NS, ": " ], NewAll).
+rewrite_man_command(footnote(Text),Indices,NBody) :- !, 
+	rewrite_docstring(man,Indices,Text,RText),
+	list_concat([ "\n.B Note: \n", RText, "\n\n"],NBody).
+rewrite_man_command('}',_,"}") :- !.
+rewrite_man_command('{',_,"{") :- !.
+rewrite_man_command('@',_,"@") :- !.
+rewrite_man_command(end("itemize"),_,"\n.)l\n") :- !.
+rewrite_man_command(end("enumerate"),_,"\n.)l\n") :- !.
+rewrite_man_command(end("description"),_,"\n.)l\n") :- !.
+rewrite_man_command(end("cartouche"),_,"\n\n") :- !.
+rewrite_man_command(begin("verbatim"),_,"\n.DS\n") :- !.
+rewrite_man_command(end("verbatim"),_,"\n.DE\n") :- !.
+rewrite_man_command(today(""),_,"\*(td") :- !.
+rewrite_man_command(hfill(""),_,"") :- !.
+rewrite_man_command(includeverbatim(Body),_,Body) :- !.
+rewrite_man_command('`'([X]),_,[X,0'\\,0'*,0'`]) :- !.
+rewrite_man_command(''''([X]),_,[X,0'\\,0'*,0'']) :- !.
+rewrite_man_command('^'([X]),_,[X,0'\\,0'*,0'^]) :- !.
+rewrite_man_command('..'([X]),_,[X]) :- !.
+rewrite_man_command('~'([X]),_,[X,0'\\,0'*,0'~]) :- !.
+rewrite_man_command('='([X]),_,[X]) :- !.
+rewrite_man_command('.'([X]),_,[X]) :- !.
+rewrite_man_command('u'([X]),_,[X,0'\\,0'*,0':]) :- !.
+rewrite_man_command('v'([X]),_,[X,0'\\,0'*,0'v]) :- !.
+rewrite_man_command('H'([X]),_,[X]) :- !.
+rewrite_man_command('t'([X,Y]),_,[X,Y]) :- !.
+rewrite_man_command('c'([X]),_,[X,0'\\,0'*,0',]) :- !.
+rewrite_man_command('d'([X]),_,[X]) :- !.
+rewrite_man_command('b'([X]),_,[X]) :- !.
+rewrite_man_command('oe'(""),_,"oe") :- !.
+rewrite_man_command('OE'(""),_,"OE") :- !.
+rewrite_man_command('ae'(""),_,"ae") :- !.
+rewrite_man_command('AE'(""),_,"AE") :- !.
+rewrite_man_command('aa'(""),_,"aa") :- !.
+rewrite_man_command('AA'(""),_,"AA") :- !.
+rewrite_man_command('o'(""),_,"o") :- !.
+rewrite_man_command('O'(""),_,"O") :- !.
+rewrite_man_command('l'(""),_,"l") :- !.
+rewrite_man_command('L'(""),_,"L") :- !.
+rewrite_man_command('ss'(""),_,"ss") :- !. 
+rewrite_man_command('?'(""),_,"?") :- !.
+rewrite_man_command('!'(""),_,"!") :- !.
+rewrite_man_command('i'(""),_,"i") :- !.
+rewrite_man_command('j'(""),_,"j") :- !.
+rewrite_man_command(copyright(""),_,"(c)") :- !.
+rewrite_man_command(iso(""),_,"[*ISO*]") :- !.
+rewrite_man_command(bullet(""),_,"\n* ") :- !.
+rewrite_man_command(result(""),_,"=>") :- !.
+rewrite_man_command(uref(Body),Indices,RBody) :- !,
+	rewrite_docstring(man,Indices,Body,RBody).
+rewrite_man_command(uref(Text,URL),Indices,NBody) :- !, 
+	rewrite_docstring(man,Indices,URL,RURL),
+	rewrite_docstring(man,Indices,Text,RText),
+	list_concat([ RText, " (", RURL, ")" ], NBody).
+rewrite_man_command(email(Body),Indices,RBody) :- !,
+	rewrite_docstring(man,Indices,Body,RBody).
+rewrite_man_command(email(Text,Address),Indices,NBody) :- !, 
+	rewrite_docstring(man,Indices,Address,RAddress),
+	rewrite_docstring(man,Indices,Text,RText),
+	list_concat([ RText, " (", RAddress, ")" ],NBody).
+rewrite_man_command(image(IFile),Indices,NBody) :- !, 
+	rewrite_docstring(man,Indices,IFile,RIFile),
+	list_concat([ "[Image: ", RIFile, "]" ],NBody).
+rewrite_man_command(image(IFile,_,_),Indices,NBody) :- !, 
+	rewrite_man_command(image(IFile),Indices,NBody).
+%% Commands with a more or less direct translation to a man command
+rewrite_man_command(Command,Indices,NewAll) :-
+	rewrite_command_body_man(Command,NewCommand,RBody),
+	rewrite_docstring(man,Indices,RBody,Body),
+	list_concat([ "\n.", NewCommand, " ", Body, "\n" ], NewAll),
+	!.
+rewrite_man_command(Command,_Indices,Command) :-
+	error_message("could not rewrite command ~w into man format",
+                      [Command]),
+	fail.
+
+rewrite_command_body_man(bf(Body),"B",Body) :- !.
+rewrite_command_body_man(em(Body),"I",Body) :- !.
+rewrite_command_body_man(index(Body),"I",Body) :- !.
+rewrite_command_body_man(tt(Body),"B",Body) :- !.
+%% rewrite_command_body_man(tt(Body),"r",Body) :- !.
+rewrite_command_body_man(key(Body),"B",Body) :- !.
+rewrite_command_body_man(var(Body),"I",Body) :- !.
+rewrite_command_body_man(ref(Body),"I",Body) :- !.
+rewrite_command_body_man(Command,CommandNameS,Body) :-
+	Command =.. [CommandName,Body],
+	atom_codes(CommandName,CommandNameS),
+	xsbdoc_warning(['unrecognized command in string (passed on): ',
+	        CommandName,Body]).
+

@@ -1,0 +1,157 @@
+% XSB Code for Eratosthenes' Sieve:
+%    patterned after, but slightly diffrent from,
+%    the Bell Labs bench suite from Doron Peled
+%    Y.S.R., 23 Dec 96.
+%	Parameterized and adapted for XL, C.R., June 98.
+                         
+                 
+% value BUF_SIZE	: 1 { buffer size in each link }
+% value N		: 7 { number of processes }
+% value MAX       : 32 { largest number to check for primeness + 1 }
+% value NUM_PRIME : 4  { number of primes between the Nth & MAX (exclusive) }
+% value MAX_PRIME : 31 { the largest prime less than MAX, not divisible by
+%                       first N primes less than MAX }
+
+% type buf_ptr	:BUF_SIZE   { for use in the ring buffer }
+% type num        :MAX        { domain of numbers }
+
+
+%%-----------------------------------------------------------------
+%%	The generator process
+%%	generates integer from Cur to Max
+%%	 and send it through channel "Right"
+
+generator(Right, Cur:integer, Max:integer) ::=
+	Right ! Cur o
+	Cur1 is Cur+1 o	
+	if (Cur =< Max)
+		then	generator(Right, Cur1, Max)
+		else	end
+	.
+
+%%-----------------------------------------------------------------
+%%	The filter process
+
+unit(Left, Right) ::=
+	Left ? P o
+	filter(Left, Right, P).
+
+filter(Left, Right, P) ::=
+	Left ? N o
+	Rem is N mod P o 
+	{ if (Rem == 0)
+	    then	true
+	    else	Right ! N
+	} o
+	filter(Left, Right, P).
+
+%%-----------------------------------------------------------------
+%%	The consumer process
+
+consumer(Left, N:integer, MAX:integer) ::=
+	Left ? X o
+	N1 is N-1 o
+	if (N1 > 0)
+	  then	consumer(Left, N1, MAX)
+	  else	{ if (X == MAX)
+		    then	action(finish)
+		    else	action(error)
+		 o end 
+		}
+	.
+
+%%-----------------------------------------------------------------
+%%	A one-buffer channel
+
+medium(Left, Right) ::=
+	Left ? X o
+	Right ! X o
+	medium(Left, Right).
+
+%%-----------------------------------------------------------------
+%%	Unit filter with buffer
+
+buf_filter(Left, Right) ::=
+	  medium(Left, Temp)
+	| unit(Temp, Right).
+
+
+
+%%-----------------------------------------------------------------
+%%	The sieve system
+%%	N_UNIT	: number of filters
+%%	PRIME	: the (NUM+1)th prime number
+%%	N_OVER	: number of overflow prime numbers
+%%	MAX	: the (NFILTER+NOVER)th primer number
+%%	Table of prime:
+%%	      N :   1   2   3   4   5   6   7   8   9  10  11
+%%	  PRIME :   2   3   5   7  11  13  17  19  23  29  31
+%%	Table of (N_UNIT, MAX) for N_OVER=4:
+%%	 N_UNIT :   1   2   3   4   5   6   7   8   9  10  11
+%%	    MAX :  11  13  17  19  23  29  31  37  41  43  47
+
+/* parameterized definition */
+
+units(Left, Right, NFILTER) ::=
+	if (NFILTER > 1)
+	  then { N is NFILTER - 1 o {unit(Left, T1) | units(T1, Right, N)} }
+	  else unit(Left, Right).
+
+sieve(NFILTER, NOVER, MAX) ::=
+	  generator(Gen, 2, MAX)
+	| units(Gen, Cons, NFILTER)
+	| consumer(Cons, NOVER, MAX).
+
+s1 ::= 
+	{ generator(Gen, 2, 9)
+	| buf_filter(Gen, T1)
+	| medium(T1, Cons)
+	| consumer(Cons, 4, 9)
+	}.
+
+s2 ::= 
+	{ generator(Gen, 2, 13)
+	| buf_filter(Gen, T1)
+	| buf_filter(T1, T2)
+	| medium(T2, Cons)
+	| consumer(Cons, 4, 13)
+	}.
+
+s3 ::=
+	{ generator(Gen, 2, 17)
+	| buf_filter(Gen, T1)
+	| buf_filter(T1, T2)
+	| buf_filter(T2, T3)
+	| medium(T3, Cons)
+	| consumer(Cons, 4, 17)
+	}.
+
+s4 ::=
+	{ generator(Gen, 2, 19)
+	| buf_filter(Gen, T1)
+	| buf_filter(T1, T2)
+	| buf_filter(T2, T3)
+	| buf_filter(T3, T4)
+	| medium(T4, Cons)
+	| consumer(Cons, 4, 19)
+	}.
+
+s5 ::=
+	{ generator(Gen, 2, 23)
+	| buf_filter(Gen, T1)
+	| buf_filter(T1, T2)
+	| buf_filter(T2, T3)
+	| buf_filter(T3, T4)
+	| buf_filter(T4, T5)
+	| medium(T5, Cons)
+	| consumer(Cons, 4, 23)
+	}.
+
+%%=======================================================================
+%%	Properties
+
+% <<explanation>> should be Yes
+ae_finish += <-> tt /\ [- finish] ae_finish.
+
+% should be No
+ee_error += <error> tt \/ <-> ee_error.

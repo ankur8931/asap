@@ -1,0 +1,760 @@
+
+%--------------------------------------------------------------
+% AL -- objects
+
+sat_test((oid(o1,test),oid(o2,test)),false).
+
+sat_test((oid(o1,test),oid(o1,test)),true).
+
+sat_test((oid(o1,test),not(oid(o1,test))),false).
+
+sat_test((oid(o1,test),not(unique(cid(o1,test)))),false).
+
+sat_test((oid(o1,test),not(cid(c1,test))),false).
+
+sat_test((not(cid(c1,test)),oid(o1,test)),false).
+
+%--------------------------------------------------------------
+% ALU -- objects
+
+sat_test((cid(c1,test),(oid(c2,test) ; oid(c3,test))),true).
+
+sat_test((oid(o1,test) ; cid(c2,test) ; oid(o3,test)),true).
+
+sat_test(((cid(c1,test) ; cid(c2,test)) ; (cid(c3,test) ; cid(c4,test))),true).
+
+%--------------------------------------------------------------
+% ALC: Negation and conditionals (objects)
+
+sat_test((oid(o1,test),not((cid(c2,test) , cid(c3,test)))),true).
+
+sat_test((cid(c1,test),not((oid(o2,test) ; cid(c3,test)))),true).
+
+sat_test((cid(c1,test),not((oid(o1,test) , cid(c2,test)))),true).
+
+sat_test((oid(o1,test),not(oid(o1,test))),false).
+
+sat_test((not(oid(o1,test)),oid(o1,test)),false).
+
+sat_test((cid(c1,test),not((oid(o1,test) ; cid(c2,test)))),true).
+
+sat_test((oid(o1,test),not((cid(c1,test) ; cid(c2,test)))),false).
+
+sat_test(not(not(oid(o1,test))),true).
+
+sat_test((not(not(oid(o1,test))),not(oid(o1,test))),false).
+
+sat_test((oid(o1,test),cid(c2,test),not((oid(o1,test) ; cid(c2,test)))),false).
+
+%-----------------------------
+% ALC: boolean + existential (objects)
+
+sat_test((exists(rid(r,test),oid(o3,test))),true).
+
+sat_test((cid(c1,test),(oid(o2,test) ; exists(rid(r,test),cid(c3,test)))),true).
+
+sat_test((cid(c1,test),(cid(c2,test) 
+              ; exists(rid(r1,test),exists(rid(r2,test),oid(o3,test))))),true).
+
+sat_test((cid(c1,test),(cid(c2,test),exists(rid(r1,test),
+              not(exists(rid(r2,test),oid(o3,test)))))),true).
+
+sat_test((cid(c1,test),(cid(c2,test),exists(rid(r1,test),
+	not(all(rid(r2,test),oid(o3,test)))))),true).
+
+%---------------------------------
+% ALC (mostly objects)
+
+sat_test((exists(rid(r,test),oid(o1,test)),all(rid(r,test),oid(o2,test))),false).
+
+sat_test((exists(rid(r,test),(oid(o1,test),oid(o2,test)))),false).
+sat_test((exists(rid(r,test),(oid(o1,test),cid(c2,test)))),true).
+sat_test((exists(rid(r,test),(cid(c1,test),oid(o2,test)))),true).
+
+sat_test((all(rid(r,test),(oid(o1,test),cid(c2,test)))),true).
+sat_test((all(rid(r,test),(cid(c1,test),oid(o2,test)))),true).
+
+% these are true -- as there can be no r relations
+sat_test((all(rid(r,test),(oid(o1,test),oid(o2,test)))),true).
+sat_test((all(rid(r,test),(cid(c2,test),not(cid(c2,test))))),true).
+
+sat_test((exists(rid(r,test),cid(c1,test)),all(rid(r,test),(oid(o1,test),oid(o2,test)))),false).
+sat_test((exists(rid(r,test),cid(c1,test)),all(rid(r,test),(not(cid(c1,test)),cid(c2,test)))),false).
+sat_test((exists(rid(r,test),cid(c1,test)),all(rid(r,test),(cid(c2,test),not(cid(c1,test))))),false).
+
+sat_test((all(rid(r,test),(oid(o1,test),oid(o2,test))),exists(rid(r,test),cid(c1,test))),false).
+sat_test((all(rid(r,test),(not(cid(c1,test)),cid(c1,test))),exists(rid(r,test),cid(c3,test))),false).
+
+sat_test((exists(rid(r,test),oid(o1,test)),exists(rid(r,test),not(oid(o1,test)))),true).
+
+sat_test((cid(c1,test),(all(rid(r,test),oid(o3,test)))),true).
+
+sat_test((cid(c1,test),(oid(o2,test) ; all(rid(r,test),cid(c3,test)))),true).
+
+sat_test((not(all(rid(r2,test),oid(o3,test)))),true). 
+
+sat_test((cid(c1,test),(cid(c2,test) ; all(rid(r1,test),all(rid(r2,test),oid(o3,test))))),true).
+sat_test((cid(c1,test),(oid(o2,test) ; all(rid(r1,test),all(rid(r2,test),oid(o3,test))))),true).
+
+sat_test((all(rid(r1,test),cid(c3,test)),exists(rid(r1,test),oid(o2,test))),true).
+
+sat_test((exists(rid(r,test),oid(o1,test)),
+              exists(rid(r,test),oid(o2,test)),
+              all(rid(r,test),(cid(c1,test) ; cid(c2,test)))),true).
+sat_test((exists(rid(r,test),oid(o1,test)),
+              exists(rid(r,test),oid(o2,test)),
+              all(rid(r,test),(oid(o1,test) ; oid(o2,test)))),true).
+sat_test((exists(rid(r,test),oid(o1,test)),
+              exists(rid(r,test),oid(o2,test)),
+              all(rid(r,test),oid(o2,test))),false).
+
+sat_test((exists(rid(r,test),oid(o1,test)),exists(rid(r,test),oid(o2,test)),
+              not(all(rid(r,test),(oid(o1,test) ; oid(o2,test))))),true).
+
+%--------------------------------------------------------------
+% ALCH (objects)
+
+sat_test((oid(o1,test),not(cid('CDF Classes',cdf))),false).  	
+
+sat_test((oid(o1,test),not(cid(emptyset,cdf))),true).	
+
+sat_test((cid('CDF Classes',cdf),not(oid(o1,test))),true).      
+
+sat_test((oid(o1,test),not(cid(c1,test))),false).		
+
+sat_test((exists(rid(rr1,test),oid(o1,test)),
+              not(exists(rid(rr1,test),oid(o2,test)))),true).
+sat_test((exists(rid(rr1,test),oid(o1,test)),
+              not(exists(rid(rr1,test),oid(o1,test)))),false).
+
+sat_test((exists(rid(rr1,test),cid(cc2,test)),
+              not(exists(rid(rr1,test),cid(cc1,test)))),true). 
+
+sat_test((exists(rid(rr1,test),oid(o1,test)),all(rid(rr1,test),cid(c1,test))),true). 
+
+sat_test((exists(rid(rr1,test),oid(o2,test)),all(rid(rr1,test),oid(o1,test))),false). 
+
+sat_test((not(exists(rid(rr1,test),oid(o1,test))),all(rid(rr1,test),cid(c1,test))),true). 
+
+sat_test((not(exists(rid(rr1,test),oid(o1,test))),all(rid(rr1,test),oid(o2,test))),true). 
+
+%--------------------------------------------------------------
+% ALCI (objects)
+
+sat_test((exists(inv(rid(r,test)),oid(o3,test))),true).
+
+sat_test(not(exists(inv(rid(r,test)),oid(o3,test))),true).
+
+sat_test((oid(o1,test),exists(rid(r,test),not(exists(inv(rid(r,test)),oid(o1,test))))),
+	false).
+
+sat_test((oid(o1,test),exists(inv(rid(r,test)),not(exists(rid(r,test),oid(o1,test))))),
+	false).
+
+sat_test((oid(o1,test),
+                    exists(rid(r1,test),cid('CDF Classes',cdf)),
+	            all(inv(rid(r1,test)),not(cid(o1,test)))),true).
+
+sat_test((oid(o1,test),
+                    exists(inv(rid(r1,test)),cid('CDF Classes',cdf)),
+	            all(inv(rid(r1,test)),all(rid(r1,test),not(oid(o1,test))))),false).
+
+sat_test((oid(o1,test),exists(rid(r,test),not(exists(inv(rid(r,test)),cid(c1,test))))),false).
+
+sat_test((cid(c1,test),exists(rid(r,test),not(exists(inv(rid(r,test)),oid(o1,test))))),true).
+
+sat_test((oid(o1,test),exists(rid(r1,test),all(inv(rid(r1,test)),not(oid(o2,test))))),true).
+
+sat_test((oid(o1,test),exists(rid(r1,test),all(inv(rid(r1,test)),not(oid(o1,test))))),false).
+
+sat_test((not(cid(c1,test)),exists(rid(r1,test),all(inv(rid(r1,test)),cid(c1,test)))),false).
+
+sat_test((oid(o1,test),exists(inv(rid(r1,test)),all(rid(r1,test),not(oid(o1,test))))),false).
+
+sat_test((not(oid(o1,test)),exists(inv(rid(r1,test)),all(rid(r1,test),oid(o1,test)))),false).
+
+sat_test((oid(o1,test),exists(inv(rid(r1,test)),all(rid(r1,test),not(cid(c1,test))))),false).
+
+sat_test((cid(c1,test),exists(inv(rid(r1,test)),all(rid(r1,test),not(oid(o1,test))))),true).
+
+%--------------------------------------------------------------
+% ALCHI (objects)
+
+sat_test((oid(c1,test),exists(inv(rid(rr2,test)),all(rid(rr1,test),not(oid(o1,test))))),true).
+
+sat_test((oid(o1,test),exists(inv(rid(rr1,test)),all(rid(rr2,test),not(oid(o1,test))))),
+	false).
+
+sat_test((oid(o1,test),exists(rid(rr2,test),all(inv(rid(rr1,test)),not(oid(o1,test))))),
+	true).
+
+sat_test((oid(o1,test),exists(rid(rr1,test),all(inv(rid(rr2,test)),not(oid(o1,test))))),
+	false).
+
+%--------------------------------
+% ALCN (objects)
+
+sat_test((exists(rid(r,test),oid(o1,test)),exists(rid(r,test),not(oid(o1,test))),atMost(1,rid(r,test))),false).
+
+%--------------------------------------------------------------
+% ALCNI (objects)
+
+sat_test((exists(inv(rid(r,test)),oid(o1,test)),exists(inv(rid(r,test)),not(oid(o1,test))),
+	            atMost(1,inv(rid(r,test)))),false).
+
+sat_test((oid(o1,test),atLeast(1,rid(r,test)),all(rid(r,test),all(inv(rid(r,test)),not(oid(o1,test))))),false).
+
+sat_test((oid(o1,test),atLeast(1,inv(rid(r,test))),all(inv(rid(r,test)),all(rid(r,test),not(cid(c1,test))))),false).
+
+sat_test((exists(rid(r1,test),not(cid(c1,test))),exists(rid(r1,test),oid(o1,test)),
+		    atMost(1,inv(rid(r1,test)))),true).
+
+sat_test((exists(inv(rid(r1,test)),not(cid(c1,test))),exists(inv(rid(r1,test)),oid(o1,test)),
+		    atMost(1,rid(r1,test))),true).
+
+sat_test((exists(rid(r1,test),oid(o1,test)),exists(rid(r1,test),oid(o1,test)),
+		    atMost(1,inv(rid(r1,test)))),true).
+
+%--------------------------------------------------------------
+% ALCQ(I) (objects)
+
+sat_test((atLeast(2,rid(r1,test),oid(o1,test))),true).
+
+sat_test((atMost(2,rid(r1,test),oid(o1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),oid(o1,test)),atMost(2,rid(r1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),oid(o1,test)),atMost(1,rid(r1,test))),false).
+
+sat_test((atMost(2,rid(r1,test),oid(o1,test)),atLeast(2,rid(r1,test))),true).
+
+sat_test((atMost(2,rid(r1,test),oid(o1,test)),atLeast(3,rid(r1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),(oid(o1,test) ; cid(c2,test)))),true).
+
+end_of_file.
+
+
+%--------------------------------------------------------------
+% AL
+
+% x:father == x:parent,male
+sat_test((cid(c1,test),cid(c2,test)),true).
+
+sat_test((cid(c1,test),not(cid(c1,test))),false).
+
+%--------------------------------------------------------------
+% ALU
+
+% examples: major party candidates,planar graphs
+
+% x:legalEmployee == x:employableAge,(x:citizen ; x:permanentResident)
+
+sat_test((cid(c1,test),(cid(c2,test) ; cid(c3,test))),true).
+
+% x:legalEmployee == x:employableAge,(x:citizen ; x:permanentResident 
+%                                                ; x:hasH1)
+sat_test((cid(c1,test) ; cid(c2,test) ; cid(c3,test)),true).
+
+sat_test(((cid(c1,test) ; cid(c2,test)) ; (cid(c3,test) ; cid(c4,test))),true).
+
+%--------------------------------------------------------------
+% ALC: Negation and conditionals:
+
+% unemployed persons, essential hypertension, 
+
+sat_test((cid(c1,test),not((cid(c2,test) , cid(c3,test)))),true).
+
+sat_test((cid(c1,test),not((cid(c2,test) ; cid(c3,test)))),true).
+
+sat_test((cid(c1,test),not((cid(c1,test) , cid(c2,test)))),true).
+
+sat_test((cid(c1,test),not(cid(c1,test))),false).
+
+sat_test((not(cid(c1,test)),cid(c1,test)),false).
+
+sat_test((cid(c1,test),not((cid(c1,test) ; cid(c2,test)))),false).
+
+sat_test(not(not(cid(c1,test))),true).
+
+sat_test((not(not(cid(c1,test))),not(cid(c1,test))),false).
+
+sat_test((cid(c1,test),cid(c2,test),not((cid(c1,test) ; cid(c2,test)))),false).
+
+%-----------------------------
+% ALC: boolean + existential
+
+sat_test((exists(rid(r,test),cid(c3,test))),true).
+
+sat_test((cid(c1,test),(cid(c2,test) ; exists(rid(r,test),cid(c3,test)))),true).
+
+sat_test((cid(c1,test),(cid(c2,test) 
+              ; exists(rid(r1,test),exists(rid(r2,test),cid(c3,test))))),true).
+
+sat_test((cid(c1,test),(cid(c2,test),exists(rid(r1,test),
+              not(exists(rid(r2,test),cid(c3,test)))))),true).
+
+sat_test((cid(c1,test),(cid(c2,test),exists(rid(r1,test),
+	not(all(rid(r2,test),cid(c3,test)))))),true).
+
+
+%---------------------------------
+% ALC
+
+sat_test((exists(rid(r,test),cid(c1,test)),all(rid(r,test),cid(c2,test))),true).
+
+sat_test((exists(rid(r,test),cid(c1,test)),exists(rid(r,test),not(cid(c1,test)))),true).
+
+sat_test((cid(c1,test),(all(rid(r,test),cid(c3,test)))),true).
+
+sat_test((exists(rid(r,test),cid(c1,test)),(all(rid(r,test),not(cid(c1,test))))),false).
+
+sat_test((cid(c1,test),(cid(c2,test) ; all(rid(r,test),cid(c3,test)))),true).
+
+sat_test((not(all(rid(r2,test),cid(c3,test)))),true). 
+
+sat_test((cid(c1,test),(cid(c2,test) ; all(rid(r1,test),all(rid(r2,test),cid(c3,test))))),true).
+
+sat_test((all(rid(r1,test),cid(c3,test)),exists(rid(r1,test),cid(c2,test))),true).
+
+sat_test((exists(rid(r,test),cid(c1,test)),
+              exists(rid(r,test),cid(c2,test)),
+              all(rid(r,test),not((cid(c1,test) ; cid(c2,test))))),false).
+
+sat_test((exists(rid(r,test),cid(c1,test)),exists(rid(r,test),cid(c2,test)),
+              not(all(rid(r,test),(cid(c1,test) ; cid(c2,test))))),true).
+
+sat_test((exists(rid(r1,test),cid(c1,test)) , 
+	       exists(rid(r1,test),cid(c12,test)) , 
+               all(rid(r1,test),(exists(rid(r1,test),cid(c21,test)),
+                       exists(rid(r2,test),cid(c22,test))))),true).
+
+sat_test((exists(rid(r1,test),cid(c1,test)), 
+                    all(rid(r1,test),(exists(rid(r2,test),cid(c22,test)),
+                            all(rid(r2,test),(exists(r3,cid(c31,test))))))),true).
+
+sat_test((exists(rid(r1,test),cid(c1,test)) , 
+	       exists(rid(r1,test),cid(c12,test)) , 
+               all(rid(r1,test),(exists(rid(r1,test),cid(c21,test)),
+                       exists(rid(r2,test),cid(c22,test)),
+                       all(rid(r2,test),(exists(r3,cid(c33,test)),
+			       exists(r3,cid(c31,test))))))),true).
+
+%--------------------------------------------------------------
+% ALCH
+
+sat_test(cid('CDF Classes',cdf),true).      
+
+sat_test(cid(emptyset,cdf),false).      
+
+sat_test((cid(c1,test),not(cid('CDF Classes',cdf))),false).  	
+
+sat_test((cid(c1,test),not(cid(emptyset,cdf))),true).	
+
+sat_test((cid('CDF Classes',cdf),not(cid(c1,test))),true).      
+
+sat_test((cid(cc1,test),not(cid(cc2,test))),false).		
+
+sat_test((cid(cc2,test),not(cid(cc1,test))),true).		
+
+sat_test((cid(cc1,test),not(cid(cc3,test))),false).		
+
+sat_test((exists(rid(rr2,test),cid('CDF Classes',cdf)),
+              not(exists(rid(rr1,test),cid('CDF Classes',cdf)))),true).
+
+sat_test((exists(rid(rr1,test),cid('CDF Classes',cdf)),
+             not(exists(rid(rr2,test),cid('CDF Classes',cdf)))),false). 
+
+sat_test((exists(rid(rr1,test),cid(cc1,test)),
+              not(exists(rid(rr1,test),cid(cc2,test)))),false).
+
+sat_test((exists(rid(rr1,test),cid(cc2,test)),
+              not(exists(rid(rr1,test),cid(cc1,test)))),true). 
+
+sat_test((exists(rid(rr1,test),cid(cc1,test)),all(rid(rr1,test),cid(cc2,test))),true). 
+
+sat_test((exists(rid(rr1,test),cid(cc2,test)),all(rid(rr1,test),cid(cc1,test))),true). 
+
+sat_test((not(exists(rid(rr1,test),cid(cc1,test))),all(rid(rr1,test),cid(cc2,test))),true). 
+
+sat_test((not(exists(rid(rr1,test),cid(cc2,test))),all(rid(rr1,test),cid(cc1,test))),true). 
+
+
+%--------------------------------------------------------------
+% ALCI
+
+sat_test((exists(inv(rid(r,test)),cid(c3,test))),true).
+
+sat_test(not(exists(inv(rid(r,test)),cid(c3,test))),true).
+
+sat_test((cid(c1,test),(cid(c2,test) ; exists(inv(rid(r,test)),cid(c3,test)))),true).
+
+sat_test((cid(c1,test),exists(rid(r,test),cid(c1,test)),
+          not(exists(inv(rid(r,test)),cid(c1,test)))),true).
+
+sat_test((cid(c1,test),exists(rid(r,test),not(exists(inv(rid(r,test)),cid(c1,test))))),
+	false).
+
+sat_test((cid(c1,test),exists(inv(rid(r,test)),not(exists(rid(r,test),cid(c1,test))))),
+	false).
+
+sat_test((cid(c1,test),
+                    exists(rid(r1,test),cid('CDF Classes',cdf)),
+	            all(inv(rid(r1,test)),not(cid(c1,test)))),true).
+
+sat_test((cid(c1,test),
+                    exists(inv(rid(r1,test)),cid('CDF Classes',cdf)),
+	            all(inv(rid(r1,test)),all(rid(r1,test),not(cid(c1,test))))),false).
+
+sat_test((cid(cc1,test),exists(rid(r,test),not(exists(inv(rid(r,test)),cid(cc2,test))))),false).
+
+sat_test((cid(cc2,test),exists(rid(r,test),not(exists(inv(rid(r,test)),cid(cc1,test))))),true).
+
+sat_test((cid(c1,test),exists(rid(r1,test),all(inv(rid(r1,test)),not(cid(c2,test))))),true).
+
+sat_test((cid(c1,test),exists(rid(r1,test),all(inv(rid(r1,test)),not(cid(c1,test))))),false).
+
+sat_test((not(cid(c1,test)),exists(rid(r1,test),all(inv(rid(r1,test)),cid(c1,test)))),false).
+
+sat_test((cid(c1,test),exists(inv(rid(r1,test)),all(rid(r1,test),not(cid(c1,test))))),false).
+
+sat_test((not(cid(c1,test)),exists(inv(rid(r1,test)),all(rid(r1,test),cid(c1,test)))),false).
+
+sat_test((cid(cc1,test),exists(inv(rid(r1,test)),all(rid(r1,test),not(cid(cc2,test))))),false).
+
+sat_test((cid(cc2,test),exists(inv(rid(r1,test)),all(rid(r1,test),not(cid(cc1,test))))),true).
+
+%--------------------------------------------------------------
+% ALCHI
+
+sat_test((exists(inv(rid(rr2,test)),cid('CDF Classes',cdf)),
+                     not(exists(inv(rid(rr1,test)),cid('CDF Classes',cdf)))),true).
+
+sat_test((exists(inv(rid(rr1,test)),cid('CDF Classes',cdf)),
+                    not(exists(inv(rid(rr2,test)),cid('CDF Classes',cdf)))),false). 
+
+sat_test((exists(rid(rr2,test),not(exists(inv(rid(rr1,test)),cid('CDF Classes',cdf))))),
+	true).
+
+sat_test((exists(rid(rr1,test),not(exists(inv(rid(rr2,test)),cid('CDF Classes',cdf))))),
+	false).
+
+sat_test((cid(c1,test),exists(inv(rid(rr2,test)),all(rid(rr1,test),not(cid(c1,test))))),true).
+
+sat_test((cid(c1,test),exists(inv(rid(rr1,test)),all(rid(rr2,test),not(cid(c1,test))))),
+	false).
+
+sat_test((cid(c1,test),exists(rid(rr2,test),all(inv(rid(rr1,test)),not(cid(c1,test))))),
+	true).
+
+sat_test((cid(c1,test),exists(rid(rr1,test),all(inv(rid(rr2,test)),not(cid(c1,test))))),
+	false).
+
+%--------------------------------
+% ALCN
+
+sat_test(atLeast(2,rid(p,test)),true).
+
+sat_test(atMost(2,rid(p,test)),true).
+
+sat_test((atLeast(2,rid(p,test)) ; atLeast(2,rid(r,test))),true).
+
+sat_test((atMost(2,rid(p,test)) ; atMost(2,rid(r,test))),true).
+
+sat_test((exists(rid(r1,test),atLeast(2,rid(p,test)))),true).
+
+sat_test((exists(rid(r1,test),atMost(2,rid(p,test)))),true).
+
+sat_test((all(rid(r1,test),atLeast(2,rid(p,test)))),true).
+
+sat_test((all(rid(r1,test),atMost(2,rid(p,test)))),true).
+
+sat_test((cid(c1,test) ; exists(rid(r1,test),atLeast(2,rid(p,test)))),true).
+
+sat_test((atLeast(2,rid(p1,test)),atMost(2,rid(p1,test))),true).
+
+sat_test((atLeast(2,rid(p1,test)),atMost(1,rid(p1,test))),false).
+
+sat_test((atLeast(2,rid(p1,test)),not(atMost(1,rid(p1,test)))),true).
+
+sat_test((atLeast(2,rid(p1,test)),not(atLeast(1,rid(p1,test)))),false).
+
+%sat_test(atLeast(0,rid(r,test)),true).
+
+sat_test((atLeast(1,rid(r,test)),atMost(0,rid(r,test))),false).
+
+sat_test(not((not(atLeast(1,rid(r,test))) ; not(atMost(0,rid(r,test))))),false).
+
+sat_test((exists(rid(r,test),cid(c1,test)),exists(rid(r,test),not(cid(c1,test))),atMost(1,rid(r,test))),false).
+
+%--------------------------------------------------------------
+% ALCNI
+
+sat_test((exists(inv(rid(r,test)),cid(c1,test)),exists(inv(rid(r,test)),not(cid(c1,test))),
+	            atMost(1,inv(rid(r,test)))),false).
+
+sat_test((cid(c1,test),atLeast(1,rid(r,test)),all(rid(r,test),all(inv(rid(r,test)),not(cid(c1,test))))),false).
+
+sat_test((cid(c1,test),atLeast(1,inv(rid(r,test))),all(inv(rid(r,test)),all(rid(r,test),not(cid(c1,test))))),false).
+
+sat_test((exists(rid(r,test),(atMost(0,inv(rid(r,test)))))),false).
+
+sat_test((exists(inv(rid(r,test)),(atMost(0,rid(r,test))))),false).
+
+sat_test((exists(rid(r1,test),not(cid(c1,test))),exists(rid(r1,test),cid(c1,test)),
+		    atMost(1,inv(rid(r1,test)))),true).
+
+sat_test((exists(inv(rid(r1,test)),not(cid(c1,test))),exists(inv(rid(r1,test)),cid(c1,test)),
+		    atMost(1,rid(r1,test))),truee).
+
+sat_test((exists(rid(r1,test),cid(c1,test)),exists(rid(r1,test),cid(c1,test)),
+		    atMost(1,inv(rid(r1,test)))),true).
+
+%--------------------------------------------------------------
+% ALCNHI
+
+sat_test((exists(rid(rr1,test),(atMost(0,inv(rid(rr2,test)))))),false).
+
+sat_test((exists(rid(rr2,test),(atMost(0,inv(rid(rr1,test)))))),true).
+
+%--------------------------------------------------------------
+% ALCQ(I)
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test))),true).
+
+sat_test((atMost(2,rid(r1,test),cid(c1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),atMost(2,rid(r1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),atMost(1,rid(r1,test))),false).
+
+sat_test((atMost(2,rid(r1,test),cid(c1,test)),atLeast(2,rid(r1,test))),true).
+
+sat_test((atMost(2,rid(r1,test),cid(c1,test)),atLeast(3,rid(r1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),(cid(c1,test) ; cid(c2,test)))),true).
+
+%------------------
+% All with atLeast
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),all(rid(r1,test),not(cid(c1,test)))),false).
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),all(rid(r1,test),cid(c2,test))),true).
+
+sat_test((all(rid(r1,test),not(cid(c1,test))),atLeast(2,rid(r1,test),cid(c1,test))),false).
+
+sat_test((all(rid(r1,test),cid(c2,test)),atLeast(2,rid(r1,test),cid(c1,test))),true).
+
+%------------------
+% Exists with atMost
+
+sat_test((exists(rid(r,test),cid(c1,test)),exists(rid(r,test),not(cid(c1,test))),atMost(1,rid(r,test),cid(c2,test))),true).
+
+sat_test((exists(inv(rid(r,test)),cid(c1,test)),exists(inv(rid(r,test)),not(cid(c1,test))),
+                   atMost(1,inv(rid(r,test)),cid(c2,test))),true).
+
+sat_test((exists(rid(r,test),cid(c1,test)),exists(rid(r,test),not(cid(c1,test))),
+                   atMost(1,rid(r,test),(cid(c1,test) ; not(cid(c1,test))))),false).
+
+sat_test((exists(inv(rid(r,test)),cid(c1,test)),exists(inv(rid(r,test)),not(cid(c1,test))),
+                   atMost(1,inv(rid(r,test)),(cid(c1,test) ; not(cid(c1,test))))),false).
+
+sat_test((cid(c,test),not(cid(c,test)) ; (exists(rid(r,test),cid(c1,test)),exists(rid(r,test),not(cid(c1,test))),
+                   atMost(1,rid(r,test),(cid(c1,test) ; not(cid(c1,test)))))),false).
+
+sat_test((cid(c,test),not(cid(c,test)) ; (exists(rid(r,test),cid(c1,test)),exists(rid(r,test),not(cid(c1,test))),
+                   atMost(1,rid(r,test),(cid(c2,test))))),true).
+
+sat_test((cid(c,test),not(cid(c,test)) ; (exists(inv(rid(r,test)),cid(c1,test)),exists(inv(rid(r,test)),not(cid(c1,test))),
+                   atMost(1,inv(rid(r,test)),(cid(c1,test) ; not(cid(c1,test)))))),false).
+
+sat_test((cid(c,test),not(cid(c,test)) ; (exists(inv(rid(r,test)),cid(c1,test)),exists(inv(rid(r,test)),not(cid(c1,test))),
+                   atMost(1,inv(rid(r,test)),(cid(c2,test))))),true).
+
+%------------------
+% Exists with atLeast and atMost
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),exists(rid(r1,test),cid(c1,test)),atMost(2,rid(r1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),exists(rid(r1,test),cid(c2,test)),atMost(2,rid(r1,test))),true).
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),exists(rid(r1,test),not(cid(c1,test))),atMost(2,rid(r1,test))),false).
+
+sat_test((atLeast(2,inv(rid(r1,test)),cid(c1,test)),exists(inv(rid(r1,test)),cid(c1,test)),atMost(2,inv(rid(r1,test)))),true).
+
+sat_test((exists(rid(r1,test),cid(c1,test)),atLeast(2,rid(r1,test),cid(c1,test)),atMost(2,rid(r1,test))),true).
+
+sat_test((exists(rid(r1,test),cid(c2,test)),atLeast(2,rid(r1,test),cid(c1,test)),atMost(2,rid(r1,test))),true).
+
+sat_test((exists(rid(r1,test),not(cid(c1,test))),atLeast(2,rid(r1,test),cid(c1,test)),atMost(2,rid(r1,test))),false).
+
+sat_test((exists(inv(rid(r1,test)),cid(c1,test)),atLeast(2,inv(rid(r1,test)),cid(c1,test)),atMost(2,inv(rid(r1,test)))),true).
+
+sat_test((cid(c2,test),not(cid(c2,test)) ; (exists(rid(r1,test),cid(c1,test)),atLeast(2,rid(r1,test),cid(c1,test)),atMost(2,rid(r1,test)))),true).
+
+sat_test((cid(c2,test),not(cid(c2,test)) ; 
+         (exists(inv(rid(r1,test)),cid(c1,test)),atLeast(2,inv(rid(r1,test)),cid(c1,test)),atMost(2,inv(rid(r1,test))))),true).
+
+%----------------------------
+% Expressions within atLeast.
+
+sat_test((atLeast(2,rid(r1,test),exists(rid(r2,test),cid(c2,test)))),true).
+
+sat_test((atLeast(2,rid(r1,test),(exists(rid(r2,test),cid(c2,test)) ; exists(r3,cid(c3,test))))),true).
+
+sat_test((atLeast(2,rid(r1,test),(all(rid(r2,test),cid(c2,test)) ; all(r3,cid(c3,test))))),true).
+
+sat_test((atLeast(2,rid(r1,test),atLeast(2,rid(r2,test),cid(c2,test)))),true).
+
+%----------------------------
+% Expressions within atMost -- TBD.
+
+%--------------------------------------------------------------
+% ALCNH
+
+sat_test((atLeast(2,rid(rr1,test)),atMost(1,rid(rr2,test))),false).
+
+sat_test((atLeast(2,rid(rr2,test)),atMost(1,rid(rr1,test))),true).
+
+sat_test((atLeast(2,rid(rr1,test)),not(atLeast(2,rid(rr2,test)))),false).
+
+sat_test((atLeast(2,rid(rr2,test)),not(atLeast(2,rid(rr1,test)))),true).
+
+sat_test((exists(rid(r1,test),cid(c1,test)),exists(rid(r1,test),cid(c1,test)),atMost(1,rid(r1,test))),true).
+
+%--------------------------------------------------------------
+% ALCQH
+
+sat_test((atLeast(2,rid(rr1,test),cid(cc2,test)),atMost(1,rid(rr1,test),cid(cc1,test))),
+	true).
+
+sat_test((atLeast(2,rid(rr1,test),cid(cc1,test)),atMost(1,rid(rr1,test),cid(cc2,test))),false).
+
+sat_test((atLeast(2,rid(rr1,test),cid(cc2,test)),atMost(1,rid(rr1,test),cid(cc2,test))),false).
+
+sat_test((atLeast(2,rid(rr1,test),cid(cc2,test)),not(atLeast(2,rid(rr1,test),cid(cc1,test)))),true).
+
+sat_test((atLeast(2,rid(rr1,test),cid(cc1,test)),not(atLeast(2,rid(rr1,test),cid(cc2,test)))),false).
+
+sat_test((atLeast(2,rid(rr1,test),cid(cc2,test)),not(atLeast(2,rid(rr1,test),cid(cc2,test)))),false).
+
+%--------------------------------------------------------------
+% ALCQI
+
+sat_test((exists(rid(r1,test),(atMost(0,inv(rid(r1,test)),cid('CDF Classes',cdf))))),false).
+
+sat_test((exists(inv(rid(r1,test)),(atMost(0,rid(r1,test),cid('CDF Classes',cdf))))),false).
+
+sat_test((cid(c1,test),atLeast(1,rid(r,test),all(inv(rid(r,test)),not(cid(c1,test))))),false).
+
+sat_test((cid(c1,test),atLeast(1,inv(rid(r,test)),all(rid(r,test),not(cid(c1,test))))),false).
+
+sat_test((exists(rid(r1,test),all(inv(rid(r1,test)),not(cid(c1,test)))),
+	            atLeast(2,rid(r1,test),(all(inv(rid(r1,test)),cid(c1,test))))),false).
+
+sat_test((atLeast(2,rid(r1,test),cid(c1,test)),exists(rid(r1,test),cid(c1,test)),atMost(2,rid(r1,test))),true).  
+
+%--------------------------------------------------------------
+% ALCQHI
+
+sat_test((exists(inv(rid(rr1,test)),(atMost(0,rid(rr2,test),cid('CDF Classes',cdf))))),false).
+
+sat_test((exists(inv(rid(rr2,test)),(atMost(0,rid(rr1,test),cid('CDF Classes',cdf))))),true).
+
+sat_test((cid(c1,test),atLeast(1,inv(rid(rr1,test)),all(rid(rr2,test),not(cid(c1,test))))),false).
+
+sat_test((cid(c1,test),atLeast(1,inv(rid(rr2,test)),all(rid(rr1,test),not(cid(c1,test))))),true).
+
+sat_test((not(cid(c1,test)),(exists(inv(rid(r,test)),cid(c1,test)),(
+                                      all(inv(rid(r,test)),exists(inv(rid(r,test)),cid(c1,test)))))),true).
+
+%--------------------------------------------------------------
+% SameAs
+
+sat_test((exists(rid(r1,test),cid(c1,test)),exists(rid(r2,test),cid(c2,test)),sameAs(rid(r1,test),cid(c1,test),rid(r2,test),cid(c2,test)),true)).
+
+sat_test((exists(rid(r1,test),cid(c1,test)),all(rid(r2,test),cid(c2,test)),sameAs(rid(r1,test),cid(c1,test),rid(r2,test),cid(c2,test))),false).
+
+sat_test((exists(rid(r1,test),exists(rid(r1,test),cid(c1,test))),exists(rid(r2,test),cid(c2,test)),
+	  sameAs(rid(r1,test),exists(rid(r1,test),cid(c1,test)),rid(r2,test),cid(c2,test)),true)).
+
+sat_test((exists(rid(r1,test),cid(c1,test)),exists(rid(r2,test),not(cid(c1,test))),sameAs(rid(r1,test),cid(c1,test),rid(r2,test),not(cid(c1,test)))),false).
+
+sat_test((exists(rid(r1,test),cid(c1,test)),exists(rid(r2,test),not(cid(c1,test))),sameAs(rid(r1,test),cid('CDF Classes',cdf),rid(r2,test),cid('CDF Classes',cdf))),false).
+
+sat_test((exists(rid(r1,test),cid(c1,test)),exists(rid(r2,test),not(cid(c1,test))),sameAs(rid(r1,test),cid(emptyset,cdf),rid(r2,test),cid(emptyset,cdf))),true).
+
+% a hitchhiker has a hand with a thumb and
+% a person with two thumbless hands
+% a person has at most 2 hands
+%
+sat_test((exists(rid(r1,test),(cid(hand,test),(exists(rid(r1,test),cid(thumb,test)),
+	                                                  atMost(1,rid(r1,test))))),
+             atLeast(2,rid(r1,test),(cid(hand,test),exists(rid(r1,test),not(cid(thumb,test))))),
+	 atMost(2,rid(r1,test),cid(hand,test))),false).
+
+sat_test((exists(rid(hP,test),exists(rid(hP,test),cid(thumb,test))),
+	  atMost(2,rid(hP,test)),
+	  atLeast(2,rid(hP,test),not(exists(rid(hP,test),cid(thumb,test)))))).
+
+%--------------------------------------------------------------
+% MKNF (tests of objects)
+
+sat_test((exists(rid(r1,test),oid(c1,test)),not(exists(rid(r1,test),oid(c1,test)))),false).
+
+
+
+end_of_file.
+
+sat_test((cid(c1,test),exists(rid(r1,test),exists(rid(r1,test),cid(c1,test))),exists(rid(r2,test),cid(c2,test)),sameAs(rid(r1,test),cid(c1,test),rid(r2,test),cid(c2,test))),true).
+
+sat_test((atLeast(1,rid(r1,test),cid(c1,test)),atLeast(1,rid(r2,test),cid(c2,test)),sameAs(rid(r1,test),cid(c1,test),rid(r2,test),cid(c2,test)),true)).
+
+%--------------------------------------------------------------
+% ics.
+
+sat_test(stereo,exists(amplifier,big),exists(amplifier,small),true).
+
+
+end_of_file.
+
+
+Also, test use of atleast within atmost.
+
+hierarchies in am_visited_invrel.
+
+recheck negation of exists and all...
+
+
+
+
+%--------------------------------------------------------------
+% S
+
+sat_test((a,exists(s,(all(p,exists(rt,cid('CDF Classes',cdf))),
+	       all(p,all(rt,(all(inv(rt),all(inv(rid(p,test)),all(inv(s),not(a))))))),
+	       all(p,exists(p,cid('CDF Classes',cdf))),
+ 	       exists(rt,cid('CDF Classes',cdf)),
+	       exists(p,cid('CDF Classes',cdf)),
+               all(rt,(all(inv(rt),all(inv(rid(p,test)),all(inv(s),not(a))))))))),false).
+
+
+sat_test((exists(rt,cid(c1,test)),(exists(rt,(exists(rt,cid(c2,test)))))),true).
+
+sat_test((all(rt,not(cid(c1,test))),(exists(rt,(exists(rt,cid(c1,test)))))),false).
+
+% need to double-check that this is unsatisfiable.
+sat_test((a,exists(s,(all(p,exists(r,cid('CDF Classes',cdf))),
+		all(p,all(r,(all(inv(rid(r,test)),all(inv(rid(p,test)),all(inv(s),not(a))))))),
+		all(p,exists(p,cid('CDF Classes',cdf))),
+		exists(r,cid('CDF Classes',cdf)),
+		exists(p,cid('CDF Classes',cdf) ),
+                all(r,(all(inv(rid(r,test)),all(inv(rid(p,test)),all(inv(s),not(a))))))))),false).
+
+
+!!! does not work because of transitive and inverse intraction !!!
+sat_test((not(cid(c1,test)),atMost(1,inv(rt)),exists(inv(rt),cid(c1,test)),all(inv(rt),(exists(inv(rt),cid(c1,test)),atMost(1,inv(rt)))),false).
+
+test out atLeast along with transitive.
+
+

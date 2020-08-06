@@ -1,0 +1,342 @@
+/* File:      peephole.P
+** Author(s): Saumya Debray, Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: peephole.P,v 1.19 2010-08-19 15:03:35 spyrosh Exp $
+** 
+*/
+
+
+
+/************************************************************************
+*									*
+*		some code for peephole optimization			*
+*								 	*
+*************************************************************************/
+
+/*  "peephole_opt" is the top-level optimizer, it calls various others.	*/
+
+compile_peephole_opt(Pil, OptPil) :-
+	compile_popt1(Pil, Pil1), !,
+	compile_popt2(Pil1, Pil2), !,
+	compile_popt3(Pil2, Pil3), !,
+	compile_popt4(Pil3,_,OptPil),
+	!.
+
+compile_popt1([], []).
+compile_popt1([Inst|Rest], Pil1) :- compile_popt11(Inst, Rest, Pil1).
+
+% TLS: took out this optimization to get call_cleanup to work.
+%compile_popt11(call(S,I),[putpbreg_ci(A,_,_)|PilRest],[call(S,I)|OptPilRest]) :-
+%	compile_popt1a([putpbreg(A)|PilRest], OptPilRest).
+compile_popt11(trustmeorelsefail(R), [trymeorelse(R,L)|PilRest], [retrymeorelse(R,L)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt11(puttvar(T,R), [getstr(R,S)|PilRest], [putstr(T,S)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt11(puttvar(T,T), [movreg(T,R)|PilRest], [puttvar(T,R)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt11(puttvar(T,T), [getnumcon(T,C)|PilRest], [putnumcon(T,C)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt11(puttval(T,T), [movreg(T,R)|PilRest], [puttval(T,R)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt11(movreg(T,R), [puttbreg(R)|PilRest], [puttbreg(T)|OptPilRest]) :-
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(movreg(T,R), [puttbreg_ci(R,I,J)|PilRest], [puttbreg_ci(T,I,J)|OptPilRest]) :-
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(movreg(T,R), [addreg(R,S)|PilRest], [addreg(T,S)|OptPilRest]) :-
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(movreg(T,R), [subreg(R,S)|PilRest], [subreg(T,S)|OptPilRest]) :-
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(movreg(T,R), [mulreg(R,S)|PilRest], [mulreg(T,S)|OptPilRest]) :-
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(movreg(T,R), [divreg(R,S)|PilRest], [divreg(T,S)|OptPilRest]) :-
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(getpvar(V,R), [getpvar(V1,R1)|PilRest], [getkpvars(Cnt,V,R)|OptPilRest]) :-
+	V1 is V+1, R1 is R+1,
+	trim_count_getpvars(PilRest,V1,R1,2,Cnt,PilRest1),
+	compile_popt1(PilRest1,OptPilRest).
+compile_popt11(getpvar(V,R), [putpval(V,R)|PilRest], OptPilRest) :-
+	compile_popt1([getpvar(V,R)|PilRest], OptPilRest).
+compile_popt11(putpvar(V,R), [getpval(V,R)|PilRest],
+			     [putpvar(V,R)|OptPilRest]) :-
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(putpval(V,R), [getstr(R,Str)|PilRest],
+			     [getstrv(V,Str)|OptPilRest]) :-
+	\+ sym_name(Str,'.',2),		/* to enable list opt */
+	compile_popt1(PilRest, OptPilRest).
+compile_popt11(putpvar(V,R), [getstr(R,Str)|PilRest],
+			     [putstrv(V,Str)|OptPilRest]) :-
+	\+ sym_name(Str,'.',2),		/* to enable list opt */
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt11(gettval(R,R), PRest, OptPRest) :-
+	compile_popt1(PRest, OptPRest).
+compile_popt11(movreg(R,R), PRest, OptPRest) :- 
+	compile_popt1(PRest, OptPRest).
+compile_popt11(call(Sym,A),[putpbreg(R),deallocate,proceed_gc|PilRest],
+	       [call(Sym,A)|OptPilRest]) :-
+	compile_popt1([putpbreg(R),deallocate,proceed|PilRest],OptPilRest).
+compile_popt11(jump(L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+	compile_popt1(PRest,OptPRest).
+compile_popt11(jump(L), [label(T0,L0),label(T,L)|PRest], [label(T0,L0),label(T,L)|OptPRest]) :-
+	compile_popt1(PRest,OptPRest).
+
+
+% Dead-code elimination
+compile_popt11(jump(Addr), [Instr|PRest], OptCode) :-
+	( Instr = label(_,_) ->
+	    OptCode = [jump(Addr),Instr|OptPRest], % label stays
+	    compile_popt1(PRest,OptPRest)
+	;   
+	    compile_popt11(jump(Addr), PRest, OptCode)
+	).
+compile_popt11(fail, [Instr|PRest], OptCode) :-
+	( Instr = label(_,_) ->
+	    OptCode = [fail,Instr|OptPRest], % label stays
+	    compile_popt1(PRest,OptPRest)
+	;   
+	    compile_popt11(fail, PRest, OptCode)
+	).
+compile_popt11(jumpz(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpnz(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(jumpnz(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpz(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(jumplt(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpge(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(jumple(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpgt(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(jumpgt(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumple(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(jumpge(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumplt(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(int_test_z(R1,R2,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [int_test_nz(R1,R2,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(int_test_nz(R1,R2,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [int_test_z(R1,R2,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1(PRest,OptPRest).
+compile_popt11(Inst, PilRest, [Inst|OptPilRest]) :- 
+	compile_popt1(PilRest, OptPilRest).
+
+
+compile_popt1a([], []).
+compile_popt1a([Inst|PilRest], Pil1) :- 
+	compile_popt1a1(Inst, PilRest, Pil1).
+
+compile_popt1a1(unipvar(X), PilRest, [bldpvar(X)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(unipval(X), PilRest, [bldpval(X)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(unitvar(X), PilRest, [bldtvar(X)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(uniavar, PilRest, [bldavar|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(unitval(X), PilRest, [bldtval(X)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(unicon(X), PilRest, [bldcon(X)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(uninumcon(X), PilRest, [bldnumcon(X)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(unifloat(X), PilRest, [bldfloat(X)|OptPilRest]) :-
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(gettval(R,R), PilRest, OptPilRest) :- 
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(movreg(R,R), PilRest, OptPilRest) :- 
+	compile_popt1a(PilRest, OptPilRest).
+compile_popt1a1(jump(Addr), [jump(_)|PRest], [jump(Addr)|OptPRest]) :-
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(jumpz(_,L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest,OptPRest).
+compile_popt1a1(jumpz(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpnz(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(jumpnz(_,L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest,OptPRest).
+compile_popt1a1(jumpnz(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpz(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(jumplt(_,L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest, OptPRest).
+compile_popt1a1(jumplt(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpge(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(jumple(_,L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest, OptPRest).
+compile_popt1a1(jumple(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumpgt(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(jumpgt(_,L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest,OptPRest).
+compile_popt1a1(jumpgt(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumple(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(jumpge(_,L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest,OptPRest).
+compile_popt1a1(jumpge(R,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [jumplt(R,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(int_test_z(_,_,L), [label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest,OptPRest).
+compile_popt1a1(int_test_z(R1,R2,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [int_test_nz(R1,R2,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+%%compile_popt1a1(int_test_nz(_,_,L),[label(T,L)|PRest], [label(T,L)|OptPRest]) :-
+%%	compile_popt1a(PRest,OptPRest).
+compile_popt1a1(int_test_nz(R1,R2,L),Rest,Result) :-
+	(Rest = [label(T,L)|PRest] -> Result = [label(T,L)|OptPRest]
+	 ; Rest = [jump(L1),label(T,L)|PRest] -> Result = [int_test_z(R1,R2,L1),label(T,L)|OptPRest]
+	),
+	compile_popt1a(PRest,OptPRest).
+compile_popt1a1(Inst, PilRest, OptPilRest) :- 
+	compile_popt1([Inst|PilRest], OptPilRest).
+
+
+/*  "compile_popt2" optimizes list instructions and pass throughs
+    generated from transformational indexing: (put|get)str '.'/2 are 
+    replaced by (put|get)list, and (get|put|uni|bld)con '[]'/0 are
+    replaced by (get|put|uni|bld)nil, respectively.  Pass throughs
+    are simply forgotten.						*/
+
+compile_popt2([], []).
+compile_popt2([Inst|PilRest], Pil1) :- compile_popt21(Inst, PilRest, Pil1).
+
+compile_popt21(getstr(R,Str), PilRest, [getlist(R)|OptPilRest]) :-
+	sym_name(Str,'.',2),
+	compile_popt2(PilRest, OptPilRest).
+compile_popt21(putstr(R, Str), PilRest, [putlist(R)|OptPilRest]) :-
+	sym_name(Str,'.',2),
+	compile_popt2(PilRest, OptPilRest).
+
+compile_popt21(getcon(R,Sym), PilRest, [getnil(R)|OptPilRest]) :-
+	sym_name(Sym,[],0),
+	compile_popt2(PilRest, OptPilRest).
+compile_popt21(putcon(R,Sym), PilRest, OptPil) :-
+	sym_name(Sym,N,A),
+	( N == [], A =:= 0 -> OptPil = [putnil(R)|OptPilRest]
+	; N == pass_thru, A =:= -1 -> OptPil = OptPilRest
+	),
+	compile_popt2(PilRest, OptPilRest).
+compile_popt21(unicon(Sym), PilRest, [uninil|OptPilRest]) :-
+	sym_name(Sym,[],0),
+	compile_popt2(PilRest, OptPilRest).
+compile_popt21(bldcon(Sym), PilRest, [bldnil|OptPilRest]) :-
+	sym_name(Sym,[],0),
+	compile_popt2(PilRest, OptPilRest).
+compile_popt21(Inst, PilRest, [Inst|OptPilRest]) :-
+	compile_popt2(PilRest, OptPilRest).
+
+
+compile_popt3([],[]).
+compile_popt3([Inst|Rest], Pil) :- compile_popt31(Inst, Rest, Pil).
+
+compile_popt31(getlist(R0), [unitvar(R1),unitvar(R2)|Rest],
+      			    [getlist_tvar_tvar(R0,R1,R2)|OptRest]) :-
+	compile_popt3(Rest, OptRest).
+compile_popt31(unitvar(R0), [getlist(R0),uninumcon(A)|Rest],
+			    [unitvar_getlist_uninumcon(R0,A1,A2)|OptRest]) :-
+	A >= 0, A =< 16'ffff',
+	A1 is A >> 8, A2 is A /\ 16'ff',
+	compile_popt3(Rest, OptRest).
+compile_popt31(bldtval(R0),[putlist(R0),bldnumcon(A)|Rest],
+			    [bldtval_putlist_bldnumcon(R0,A1,A2)|OptRest]) :-
+	A >= 0, A =< 16'ffff',
+	A1 is A >> 8, A2 is A /\ 16'ff',
+	compile_popt3(Rest, OptRest).
+compile_popt31(Inst, Rest, [Inst|OptRest]) :- 
+	compile_popt3(Rest, OptRest).
+
+/*  "popt4" eliminates some redundant "execute"s, mainly those arising from
+    the generation of new predicates for handling cuts and indexing.   */
+
+compile_popt4([],_,[]).
+compile_popt4([label(T,(Sym,K))|Rest],Seen,[label(T,(Sym,K))|ORest]) :-
+	!,
+	( Sym = disj(_)
+	; memberchk(Sym,Seen)
+	),
+	compile_popt4(Rest,Seen,ORest).
+compile_popt4([execute(Sym),label(T,(Sym,K))|Rest],Seen,OList) :-
+	!,
+	( Sym = disj, OList = [execute(Sym),label(T,(Sym,K))|ORest]
+	; /* Sym = sym(...) */
+	  popt_chkmember(Sym,Seen,SFlag),
+	  ( SFlag =:= 1,	/* already seen, "execute" can't be dropped */
+	    OList = [execute(Sym),label(T,(Sym,K))|ORest]
+	  ; SFlag =\= 1,	/* not seen, "execute" can be dropped */
+	    OList = [label(T,(Sym,K))|ORest]
+	  )
+	),
+	compile_popt4(Rest,Seen,ORest).
+compile_popt4([Inst|Rest],Seen,[Inst|ORest]) :-
+	compile_popt4(Rest,Seen,ORest).
+
+trim_count_getpvars(PilInsts,V,R,Cnt0,Cnt,OutPilRest) :-
+	(PilInsts == []
+	 ->	Cnt = Cnt0, OutPilRest = []
+	 ;	(PilInsts = [getpvar(V1,R1)|PilRest], V1 is V+1, R1 is R+1
+		 ->	Cnt1 is Cnt0+1,
+			trim_count_getpvars(PilRest,V1,R1,Cnt1,Cnt,OutPilRest)
+		 ;	Cnt = Cnt0,
+			OutPilRest = PilInsts
+		)
+	).
+
+popt_chkmember(P,L,Flag) :-
+	( var(L) -> L = [P|_], Flag = 0
+	; L = [P1|L1], ( P == P1 -> Flag = 1 ; popt_chkmember(P,L1,Flag) )
+	).
+
+
+force_peephole_loaded.

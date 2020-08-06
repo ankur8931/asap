@@ -1,0 +1,297 @@
+\section{Semantic Checking} \label{sec:consist}
+
+Enforcing the semantic axioms of Chapters~\ref{chap:type0} and
+~\ref{chap:type1} is critical to developing ontologies.  In the first
+place, enforcing a correct semantics is, in the long run, critical for
+user confidence; in the second place, enforcing axioms at a system
+level eases the coding of higher layers of CDF functionality and of
+applications.  At the same time, semantic checking can slow down
+performance if done redundantly or unnecessarily.
+
+\index{contexts}
+CDF provides several predicates for semantic checking, as well as
+different methods to adjust the amount of checking done during
+execution of system or user code.  Semantic checking in system code
+can be adjusted by the predicicates~\pred{addCheckToContext/2}
+and~\pred{removeCheckToContext/2}, which determine which checks are to
+be performed at various {\em contexts} during the course of managing
+an ontology.  The checking predicates themselves also can be called
+directly, and users can even create their own contexts.  To explain
+the consistency checking system, we first discuss the type of checking
+predicates that are provided, then discuss system contexts, and
+finally how a user can create his or her own contexts for application
+code.
+
+\subsection{Classes of Semantic Checking Predicates} \label{sec:checkpreds}
+
+The semantic checking predicates may be categorized in different ways.
+An obvious distinction is between Type-1 consistency checking and the
+simpler semantic checks that make use of Type-0 axioms or of {\sc inh}
+proofs.  The main Type-1 consistency checking predicate
+is~\pred{checkIdConsistency/1} discussed in \refsec{sec:type1query}.
+We discuss here the simpler semantic checking for (portions of) Type-0
+Axioms.  Detailed information about these predicates are discussed in
+\refsec{sec:checkingapi}.
+
+Since well-sorting is a necessary condition for the consistency of
+Type-0 (and Type-1) instances, certain of the checking predicatess
+concern themselves with ensuring that given facts are well-sorted.
+These include the predicates {\tt cdf\_check\_ground/1}, and {\tt
+cdf\_check\_sorts/1}.  The first checks that a term is ground (modulo
+the exception for identifiers whose component tag is
+\component{cdfpt}); the second checks that an extensional fact is
+well-sorted.
+
+Other predicates perform checks to ensure that a CDF instance does not
+have ``redundant'' extensional facts.  As notation, let us write an
+extensional fact as $F\_ext\theta$ where $F\_ext$ is the predicate
+skeleton (i.e. {\tt hasAttr\_ext(A,B,C)}, {\tt allAttr(A,B,C)} etc.)
+and $\theta$ is the binding to the variables of the skeleton.  One
+predicate that checks for redundancy is {\tt
+cdf\_check\_implication($F\_ext\theta$)} which takes an extensional
+fact as input and checks whether $F\theta$ holds in the current CDF
+instance.  For example if the extensional fact were {\tt
+hasAttr\_ext(A,B,C)$\theta$} the predicate would check whether {\tt
+hasAttr(A,B,C)$\theta$} held.  A weaker predicate is
+\pred{cdf\_check\_identity/1} which checks for $F\_ext\theta$
+whether {\tt imnmed\_$F\theta$} holds in the current instance.  In
+other words, if the extensional fact were {\tt
+hasAttr\_ext(A,B,C)$\theta$} the predicate would check whether {\tt
+immed\_hasAttr(A,B,C)$\theta$} held.  Working at a somewhat broader
+level, the predicate {\tt check\_redundancies(Component)} performs the
+same check as {\tt check\_identity/1} (in a somewhat optimized manner)
+for each extensional fact in {\tt Component}, removing any redundant
+facts (see Section~\ref{sec:components} for assignment of facts to
+components).
+
+If a check takes as input an extensional fact it is called a {\em
+fact-level check}; if it takes as input a component tag it is called a
+{\em component-level check}.  The type of input affects the contexts
+where a check can be used, as we now describe.
+
+%---------------------------------------------------------
+\subsection{System Contexts}
+\index{contexts}
+
+The available system contexts for \version{} of CDF are listed.  
+
+\begin{itemize}
+\item Contexts where fact-level checks can be applied and are of type
+{\tt factLevel}.
+\begin{itemize}
+\item \context{query}.  This context occurs when a query is made using the
+Type-0 API.
+
+\item \context{newExtTermSingle}.  This context occurs when an attempt is
+made to add a new extensional fact to the CDF store by
+\pred{newExtTerm/1}, as occurs for instance when facts are added using
+the CDF editor.  
+
+\item \context{newExtTermBatch} This context occurs when an attempt is
+made to add a given extensional term to the CDF store during component
+load by \pred{load\_component/3}, or file load by
+\pred{load\_extensional\_facts/1}.
+
+\item \context{retractallExtTermSingle}.  This context occurs when an attempt
+is made to retract an extensional fact from the CDF store by
+\pred{retractExtTerm/1}, as occurs for instance when facts are removed using
+the CDF editor.
+
+%\item \context{newIntRuleBatch} This context occurs when an attempt is
+%made to add a given intensional rule to the CDF store during component
+%load the predicate \pred{load\_intensional\_rules/1}.
+
+%\item \context{newIntRuleSingle}.  This context occurs when an attempt is
+%made to add a new intensional rule to the CDF store by
+%\pred{newIntRule/1}.
+
+%\item \context{retractIntRuleSingle}.  This context occurs when an attempt
+%is made to retract an intensional rule from the CDF store by
+%\pred{retractIntRule/1}, as occurs for instance when facts are removed
+%using the CDF editor.
+\end{itemize}
+
+\item Contexts where component-level checks can be applied, and are of
+type {\tt componentLevel}.
+\begin{itemize}
+\item \context{componentUpdate} This context occurs when the
+predicate \pred{update\_all\_components/3} is called to save or move a
+component.
+
+\item \context{loadComponent} This context occurs  when the predicate
+\pred{load\_component/3} is called to load a new component.
+\end{itemize}
+\end{itemize}
+
+The checks are associated with a given context by default in
+\file{cdf\_config.P} or in the user's \file{xsbrc.P} file.  However at
+any point in a computation, a user may associate a given check to a
+context or dissasociate the check from the context using
+\pred{addCheckToContext/2} and~\pred{removeCheckFromContext/2}.
+
+In addition, certain of the semantics checking predicates may be
+useful outside of contexts, in order to check that a CDF fact is
+properly ground or well-sorted.  To support this, there is a ``dummy''
+context, {\tt usercall} that is displayed in warnings and errors in
+these cases.
+
+%---------------------------------------------------
+
+\subsection{Adding User Contexts}
+
+At an operational level, a context is executed whenever the predicate
+{\tt apply\_checks(+Context,Argument)} is called, where {\tt
+Argument} is either an extensional fact or a component tag, depending
+on the type of the context.  This predicate determines which checks
+are associated with {\tt Context} and ensures that all of the checks
+are called.  Thus, the first step in adding a context to user code is
+to determine what point (or points) checks should be made, and figure
+out a name for the context.
+
+In order to ensure that the checks are performed properly, the context
+must be made known to CDF.  This is done by the predicate {\tt
+addUserContext(+Context,+Type)} which informs CDF that a context of a
+given type is added.  The context may be removed by {\tt
+removeUserContext(+Context)}.
+
+{\sc TLS add something about persistance for CDF flags}.
+
+%---------------------------------------------------
+
+\subsection{Semantic Checking Predicates} \label{sec:checkingapi}
+
+\begin{description}
+\ourpredmoditem{cdf\_check\_ground/1}{cdf\_checks}
+{\tt cdf\_check\_ground(+Term)} requires that {\tt Term} be in the
+domain \domain{isType0Term/1}, and checks that each argument {\tt A}
+of {\tt Term} is a CDF identifier and that each identifier occurring
+in {\tt A} is either ground or has the component tag
+\component{cdfpt}.  If not, an instantiation error is thrown.
+
+{\bf Exceptions} 
+
+{\tt Domain Exception:} {\tt Term} is not in the domain {\tt
+isType0Term/1}.
+
+{\tt Instantiation Exception:} {\tt Term} has a non-ground identifier,
+not in \component{cdfpt}.
+
+
+% TLS: how about domain error?
+\ourpredmodrptitem{cdf\_check\_sorts/2}{cdf\_checks}
+
+\ourpredmoditem{cdf\_check\_sorts/1}{cdf\_checks}
+{\tt cdf\_check\_sorts(+Context,+Term)} requires that {\tt Term} be in
+the domain \domain{isType0Term/1}.  The predicate checks that each
+argument {\tt A} of {\tt Term} is a CDF identifier that obeys the
+sorting constraints of the instance axiom for {\tt Term}, as well as
+the Downward Closure Axiom for Product Identifiers
+(Axiom~\ref{ax:downcl}).  If {\tt Term} is not in the domain {\tt
+isType0Term/1} or if it is not well-sorted, a warning is written out
+to the XSB messages stream indicating that the predicate failed during
+{\tt Context} and the predicate fails.  {\tt cdf\_check\_sorts(+Term)}
+behaves similarly, with the context set to {\tt usercall}.
+
+\ourpredmoditem{cdf\_check\_implication/1}{cdf\_checks}
+{\tt cdf\_check\_implication(+Term)} requires that {\tt Term} be in
+the domain \domain{isType0Term/1}.  The predicate silently fails if the
+corresponding Type-0 predicate is derivable.  For instance, if {\tt
+Term} were equal to {\tt hasAttr\_ext(C1,R1,C2)}, then the predicate
+fails if {\tt hasAttr(C1,R1,C2)} holds in the current CDF instance.
+
+\ourpredmoditem{cdf\_check\_identity/1}{cdf\_checks}
+{\tt cdf\_check\_identity(+Term)} silently fails if {\tt ExtTerm} has
+been asserted, or if the arguments of {\tt ExtTerm} can be derived by
+a corresponding intensional rule; otherwise it succeeds.  For
+instance, if {\tt ExtTerm} were equal to {\tt hasAttr\_ext(C1,R1,C2)},
+then the predicate fails if {\tt ExtTerm} were already in the CDF
+instance or if {\tt hasAttr\_int(C1,R1,C2)} were derivable.  As it
+does not make use of inheritance rules, this predicate can much faster
+than {\tt cdf\_check\_implication/1}
+
+\ourpredmoditem{cdf\_check\_redundancies/3}{cdf\_checks}
+If the mode in {\tt
+cdf\_check\_redundancies(+Context,+Component,+Mode)} is {\tt retract},
+this predicate backtracks through each extensional fact $F\_ext\theta$
+(see Section~\ref{sec:checkpreds}) that are associated with {\tt
+Component} and removes $F\_ext\theta$ if $F\theta$ is {\sc
+inh}-implied by other extensional facts or intensional rules.
+Otherwise, if {\tt Mode} is set to {\tt warn}, rather than removing
+redundant facts, a warning is issued for each fact found to be
+redundant.
+
+\ourpredmoditem{checkComponentConsistency/1}{cdf\_checks}
+{\tt checkComponentConsistency(+Component)} ensures that each class or
+object identifier associated with {\tt Component} has a consistent
+definition using the CDF theorem prover.
+
+\ourpredmoditem{addCheckToContext/2}{cdf\_checks}
+{\tt addCheckToContext(+PredIndicator,+Context)} ensures that the
+check {\tt PredIndicator} (i.e. a term of the form {\tt F/N}) will be
+performed when executing any context that unifies with {\tt Context}.
+If {\tt PredIndicator} has already been added to {\tt Context}, {\tt
+addCheckToContext/2} succeeds. 
+
+{\bf Exceptions}:
+    \begin{description}
+    \item[{\tt instantiation\_error}]
+    	{\tt PredIndiecator} or {\tt Context} is not instantiated at
+	    time of call. 
+    \item[{\tt misc\_error}]
+    	{\tt Predindicator} is not a predicate indicator.
+    \item[{\tt domain\_error}]
+    	File {\tt Context} is not currently a context.
+    \item[{\tt misc\_error}]
+    	{\tt Context} and {\tt Predindicator} use different context types.
+    \end{description}
+
+\ourpredmoditem{removeCheckFromContext/2}{cdf\_checks}
+{\tt removeCheckToContext(?PredIndicator,?Context)} ensures that any
+checks that unify with {\tt PredIndicator} (i.e. a term of the form
+{\tt F/N}) will {\em not} be no longer performed when executing {\tt
+Context}.  If {\tt PredIndicator} is not associated with {\tt
+Context}, {\tt removeCheckFromContext/2} succeeds.
+
+\ourpredmoditem{addUserContext/2}{cdf\_checks}
+{\tt addUserContext(+Context,+Type)} adds a context named {\tt
+Context} of type {\tt Type}.  This action must be performed before any
+checks can be added to {\tt Context}.  If {\tt Context} has already
+been added with the same type the predicate succeeds, otherwise it
+throws a permission error.
+
+{\bf Exceptions}:
+    \begin{description}
+    \item[{\tt instantiation\_error}]
+    	{\tt Context} or {\tt Type} is not instantiated at the time of call. 
+    \item[{\tt domain\_error}]
+    	File {\tt Type} is not in domain {\tt isContextType}
+    \item[{\tt misc\_error}]
+    	{\tt Context} is a system context.
+    \item[{\tt misc\_error}]
+    	{\tt Context} has already been added, with a type different
+	    than {\tt Type}.
+    \end{description}
+
+\ourpredmoditem{removeUserContext/1}{cdf\_checks}
+{\tt removeUserContext(?Context)} removes any contexts unifying with
+{\tt Context} from CDF.  If {\tt Context} is not currently a context,
+the predicate succeeds.
+
+\ourpredmoditem{apply\_checks/2}{cdf\_checks}
+{\tt apply\_checks(+Context,+Argument)} applys any checks that have
+currently been added for {\tt Context} to {\tt Argument}.  If {\tt
+Argument} is not of the right type, handling this error is left to the
+checks for {\tt Context}, which may fail, emit warnings, throw errors,
+etc.
+
+
+\ourpreddomitem{isContextType/1}{cdf\_checks}
+{\tt isContextType(?Type)} defines the context types for \version{} of
+CDF.
+
+\ourpredmoditem{currentContext/3}{cdf\_checks}
+{\tt currentContext(?Context,?Mode,?Type)} defines the contexts for
+the current CDF state, their ``mode'' (i.e. system or user) and their
+type.
+%
+\end{description}

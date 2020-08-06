@@ -1,0 +1,115 @@
+:- compiler_options([ciao_directives]).
+
+:- export pretty_print/1.
+
+:- import user_replacement_hook/1 from usermod.
+:- import write_term/2 from write_term.
+:- import numbervars/3 from num_vars.
+
+:- dynamic user_replacement_hook/1.
+
+%% -----------------------------------------------------------------------
+:- comment(title,"A simple pretty-printer for XSB programs").
+
+:- comment(module,"This library module writes out to standard output a 
+	clause or a list of clauses.  Does not handle non-expanded
+        DCGs.  Adapted from Ciao by Swift.").  
+
+%% -----------------------------------------------------------------------
+
+separator(yes).  % or no.
+
+/* used for writing out terms not in XSB syntax */
+replacement_hook(A):- 
+	user_replacement_hook(A),!.
+replacement_hook(H):- 
+	write_term(H,[quoted(true),numbervars(true)]).
+
+pretty_print([]):- !.
+pretty_print([(Cl,_)|T]) :- !,
+	pretty_print0(Cl),
+	pretty_print(T).
+pretty_print([Cl|T]) :- !,
+	pretty_print0(Cl),
+	pretty_print(T).
+pretty_print((Cl,_)) :- !,
+	pretty_print0(Cl).
+pretty_print(Cl) :- 
+	pretty_print0(Cl).
+
+pretty_print0(Cl):- 
+	ppfail(Cl),
+	(separator(yes) -> nl ; true).
+
+ppfail(Term):- 
+	numbervars(Term,0,_),
+	pp(Term),
+	fail.
+ppfail(_).
+
+pp(directive(D)):- !,
+	write(':- '), 
+	writeq(D).
+pp((H :- B)):- !,
+	pp(clause(H,B)).
+pp(clause(H,true)):- !,
+	replacement_hook(H),write('.'),nl.
+pp(clause(H,!)):- !,
+	writeq(H),
+ 	write(' :- !').
+pp(clause(H,B)):- !,
+	ppb(H,0),
+	write(' :-'), nl,
+	ppb(B,8),write('.').
+pp(H):-
+	pp(clause(H,true)).
+
+ppb((A,B),Tab) :- !,
+	ppb(A,Tab),
+	write(','),nl,
+	ppb(B,Tab).
+ppb((A->B;C),Tab) :- !,
+	tab(Tab), write('('), nl,
+	NTab1 is Tab+2,
+	NTab2 is Tab+5,
+	ppb(A,NTab1),
+	write(' ->'), nl,
+	ppb(B,NTab2),nl,
+	tab(Tab), write(';'), nl,
+	ppb(C,NTab2),nl,
+	tab(Tab), write(')').
+ppb((A->B),Tab) :- !,
+	tab(Tab), write('('), nl,
+	NTab1 is Tab+2,
+	NTab2 is Tab+5,
+	ppb(A,NTab1),
+	write(' ->'), nl,
+	ppb(B,NTab2),nl,
+	tab(Tab), write(')').
+ppb((A;B),Tab) :- !,
+	tab(Tab), write('('), nl,
+	NTab is Tab+5,
+	ppb(A,NTab),nl,
+	tab(Tab), write(';'), nl,
+	ppb(B,NTab),nl,
+	tab(Tab), write(')').
+ppb(A,Tab) :-
+ 	ppg(A,Tab).
+
+% simple or qualified atomic goal
+ppg(A,Tab) :-
+	tab(Tab),
+	replacement_hook(A).
+
+end_of_file.
+
+ppc(X,Tab) :-
+	functor(X,F,2),
+	( F=',' ; F='=>' ; F=';' ; F='->' ), !,
+	tab(Tab), write('('), nl,
+	NTab is Tab+1,
+	ppb(X,NTab),nl,
+	tab(Tab), write(')').
+ppc(A,Tab) :-
+	ppb(A,Tab).
+

@@ -1,0 +1,25 @@
+%% rules generated from mucalculus.P for justifier
+tabled_pred(rec_models / 2).
+
+rule(rec_models(A,B),(fDef(B,C)  ','  models(A,C))).
+rule(models(A,tt),true).
+rule(models(A,fAnd(B,C)),(models(A,B)  ','  models(A,C))).
+rule(models(A,fOr(B,C)),(models(A,B)  ';'  models(A,C))).
+rule(models(A,fDiam(B,C)),(trans(A,B,D)  ','  models(D,C))).
+rule(models(A,fDiamMinus(B,C)),(trans_not_a(A,B,D)  ','  models(D,C))).
+rule(models(A,fDiamSet(B,C)),(trans_member(A,B,D)  ','  models(D,C))).
+rule(models(A,fDiamSetMinus(B,C)),(trans_not_member(A,B,D)  ','  models(D,C))).
+rule(models(A,fBox(B,C)),forall(D,trans(A,B,D),models(D,C))).
+rule(models(A,fBoxMinus(B,C)),forall(D,trans_not_a(A,B,D),models(D,C))).
+rule(models(A,fBoxSet(B,C)),forall(D,trans_member(A,B,D),models(D,C))).
+rule(models(A,fBoxSetMinus(B,C)),forall(D,trans_not_member(A,B,D),models(D,C))).
+rule(models(A,neg_form(B)),'t not'(rec_models(A,B))).
+rule(models(A,form(B)),rec_models(A,B)).
+rule(trans_not_a(A,B,C),(trans(A,D,C)  ','  \+D == B)).
+rule(trans_member(A,B,C),(trans(A,D,C)  ','  member(D,B))).
+rule(trans_not_member(A,B,C),(trans(A,D,C)  ','  \+member(D,B))).
+rule(forall(A,B,C),(findall(C,B,D)  ','  all_true(D))).
+rule(all_true([]),true).
+rule(all_true([A|B]),(call(A)  ','  all_true(B))).
+
+

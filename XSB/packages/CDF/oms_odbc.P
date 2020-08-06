@@ -1,0 +1,290 @@
+
+:- import scan/2, set_scan_pars/1 from stdscan.
+:- import odbc_open/3, odbc_close/0, 
+	  odbc_show_schema/1, 
+	  odbc_import/2, odbc_attach/2,
+	  odbc_insert/2, odbc_sql/3  from odbc_call.
+
+:- import member/2,memberchk/2,ground/1 from basics.
+:- import warning/1 from standard.
+:- import concat_atom/2 from string.
+
+:- dynamic odbc_debug/0.
+%:- assert(odbc_debug).
+
+?- set_scan_pars([letter(0'_)]).
+
+init(Name,Pwd):- 
+	odbc_open(sqlserver,Name,Pwd),
+	(import odbc_import/2, 
+          odbc_open/1, odbc_open/2,
+          odbc_open/3, odbc_open/4,
+	  odbc_close/0, odbc_close/1,
+	  odbc_shutdown/0,
+	  odbc_sql/3, odbc_sql/4,
+	  odbc_query/2, odbc_query/3,
+	  odbc_deallocate_query/1, odbc_deallocate_query/2,
+	  odbc_import/2, odbc_import/3,
+	  odbc_transaction/1, odbc_transaction/2,
+          odbc_connect_option/5,
+	  odbc_get_schema/2, odbc_get_schema/3,
+	  odbc_show_schema/1, odbc_show_schema/2,
+	  odbc_user_tables/1, odbc_user_tables/2,
+	  odbc_insert/2, odbc_insert/3,
+	  odbc_delete/2, odbc_delete/3,
+	  odbc_flag/3,
+	  odbc_attach/2, odbc_attach/3,
+	  odbc_create_table/2, odbc_create_table/3,
+	  odbc_create_index/3, odbc_create_index/4,
+	  odbc_delete_table/1, odbc_delete_table/2,
+	  odbc_delete_view/1, odbc_delete_view/2,
+	  odbc_delete_index/2, odbc_delete_index/3,
+	  odbc_current_cursor/1, odbc_deactivate_cursor/1 from odbc_call).
+
+/*
+findall_odbc_sql(Input,Statement,Output,Term):- 
+	(ground_list(Input),var_list(Output) -> 
+	      findall(O,odbc_sql(Input,Statement,O),Outputs1),
+ 	      sort(Outputs1,Outputs),
+	      member(Output,Outputs)
+	    ; mode_warning(Term)).
+*/
+
+/* str_prefix(String,Char,Prefix)
+   Prefix is the prefix of String up to the first appearance of Char
+*/
+str_prefix([],_,[]) :- !.
+str_prefix([Char|_],Char,[]) :- !.
+str_prefix([H|T],Char,[H|ST]) :-
+	str_prefix(T,Char,ST).
+
+% uppercase
+upper_case(Ci,Co) :-
+	(Ci >= 0'a, Ci =< 122
+	 ->	Co is Ci - 32
+	 ;	Co = Ci
+	).
+
+upper_case_codes([],[]).
+upper_case_codes([C|Cs],[U|Us]) :-
+	upper_case(C,U),
+	upper_case_codes(Cs,Us).
+
+upper_case_atom(A,U) :-
+	atom_codes(A,AC),
+	upper_case_codes(AC,UC),
+	atom_codes(U,UC).
+
+
+findall_odbc_sql_1(Input,Statement,Output):- 
+%	writeln('-----fos'(Input,Statement,Output)),
+	(odbc_debug -> 
+	    check_index(Statement)
+	;   true),
+	findall_odbc_sql_2(Input,Statement,Output).
+
+findall_odbc_sql_2(Input,Statement,Output):- 
+	findall(O,odbc_sql(Input,Statement,O),Outputs1),
+	sort(Outputs1,Outputs),
+	member(Output,Outputs).
+
+mode_warning(Term):- 
+	warning(['DB calling modes not implemented for',Term]),
+	fail.
+
+ground_list([]).
+ground_list([H|T]):- 
+	ground(H),
+	ground_list(T).
+
+:- table check_index/1.
+check_index(Statement):- 
+	writeln('---'(Statement)),
+	(parse_select_statement(Statement,Table,Selection) ->
+	    check_index_1(Table,Selection,Statement)
+	  ; true).
+	    
+check_index_1(table(DB,Table),Selection,Statement):- 
+	(DB == '' -> 
+	    check_index_2(Table,Selection,Statement)
+	;
+%	    findall_odbc_sql_2([],['use ',DB],_),
+	    check_index_2(DB,Table,Selection,Statement),
+%	    findall_odbc_sql_2([],'use master',_F) ,
+	    true
+	).
+	
+check_index_2(Table,Selection,Statement):- 
+%	    findall(Ret,odbc_sql([],['sp_helpindex ',Table],Ret),Retlist),
+	    findall(Ret,odbc_sql([],['my_getindexes ',Table],Ret),Retlist),
+	    ground(Retlist), % should take out.
+	    check_index_3(Retlist,Selection,[],Statement).
+
+check_index_2(DB,Table,Selection,Statement):- 
+%	    findall(Ret,odbc_sql([],['sp_helpindex ',Table],Ret),Retlist),
+	    findall(Ret,odbc_sql([],[DB,'..my_getindexes ',Table],Ret),Retlist),
+	    ground(Retlist), % should take out.
+	    check_index_3(Retlist,Selection,[],Statement).
+
+% my_getindexes returns empty if the table has no indices -- lfcastro
+check_index_3([[]], _Selection, _In, Statement) :-
+	warning(['No indices in table for ', Statement]).
+check_index_3([],_Selection,In,Statement):- 
+	(In == [] -> 
+	    warning(['No indices in place for ',Statement])
+	;   warning(['Indices used in ',Statement,' are non-clustered:  ',In]) ).
+check_index_3([[_,Type,Column]|R],Selection,In,Statement):-
+	atom_codes(Column,CColumn),
+	str_prefix(CColumn,0',,SColumn), % gets the first key on
+				         % multiple-key indexes
+	upper_case_codes(SColumn,USColumn),
+	atom_codes(UColumn,USColumn),
+	( memberchk(UColumn,Selection) -> 
+	    (is_clustered(Type) -> 
+		true
+	    ;   check_index_3(R,Selection,[Column|In],Statement) )
+	; check_index_3(R,Selection,In,Statement) ).
+
+is_clustered(Type):- 
+	atom_chars(Type,[c,l,u,s,t,e,r,e,d|_]).
+
+parse_select_statement(In,Table,Selection):- 
+	(atom(In) -> Atom = In ; (is_atom_list(Atom) -> concat_atom(In,Atom) ) ),
+	name(Atom,Alist),
+	scan(Alist,Output), 
+            pss1(Table,Selection,Output,_),!.
+parse_select_statement(Atom,_Table,_Selection):-       
+	writeln('cant parse select statement'(Atom)),
+	fail.
+
+is_atom_list([]).
+is_atom_list([H|T]):- 
+	atom(H),
+	is_atom_list(T).
+
+pss1(Table,Selection) --> 
+	['SELECT'],
+	table(Table),
+ 	get_selection(Selection).
+
+table(Table) -->
+	read_until_from,
+	table_1(Table).
+
+read_until_from --> ['FROM'],!.
+read_until_from --> 
+	[_],
+	read_until_from.
+
+table_1(table(DB,Table)) -->
+	[_Server],['.'],[DB],['.'],[_Owner],['.'],[Table],
+	!.
+table_1(table(DB,Table)) -->
+	[DB],['.'],[_Owner],['.'],[Table],
+	!.
+table_1(table(DB,Table)) -->
+	[DB],['.'],['.'],[Table],
+	!.
+table_1(table('',Table)) -->
+	[_Owner],['.'],[Table],
+	!.
+table_1(table('',Table)) -->
+	[Table].
+
+read_until_where -->
+	['WHERE'],
+	!.
+read_until_where -->
+	[_],
+	read_until_where.
+get_selection(Selection) -->
+	['WHERE'],
+	!,
+	get_selection_1(Selection).
+get_selection(Selection) -->
+	{ warning(['Skipping tokens before WHERE -- probably a non-single-table query']) },
+	read_until_where,
+	get_selection_1(Selection).
+
+opt_space --> [''],!.
+opt_space --> [].
+	
+get_selection_1([Selection|R]) --> 
+%	get_equality(Selection),
+	where_predicate(Selection),
+	get_selection_1_rest(R).
+
+get_selection_1_rest([Sel|R]) --> 
+	opt_space,
+	['AND'],!,
+	where_predicate(Sel),
+%	get_equality(Sel),
+	get_selection_1_rest(R).
+get_selection_1_rest([]) --> [].
+	
+% get_equality(Sel) --> 
+% 	['?'], opt_space,
+% 	eq_op, opt_space,
+% 	[Sel],!.
+% get_equality(Sel) --> 
+% 	[Sel], opt_space,
+% 	eq_op ,opt_space,['?'].
+
+eq_op --> ['='].
+eq_op --> ['*='].
+eq_op --> ['=*'].
+
+get_relop -->
+	[_Sel], opt_space,
+	rel_op, opt_space,
+	['?'].
+
+rel_op --> ['<'].
+rel_op --> ['>'].
+rel_op --> ['<='].
+rel_op --> ['>='].
+rel_op --> ['<>'].
+rel_op --> ['!='].
+rel_op --> ['!<'].
+
+opt_not --> ['NOT'], !.
+opt_not --> [].
+
+% here, we assume that the first token in a predicate
+% defines the name of the field of interest --lfcastro
+where_predicate(Sel) -->
+	[Sel], opt_space,
+	( rel_op ; eq_op ), opt_space,
+	[_].
+where_predicate(Sel) -->
+	[Sel], opt_not,
+	['LIKE'], opt_space,
+	[_].
+where_predicate(Sel) -->
+	[Sel], opt_not,
+	['BETWEEN'], opt_space,
+	[_], opt_space,
+	['AND'], opt_space,
+	[_].
+where_predicate(Sel) -->
+	[Sel], ['IS'], opt_not, ['NULL'].
+	
+test(Table,Select):- 
+	parse_select_statement(
+	     'select REPLY_TABLENUMBER,REPLY_VALUE,REPLY_CODE
+             from dlafiig..fiig_mode_mrc_property_appendix_a_tablenumber_value
+                where MRC = ? and FIIG_DOC = ?',
+		     Table,Select).
+
+end_of_file.
+
+include_ei_view(File):- 
+	load_dyn(File),
+	include_ei_view1.
+	
+include_ei_view1:- 
+	oms_ei_rule(Head,Body),
+	assert((Head :- Body)),
+	fail.
+attach_to_dbmodule1.
+

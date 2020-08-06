@@ -1,0 +1,451 @@
+/* File:      foreign.P
+** Author(s): Jiyang Xu, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: foreign.P,v 1.65 2012-09-27 02:25:58 kifer Exp $
+** 
+*/
+
+:- compiler_options([xpp_on]).
+
+#define FOREIGN_DEBUG
+
+#include "flag_defs_xsb.h"
+#include "psc_defs.h"
+#include "extensions_xsb.h"
+#include "char_defs.h"
+
+
+/* need ldoption at compile time for ELF systems, so compile_H is done 1st. */
+compile_cH(Modname, Base, Ext, Options, ExList, Dir) :-
+	compile_H(Modname,Base,Options,ExList,LdOption,CompComm,TempFile),
+	compile_c(Modname,Base,Ext,Options,Dir,LdOption,CompComm,TempFile).
+
+
+%% This is a user-level predicate, that can be used to compile shared objects.
+%% These files don't require .H. They are used as auxiliary dynamically 
+%% linked libraries for foreign modules.
+%%
+%% COptions have the usual format: [cc(CC), cc_opts(Opts), ...]
+%% LdOption is a string to pass to the loader (like what is put in ldoptions)
+compile_so(Path, COptions, LdOptions) :-
+	parse_filename(Path, Dir, BaseName, _Extension),
+	fmt_write_string(PathSansExt, '%s/%s', args(Dir,BaseName)),
+	compile_c(BaseName, PathSansExt, '.c ', COptions, Dir, LdOptions, _, _).
+
+
+%% User-level predicate that yields the flag suitable for defining 
+%% the runtime loader library search path. This flag 
+%% should be added to ldoptions when the foreign module 
+%% itself dynamically links with other C libraries. See packages/libwww/ 
+%% for an example.
+%% If this predicate fails to return an appropriate flag, things might still 
+%% work, if you set LD_LIBRARY_PATH before running XSB.
+%%
+%% A better way would be to use libtool, if we can figure out how to do it 
+%% dynamically.
+%%
+%% runtime_loader_flag(+Compiler,+LibraryDir,-Flag)
+runtime_loader_flag(_Compiler,'','') :- !.
+runtime_loader_flag(Compiler,LibraryDir,Flag):-
+	xsb_configuration(configuration, Configuration),
+	(   str_sub('powerpc-apple-darwin', Configuration)
+	->  Flag = ''
+	;	str_sub(gcc,Compiler) %% egcc, kgcc, and friends
+	->  str_cat('-Wl,-rpath,', LibraryDir, Flag)
+	;   str_sub(solaris, Configuration)
+	->  str_cat('-rpath ', LibraryDir, Flag)
+	;   str_sub(linux, Configuration)
+	->  str_cat('-Wl,-rpath,', LibraryDir, Flag)
+	;   str_sub(netbsd, Configuration)
+	->  str_cat('-Wl,-rpath,', LibraryDir, Flag)
+	;   str_sub(freebsd, Configuration)
+	->  str_cat('-Wl,-rpath,', LibraryDir, Flag)
+	;   str_sub('bsd-', Configuration)
+	->  str_cat('-Wl,-rpath,', LibraryDir, Flag)
+	;  str_cat('-rpath ', LibraryDir, Flag)
+	).
+
+%% This should really be used in compile_c, and in consult.P
+%% but needs to be tested - mk
+foreign_module_library_extension(Configuration,Extension) :-
+	( ( str_sub('solaris', Configuration)
+	  ; str_sub('linux', Configuration)
+	  ; str_sub('freebsd', Configuration)
+	  ; str_sub('netbsd', Configuration)
+	  ; str_sub('bsd-', Configuration)
+	  ; str_sub('sgi', Configuration)
+	  ; str_sub('alpha', Configuration)
+	  )
+	->
+	    Extension = '.so'
+	;
+	    str_sub('darwin', Configuration)
+	->
+	    Extension = '.dylib'
+	;
+	    Extension = '.o'
+	).
+
+
+
+%% Options: C options
+%% LdOptions: Loader options
+%% CompCom: compiler command--for testing?
+%% TempFile: Directory
+compile_c(Modname, OrigBase, Ext, Options, Dir, LdOption, CompComm, TempFile) :-
+	xsb_configuration(configuration, Configuration),
+	xsb_configuration(compiler_flags, XSB_CC_Opts),
+	xsb_configuration(loader_flags, LD_Opts),
+	escape_path(OrigBase,Base),
+	retractall(current_compiled_module(_)),
+	assert(current_compiled_module(Base)),
+	cc_name(Options, CC_Name),
+	cc_options(CC_Name, Options, CC_Opts0),
+	%% If XSB CC opts has -g then add -g to the foreign module options
+	(  str_sub(' -g', XSB_CC_Opts), not str_sub(' -g', CC_Opts0)
+	-> str_cat(' -g ', CC_Opts0, CC_Opts)
+	;  CC_Opts = CC_Opts0
+	),
+	message(('[Compiling C file ', Base, Ext ,'using ', CC_Name, ']')),
+	( var(LdOption) -> LdOption = '' ; true ),
+	( var(TempFile) -> TempFile = '' ; true ),
+	%% If not debugging, then strip the symbol table from the result
+	(  str_sub(' -g', CC_Opts)
+	-> SymbolTableFlag = ' '
+	;  SymbolTableFlag = ' -s'
+	),
+	(   var(CompComm)
+	->  (	str_sub('solaris', Configuration)
+	    ->	shell([CC_Name, SymbolTableFlag, ' -o ', Base, '.so', ' -G ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption])
+#ifdef FOREIGN_DEBUG
+	    , message((CC_Name, SymbolTableFlag, ' -o ', Base, '.so', ' -G ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption))
+#endif
+	    ;	str_sub('linux', Configuration)
+	    ->	shell([CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',Base, Ext, TempFile, 
+		       ' ', CC_Opts, ' ', XSB_CC_Opts,' ',LD_Opts,' ',LdOption])
+#ifdef FOREIGN_DEBUG
+	    , message((CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',Base, Ext, TempFile, 
+		       ' ', CC_Opts, ' ', XSB_CC_Opts,' ',LD_Opts,' ',LdOption))
+#endif
+	    ; str_sub('freebsd', Configuration)
+	    ->	shell([CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption])
+#ifdef FOREIGN_DEBUG
+	    , message((CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption))
+#endif
+	    ; str_sub('netbsd', Configuration)
+	    ->	shell([CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption])
+#ifdef FOREIGN_DEBUG
+	    , message((CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption))
+#endif
+	    ; str_sub('bsd-', Configuration)
+	    ->	shell([CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption])
+#ifdef FOREIGN_DEBUG
+	    , message((CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption))
+#endif
+	    ;	str_sub('sgi', Configuration)
+	    ->	shell([CC_Name, SymbolTableFlag, ' -o ', Base, '.so',
+		       ' -shared ',
+		       Base, Ext, TempFile, ' ', CC_Opts, ' ',LD_Opts,' ',LdOption])
+	    ;	str_sub('alpha', Configuration)
+	    ->	shell([CC_Name, ' -c ', Base, Ext, TempFile, ' ',CC_Opts]),
+		shell(['ld -expect_unresolved \* -O1 -shared -o ',
+		       Base, '.so ', Base, '.o ', LdOption])
+	    ; str_sub('apple-darwin', Configuration)
+	    ->	shell([CC_Name,' -dynamiclib -undefined dynamic_lookup -fPIC -o ', Base, '.dylib ', Base, Ext, TempFile, ' ', CC_Opts, ' ', XSB_CC_Opts, ' ',LD_Opts,' ',LdOption])
+#ifdef FOREIGN_DEBUG
+	    , message((CC_Name,' -dynamiclib -undefined dynamic_lookup -fPIC -o ', Base, '.dylib ', Base, Ext, TempFile, ' ', CC_Opts, ' ', XSB_CC_Opts, ' ',LD_Opts,' ',LdOption))
+#endif
+	    ;	str_sub('cygwin', Configuration)
+	    ->  message(shell([CC_Name, ' -c ', Base, Ext, TempFile, ' ', CC_Opts,' ',XSB_CC_Opts])),
+		concat_atom([Base,'.o'], Obj),
+		shell([CC_Name, ' -c ', Base, Ext, /*TempFile,*/ ' -o ',
+		       Obj, ' ', CC_Opts,' ',XSB_CC_Opts]),
+		(  TempFile = ''
+		-> TempObj = ''
+		;   substring(TempFile,0,-3,TempRoot),
+		    concat_atom([TempRoot,'.o '],TempObj),
+		    message(shell([CC_Name,' -c ',TempFile,' -o ',
+				   TempObj, ' ', CC_Opts,' ',XSB_CC_Opts])),
+		    shell([CC_Name,' -c ',TempFile,' -o ',
+			   TempObj, ' ', CC_Opts,' ',XSB_CC_Opts])
+
+		),
+		xsb_configuration(config_dir,OrigConfigDir),
+		escape_path(OrigConfigDir,ConfigDir),
+		(  TempObj = ''
+		-> message(shell(['sh ',ConfigDir,'/makedef.sh ',
+			       Obj])),
+		   shell(['sh ',ConfigDir,'/makedef.sh ',Obj])
+		;  message(shell(['sh ',ConfigDir,'/saved.o/makedef.sh ',
+			       TempObj])),
+		   shell(['sh ',ConfigDir,'/makedef.sh ',TempObj])
+		),
+		message(shell(['mv out.def ', Base,'.def'])),
+		shell(['mv out.def ', Base,'.def']),
+		xsb_configuration(config_bindir,BINDIR),
+		message(shell([CC_Name,' ',CC_Opts,
+			       ' -L',BINDIR,' ',
+			       ' -Wl,--out-implib=',Base,'.a ',
+			       ' -shared -s -o ',
+			       Base,'.dll ',Base,'.def ',
+			       Obj,' ', TempObj,' ',LdOption, ' ', LD_Opts, ' -lxsb'])),
+		shell([CC_Name,' ',CC_Opts,
+		       ' -L',BINDIR,
+		       ' -Wl,--out-implib=',Base,'.a ',
+		       ' -shared -s -o ',
+		       Base,'.dll ',Base,'.def ',
+		       %% NOTE: It is IMPORTANT that LdOption & LD_Opts are at the end!
+		       Obj,' ',TempObj,' ',LdOption, ' ', LD_Opts,' -lxsb'])
+	    ;	str_sub('windows', Configuration)
+	    ->  %% check if Module.dll exists in the bindir or current dir
+		%% If not - issue a warning
+		%%% TLS: dont really understand -- shd this throw an error?
+		fmt_write_string(DLLhere, '%s.dll', arg(Modname)),
+		xsb_configuration(config_bindir,BINDIR),
+		fmt_write_string(DLLbin, '%s\%s.dll', arg(BINDIR,Modname)),
+		((file_exists(DLLhere) ; file_exists(DLLbin)) -> true
+		; warning(('You must create the DLL ', Modname,'.dll first'))
+		)
+	    ;	shell([CC_Name, ' -c ', Base, Ext, TempFile, ' ', CC_Opts]),
+	        /* The following is here because C compilers usually put 
+	           the object file in the current directory
+	           and not in the source one. */
+	        (   Dir == './'
+		->  true
+		;   shell(['mv ', Modname, '.o ', Dir])
+		)
+	    )
+        ;   shell([CompComm])
+        ).
+
+
+cc_name(Options, CC_Name) :-
+	( memberchk(cc(CC_Name), Options), atom(CC_Name) -> true
+	;   xsb_configuration(compiler, CC_Name)
+	).
+cc_options(CC_Name, Options, CC_Opts) :-
+	xsb_configuration(emudir, Emudir),
+	xsb_configuration(config_dir, ConfigDir),
+	escape_path(Emudir,EscEmudir),
+	escape_path(ConfigDir,EscConfigDir),
+	(   memberchk(cc_opts(CC_Opts1), Options)
+	->  fmt_write_string(CC_Opts2, '-I%s -I%s %s',
+			     args(EscEmudir,EscConfigDir,CC_Opts1))
+	;   fmt_write_string(CC_Opts2, '-I%s -I%s', args(EscEmudir, EscConfigDir))
+	),
+	(  str_sub(gcc,CC_Name) %% gcc, egcc, kgcc, and friends
+	-> str_cat(' -Wall -fPIC ', CC_Opts2, CC_Opts)
+	;  CC_Opts = CC_Opts2
+	).
+
+/* TLS: Problem somehow when debugging from gdb -- open_or_xpp_file
+   doesn't seem to return the right thing... havent figured it out. */
+compile_H(Modname, Base, Options, ExList, LdOption, CompComm, TempFile) :-
+	str_cat(Base, XSB_HDR_EXTENSION_ATOM, HFile),
+	( file_exists(HFile) ->
+	    (	Options == [] 
+	    ->	M = ''
+	    ;	M = ' (Prolog compiler options are ignored)'
+	    ),
+	    message(('[Compiling Foreign Module ', Base, M, ']')),
+	    cputime(TimeStart),
+	    seeing(OldFile),
+	    telling(OldTell),
+%%%	    see(HFile),
+	    repeat,
+	    open_or_xpp_file(HFile,XPP_process),
+%%	    trace,
+%%	    writeln(read_clauses(Modname,ExList,'',LdOption,CompComm,TempFile)),
+	    read_clauses(Modname,ExList,'',LdOption,CompComm,TempFile), !,
+	    check_xpp_process_status(HFile,
+				     XPP_process,
+				     'Loading foreign module aborted'),
+	    %% Release the file descriptor used to read from preprocessor
+	    (XPP_process == skip -> true
+	    ;
+		stat_flag(CURRENT_INPUT,FromPort),
+		file_close(FromPort)
+	    ),
+	    closefile(TempFile),
+	    see(OldFile),
+	    conset(xpp_on,0),
+%%%         seen,
+	    length(ExList, Count),
+	    str_cat(Base, XSB_OBJ_EXTENSION_ATOM, OFile),
+%%	    tell(OFile),
+	    open(OFile,write,OStr),
+	    co_asmhead(OStr, Modname, LdOption, Count),
+	    co_asmsym(OStr, ExList),
+	    close(OStr),
+%%%	    told,
+	    tell(OldTell),
+	    time_message(TimeStart, (Modname, ' compiled'))
+	;   abort(('File ', HFile, ' for foreign module does not exist'))
+	),
+	!.
+
+escape_path(Path,Path) :-
+	xsb_configuration(configuration, Configuration),
+	str_sub('windows', Configuration),
+	!.
+escape_path(Path,PathEsc) :-
+	atom_codes(Path,PathList),
+	escape_chars(PathList,PathListEsc),
+	atom_codes(PathEsc,PathListEsc).
+
+escape_chars([],[]) :- !.
+escape_chars([Ch|Rest],[CH_BACKSLASH,Ch|RestEsc]) :-
+	memberchk(Ch,[CH_SPACE,CH_COLON]),
+	!,
+	escape_chars(Rest,RestEsc).
+escape_chars([Ch|Rest],[Ch|RestEsc]) :-
+	escape_chars(Rest,RestEsc).
+
+
+read_clauses(ModName, ExList, LdOptionIn, LdOptionOut, CompComm, TempFile) :-
+	read(Clause),
+	(   Clause == end_of_file
+	->  LdOptionOut = LdOptionIn
+        ;   (   Clause = (':-'(export(Exports)))
+	    ->	add_to_exlist(Exports, ExList),
+		LdOptionMid = LdOptionIn
+	    ;	Clause = (':-'(ldoption(Opt)))
+	    ->	form_ld_option(Opt, LdOptionIn, LdOptionMid)
+	    ;	Clause = (':-'(compiler_options(CompOpt)))
+	    ->	(memberchk(xpp_on,CompOpt), conget(xpp_on,0)
+		->  closefile(TempFile),
+		    conset(xpp_on,1),
+		    seen, 
+		    fail
+		;   LdOptionMid = LdOptionIn)
+	    ;	Clause = (':-'(compile_command(CompComm)))
+	    ->	LdOptionMid = LdOptionIn
+	    ;	Clause = (':-'(immutable))
+	    ->	conset(immutable,1),
+	        LdOptionMid = LdOptionIn
+	    ;	proper_declaration(Clause,PredDecl,NeedsCTXT)
+	    ->	checkfile(ModName, TempFile), % creates tempfile if necessary
+	        process_from(PredDecl,Exports,NeedsCTXT),
+		add_to_exlist(Exports,ExList),
+		LdOptionMid = LdOptionIn
+	    ;	LdOptionMid = LdOptionIn % all other clauses are ignored
+	    ),
+            read_clauses(ModName, ExList, LdOptionMid, LdOptionOut, 
+			 CompComm, TempFile)
+        ).
+
+proper_declaration((':-'(foreign_pred(PredDecl))),PredDecl,nocontext).
+proper_declaration((':-'(private_foreign_pred(PredDecl))),PredDecl,context).
+
+form_ld_option([], In, In) :- !.
+form_ld_option([Opt|Opts], In , Out) :- !,
+	form_ld_option(In, Opt, Mid), form_ld_option(Opts, Mid, Out).
+form_ld_option(Opt, In, Out) :-
+	str_cat(In, Opt, M), str_cat(M, ' ', Out).
+
+add_to_exlist(P/A, ExList) :- !, attach(P/A, ExList).
+add_to_exlist((Pred, Preds), ListType) :- !,
+        add_to_exlist(Pred, ListType),
+        add_to_exlist(Preds, ListType).
+
+co_asmhead(OStr, Modname, LdOption, PSC_Count) :-
+	get_foreign_magic_number(LastDigit),
+	asm_magic(OStr,LastDigit),
+	str_len(Modname, Length),
+	file_put(OStr,Length),
+	write(OStr,Modname),
+	( LdOption == '' -> file_put(OStr,0) % No ldoption was specified (length is 0).
+	; str_len(LdOption, LdoLen), asm_putlength(OStr,LdoLen), write(OStr,LdOption)
+	),
+	write_int(OStr,PSC_Count).
+
+get_foreign_magic_number(LastDigit):- 
+	xsb_configuration(engine_mode,Emode),
+	conget(immutable,I),
+	(I = 1 -> Reloadable = immutable ; Reloadable = mutable),		
+	engine_mode_magic_num(Emode,Reloadable,LastDigit).
+
+co_asmsym(_OStr,[]).
+co_asmsym(OStr,[One|ExList]) :- co_one(OStr,One), co_asmsym(OStr,ExList).
+
+co_one(OStr,P/A) :-
+	str_len(P, L),
+	file_put(OStr,0),		% domain = ex(ported)
+	file_put(OStr,T_FORN),		% type = T_FORN (in psc_xsb.h)
+	file_put(OStr,A),		% arity = a
+	asm_putlength(OStr,L),		% length
+	write(OStr,P).		
+
+/*======================================================================*/
+/* format: 
+		+-----------------------+
+		| magic = 8		|
+		+-----------------------+------------------+
+		| len  |  module name (len size)	   |
+		+-----------------------+----------+-------+
+		| len  |  ld option		   |
+		+-----------------------+----------+
+		| psc count		|
+		+-----------------------+
+
+		+-----------------------+-------------------------------+
+	count:	| 0 | 13 | 0 |arity|len |  symbol name			|
+		+-----------------------+-------------------------------+
+		... ... ... ...
+		... ... ... ...
+
+	Note that a foreign module is always a Module (len size =/= 0).
+*/
+/*======================================================================*/
+
+%% Wrapper-generation
+%% Author: Luis Castro
+%% Date: 08/99
+
+checkfile(ModName, TempFile) :- 
+	var(TempFile), !,
+	str_cat('xsb_wrap_',ModName,TTName),
+	str_cat(TTName,'.c',TempFile),
+	tell(TempFile),
+	write_header.
+checkfile(_ModName,_TempFile).
+
+closefile(TempFile) :- 
+	var(TempFile), !.
+closefile(_TempFile) :- 
+	told.
+

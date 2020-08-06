@@ -1,0 +1,264 @@
+
+\section{CDF Instances} \label{sec:instance}
+
+Part~\ref{part:semantics} simplified the syntax of CDF instances in
+certain ways.  In this section we describe those aspects of the actual
+CDF implementation that differ from the abstract presentation
+Part~\ref{part:semantics}.
+
+The first major difference concerns CDF identifiers.
+
+\index{CDF Identifer}
+\index{component tag}
+\begin{definition}[CDF Identifiers] \label{def:cdfids}
+A {\em CDF identifier} has the functor symbol {\tt cid/2}, {\tt
+oid/2}, {\tt rid/2}, or {\tt crid/2}.  The second argument of a CDF
+identifier is a Prolog atom and is called its {\em component tag},
+while the first argument is either
+\begin{enumerate}
+\item a Prolog atom or 
+\item a term $f(I_1,\ldots,I_n)$ where $I_1,\ldots,I_n$ are CDF identifiers.
+\end{enumerate}
+In the first case, an identifier is called {\em atomic}; in the second
+it is called a {\em product identifier}.
+\end{definition}
+
+Thus in an implementation of, say, Example~\ref{ex:suture1} all
+identifiers would have component tags.  For instance the identifier
+{\tt cid(absorbableSutures)} might actually have the form {\tt
+cid(absorbableSutures,unspsc)} and {\tt oid(sutureU245H)} would have
+the form {\tt oid(sutureU245H,sutureRus)}.  These component tags have
+two main uses.  First, they allow ontolgies from separate soruces to
+be combined, and thus function in a manner somewhat analogous to XML
+namespaces.  Second, the component tags are critical to the CDF
+component system, described in \secref{sec:components}.
+
+%----------------------------------------------------------------------------
+\subsection{Extensional Facts and Intensional Rules}
+
+\index{extensional facts} \index{intensional rules}
+%
+An actual CDF instance is built up of {\em extensional facts} and {\em
+intensional rules} defined for the CDF predicates {\tt isa/2} {\tt
+allAttr/3}, {\tt hasAttr/3}, {\tt classHasAttr/3}, {\tt coversAttr/3},
+{\tt minAttr/4} and {\tt maxAttr/4}.  Extensional facts for these
+predicates add the suffix {\tt \_ext} to the suffix name leading to
+{\tt isa\_ext/2}, {\tt allAttr\_ext/2} and so on.  Intensional rules
+add the suffix {\tt \_int} leading to {\tt isa\_int/2}, {\tt
+allAttr\_int/2} etc.
+
+Extensional facts make use of XSB's sophisticated indexing of dynamic
+predicates.  Since CDF Extensional Facts use functors such as {\tt
+cid/1} or {\tt oid/1} to type their arguments, traditional Prolog
+indexing, which makes use only of the predicate name and outer functor
+of the first argument, is unsuitable for large CDF instances.  CDF
+extensional facts use XSB's star-indexing~\cite{XSB-home}.  For ground
+terms, star-indexing can index on up to the first five positions of a
+specified argument.  In addition, various arguments and combinations
+of arguments can be used with star-indexing of dynamic predicates.
+The ability to index within a term is critical for the performance of
+CDF; also since star-indexing bears similarities to XSB's
+trie-indexing~\cite{RRSSW98}, it is spatially efficient enough for
+large-scale use.  Section~\ref{sec:config} provides information on
+default indexing in CDF and how it may be reconfigured.
+
+Intensional rules may be defined as XSB rules, and may use any of
+XSB's language or library features, including tabling, database, and
+internet access.  Intensional rules are called on demand, making them
+suitable for implementing functionality from lazy database access
+routines to definitions of primitive types.
+
+\begin{example} \rm \label{ex:intrules}
+In many ontology management systems, integers, floats, strings and so
+on are not stored explicitly as classes, but are maintained as a sort
+of {\em primitive type}.  In CDF, primitive types are easily
+implemented via intensional rules like the following.
+%
+{\small {\sf  
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+%
+\> isa\_int(oid(Float),cid(allFloats)):- \\
+\> \> 	(var(Float) -$>$ cdf\_mode\_error ; float(Float). \\
+\end{tabbing} } }
+\end{example}
+%
+CDF provides intensional rules defining all Prolog primitive types as
+CDF primitive types in the component \component{cdfpt} (see below).
+Other, more specialized types can be defined by users by defining
+intensional rules along the same lines {\sc fill in 'below'; tabling
+and intensional rules}
+
+As mentioned above, the predicate {\tt
+immed\_hasAttr/3}, (and {\tt immed\_allAttr/3}, etc) is used to store
+basic CDF information that is used by predicates implementing {\tt
+hasAttr/3} and other relations.  {\tt immed\_hasAttr/3} itself is
+implemented as:
+%
+{\small {\sf  
+\begin{tabbing}
+foo\=foo\=foooooooooooooooooooooooooooooooooooooooo\=foo\=\kill
+%
+\> immed\_hasAttr(X,Y,Z):- hasAttr\_ext(X,Y,Z). \\
+\> immed\_hasAttr(X,Y,Z):- hasAttr\_int(X,Y,Z). \\
+\> immed\_hasAttr(X,Y,Z):- immed\_minAttr(X,Y,Z,\_). 
+\end{tabbing} } }
+%
+\noindent
+The above code fragment illustrates two points.  First, {\tt
+immed\_hasAttr/3} is defined in terms of {\tt immed\_minAttr/3},
+fulfilling the semantic requirements of Section \ref{sec:type0}.
+It also illustrates that {\tt immed\_hasAttr/3} is implemented in
+terms both of extensional facts {\tt hasAttr\_ext/3} and intensional
+rules {\tt hasAttr\_int(X,Y,Z)}.  
+
+%-------------------------------------------
+
+\subsection{The Top-level Hierarchy and Primitive Types}
+
+All CDF instances share the same top-level hierarchy, as depicted in
+Figure~\ref{fig:toplevel}.  All classes and objects are subclasses
+(through the {\tt isa} relation) to {\tt cid('CDF Classes',cdf)}, all
+relations are subrelations of {\tt rid('CDF Object-Object
+Relations',cdf)} and all class relations are subrelations of {\tt
+crid('CDF Class-Object Relations',cdf)}.
+%-------------------------------------------
+\index{identifiers!cid('CDF Classes',cdf)}
+\index{identifiers!rid('CDF Object-Object Relations,cdf)}
+\index{identifiers!crid('CDF Class-Object Relations',cdf)}
+\index{identifiers!cid('CDF Primitive Types',cdf)}
+\index{identifiers!cid(allIntegers,cdf)}
+\index{identifiers!cid(allFloats,cdf)}
+\index{identifiers!cid(allAtoms,cdf)}
+\index{identifiers!cid(allStructures,cdf)}
+\index{identifiers!cid(atomicIntegers,cdf)}
+
+\begin{figure}[htb] 
+{\small {\it
+\begin{center}
+\begin{bundle}{cid('CDF Classes',cdf)}
+\chunk{\begin{bundle}{cid('CDF Primitive Types',cdf)}
+  \chunk{\begin{bundle}{cid(allIntegers,cdf)\ \ \ \ \ \    }
+	\chunk{oid(Integer,cdfpt)}
+	\end{bundle} }
+  \chunk{\begin{bundle}{cid(allFloats,cdf)\ \ \ \ \ \ }
+	\chunk{oid(Float,cdfpt)}
+	\end{bundle} }
+  \chunk{\begin{bundle}{cid(allAtoms,cdf)\ \ \ \ \ \ }
+	\chunk{oid(Atom,cdfpt)}
+	\end{bundle} }
+  \chunk{\begin{bundle}{cid(allStructures,cdf)\ \ \ \ \ \ }
+	\chunk{oid(Structure,cdfpt)}
+	\end{bundle} }
+  \chunk{\begin{bundle}{cid(atomicIntegers,cdf)}
+	\chunk{oid(AInteger,cdfpt)}
+	\end{bundle} }
+  \end{bundle} } 
+\end{bundle}
+\end{center}
+
+\ \\
+\begin{center}
+rid('CDF Object-Object Relations',cdf)
+\end{center}
+
+\ \\
+\begin{center}
+\begin{bundle}{crid('CDF Class-Object Relations',cdf)}
+\chunk{crid('Name',cdf)}
+\chunk{crid('Description',cdf)}
+\end{bundle}
+\end{center}
+} }
+\caption{Built-in Inheritance Structure of CDF}
+\label{fig:toplevel}
+\end{figure}
+%-------------------------------------------
+
+An immediate subclass of {\tt cid('CDF Classes',cdf)} is {\tt cid('CDF
+Primitive Types',cdfpt)}.  This class allows users to maintain in CDF
+any legally syntactic Prolog element, and forms an exception to
+Definition~\ref{def:cdfids}.  Specifically {\tt cid('CDF Primitive
+Types',cdf)} contains Prolog atoms, integers, floats, structures and
+what are termed ``atomic integers'' --- integers that are represented
+in atomic format, e.g. '01234'.  Primitive types are divided into five
+subclasses, {\tt cid(allIntegers,cdf)}, {\tt cid(allFloats,cdf)}, {\tt
+cid(allAtoms,cdf)}, {\tt cid(allStructures,cdf)}, and {\tt
+cid(atomicInteger,cdf)}.  Each of these in turn have various objects
+as their immediate subclasses~\footnote{Recall that objects in CDF are
+singleton classes.}, whose inheritance relation is defined by an
+intensional rule like the one presented in Example~\ref{ex:intrules}.
+Thus, if the number 3.2 needs to be added to an ontology, perhaps as
+the value of an attribute, it is represented as {\tt oid(3.2,cdfpt)},
+and it will fit into the inheritance hierarchy as a subclass of {\tt
+cid(allFloats,cdf)}.  The intensional rules are structured so that for
+any Prolog syntactic element {\tt X}, when {\tt X} is combined with
+the component \component{cdfpt}, then {\tt cid(X,cdfpt)} will be a
+subclass of {\tt cid('CDF Primitive Types',cdfpt)}, as will be {\tt
+oid(X,cdfpt)}.
+
+\subsection{Basic CDF Predicates}
+
+\begin{description}
+
+\ourpredmodrptitem{isa\_ext/2}{usermod}
+\ourpredmodrptitem{allAttr\_ext/3}{usermod}
+\ourpredmodrptitem{hasAttr\_ext/3}{usermod}
+\ourpredmodrptitem{classHasAttr\_ext/3}{usermod}
+\ourpredmodrptitem{minAttr\_ext/4}{usermod}
+\ourpredmodrptitem{maxAttr\_ext/4)}{usermod}
+%\ourpredmodrptitem{coversAttr\_ext/3)}{usermod}
+\ourpredmoditem{necessCond\_ext/2)}{usermod}
+%
+These dynamic predicates are used to store extensional facts in CDF.
+They can be called directly from the interpreter or from files that
+are not modules, but must be imported from {\tt usermod} by those
+files that are modules.  Extensional facts may be added to a CDF system
+via \pred{newExtTerm/1} (\secref{sec:update}), or imported from a
+\ttindex{cdf\_extensional.P} file (\secref{sec:components}).
+
+\ourpredmodrptitem{isa\_int/2}{usermod}
+\ourpredmodrptitem{allAttr\_int/3}{usermod}
+\ourpredmodrptitem{hasAttr\_int/3}{usermod}
+\ourpredmodrptitem{classHasAttr\_int/3}{usermod}
+\ourpredmodrptitem{minAttr\_int/4}{usermod}
+\ourpredmodrptitem{maxAttr\_int/4)}{usermod}
+%\ourpredmodrptitem{coversAttr\_int/3)}{usermod}
+\ourpredmoditem{necessCond\_int/2)}{usermod}
+%
+These dynamic predicates are used to store intensional rules in CDF.
+They can be called directly from the interpreter or from files that
+are not modules, but must be imported from {\tt usermod} by those
+files that are modules.  Intensional rules may be added to a CDF
+system via \pred{???newIntRule/1} (\secref{sec:update}), or imported from
+a \ttindex{cdf\_intensional.P} file (\secref{sec:components}).
+
+
+\ourpredmoditem{immed\_isa/2}{cdf\_init\_cdf}
+{\tt immed\_isa(SubCid,SupCid)} is true if there is a corresponding
+fact in \pred{isa\_ext/2} or in the intensional rules.  It does not
+use the Implicit Subclassing Axiom \ref{ax:implsc}, the Domain
+Containment Axiom~\ref{ax:contained}, or reflexive or transitive
+closure.
+
+\ourpredmodrptitem{immed\_allAttr/3}{cdf\_init\_cdf}
+\ourpredmodrptitem{immed\_hasAttr/3}{cdf\_init\_cdf}
+\ourpredmodrptitem{immed\_classHasAttr/3}{cdf\_init\_cdf}
+\ourpredmodrptitem{immed\_minAttr/4}{cdf\_init\_cdf}
+\ourpredmodrptitem{immed\_maxAttr/4)}{cdf\_init\_cdf}
+%\ourpredmodrptitem{immed\_coversAttr/3)}{cdf\_init\_cdf}
+\ourpredmoditem{immed\_necessCond/2)}{cdf\_init\_cdf}
+Each of these predicates calls the corresponding extensional facts for
+the named predicate as well as the intensional rules.  No inheritance
+mechanisms are used, and any intensional rules unifying with the call
+must support the call's instantiation pattern.
+
+
+\ourpredmoditem{cdf\_id\_fields/4}{cdf\_init\_cdf}
+{\tt cdf\_id\_fields(ID,Functor,NatId,Component)} is true if {\tt ID}
+is a legal CDF identifier, {\tt Functor} is its main functor symbol,
+{\tt NatId} is its first field and {\tt Component} is its second
+field.  This convenience predicate provides a faster way to examine
+CDF identifiers than using {\tt functor/3} and {\tt arg/3}.
+
+\end{description}

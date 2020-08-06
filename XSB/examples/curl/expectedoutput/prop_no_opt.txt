@@ -1,0 +1,6 @@
+test_url_properties_no_opt on https://mail.cs.stonybrook.edu/cgi-bin/openwebmail/openwebmail.pl
+Directory = https%3A%2F%2Fmail%2Ecs%2Estonybrook%2Eedu%2Fcgi%2Dbin%2Fopenwebmail
+FileBase = openwebmail
+Suffix = pl
+Size = -1
+Modified Time = -1

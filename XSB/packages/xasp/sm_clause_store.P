@@ -1,0 +1,19 @@
+
+
+:- dynamic '$sm_basicrule'/3.
+:- dynamic '$sm_weightrule'/4.
+:- dynamic '$sm_constraintrule'/4.
+:- dynamic '$sm_choicerule'/3.
+
+:- index('$sm_basicrule'/3, trie).
+:- index('$sm_weightrule'/4, trie).
+:- index('$sm_constrainttrule'/4, trie).
+:- index('$sm_choicerule'/3, trie).
+
+:- dynamic '$sm_atomnum'/2.
+:- index('$sm_atomnum'/2,[1,2]).
+
+:- dynamic '$sm_neg_compute'/1.
+:- dynamic '$sm_pos_compute'/1.
+
+

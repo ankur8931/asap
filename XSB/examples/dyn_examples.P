@@ -1,0 +1,9 @@
+dyn_path(X,Y) :- dyn_path(X,Z), edge(Z,Y).
+dyn_path(X,Y) :- edge(X,Y).
+
+edge(1,2).
+edge(2,2).
+edge(2,4).
+edge(2,3).
+edge(3,5).
+

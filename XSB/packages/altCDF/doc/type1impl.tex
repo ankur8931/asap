@@ -1,0 +1,204 @@
+\section{The Type-1 API} \label{sec:type1query}
+
+The Type-1 interface is radically different than the Type-0 interface.
+While the Type-0 interface uses tabling and logical preferences to
+return correct answers according to the {\sc inh} proof system, it is
+still resolution-based.  However, when the disjunction and negation of
+virdual identifiers is added such an approach is no longer possible,
+so that the Type-1 query interface is based on computing logican
+consistency and entailment.  Since logical entailment of class
+expressions can be reduced to consistency, the Type-1 interface is
+based on consistency checking of CDF instances that have been
+transformed into class expressions.
+
+Consistency checking of class expressions such as those of
+Definition~\ref{def:ce} is decidable, but {\em P-space}
+complete~\footnote{Assuming a linear encoding of the integers in the
+{\em atLeast} and {\em atMost} constructs.  Formally, the CDF prover
+is complete for ${\cal ALCQ}$ description logics extended with
+relational hierarchies and product classes.}, so that determening
+whether a Type-1 instance has a model requires radically different
+checking techniques than Type-0 instances.  Query answering for Type-1
+instances is performed by using theorem proving techniques.
+
+\subsection{The CDF Theorem Prover}
+
+Specialized theorem-provers are generally implemented to check
+consistency of class expressions.  These provers may use based on
+structural subsumption techniques (e.g. as used in
+CLASSIC~\cite{PMBRB91}, LOOM~\cite{MacB94} and GRAIL~\cite{RBGHNS97});
+tableaux construction~\cite{HoPS99}; or stable model
+generation~\cite{Swif04} --- in \version{} of CDF a tableaux-style
+prover is used.
+
+At a high level, the CDF prover first translates a class expression
+$CE$ to a formula $\psi$ in an ontology language according to
+Definition~\ref{def:fot}.  It then attempts to construct a model for
+$\psi$: if it succeeds $CE$ is consistent, otherwise $CE$ is
+inconsistent (since the prover can be shown to be complete).  The CDF
+prover has access to the relational and class hierarchies of a CDF
+instance during its execution.  As a result, only the principle
+classes and relations of an identifier (Definition~\ref{def:redund})
+need be entered in class expressions.  Finally, since objects in the
+semantics of CDF are indistinguishable from singleton sets, an object
+identifier $O$ can be used in any context that a class identifier can
+be used.  The prover takes accont of this by enforcing a cardinality
+constraint for the set $O$.
+
+The theorem prover of \version{} uses exhaustive backtracking, rather
+than the dependency-directed backtracking that is typical of recent
+provers such as the DLP prover \cite{}, the FaCT prover \cite{} or the
+Racer prover \cite{}.  As a result, the CDF prover may be slow for
+certain types of queries relative to these other provers.
+Dependency-directed backtracking has not been added to the CDF prover
+largely to keep it simple enough to experiment with different
+extensions to the types of class expressions it supports~\footnote{In
+particular, work is underway on extending the CDF prover to handle
+functional attribute chains and concrete domains (see \cite{}).}.  On
+the other hand, the CDF prover is relatively efficient on how it
+traverses a CDF instance to check consistency.
+
+When a CDF Type-1 instance is checked, the instance is translated into
+either a class expression before it can be sent to the CDF prover.
+Due to the high worst-case complexity of consistency checking, input
+strings to the prover should be kept as small as possible.  The CDF
+system accomplishes this by translating information about a given CDF
+identifier into a series of local class expressions
+(\refsec{sec:lce}), sending a local class expresion to the CDF prover,
+then producing and checking other local class expressions as needed.
+Since CDF instances differ in philosophy from terminological systems,
+they may be expected to be cyclic, so that a given class identifier
+may occur in a level $n$ local class expression of itself.
+
+\subsection{The Type-1 API}
+
+\begin{description}
+
+\ourpreditem{checkIdConsistency/1}{cdftp\_chkCon}
+In {\tt checkIdConsistency(IdList)} {\tt IdList} is a (list of) class
+or object identifier(s) which is taken as a conjunction.  The
+predicate succeeds if {\tt IdList} is consistent in the current CDF
+instance.
+
+{\bf Exceptions} {\tt Domain Exception: IdList} is not a class
+identifier, an object identifier, or a list of class or object
+identifiers.
+
+%-----------------------------------------------------------------------------
+\mycomment{
+/* The algorithm is described in detail in the CDF system paper.  What
+we do here is to prove consistency of an identifier by an iterative
+process.  Given an identifier {\tt Id}, a local class expression is
+constructed for Id, and a consistency check made for that class
+expression.  In other words, we prove the consitency of Id by trying
+to construct a model in which Id is a non-empty set if it is a cid, or
+a non-empty unique set if Id is an oid.
+
+Local class expressions dont contain all information for an
+identifier.  Accordingly, in the model constructed for Id we need to
+check the *contexts* for each individual in the model, i.e. if an
+individual i belongs to classes C1 and C2 in our model we must ensure
+that a model can be constructed for both C1 and C2.  The checker thus
+traverses through all the contexts in the model and checks them
+recursively.
+
+An important issue occurs if a check for an identifier recursively
+leads to a context in which the identifier itself is present.  If this
+is the case, we succeed, as it can be shown that the identifier is
+consistent.  If an identifier Id depends on itself negatively, we
+fail, as we cannot be sure of constructing a model in this case.  A
+more elaborate algorithm would take into account even and odd loops,
+but that seems a little arcane for our purposes.
+
+This code doesn't use XSBs tabling for two reasons.  First, we want to
+succeed on positive loops, and second, we only want a single solution
+for each consistency check.  In this homespun tabling, information is
+entered about whether a context we are traversing has been queried,
+and whether it has succeeded or failed if it is complete.  Once a
+consistency check succeeds, all of its choice points are cut away.
+Success on positive loops is addressed by passing around an ancestor
+list and performing an ancestor check at each call to the sat routine.
+If the context is in the ancestor list we succeed, otherwise we call
+the sat routine (which succeed or fail on table check).  Note that we
+do not need to table the ancestor list -- it is not a set of
+assumptions, its just used to succeed on loops.  Also, since all code
+requires only a single solution for any consistency check do not have
+to worry about incomplete tables that are not in the ancestor list.
+
+Various cases.  
+1) Not called before 
+2) Called but incomplete 
+3) Complete, succeed or fail 
+
+checkIdConsistency_1 handles case 2).  
+Cases 1) and 3) are handled by checkIdConsistency_1
+*/
+}
+\ourpredmoditem{consistentWith/2}{cdftp\_chkCon}
+In {\tt consistentWith(Id,CE)}, {\tt Id} can either be a class or an
+object identifier and {\tt CE} is a class expression.  This predicate
+checks whether {\tt CE} is logically consistent with all that is known
+about {\tt Id} in the current CDF instance.  {\tt consistentWith/2}
+determines whether there is a model of the current CDF instance that
+satisfies the expression {\tt Id,CE}.
+
+This predicate assumes that all class and object identifiers in a
+given CDF instance are consistent.
+
+{\bf Exceptions} 
+
+{\tt Domain Exception: Id} is not a class or object identifier.
+
+{\tt Domain Exception: CE} is not a well-formed class expression.
+
+\ourpredmoditem{allModelsEntails/2}{cdftp\_chkCon}
+In {\tt allModelsEntails(Id,CE)}, {\tt Id} is a class or object
+identifier and {\tt CE} is a class expression. {\tt
+allModelsEntails/2} succeeds if {\tt CE} is entailed by what is known
+about {\tt Id} in the current CDF instance.  In other words, {\tt
+allModelsEntails/2} determines whether in all models of the current
+CDF instance, if an element is in {\tt Id} then it is also in {\tt
+CE}.  It does this by checking the inconsistency of {\tt Id,CE}.
+
+This predicate assumes that all class and object identifiers in a
+given CDF instance are correct.
+
+{\bf Exceptions} 
+
+{\tt Domain Exception: Id} is not a class or object identifier.
+
+{\tt Domain Exception: CE} is not a well-formed class expression.
+
+\ourpredmoditem{localClassExpression/3}{cdftp\_chkCon}
+In {\tt localClassExpression(+IdList,+N,-Expr)} {\tt IdList} is a list
+of class identifiers, and {\tt N} is a positive integer.  In its
+semantics, {\tt IdList} is interpreted as a conjunction of
+identifiers, and upon success, {\tt Expr} is a class expression,
+unfolded to depth {\tt N}, that describes {\tt IdList} according to
+gthe current CDF instance.
+
+{\bf Exceptions} 
+
+{\tt Domain Exception: IdList} is not a class identifier or object
+identifier, or a list of class or object identifiers.
+
+{\tt Type Exception: N} is not a positive integer.
+
+{\tt Instantiation Exception: Expr} is not a variable.
+
+\ourpredmoditem{check\_lce/2}{cdftp\_chkCon}
+In the goal {\tt check\_lce(+IdList,+N)} {\tt IdList} is a list of
+class identifiers, and {\tt N} a positive integer.  In its semantics,
+{\tt IdList} is interpreted as a conjunction of identifiers, and {\tt
+check\_lce(+IdList,+N)} pretty-prints a class expression, unfolded to
+depth {\tt N}, that describes {\tt IdList} according to the current
+CDF instance.
+
+{\bf Exceptions} 
+
+{\tt Domain Exception: IdList} is not a class identifier or object
+identifier, or a list of class or object identifiers.
+
+{\tt Type Exception: N} is not a positive integer.
+
+\end{description}

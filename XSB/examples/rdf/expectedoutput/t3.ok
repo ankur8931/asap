@@ -1,0 +1,13 @@
+----------sgml----------
+
+element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : RDF,[xmlns : rdf = http://www.w3.org/1999/02/22-rdf-syntax-ns#,xmlns : s = http://description.org/schema/],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[about = http://www.swi.psy.uva.nl/projects/SWI-Prolog/],[element(http://description.org/schema/ : Creator,[],[element(http://www.w3.org/1999/02/22-rdf-syntax-ns# : Description,[ID = JW],[element(http://description.org/schema/ : name,[],[Jan Wielemaker]),element(http://description.org/schema/ : works_at,[],[SWI])])])])])
+
+----------RDF----------
+
+[description(description,about(http://www.swi.psy.uva.nl/projects/SWI-Prolog/),[http://description.org/schema/ : Creator = description(description,id(#JW),[http://description.org/schema/ : name = literal(Jan Wielemaker),http://description.org/schema/ : works_at = literal(SWI)])])]
+
+--------Triples--------
+
+{#JW, http://description.org/schema/name, literal(Jan Wielemaker)}
+{#JW, http://description.org/schema/works_at, literal(SWI)}
+{http://www.swi.psy.uva.nl/projects/SWI-Prolog/, http://description.org/schema/Creator, #JW}

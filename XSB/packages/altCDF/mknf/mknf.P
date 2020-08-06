@@ -1,0 +1,485 @@
+:- set_prolog_flag(unknown,warning).
+
+:- ensure_loaded(altcdf).
+:- import concat_atom/2 from string.
+:- import isa/2, immed_necessCond/2,necessCond/2, immed_hasAttr/3, hasAttr/3 from cdf_init_cdf.
+:- import load_intensional_rules/1, load_extensional_facts/1 from cdf_io.
+:- import get_debug_level/1, set_debug_off/0, set_debug_on/1 from tp_utils.
+
+:- dynamic object_iter/2.
+:- dynamic final_iter/2.
+:- dynamic debugging_mknf/0.
+
+:- retractall(cdf_flags(_,_)).
+
+% Issues                                                                      
+% -- Add explicit negation in rules.                                          
+% potential problem w. queried etc and mknf.                                   
+% retraverseing necessConds?
+% get Jose's examples to work. (ex 6, 10 and others)
+
+%-------------------------------------------------
+% Main API
+
+% To call first from the ontology
+aME(Id,CE):- 
+	     mknf_reinit,
+	     aME_1(Id,CE,0).
+
+% To call first from the rules.
+k(Term):- 
+	Term =.. [Class,Obj],
+	aME(oid(Obj,mknf),cid(Class,mknf)).
+	
+k(Term):- 
+	Term =.. [Role,Obj1,Obj2],
+	aME(oid(Obj1,mknf),exists(rid(Role,mknf),oid(Obj2,mknf))).
+
+% Loads an example (denoted by its directory
+le(Dir):- load_ex(Dir).
+
+le:- le('tests/ex_disj').
+lc:- le('tests/chkCon').
+
+%-------------------------
+% Known
+
+% known/1 should only be called from k/1.
+
+known(Term):- 
+	arg(1,Term,O),
+	Obj = oid(O,mknf),
+	get_object_iter(Obj,Iter),
+        known(Term,Iter).
+
+:- table known/2.
+known(Term,Iter):- 
+	debug(known(Term)),
+	(Term, Term =.. [_Class,Obj],
+	 get_object_iter(oid(Obj,mknf),Iter)
+        ; 
+	Term =.. [Class,Obj],
+	lastAllModelsEntails(oid(Obj,mknf),cid(Class,mknf))),
+	debug(derived(known(Term,Iter))).
+
+%known for Relations
+known(Term,Iter):- 
+	debug(known(Term)),
+	(Term,   Term =.. [_Role,Obj1,Obj2],
+        ( (var(Obj1), var(Obj2)  )-> abort ; true),
+        get_object_iter(oid(Obj1,mknf),Iter),
+        get_object_iter(oid(Obj2,mknf),_Iter)
+         ; 
+	 Term =.. [Role,Obj1,Obj2],
+	lastAllModelsEntails(oid(Obj1,mknf),exists(rid(Role,mknf),oid(Obj2,mknf)))),
+	debug(derived(known(Term,Iter))).
+	
+% Call made within iteration by allModelsEntails (via cdf_internsional).
+% Note that only unconditional answers are propagated.
+last_known(Term):- 
+	arg(1,Term,Obj),
+	object_iter(oid(Obj,mknf),Iter),
+	(Iter = final ; Iter > 0),!,
+	(Iter = final -> 
+	    final_iter(oid(Obj,mknf),FinIt),
+	    known(Term,FinIt)
+          ; Iter1 is Iter - 1,
+        get_residual(known(Term,Iter1),[])).
+
+%------------------------
+% dlnot
+
+dlnot(Term):- 
+	debug(dlnot(Term)),
+	arg(1,Term,Obj),
+	get_object_iter(oid(Obj,mknf),Iter),
+        dlnot(Term,Iter).
+
+:- table dlnot/2.
+dlnot(Term,0):- !.
+dlnot(Term,1):- !,fail.
+dlnot(Term,Iter):- 
+	debug(dlnot(Term,Iter)),
+	Term =.. [Class,Obj],
+	(get_object_iter(oid(Obj,mknf),Iter),
+	 tnot(known(Term,Iter))
+        ; 
+	lastAllModelsEntails(oid(Obj,mknf),not(cid(Class,mknf)))),
+	debug(derived(dlnot(Term,Iter))).
+%dlnot for Roles	
+dlnot(Term,Iter):- 
+	debug(dlnot(Term,Iter)),
+	Term =.. [Role,Obj1,Obj2],
+	(get_object_iter(oid(Obj1,mknf),Iter),
+	 tnot(known(Term,Iter))
+        ; 
+	lastAllModelsEntails(oid(Obj1,mknf),not(exists(rid(Role,mknf),oid(Obj2,mknf))))),
+	debug(derived(dlnot(Term,Iter))).
+	
+%------------------------
+
+% Called by ame/1, computes primitives.
+aME_1(Id,_CE,Iter):- 
+	computeObjectPrimitives(Id,Iter),
+	fail.
+aME_1(Id,CE,_Iter):- 
+	(rec_allModelsEntails(Id,not(CE)) -> fail ; true).
+
+% Called within computeObjectPrimitives.
+:- table allModelsEntails/3.
+allModelsEntails(Id,CE,_Iter):- 
+        (rec_allModelsEntails(Id,not(CE)) -> fail ; true).
+%        (rec_allModelsEntails(Id,not(CE)) -> fail ; get_conditional_dependencies(Id)).
+
+    
+% Call made within iteration by known/2.
+% Note that only unconditional answers are propagated.                         
+lastAllModelsEntails(oid(Obj,mknf),CE):- 
+	object_iter(oid(Obj,mknf),Iter),
+	(Iter = final ; Iter > 0),!,
+	(Iter = final -> 
+	    final_iter(oid(Obj,mknf),FinIt),
+	    allModelsEntails(oid(Obj,mknf),CE,FinIt)
+          ; Iter1 is Iter - 1,
+	    get_residual(allModelsEntails(oid(Obj,mknf),CE,Iter1),[])).
+
+%------------------------
+
+checkAllObjects(Id,Iter) :-
+%    writeln('HERE!!'),
+    get_object_iter(Id1,I),
+    Id \= Id1,
+    I \= final,
+    computeObjectPrimitives(Id1,I),
+    fail.
+checkAllObjects(_,_).
+
+computeObjectPrimitives(Id,Iter):- 
+	debug(computeObjectPrimitives(Id,Iter)),
+        (var(Iter) -> get_object_iter(Id,I),Iter = I ; true),
+	computeObjectPrimitives_1(Id,Iter),
+	checkAllObjects(Id,Iter),		
+	(check_final_object(Id),
+	 finalize_object(Id),!
+ 	 ; 
+	 \+ completed_object(Id),
+ 	increment_object(Id,Iter1),
+	computeObjectPrimitives(Id,Iter1)).
+
+%:- table computeObjectPrimitives_1/2.
+computeObjectPrimitives_1(oid(Obj,_),Iter):- 
+        definedClass(Term,_F,Obj),
+	known(Term,Iter),
+	fail.
+computeObjectPrimitives_1(oid(Obj1,_),Iter) :-
+        definedRole(Term,_Role,Obj1,_Obj2),
+    known(Term,Iter),
+    fail.
+computeObjectPrimitives_1(oid(Obj,_),Iter):- 
+        definedClass(Term,_F,Obj),
+	dlnot(Term,Iter),
+	fail.
+computeObjectPrimitives_1(oid(Obj1,_),Iter) :-
+        definedRole(Term,_Role,Obj1,_Obj2),
+    dlnot(Term,Iter),
+    fail.
+computeObjectPrimitives_1(oid(Obj,mknf),Iter):- 
+        definedClass(_Term,Class,Obj),
+	allModelsEntails(oid(Obj,mknf),cid(Class,mknf),Iter),
+	fail.
+computeObjectPrimitives_1(oid(Obj1,mknf),Iter) :-
+        definedRole(_Term,Role,Obj1,Obj2),
+    allModelsEntails(oid(Obj1,mknf),exists(rid(Role,mknf),oid(Obj2,mknf)),Iter),
+    fail.
+computeObjectPrimitives_1(oid(Obj,mknf),Iter):- 
+        definedClass(_Term,Class,Obj),
+	allModelsEntails(oid(Obj,mknf),not(cid(Class,mknf)),Iter),
+	fail.
+computeObjectPrimitives_1(oid(Obj1,mknf),Iter) :-
+        definedRole(_Term,Role,Obj1,Obj2),
+    allModelsEntails(oid(Obj1,mknf),not(exists(rid(Role,mknf),oid(Obj2,mknf))),Iter),
+    fail. 	
+
+computeObjectPrimitives_1(_Obj,_Iter).
+
+%------------------------------------------------
+% Hook from sat-checker (cdftp-meta).  Not using CDF's isa which is
+% tabled and highly optimized (and so is harder to debug)
+
+% Changing definition of tp_subclass/2 to handle different syntactic forms of objects.
+%tp_subclass(X,Y):- mknf_isa(X,Y).
+tp_subclass(X,Y):- normalize(X,NewX),normalize(Y,NewY),isa(NewX,NewY).
+
+normalize(X,NewX):- nonvar(X),X = unique(cid(Id,NS)),NewX = oid(Id,NS),!.
+normalize(X,X).
+
+%------------------------------------------------
+% Manipulation of object info to control iterations.  May need to be
+% changed for multiple objects.
+% Using obj(Id,mknf) for object representation.
+
+get_object_iter(Obj,Iter):- 
+	object_iter(Obj,Iter),!.
+get_object_iter(Obj,Iter):- 
+	initialize_object(Obj,Iter).
+
+initialize_object(Obj,0):- 
+	(object_iter(Obj,_) -> abort(reinitializing(Obj)) ; true),
+	assert(object_iter(Obj,0)).
+
+increment_object(Obj,N1):- 
+	object_iter(Obj,N),!,
+	retractall(object_iter(Obj,_)),
+	N1 is N + 1,
+	assert(object_iter(Obj,N1)).
+	
+finalize_object(Obj):- 
+	object_iter(Obj,final),!.
+finalize_object(Obj):- 
+	object_iter(Obj,N),!,
+	retractall(object_iter(Obj,_)),
+	assert(object_iter(Obj,final)),
+	assert(final_iter(Obj,N)).
+	
+completed_object(Obj):- 
+	object_iter(Obj,final).
+check_final_object(Obj):- 
+	object_iter(Obj,final),!.
+check_final_object(Obj):- 
+	object_iter(Obj,Iter),
+	Iter >= 2, 1 is Iter rem 2,
+	LastIter is Iter - 2,
+	debug(check_final_object(Obj,Iter)),
+	(setof(resid(Term,NewDel),Del^(get_residual(known(Term,Iter),Del),
+	                               abstract_iters(Del,NewDel)),NewK) -> 
+	    NewKnowns = NewK ; NewKnowns = []),
+	(setof(resid(Term1,NewDel1),Del1^(get_residual(known(Term1,LastIter),Del1),
+				      abstract_iters(Del1,NewDel1)),LastK) -> 
+	     LastKnowns = LastK ; LastKnowns = []),
+	NewKnowns = LastKnowns,
+	(setof(resid(Term2,NewDel2),Del2^(get_residual(allModelsEntails(Obj,Term2,Iter),Del2),
+			            abstract_iters(Del2,NewDel2)),NewEnt) -> 
+	    NewEntails = NewEnt ; NewEntails = []),
+	(setof(resid(Term3,NewDel3),Del3^(get_residual(allModelsEntails(Obj,Term3,LastIter),Del3),
+					  abstract_iters(Del3,NewDel3)),LastEnt),
+	    LastEntails = LastEnt ; LastEntails = []),
+	NewEntails = LastEntails.
+
+abstract_iters([],[]).
+abstract_iters([known(Term,_)|R],[known(Term)|R1]):- !,
+     abstract_iters(R,R1).
+abstract_iters([tnot(Term)|R],[tnot(Term1)|R1]):- !,
+     abstract_iters([Term],[Term1]),
+     abstract_iters(R,R1).
+abstract_iters([dlnot(Term,_)|R],[dlnot(Term)|R1]):- !,
+     abstract_iters(R,R1).
+abstract_iters([allModelsEntails(T1,T2,_)|R],[allModelsEntails(T1,T2)|R1]):- !,
+     abstract_iters(R,R1).
+abstract_iters([H|R],[H|R1]):- !,
+     abstract_iters(R,R1).
+
+mknf_reinit:- 
+	     abolish_all_tables,
+	     retractmytabling,
+	     retractall(object_iter(_,_)),
+	     retractall(final_iter(_,_)).
+
+%------------------------------
+% Utilities
+
+debugging_mknf.
+
+debug(Term):- 
+	debugging_mknf -> writeln(Term) ; true.
+
+at:- abolish_all_tables.
+
+:- import between/3 from basics.
+show_model:- 
+	listing(object_iter),fail.
+show_model:- 
+	listing(final_iter),fail.
+show_model:- 
+	(final_iter(_,Iter) -> true ; get_object_iter(_,Iter)),
+	between(0,Iter,I),
+	writeln('--------'),
+	show_model_iteration(I),
+	fail.
+show_model.
+
+:- import get_returns_and_dls/3 from tables.
+show_model_iteration(I):- 
+	get_calls_for_table(known(_A,_B),Call),Call = known(_,I),
+	write(Call),writeln(' : '),
+%	get_returns_for_call(Call,AnswerTerm),
+	write_return(Call),
+	fail.
+show_model_iteration(I):- 
+	get_calls_for_table(dlnot(_A,_B),Call),Call = dlnot(_,I),
+	write(Call),writeln(' : '),
+	write_return(Call),
+	fail.
+show_model_iteration(I):- 
+	get_calls_for_table(allModelsEntails(_A,_B,I),Call),
+	Call = allModelsEntails(_,_,I),
+	write(Call),writeln(' : '),
+	write_return(Call).
+
+write_return(Call):- 
+	get_residual(Call, DL),
+	write('      '),write(Call), 
+	(DL == [] ->  nl ; write( ':-' ),write(DL), writeln(' |')).
+
+%--------
+gom(Obj,E1,E2,E3):- 
+		    get_object_model(oid(Obj,mknf),E1,E2,E3).
+
+get_object_model(Obj,E1,E2,E3):- 
+		get_last_known(Obj,E1),
+		get_last_dlnot(Obj,E2),
+		get_last_ame(Obj,E3).
+
+get_last_known(oid(Obj,mknf),Entries):- 
+        final_iter(oid(Obj,mknf),Iter),
+	(setof(entry(CallAbs,ResList),
+	      A^B^C^Res^Call^(get_calls_for_table(known(A,B),Call),
+	                 Call = known(C,Iter),arg(1,C,Obj),
+			 CallAbs = known(C),
+		    	 setof(Res1,Res^(get_residual(Call,Res),
+ 	 	  	                 abstract_iters(Res,Res1)),ResList)),E) -> 
+ 			                                   Entries = E ; Entries = []).
+get_last_dlnot(oid(Obj,mknf),Entries):- 
+        final_iter(oid(Obj,mknf),Iter),
+	(setof(entry(CallAbs,ResList),
+	      A^B^C^Res^Call^(get_calls_for_table(dlnot(A,B),Call),
+	                 Call = dlnot(C,Iter),arg(1,C,Obj),
+			 CallAbs = dlnot(C),
+		 	setof(Res1,Res^(get_residual(Call,Res),
+ 	 	  	                 abstract_iters(Res,Res1)),ResList)),E) -> 
+			Entries = E ; Entries = []).
+get_last_ame(Obj,Entries):- 
+        final_iter(Obj,FinIter),
+	Iter is FinIter - 1,
+	(setof(entry(CallAbs,ResList),
+	      A^B^C^F^Res^Call^(get_calls_for_table(allModelsEntails(A,B,C),Call),
+	                 Call = allModelsEntails(Obj,F,Iter),
+			 CallAbs = allModelsEntails(Obj,F),
+		 	setof(Res,get_residual(Call,Res),ResList)),E) ->
+			Entries = E ; Entries = []).
+
+/* test driver for mknf */
+test_call(Call,Model):-
+	Call = k(Term),
+        set_prolog_flag(unknown,fail),
+	(debugging_mknf -> 
+	   retractall(debugging_mknf),
+	   get_debug_level(N),
+	   set_debug_off,
+	   (Call ; true),
+	   set_debug_on(N),
+	   assert(debugging_mknf)
+         ; Call),
+	 arg(1,Term,Obj),
+	 get_object_model(oid(Obj,mknf),E1,E2,E3),
+	 (get_object_model(oid(Obj,mknf),E1,E2,E3) = Model -> 
+	    	 write('   ***'),write(Call),writeln(' is correct')
+	    ;    write('   ***'),write(Call),writeln(' is not correct')),
+        set_prolog_flag(unknown,fail).
+	
+/* test driver for checking consistency */
+con_test(Id,Value):-
+	writeln(testing(con_test(Id,Value))),
+	(debugging_mknf -> 
+	   retractall(debugging_mknf),
+	   get_debug_level(N),
+	   set_debug_off,
+           (checkIdConsistency(Id) -> 
+ 	       (Value = true -> true ; writeln('!!!failing'(sat_test(Id,false))))
+	     ; (Value = false -> true ; writeln('!!!failing'(sat_test(Id,true))))),
+	   set_debug_on(N),
+	   assert(debugging_mknf)
+           ; (checkIdConsistency(Id) -> 
+               (Value = true -> true ; writeln('!!!failing'(sat_test(Id,false))))
+	     ; (Value = false -> true ; writeln('!!!failing'(sat_test(Id,true)))))).
+
+load_ex(Dir):- 
+	abolish_all_tables,
+	load_intensional_rules(Dir),
+	writeln(load_extensional_facts(Dir)),
+	load_extensional_facts(Dir),
+	writeln(done_ext),
+	concat_atom([Dir,'/',rules],Loader),
+	[Loader],
+	init.
+
+init:- [cdf_init_cdf],[mknf_chkCon].
+
+end_of_file.
+------------------------------------------------------------------------------------
+/*
+dlnot0(Term):- 
+	debug(dlnot(Term)),
+	tnot(known(Term))
+        ; 
+	(Term =.. [Class,Obj] -> 
+	    concat_atom([not,Class],NegClass),
+	    isa(oid(Obj,mknf),cid(NegClass,mknf)) ; fail).
+*/
+
+% Dont think this is needed.
+% Call made within iteration by allModelsEntails (via cdf_internsional).
+% Note that only unconditional answers are propagated.
+/*
+last_dlnot(Term):- 
+	arg(1,Term,Obj),
+	object_iter(oid(Obj,mknf),Iter),
+	(Iter = final ; Iter > 0),!,
+	(Iter = final -> 
+	    final_iter(oid(Obj,mknf),FinIt),
+	    dlnot(Term,FinIt)
+          ; Iter1 is Iter - 1,
+	    get_residual(dlnot(Term,Iter1),[])).
+
+get_conditional_dependencies(Id):- 
+    getRelevantFacts(Id,Facts),
+    get_conditional_dependencies_1(Facts).
+
+% TLS: assuming relevant facts.
+get_conditional_dependencies_1([]).
+get_conditional_dependencies_1([isa(One,Two)|T]):- 
+    mknf_isa(One,Two),!,						   
+    get_conditional_dependencies_1(T).
+get_conditional_dependencies_1([necessCond(One,Two)|T]):- 
+    mknf_necessCond(One,Two),!,
+    get_conditional_dependencies_1(T).
+
+*/
+
+mknf_necessCond(Class,Cond):- 
+	mknf_isa(Class,C1),
+	immed_necessCond(C1,Cond1),
+	Cond1 = Cond.
+
+% sat-checker treats objects as classes w. unique elements.
+mknf_isa(Sub,Sup):- 
+%        (Sub = unique(cid(Id,NS)) -> 
+%	    mknf_isa_1(oid(Id,NS),Sup)
+	      mknf_isa_1(Sub,Sup).
+
+%:- table mknf_isa_1/2.
+mknf_isa_1(Sub,Sup):- 
+%	writeln(mknf_isa(Sub,Sup)),
+        (Sub = Sup
+	 ; 
+  	mknf_immed_isa(Sub,Sup)).
+%	writeln('       derived_mknf_isa'(Sub,Sup)).
+mknf_isa_1(Sub,Sup):- 
+     mknf_immed_isa(Sub,S1),
+     mknf_isa(S1,Sup).
+%     writeln('       derived_mknf_isa'(Sub,Sup)).
+
+mknf_immed_isa(SubCid,SupCid) :-
+    isa_ext(SubCid,SupCid).
+mknf_immed_isa(SubCid,SupCid) :-
+    isa_int(SubCid,SupCid).
+

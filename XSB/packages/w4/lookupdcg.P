@@ -1,0 +1,163 @@
+:- op( 500, fx, '?' ).
+
+:- [readgram].
+:- [predparserint].
+
+:- import member/2 from basics.
+:- import reverse/2 from basics.
+:- import append/3 from basics.
+:- import numbervars/1 from num_vars.
+
+
+gen_parser( Grammars, OutFile ) :-
+	gen_parser( Grammars, yes, OutFile ).
+
+gen_parser( Grammars, Terminated, OutFile ) :-
+	read_grammars( Grammars ),
+	open( OutFile, write, Stream ),
+	gen_productions( Stream, Terminated ),
+	close( Stream ).
+
+
+
+gen_productions( Stream, Terminated ) :-
+	non_terminal( Functor/Arity, _ ),
+	functor( Head, Functor, Arity ),
+	\+ not_include_code( Functor/Arity ),
+	write( Functor/Arity  ), nl,
+	nl( Stream ),
+	get_production( Head, Body, Symbol ), 
+	gen_production( Symbol, Head, Body, NewHead, NewBody, expand, Terminated ),
+	write_rule( Stream, NewHead, NewBody ), nl( Stream ),	
+	fail.
+gen_productions( Stream, _ ) :-
+	code( Head, Body ),
+	functor( Head, Functor, Arity ),
+	\+ not_include_code( Functor/Arity ),
+	write_rule( Stream, Head, Body ),
+	fail.
+gen_productions( Stream, _ ) :-
+	true.
+
+get_production( Head, Body, Symbol ) :-
+	production( LHS, RHS, Type ),
+	get_lookahead( LHS, RHS, Type, Head, Body, Symbol ).
+	
+get_lookahead( Head/Symbol, Body, dcg, Head, Body, Symbol ) :- !.
+get_lookahead( Head,        Body, dcg, Head, Body, Symbol ) :- !.
+get_lookahead( Head,        Body, look, Head, Body, Symbol ) :- !,
+	setof( Sym, Tail^predictive_parser( Head, [Sym|Tail], ( Head --> Body ) ), Symbols ),
+	member( Symbol, Symbols ).
+
+
+% A single character lookahead symbol
+gen_production( SIn, Head, Body, NewHead, NewBody, Mode, Terminated ) :- 
+	integer( SIn ), !,
+	( ( Terminated = no, follow( Head, [V] ), V == -1 ) -> EndOfList = yes ; EndOfList = no ),
+	add_arguments( Head, SIn, In, Out, SOut, NewHead ),
+	create_production_body( Body, SIn, In, Out, SOut, NewBody, Mode, _, EndOfList ).
+
+% Covers both a range of the form Min-Max or an interval [Min1-Max1,Min2-Max2,...,MinN-MaxN]
+gen_production( _, Head, Body, NewHead, NewBody, Mode, Terminated ) :- !,
+	( \+ \+ ( Terminated = no, follow( Head, [V] ), V == -1 ) -> EndOfList = yes ; EndOfList = no ),
+	add_arguments( Head, SIn, In, Out, SOut, NewHead ),
+	create_production_body( Body, SIn, In, Out, SOut, NewBody, Mode, _, EndOfList ).
+	
+
+create_production_body( (A,B), SIn, In, Out, SOut, Body, Mode, NewMode, EndOfList ) :- !,
+	(  \+ \+ ( EndOfList = yes, nullable( B ) )
+      -> 		create_production_body( A, SIn, In, AuxOut, AuxSOut, BodyA, Mode, AuxMode, yes )
+	;		create_production_body( A, SIn, In, AuxOut, AuxSOut, BodyA, Mode, AuxMode, no )
+ 	),
+	create_production_body( B, AuxSOut, AuxOut, Out, SOut, BodyB, AuxMode, NewMode, EndOfList ),
+	compose_body( BodyA, BodyB, Body ).
+
+create_production_body( [], SIn, In, In, SIn, true, Mode, Mode, _ ) :- !.
+create_production_body( []/[], SIn, In, In, SIn, true, Mode, Mode, _ ) :- !.
+create_production_body( [Symbol|Rest], SIn, In, Out, SOut, BodyShift, Mode, Mode, EndOfList ) :- !,
+	( \+ \+ ( EndOfList = yes, Rest = [] ) -> CheckEnd = yes ; CheckEnd = no ),
+	create_shift( Mode, CheckEnd, Symbol, SIn, In, AuxOut, AuxSOut, InitShift ), !,
+	create_production_body( Rest, AuxSOut, AuxOut, Out, SOut, RestShift, Mode, Mode, EndOfList ),
+	compose_body( InitShift, RestShift, BodyShift ).
+create_production_body( ? [Symbol|Rest], SIn, In, Out, SOut, BodyCheck, Mode, Mode, _ ) :- !,
+	append( [Symbol|Rest], _, Test ),
+	check( Mode, Test, SIn, In, Out, SOut, BodyCheck ).
+create_production_body( [Symbol|Rest]/[SIn|RestLook], SIn, In, Out, SOut, BodyShift, Mode, Mode, EndOfList ) :- !,
+	( ( EndOfList = yes, Rest = [] ) -> CheckEnd = yes ; CheckEnd = no ),
+	create_shift( Mode, CheckEnd, Symbol, SIn, In, AuxOut, AuxSOut, InitShift ), !,
+	create_production_body( Rest/RestLook, AuxSOut, AuxOut, Out, SOut, RestShift, Mode, Mode, EndOfList ),
+	compose_body( InitShift, RestShift, BodyShift ).
+create_production_body( (!), SIn, In, In, SIn, (!), _, unify, _ ) :- !.
+create_production_body( {Action}, SIn, In, In, SIn, Action, Mode, Mode, _) :- !.
+create_production_body( +NonTerminal, SIn, In, Out, SOut, NewBody, Mode, Mode, EndOfList ) :- !,
+	add_arguments( NonTerminal, SIn, In, Out, SOut, NewNonTerminal ),
+	get_production( NonTerminal, Body, Symbol ),
+	gen_production( Symbol, NonTerminal, Body, NewNonTerminal, NewBody, expand, EndOfList ).
+
+
+create_production_body( NonTerminal, SIn, In, Out, SOut, NewNonTerminal, Mode, Mode, _ ) :- !,
+	add_arguments( NonTerminal, SIn, In, Out, SOut, NewNonTerminal ).
+
+
+compose_body( true, Body, Body ) :- !.
+compose_body( Body, true, Body ) :- !.
+compose_body( BodyA, BodyB, (BodyA,BodyB) ) :- !.
+
+
+isterminal( [] ) :- !.
+isterminal( []/[] ) :- !.
+isterminal( [_|_] ) :- !.
+isterminal( [_|_]/[_|_] ) :- !.
+
+
+create_shift( Mode, CheckEnd, Symbol, SIn, In, Out, SOut, Shift ) :- simple_symbol( Symbol ), !, shift( CheckEnd, Mode, Symbol, SIn, In, Out, SOut, Shift ).
+create_shift( Mode, CheckEnd, Min-Max, SIn, In, Out, SOut, (SIn =< Max, SIn >= Min, Shift ) ) :- !, shift( CheckEnd, expand, SIn, SIn, In, Out, SOut, Shift ).
+create_shift( Mode, CheckEnd, Interval, SIn, In, Out, SOut, (Test,Shift) ) :- 
+	sort( Interval, AuxInt ), 
+	reverse( AuxInt, SortedInterval ), !,
+	create_shift_interval( SortedInterval, SIn, Test ),
+	shift( CheckEnd, expand, SIn, SIn, In, Out, SOut, Shift ).
+
+create_shift_interval( [], _, true ) :- !.
+create_shift_interval( [Min-Max], SIn, (SIn =< Max, SIn >= Min ) ) :- !.
+create_shift_interval( [Min-Max|RestInterval], SIn, (SIn =< Max, SIn >= Min ; RestBody ) ) :- !,
+	create_shift_interval( RestInterval, SIn, RestBody ).
+
+simple_symbol( Symbol ) :- var( Symbol ), !.
+simple_symbol( Integer ) :- integer( Symbol ), !.
+simple_symbol( Other ) :- Other \= [], Other \= [_|_], Other \= _ / _, Other \= _ - _, !.
+
+
+add_arguments( TermIn, SIn, In, Out, SOut, TermOut ) :-
+	TermIn =.. [Term|Args],
+	append( Args, [SOut,Out], NewArgs ),
+	TermOut =.. [Term,SIn,In|NewArgs].
+	
+
+write_rule( Stream, Head, true ) :- !,
+	numbervars( Head ),
+	writeq( Stream, Head ), write( Stream, '.' ), nl( Stream ).
+write_rule( Stream, Head, Body) :- !,
+	numbervars( (Head :- Body ) ),
+	writeq( Stream, Head ), write( Stream, ' :- ' ), 
+	writeq( Stream, Body ), write( Stream, '.' ), nl( Stream ).
+
+
+%shift( Symbol, [Symbol,LookAhead|Rest], [LookAhead|Rest], LookAhead ).
+
+/* shift( no, Mode, Symbol, SIn, In, Out, SOut, Shift ) :- !,
+	shift( Mode, Symbol, SIn, In, Out, SOut, Shift ).
+shift( yes, Mode, Symbol, SIn, In, Out, SOut, ('*',Shift) ) :- !,
+	shift( Mode, Symbol, SIn, In, Out, SOut, Shift ).
+*/
+
+shift( yes, expand, SIn, SIn, In, Out, LookAhead, ( In = [LookAhead|Out]  -> true; LookAhead = -1, Out = []) ) :- !.
+shift( yes, unify, Symbol, SIn, In, Out, LookAhead, ( Symbol = SIn, ( In = [LookAhead|Out]  -> true; LookAhead = -1, Out = [] ) ) ) :- !.
+
+shift( no, expand, SIn, SIn, [LookAhead|Rest], Rest, LookAhead, true ) :- !.
+shift( no, unify, Symbol, SIn, [LookAhead|Rest], Rest, LookAhead, ( Symbol = SIn ) ) :- !.
+
+
+check( expand, [SIn|RestInput], SIn, RestInput, RestInput, SIn, true ) :- !.
+check( unify, Test, SIn, RestInput, RestInput, SIn, ( Test = [SIn|RestInput] ) ) :- !.
+

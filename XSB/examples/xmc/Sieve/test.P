@@ -1,0 +1,6 @@
+:- ['../test'].
+:- xlc(sieve).
+
+test(N, OVER, MAX, Formula) :-
+	write(sieve(N, OVER, MAX)), write(' '), writeln(Formula),
+	check_all(sieve(N, OVER, MAX),ae_finish).

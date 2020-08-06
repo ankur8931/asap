@@ -1,0 +1,85 @@
+/* File:      quad.P	-- handle transitions for compiler
+** Author(s): Yifei Dong
+** Contact:   lmc@cs.sunysb.edu
+** 
+** Copyright (C) SUNY at Stony Brook, 1998-2000
+** 
+** XMC is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XMC is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XMC; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: quad.P,v 1.4 2010-08-19 15:03:39 spyrosh Exp $
+** 
+*/
+
+:- dynamic quad/5.
+:- dynamic trans/3.
+
+rec_quad(PN, S1, A, S2, C, V) :-
+	copy_term(q(PN,S1,A,S2,C,V), q(ProcName,State1,Action,State2,Code,Vars)),
+	pe_term(Code, PeCode),
+	(PeCode == fail ->
+	    true
+	;
+	    (functor(State1, par, _) ->
+		true				% skip standard par trans
+	    ;	assert((trans(State1, Action, State2) :- PeCode))),
+	    assert(quad(ProcName, State1, Action, State2, PeCode)),
+	    assert(translookup(State1, Action, State2, PeCode, Vars))
+	).
+
+%% record a super transition rule
+%%	trans(p(S1,S2,...Sn),A,p(S1',S2',...,Sn')) :-
+%%		trans_p(S1,S2,...,Sn, A, S1',S2',...,Sn').
+rec_super_trans(ProcName, TransName, Par) :-
+	length(Par, N),
+	length(List1, N),
+	length(List2, N),
+	State1 =.. [ProcName | List1],
+	State2 =.. [ProcName | List2],
+	sandwich(List1, Action, List2, Args),
+	Trans =.. [TransName | Args],
+	assert((trans(State1, Action, State2) :- Trans)),
+	L is 2 * N + 1,
+	index(TransName/L, [1,2,3,4,5], 500).
+
+%% record trans_p
+
+rec_par_trans(ProcName, List1, Action, List2, Code) :-
+	pe_term(Code, PeCode),
+	(PeCode == fail ->
+		true
+	;
+		State1 =.. [ProcName|List1],
+		State2 =.. [ProcName|List2],
+			assert((trans(State1, Action, State2) :- PeCode))
+	).
+
+transform_nop :-
+	retract((trans_nop(S1,nop,S2) :- C)),
+	assert((trans(S1,A,D) :- (C, trans(S2,A,D)))),
+	fail.
+
+transform_nop.
+
+%%-----------------------------------------------------------------------------
+
+get_quad(ProcName, S,A,T,C) :-
+	callproc(ProcName, CallName),
+	quad(CallName, S,A,T,C).
+
+:- table callproc/2.
+callproc(Caller, Callee) :- callproc(Caller, X), directcall(X, Callee).
+callproc(Caller, Caller).
+
+%%-----------------------------------------------------------------------------

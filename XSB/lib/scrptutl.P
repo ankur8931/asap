@@ -1,0 +1,168 @@
+/* File:      scrptutl.P
+** Author(s): Swift, Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1999
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: scrptutl.P,v 1.17 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+
+:- compiler_options([xpp_on, sysmod]).
+#include "char_defs.h"
+
+
+:- dynamic '_$_$_file_to_list'/1.
+%% Convert file into a list of lists of tokens
+file_to_list(File, List) :-
+	repeat,
+	(   file_read_line_list(File, Line)
+	->  (   Line = []
+	    ->	Toklist=[]
+	    ;	simple_tokenize(Line, Toklist)
+	    ),
+	    (	'_$_$_file_to_list'(SavedList)
+	    ->	SavedList1 = [Toklist | SavedList]
+	    ;	SavedList1 = [Toklist]
+	    ),
+	    retractall('_$_$_file_to_list'(_)),
+	    assert('_$_$_file_to_list'(SavedList1)),
+	    fail
+	;   !,
+	    (	'_$_$_file_to_list'(SavedList)
+	    ->	reverse(SavedList, List)
+	    ;	List = []
+	    ),
+	    retractall('_$_$_file_to_list'(_))
+	).
+
+% Utilities.
+%aton(Atom,Number):-
+%	name(Atom,L),
+%	number_codes(Number,L).
+
+space_char(CH_SPACE).
+space_char(CH_TAB).
+space_char(CH_NEWLINE).
+space_char(CH_RETURN).
+space_char(CH_FORMFEED).
+space_char(CH_VERTAB).
+
+simple_tokenize([],[]):-!.
+simple_tokenize([Char|Rest],Toks):-
+	space_char(Char), !,
+	simple_tokenize(Rest,Toks).
+simple_tokenize(List,[Tok|Rest]):-
+	read_const(List,Rlist,Toklist),
+	name(Tok,Toklist),
+	simple_tokenize(Rlist,Rest).
+
+read_const([],[],[]).
+read_const([Char|Rest],Rest,[]):-
+	space_char(Char), !.
+read_const([H|Rest],Out,[H|T]):-
+	read_const(Rest,Out,T).
+
+ca(In,Out):-
+	ca_1(In,Mid),
+	concat_atom(Mid,' ',Out).
+
+ca_null(In,Out):-
+	ca_1(In,Mid),
+	concat_atom(Mid,'',Out).
+
+ca_1([],[]):-!.
+ca_1([''|T],T1):-!,
+	ca_1(T,T1).
+ca_1([H|T],[H1|T1]):-!,
+	(functor(H,_,1) -> arg(1,H,H1) ;  H1 = H),
+        ca_1(T,T1).
+ca_1('',[]):- !.
+ca_1(H,[H]):- atom(H).
+
+%% The stuff below is marked as obsolete!!
+
+date(date(Y,Mon,D,H,Min,S)):-
+	obsolete('date/1','datime/1'),
+	datime(datime(Y,Mon,D,H,Min,S)).
+
+% Crude but effective.  Returns stdout of a unix command as a list of
+% tokens. Obsolete!
+sysin(Command,List):-
+%	obsolete('sysin/1', 'shell/5'),
+	ca([Command,'> /tmp/XSBdir'],Com1),
+	unix(Com1),
+	open('/tmp/XSBdir',read,Str),
+	file_to_list(Str,0,List),
+	close(Str).
+
+% sysin(Command,List) :-
+% 	spawn_process(Command,_,Output,_,_),
+% 	file_to_list(Output,List).
+
+
+
+%% Obsolete
+file_to_list(_Str,-1,[]):-
+	obsolete('file_to_list/3', 'file_to_list/2'),
+	!.
+file_to_list(Str,_,List):-
+	obsolete('file_to_list/3', 'file_to_list/2'),
+	fget_line(Str,Inlist,Next),
+	(Inlist == [] -> List = [] 
+	  ; List = [Toklist|Rest],	
+   	    simple_tokenize(Inlist,Toklist),
+	    file_to_list(Str,Next,Rest)).
+
+
+/* Stage 1: tokenize XSB specific */
+fget_line(Str,Inlist,Next):-
+	obsolete('fget_line/3', 'file_read_line_atom/3 & file_read_line_list/3'),
+	seeing(OldFile),
+	see(Str),
+	xsb_configuration(configuration,Conf),
+	(Conf == 'x86-pc-windows'
+	 ->	fget_line_1wind(Inlist,Next)
+	 ;	fget_line_1(Inlist,Next)
+	),
+	see(OldFile),!.
+
+% -1 vs end_of_file.
+fget_line_1(Inlist,Next):-
+	get0(Char),
+	((Char == 10 ; Char == -1) -> 
+	    Inlist = [],Next = Char
+	 ; Inlist = [Char|Inlist1],fget_line_1(Inlist1,Next)).
+
+fget_line_1wind(Inlist,Next):-
+	get0(Char),
+	(Char < 0
+	 ->	Inlist = [], Next = Char
+	 ; Char =:= 13
+	 ->	get0(Char1),
+		(Char1 < 0
+		 ->	Inlist = [Char], Next = Char1
+		 ; Char1 =:= 10
+		 ->	Inlist = [], Next = Char1
+		 ;	Inlist = [Char,Char1|Inlist1],
+			fget_line_1wind(Inlist1,Next)
+		)
+	 ;	Inlist = [Char|Inlist1],
+		fget_line_1wind(Inlist1,Next)
+	).
+

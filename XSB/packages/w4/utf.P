@@ -1,0 +1,157 @@
+
+:- multifile read_stream/5.
+
+:- import read_octet/3 from iostream.
+
+
+%% Support for UTF-8
+% Reads a complete stream, returning a list of characters
+read_stream( 'UTF-8', Stream, Codes, RestCodes, RestStream ) :- !,
+	read_utf8_stream( Stream, ReadCodes, RestCodes, RestStream ),
+	skip_bom( ReadCodes, Codes ).
+
+skip_bom( [65279|Codes], Codes ) :- !.
+skip_bom( Codes, Codes ) :- !.
+
+read_utf8_stream( Stream, [Code|NextCodes], RestCodes, RestStream ) :-
+	read_utf8_code( Stream, Code, AuxStream ), !,
+	read_utf8_stream( AuxStream, NextCodes, RestCodes, RestStream ).
+read_utf8_stream( Stream, RestCodes, RestCodes, Stream ) :- !.
+
+
+/*
+read_utf8_stream( Stream, OutCodes, RestCodes, RestStream ) :-
+	read_utf8_code( Stream, Code, AuxStream ) -> 
+		OutCodes = [Code|NextCodes], !, read_utf8_stream( AuxStream, NextCodes, RestCodes, RestStream )
+	;
+		OutCodes = RestCodes, RestStream = Stream	
+	.
+*/
+
+read_code( 'UTF-8', Stream, Code, RestStream ) :- !,
+	read_utf8_code( Stream, Code, RestStream ).
+
+read_utf8_code( Stream, Code, RestStream ) :-
+	read_octet( Stream, Oct1, AuxStream ), !,
+	read_utf8_code( Oct1, AuxStream, Code, RestStream ).
+
+
+read_utf8_code( O1, Stream, O1, Stream ) :-
+	O1 < 16'80, !.
+read_utf8_code( O1, Stream, Code, RestStream ) :-
+	O1 >= 16'C0, O1 =< 16'DF, !,
+	read_octet( Stream, O2, RestStream ),
+	Code is (( O1 /\ 16'1F ) << 6) \/ ( O2 /\ 16'3F).
+read_utf8_code( O1, Stream, Code, RestStream  ) :-
+	O1 =< 16'EF, !,					% O1 >= 16'E0
+	read_octet( Stream, O2, AuxStream ),
+	read_octet( AuxStream, O3, RestStream ),
+	Code is (( O1 /\ 16'0F ) << 12) \/ (( O2 /\ 16'3F ) << 6) \/ ( O3 /\ 16'3F).
+read_utf8_code( O1, Stream, Code, RestStream  ) :-
+	O1 =< 16'F7, !,					% O1 >= 16'F0
+	read_octet( Stream, O2, AuxStream1 ),
+	read_octet( AuxStream1, O3, AuxStream2 ),
+	read_octet( AuxStream2, O4, RestStream ),
+	Code  is (( O1 /\ 16'07 ) << 18) \/ (( O2 /\ 16'3F ) << 12) \/ (( O3 /\ 16'3F ) << 6) \/ ( O4 /\ 16'3F).
+
+/*
+read_utf8_code( O1, Stream, Code, RestStream ) :-
+	O1 < 16'80, !, Code = O1, Stream = RestStream 
+; 
+	O1 >= 16'C0, O1 =< 16'DF, !,
+	read_octet( Stream, O2, RestStream ),
+	Code is (( O1 /\ 16'1F ) << 6) \/ ( O2 /\ 16'3F)
+;
+	O1 =< 16'EF, !,					% O1 >= 16'E0
+	read_octet( Stream, O2, AuxStream ),
+	read_octet( AuxStream, O3, RestStream ),
+	Code is (( O1 /\ 16'0F ) << 12) \/ (( O2 /\ 16'3F ) << 6) \/ ( O3 /\ 16'3F)
+;
+	O1 =< 16'F7, !,					% O1 >= 16'F0
+	read_octet( Stream, O2, AuxStream1 ),
+	read_octet( AuxStream1, O3, AuxStream2 ),
+	read_octet( AuxStream2, O4, RestStream ),
+	Code  is (( O1 /\ 16'07 ) << 18) \/ (( O2 /\ 16'3F ) << 12) \/ (( O3 /\ 16'3F ) << 6) \/ ( O4 /\ 16'3F).
+*/
+
+%% Support for UTF-16 Big Endian
+read_stream( 'UTF-16BE', Stream, Codes, RestCodes, RestStream ) :- !,
+	read_utf16be_stream( Stream, ReadCodes, RestCodes, RestStream ),
+	skip_bom( ReadCodes, Codes ).
+
+
+read_code( 'UTF-16BE', Stream, Code, RestStream ) :- !,
+	read_utf16be_code( Stream, Code, RestStream ).
+
+read_utf16be_stream( Stream, [Code|NextCodes], RestCodes, RestStream ) :-
+	read_utf16be_code( Stream, Code, AuxStream ), !,
+	read_utf16be_stream( AuxStream, NextCodes, RestCodes, RestStream ).
+
+read_utf16be_stream( Stream, RestCodes, RestCodes, Stream ) :- !.
+
+
+read_utf16be_code( Stream, Code, RestStream ) :-
+	read_16be( Stream, Code1, AuxStream ),
+	read_utf16be_code( Code1, AuxStream, Code, RestStream ).
+
+
+read_utf16be_code( Code, Stream, Code, Stream ) :-
+	(Code < 16'D800 ; Code > 16'DFFF, Code < 16'FFFE), !. 
+read_utf16be_code( W1, Stream, Code, RestStream ) :-
+	W1 >= 16'D800, W1 =< 16'DBFF, !,
+	read_16be( Stream, W2, RestStream ),
+	W2 >= 16'DC00, W2 =< 16'DFFF,
+	Code is (((W1 /\ 16'03FF) << 10 ) \/ ( W2 /\16'03FF )) + 16'10000.
+
+read_16be( Stream, Code, RestStream ) :-
+	read_octet( Stream, Big, AuxStream ),
+	read_octet( AuxStream, Little, RestStream ),
+	Code is Big << 8 \/ Little.
+
+
+%% Support for UTF-16 Little Endian
+
+read_stream( 'UTF-16LE', Stream, Codes, RestCodes, RestStream ) :- !,
+	read_utf16le_stream( Stream, ReadCodes, RestCodes, RestStream ),
+	skip_bom( ReadCodes, Codes ).
+
+read_code( 'UTF-16LE', Stream, Code, RestStream ) :- !,
+	read_utf16be_code( Stream, Code, RestStream ).
+
+
+read_utf16le_stream( Stream, [Code|NextCodes], RestCodes, RestStream ) :-
+	read_utf16le_code( Stream, Code, AuxStream ), !,
+	read_utf16le_stream( AuxStream, NextCodes, RestCodes, RestStream ).
+
+read_utf16le_stream( Stream, RestCodes, RestCodes, Stream ) :- !.
+
+read_utf16le_code( Stream, Code, RestStream ) :-
+	read_16le( Stream, Code1, AuxStream ),
+	read_utf16le_code( Code1, AuxStream, Code, RestStream ).
+
+read_utf16le_code( Code, Stream, Code, Stream ) :-
+	(Code < 16'D800 ; Code > 16'DFFF, Code < 16'FFFE), !. 
+read_utf16le_code( W1, Stream, Code, RestStream ) :-
+	W1 >= 16'D800, W1 =< 16'DBFF, !,
+	read_16le( Stream, W2, RestStream ),
+	W2 >= 16'DC00, W2 =< 16'DFFF,
+	Code is (((W1 /\ 16'03FF) << 10 ) \/ ( W2 /\16'03FF )) + 16'10000.
+
+read_16le( Stream, Code, RestStream ) :-
+	read_octet( Stream, Little, AuxStream ),
+	read_octet( AuxStream, Big, RestStream ),
+	Code is Big << 8 \/ Little.
+
+
+%% Support for UTF-16 using BOMs
+
+read_stream( 'UTF-16', Stream, Codes, RestCodes, RestStream ) :- !,
+	read_16le( Stream, BOM, AuxStream ),
+	read_utf16_stream( BOM, AuxStream, Codes, RestCodes, RestStream ).
+
+read_utf16_stream( 65279, Stream, Codes, RestCodes, RestStream ) :- !,
+	read_utf16le_stream( Stream, Codes, RestCodes, RestStream ) .
+read_utf16_stream( 65534, Stream, Codes, RestCodes, RestStream ) :- !,
+	read_utf16be_stream( Stream, Codes, RestCodes, RestStream ) .
+read_utf16_stream(_,_,_,_,_) :- 
+	throw( iostream( 'Expecting BOM in UTF-16 stream' ) ).

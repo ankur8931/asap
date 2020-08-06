@@ -1,0 +1,48 @@
+/* File:      ptq_utils.P
+** Author(s): David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: ptq_utils.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+
+/****** Utility Functions for PTQ grammar ******/
+
+:- export delete/3, delete_some/3, not_occurs_in/2, commatolist/2.
+
+delete(X,[X|L],L).
+delete(X,[Y|L0],[Y|L1]) :- delete(X,L0,L1).
+
+delete_some(_,[],[]).
+delete_some(X,[X|L0],L) :- delete_some(X,L0,L).
+delete_some(X,[Y|L0],[Y|L]) :- delete_some(X,L0,L).
+
+not_occurs_in(X,T) :- X==T,!,fail.
+not_occurs_in(_X,T) :- var(T),!.
+not_occurs_in(_X,T) :- atomic(T),!.
+not_occurs_in(X,T) :- functor(T,_F,A),not_occurs_in(X,T,A).
+
+not_occurs_in(_X,_T,0) :- !.
+not_occurs_in(X,T,A) :- arg(A,T,Y),not_occurs_in(X,Y),
+        A1 is A-1, not_occurs_in(X,T,A1).
+
+commatolist(A,[A]) :- var(A),!.
+commatolist((A,B),[A|B1]) :- !, commatolist(B,B1).
+commatolist(A,[A]).

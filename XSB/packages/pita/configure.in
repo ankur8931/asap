@@ -1,0 +1,38 @@
+## File:      configure.in
+
+dnl  To rebuild the `configure' script from this, execute the command
+dnl	autoconf
+dnl  in the directory containing this script.
+dnl
+dnl
+
+
+
+AC_PREREQ(2.12)
+
+nl AC_INIT()
+
+
+AC_ARG_WITH(pita,
+[  --with-pita=DIR	   the CUDD library used for PITA is at DIR]
+   )
+
+
+
+dnl --with-libwww=DIR
+ccflags=
+ldflags=
+if test -n "$with_pita" ; then
+   glib_ld_flags="`pkg-config --libs glib-2.0`"
+   ccflags="-I $with_pita/include `pkg-config --cflags glib-2.0`"
+   ldflags="-L$with_pita/cudd -lcudd  -L$with_pita/mtr -lmtr  -L$with_pita/st -lst  -L$with_pita/util -lutil  -L$with_pita/epd -lepd $glib_ld_flags -lm"
+fi
+
+AC_SUBST(ccflags)
+AC_SUBST(ldflags)
+LIBS="$ldflags"
+AC_SEARCH_LIBS([g_hash_table_new], [], [], [AC_MSG_ERROR([This package needs glib >=2.0.], [1])], [])
+AC_SEARCH_LIBS([Cudd_Init], [], [], [AC_MSG_ERROR([This package needs cudd.], [1])], [])
+
+AC_OUTPUT([pita_lib.H:pita_lib.H.in
+	pita_int.P:pita_int.P.in])

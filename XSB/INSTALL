@@ -1,0 +1,171 @@
+
+    This file contains instructions for compiling and installing XSB.
+    These instructions are NOT for Windows: see
+    INSTALL_WINDOWS
+
+1. Unpack the tarball in some directory. This should create a subdirectory, 
+    called XSB, which contains the XSB sources.
+
+2. Type:
+	cd XSB/build
+	./configure
+	./makexsb
+
+If something fails, please check the messages that `configure' and `makexsb'
+produce, and report to xsb-contact@cs.sunysb.edu
+The log is usually saved in XSB/build/Installation_summary.
+
+NOTE: if you downloaded XSB from the XSB CVS repository, you must type
+      `makexsb devel' instead of just `makexsb'.  This is because some .O 
+      files in your local copy might need to be recompiled.
+
+If everything worked, you can now run XSB using the shell script
+
+	XSB/bin/xsb
+
+The command-line options --with-config-tag, --with-aout, --with-bits64, and
+--enable-debugging (see below)  may affect the name of the script that you
+should run. For instance, if --enable-debugging is given on command line,
+the script name might be xsb-dbg instead of xsb. When makexsb finishes, it
+will tell you which script to run.
+
+Note that by default, configure would choose gcc as its C compiler (if
+available). If you prefer a different compiler, use the option --with-cc or 
+--with-acc, e.g.:
+
+	./configure --with-cc
+
+You can also set the CC environment variable to the compiler of your
+choice.
+
+
+You might want to use the --prefix=INSTALL-DIR option if you want to
+install XSB in a directory other than its source tree. In this case,
+type
+	./makexsb install
+
+after `makexsb' to install XSB in the specified directory INSTALL-DIR.
+The XSB executable will then be in
+
+	 INSTALL-DIR/bin/xsb
+
+In this version of XSB, it is possible to keep site-specific XSB libraries in
+the site directory (instead of copying them into the XSB source tree).
+
+The site directory is normally in 
+
+	 INSTALL-DIR/site
+
+but this can be changed with the --with-site-prefix option:
+
+	 ./configure --with-site-prefix=SITE-DIR
+
+If your C libraries or include files are in odd places or if you are
+building XSB with Oracle support, you might need to tell where these
+libraries are using the --with-static-libraries and --with-includes
+options. (Note: these refer to C libraries needed to compile XSB; these
+libraries are different from the programs written using XSB for a specific
+site and which go into the aforesaid SITE-DIR). You can specify one or more 
+directories. In the latter case, enclose the list of directories in double
+quotes.
+
+Finally, if you have external C libraries that work with XSB and are loaded
+dynamically, you need to use the --site-dynamic-libraries option to specify
+the directories to search for these libraries (same syntax as
+--site-static-libraries). These directories are automatically added to the
+XSB library search path.
+
+
+The full list of options accepted by configure is listed below.
+
+Control:
+  --help                  print this message
+  --cache                 use cached test results from a previous run
+                          of `configure', if available
+  --with-bits64           on 64 bit machines that default to the 32 bit mode,
+                          force the 64 bit mode.
+			  If you haven't specified --config-tag on command
+			  line (see below), the suffix -bits64 will be
+			  attached to the configuration directory and the
+			  bin/xsb script name (i.e., it will be
+			  bin/xsb-bits64). 
+
+  --with-aout		  If you are using an older Linux system that
+			  utilizes the a.out format, you must tell us, or
+			  else XSB won't be configured correctly.
+			  If you haven't specified --config-tag on command
+			  line (see below), the suffix -aout will be
+			  attached to the configuration directory and the
+			  bin/xsb script name (i.e., it will be
+			  bin/xsb-aout). 
+
+  --with-optimization=level
+                          You can override the default optimization settings by
+                          specifying something like O2 (or xO2, for some
+                          compilers).
+
+  --no-create             do not create output files
+  --quiet, --silent       do not print `checking...' messages
+  --version               print the version of autoconf that created configure
+
+Directory and file names:
+  --prefix=PREFIX         install architecture-independent files in PREFIX
+                          [/usr/local]
+  --with-site-prefix=DIR  site-specific libraries & code in DIR [PREFIX/site]
+
+  --with-static-libraries=DIR
+                          These might be needed, if compiling with support 
+                          for statically linked packages (such as Oracle)
+                          or if your standard C libraries are in 
+                          odd places. These libraries are added as -L options 
+                          during XSB compilation.
+                          You can specify a list of libraries by enclosing 
+                          them in quotes. This list is automatically added 
+                          to the loader flags to ensure that the packages will
+                          be linked in.
+  --with-dynamic-libraries=DIR
+                          This specifies the list of libraries used by 
+                          packages linked dynamically with XSB.
+                          These libraries are automatically added to the XSB 
+                          library search path, so they could be loaded at
+                          run time.
+  --with-includes=DIR     These might be needed if it is necessary to tell 
+                          the compiler about additional header files to
+                          include with the -I option. This need arises if
+                          your standard header files are in odd places or
+                          if XSB is compiled with ODBC support.
+                          You can specify a list of libraries by enclosing 
+                          them in quotes.
+
+  --with-config-tag=TAG   makes the configuration directory name look like
+                          [CONFIG_PREFIX]/configuration-TAG. If TAG is missing,
+                          the directory is [CONFIG_PREFIX]/[configuration].
+                          TAG is used for debugging, so one can have
+                          different builds under the same architecture.
+			  the specified TAG will be appended to the
+                          smart script bin/xsb-TAG, which you should use to
+                          run XSB after it is built.
+  --mandir=DIR            documentation in DIR [PREFIX/manual]
+
+Host type:
+  --host=HOST             configure for HOST [guessed]
+
+Features and packages:
+  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
+  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
+  --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
+  --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+
+--enable and --with options recognized:
+  --with-cc=<compiler>    use <compiler> to compile XSB
+  --with-cc               use CC to compile XSB
+  --with-gcc              use GCC to compile XSB
+  --with-acc              use ACC to compile XSB
+  --with-oracle           compile with support of Oracle
+  --with-odbc             compile with support of Oracle
+  --enable-debug             compile with debugging turned on
+  --enable-debug-oracle      compile with Oracle debugging turned on
+  --enable-profile           compile with profiling turned on
+  --disable-optimization     compile with no optimization (default: enabled)
+  --enable-batched-scheduling  compile using the batched scheduling strategy;
+                             default is the local strategy

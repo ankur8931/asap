@@ -1,0 +1,93 @@
+/* File:      path.chr
+** Author(s): Tom Schrijvers
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) ECRC 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: path.chr,v 1.4 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+:- chr_module(path).
+
+:- import length/2 from lists.
+
+:- import merge_chr_answer_store/1, 
+          get_chr_store/1,
+          set_chr_store/1,
+          get_chr_answer_store/2
+   from chr.
+
+breg_retskel(A,B,C,D) :- '_$builtin'(154).
+
+:- constraints geq/2, plus/3, project/1.
+
+geq(X,N) \ geq(X,M) <=> number(N), number(M), N =< M | true.
+
+reflexivity  @ geq(X,X) <=> true.
+antisymmetry @ geq(X,Y), geq(Y,X) <=> X = Y.
+idempotence  @ geq(X,Y) \ geq(X,Y) <=> true.
+transitivity @ geq(X,Y), geq(Y,Z) ==> var(Y) | geq(X,Z).
+
+plus(A,B,C) <=> number(A), number(B) | C is A + B.
+plus(A,B,C), geq(A,A1) ==> plus(A1,B,C1), geq(C,C1).
+plus(A,B,C), geq(B,B1) ==> plus(A,B1,C1), geq(C,C1).
+
+project(X) \ plus(_,_,_) # ID <=> true pragma passive(ID).
+project(X) \ geq(Y,Z) # ID <=> (Y \== X ; var(Z) )| true pragma passive(ID).
+project(_) <=> true.
+
+path(X,Y,C) :-
+	tabled_path(X,Y,C1,AS),
+	merge_chr_answer_store(AS),
+	C = C1.
+	
+:- table tabled_path/4.
+
+tabled_path(X,Y,C,AS) :-
+	'_$savecp'(Breg),
+	breg_retskel(Breg,4,Skel,Cs),
+	copy_term(p(X,Y,C,AS,Skel),p(OldX,OldY,OldC,OldAS,OldSkel)),
+        get_chr_store(GS),
+	set_chr_store(_GS1),
+	orig_path(X,Y,C),
+        project(C),
+	( get_returns(Cs,OldSkel,Leaf),
+	  OldX == X, OldY == Y ->
+            merge_chr_answer_store(OldAS),
+            C = OldC,
+            get_chr_answer_store(path,MergedAS),
+            sort(MergedAS,AS),
+            ( AS = OldAs ->
+                fail
+            ;
+                delete_return(Cs,Leaf)
+            )
+	;
+            get_chr_answer_store(path,UnsortedAS),
+            sort(UnsortedAS,AS)
+	),
+        set_chr_store(GS).
+
+orig_path(X,Y,C) :- edge(X,Y,C1), geq(C,C1).
+orig_path(X,Y,C) :- path(X,Z,C2), edge(Z,Y,C1), plus(C1,C2,C0), geq(C,C0).
+
+edge(a,b,1).
+edge(b,a,1).
+%edge(b,c,1).
+%edge(a,c,3).
+%edge(c,a,1).
+

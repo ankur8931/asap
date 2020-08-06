@@ -1,0 +1,305 @@
+
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber1">
+    <tr>
+      <td>
+      <a href="../index.htm">
+      <img border="0" src="w4small.GIF"></a></td>
+      <td>
+      <p align="center"><span lang="pt"><font face="Arial" size="7">Lookup 
+      Definite Clause Grammars</font></span></td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center">&nbsp;</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center"><font face="Arial">(c)
+      <a href="http://centria.di.fct.unl.pt/~cd">Carlos Viegas Damásio</a>,
+      <span lang="pt">October </span>2003</font></td>
+    </tr>
+  </table>
+  </center>
+</div>
+<p align="left">&nbsp;</p>
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="5" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber2">
+    <tr>
+      <td width="100%">
+      <font face="Arial Black" size="5" color="#0000FF"><span lang="pt">1.
+      </span>Description</font></td>
+    </tr>
+    <tr>
+      <td width="100%">This small application implements an extension of 
+      Definite Clause Grammars (DCGs) which introduces lookahead symbols in the 
+      compiled code. Ordinary DCGs introduce two additional arguments in each 
+      compiled clause, one for the input list to parse and other for the 
+      remaining list to parse after execution of the predicate (production). Our 
+      compilation method introduces 4 additional arguments:<ul>
+        <li>The current lookahead symbol, in the 1st predicate argument, i.e. 
+        the first symbol in the input.</li>
+        <li>The rest input list in the 2nd predicate argument.</li>
+        <li>The DCG predicate arguments appear after the 2nd argument.</li>
+        <li>The lookahead symbol of the remaining string to parse, in the 
+        penultimate argument.</li>
+        <li>The remaining to parse list in the last argument.</li>
+      </ul>
+      <p>This technique allows the lookup DCG code to explore the indexing 
+      facilities of most Prolog implementations and the user to write the 
+      grammars in a more natural way, with significant performance improvments. 
+      However, in order to be able to use lookahead information, the input 
+      string must be terminated with a special symbol (usually -1). To support 
+      the development of large applications we've introduced additional 
+      syntactic sugar.</p>
+      <p>To simplify the determination of lookahead symbol information, the 
+      lookup DGC compiler resorts to the tabling features of XSB Prolog and 
+      therefore is not portable to othe Prolog systems. However, the generated 
+      code is fully standard and can be used in any Prolog system. This parser 
+      generator has been used for the implementation of a full non-validating 
+      XML Parser.</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">2. 
+      Lookup DCG syntax</font></span><p>Productions can have two forms:</p>
+      <ul>
+        <li><font face="Courier New"><b>Head --&gt; Body.</b></font> These behave 
+        as ordinary DCG productions, except that the extra arguments for 
+        lookahead symbol propagation are introduced.</li>
+        <li><font face="Courier New"><b>Head ::= Body.</b></font> These 
+        productions obtain lookahead symbol information from their bodies, and 
+        use it to optimize the execution of the grammar. This must be used with 
+        care since a large number of rules might be generated from a single 
+        production, the rule of thumb being one rule for each lookahed symbol in 
+        the Body.</li>
+      </ul>
+      <p>The bodies of productions have a similar syntax to ordinary DGCs, 
+      except that we introduced additional syntax to represent terminal symbols, 
+      permitting the specification of (union of ) interval ranges. Regarding 
+      non-terminals, we allow the inline expansion of non-terminals by its 
+      rules. Cuts are allowed in production bodies, as well as actions with the 
+      usual <font face="Courier New">{ Prolog Code }</font> syntax. The full 
+      syntex is described next:</p>
+      <blockquote>
+        <p><b><font color="#0000FF">Non-Terminal symbols in the body:</font></b></p>
+        <ul>
+          <li><font face="Courier New">+ NonTerminal</font>, indicates that 
+          NonTerminal rules are expanded inline.</li>
+          <li><font face="Courier New">NonTerminal</font>, where NonTerminal is 
+          an atom specifying a non-terminal symbol</li>
+        </ul>
+        <p><font color="#0000FF"><b>Terminal symbols in the body:</b></font></p>
+        <ul>
+          <li><font face="Courier New">[]</font>, the empty list is used to 
+          represent the empty string.</li>
+          <li><font face="Courier New">[S1,S2...,Sn]</font>, recognizes the 
+          sequence obtained from recognizing S1, S2, ..., Sn. </li>
+          <li><font face="Courier New">[S1,S2...,Sn]/[C1,C2...Cn]</font>, as 
+          before but C1 is the symbol in the input recognized by S1, C2 is the 
+          symbol in the input recognized by S2 ..., and Cn is the symbol in the 
+          input recognized by Cn.&nbsp; </li>
+        </ul>
+        <p>The third case above is an extension to Prolog DCGs, since we allow 
+        the use of ranges in any of the Si symbol expressions above. A symbol 
+        expression might be:</p>
+        <ul>
+          <li>An atom or character code, as in ordinary DCGs</li>
+          <li><font face="Courier New">Min-Max</font>, recognizing any character 
+          code between Min and Max, and thus these must be integer numbers such 
+          that Min &lt;= Max.</li>
+          <li><font face="Courier New">[Min1-Max1,Min2-Max2,...,MinN-MaxN]</font>, 
+          recognizing any character code between Min1 and Max1, or Min2 and 
+          Max2, ... or MinN and MaxN.</li>
+        </ul>
+        <p>The parser generator does not take into account ranges for the 
+        generation of optimized code in productions of the form <b>::=</b>, so 
+        these must be used with care (the same behaviour of DGCs is obtained).</p>
+        <p><b><font color="#0000FF">Production control</font></b></p>
+        <p>The following constructions are allowed in the bodies of production 
+        in order to control the execution of the parser:</p>
+        <ul>
+          <li>!, as in ordinary DGCs</li>
+          <li><font face="Courier New">{ Prolog Code }</font>, actions as in 
+          ordinary DCGs</li>
+          <li><font face="Courier New">? [C1,...,Cn]</font>, tests if the input 
+          starts with <font face="Courier New">[C1,...,Cn]</font> where C1, .., 
+          Cn are character codes. This does not consume input. This construction 
+          is an extension and is mostly used in the form
+          <font face="Courier New">Head --&gt; ? &quot;test&quot;, !.</font> allowing for the 
+          programmer to use base conditions without input consumption.</li>
+        </ul>
+      </blockquote>
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">3. 
+      Installation and usage of the Lookup DCG parser generator</font></span><ol>
+        <li>Construct your parser according to the previous syntax. The parser 
+        may be divided in several files and might contain auxiliary Prolog code 
+        and declarations. We suggest the use of the extension <b>.G</b> in these 
+        files.</li>
+        <li>Declare in the parser file the start non-terminal symbol with the 
+        declaration <font face="Courier New">:- start( Name/Arity)</font>.</li>
+        <li>Declare in the parser file the end terminal symbol with the 
+        declaration <font face="Courier New">:- end( Symbol )</font>, usually -1 
+        if parsing lists of character codes.</li>
+        <li>The generation of parser code for some productions can be prevented 
+        by adding the declaration <font face="Courier New">:- - Name/Arity</font>. 
+        This is used, for instance, for removing all the code for fully expanded 
+        non-terminal symbols.</li>
+        <li>The <a href="lookupdcg-beta-1.zip">parser generator code</a> must be 
+        extracted to a directory and compiled with the goal
+        <font face="Courier New">?-[lookupdcg]</font>. </li>
+        <li>Generate the parser with the call <font face="Courier New">?- 
+        gen_parser( ['File1.G', 'File2.G',...,'FileN.G'], 'OutFile.P')</font>. 
+        The first argument contains the list of files of the parser to be 
+        generated. The compiled code is put in a single file, given in the 2nd 
+        argument of the <b>gen_parser/2</b> predicate. This file must be 
+        afterwards compiled.</li>
+      </ol>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">4. 
+      Example</font></span><p>The following <a href="example.G">grammar</a> 
+      parses lists of natural numbers and names separated by line feeds, either 
+      0xA or 0xD.</p>
+      <blockquote>
+        <pre>% An example Look Up DGC
+
+:- start( example/1 ).
+:- end( -1 ).
+
+:- - digit/1.
+
+example( Is ) ::= lf, !, example( Is ).
+example( [] ) ::= [].
+example( [I|Is] ) --&gt; item( I ), !, lf, example( Is ).
+
+
+item( I ) ::= !, number( I ).
+item( I ) ::= name( I ).
+
+
+number( N ) --&gt; + digit(D), !, rest_digits( Ds ), { number_codes( N, [D|Ds] ) }.
+
+rest_digits( [D|Ds] ) --&gt; + digit( D ), !, rest_digits( Ds ).
+rest_digits( [] ) ::= [].
+
+digit( 0'0 ) --&gt; &quot;0&quot;.
+digit( 0'1 ) --&gt; &quot;1&quot;.
+digit( 0'2 ) --&gt; &quot;2&quot;.
+digit( 0'3 ) --&gt; &quot;3&quot;.
+digit( 0'4 ) --&gt; &quot;4&quot;.
+digit( 0'5 ) --&gt; &quot;5&quot;.
+digit( 0'6 ) --&gt; &quot;6&quot;.
+digit( 0'7 ) --&gt; &quot;7&quot;.
+digit( 0'8 ) --&gt; &quot;8&quot;.
+digit( 0'9 ) --&gt; &quot;9&quot;.
+
+
+name( N ) --&gt; startchar(C), !, rest_name( Cs ), { atom_codes( N, [C|Cs] ) }.
+
+rest_name( [C|Cs] ) --&gt; namechar( C ), !, rest_name( Cs ).
+rest_name( [] ) --&gt; [].
+
+
+startchar( C ) --&gt; [[0'A-0'Z,0'a-0'z]]/[C], !.
+namechar( D ) ::= + digit(D), !.
+namechar( C ) ::= startchar(C).
+
+lf --&gt; [16'A].
+lf --&gt; [16'D].
+</pre>
+      </blockquote>
+      <p>To generate the parser for this grammar, consult the parser generator 
+      file and then call <b>gen_parser/2</b>:</p>
+      <blockquote>
+        <pre>| ?- [lookupdcg].
+[lookupdcg loaded]
+[readgram loaded]
+[predparserint loaded]
+[parserexp loaded]
+
+yes</pre>
+        <pre>| ?- gen_parser( ['example.G'], 'example.P' ).
+example / 1
+item / 1
+number / 1
+rest_digits / 1
+name / 1
+rest_name / 1
+startchar / 1
+namechar / 1
+lf / 0
+yes</pre>
+      </blockquote>
+      <p>The generated code is stored in <a href="example.P">example.P</a>. The 
+      user is suggested to view and try to understand the code. Notice that no 
+      rules for <font face="Courier New">digit/1</font> are generated since all 
+      occurrences of digit in the grammar are in-line expanded using the
+      <font face="Courier New">+ digit(D)</font> facility. The use of cuts can 
+      be very subtle, as can be noticed from the rules for
+      <font face="Courier New">item/1</font> and <font face="Courier New">
+      startchar/1</font>. <br>
+      To use the parser, the following goal must be invoked:
+      <font face="Courier New" size="2">example( FirstSymbol, RestSymbols, 
+      Itens, -1, [] )</font>, as in the example below:</p>
+      <blockquote>
+        <pre>| ?- example( 10, [0'a,0'0,0'Z,10,0'1,0'0,10,10,0'1,10,-1], Is, -1, [] ). 
+Is = [a0Z,10,1] 
+yes</pre>
+      </blockquote>
+      </td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p><span lang="pt"><font face="Arial Black" size="5" color="#0000FF">5. 
+      Copyright</font></span><p>This is an academical and experimental tool. It 
+      cannot be used for commercial purposes without explicit consent of the 
+      author.</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p><span lang="pt"><font face="Arial Black" size="5" color="#0000FF">6. 
+      Disclaimer</font></span><p>This is an academical and experimental tool. I 
+      do not give any guarantee of any form regarding the use of this tool.</td>
+    </tr>
+    <tr>
+      <td width="100%">
+      <p>&nbsp;</td>
+    </tr>
+    <tr>
+      <td width="100%" valign="top">
+      Last update: October 28th, 2003</td>
+    </tr>
+  </table>
+  </center>
+</div>

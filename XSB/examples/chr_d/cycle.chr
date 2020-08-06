@@ -1,0 +1,37 @@
+
+%
+% simple constraint solver for inequalities between variables
+%
+% cycle(N): builds a cycle of N variables related by 
+%           the leq constraint
+%
+
+:- chr_module(cycle).
+
+:- import length/2 from lists.
+
+:- constraints leq/2.
+
+reflexivity  @ leq(X,X) <=> true.
+antisymmetry @ leq(X,Y), leq(Y,X) <=> X = Y.
+idempotence  @ leq(X,Y) \ leq(X,Y) <=> true.
+transitivity @ leq(X,Y), leq(Y,Z) ==> leq(X,Z).
+
+main :-
+	main(60).
+
+main(N):-
+	statistics(0),
+	length(L,N),
+	genleq(L,Last),
+	L=[First|_],
+	leq(Last,First),
+	statistics.
+
+genleq(List,El) :-
+	(List = [El]
+    	 -> true
+	  ; List = [X,Y|Xs],
+	    leq(X,Y),
+	    genleq([Y|Xs],El)
+	).

@@ -1,0 +1,195 @@
+\documentclass[11pt]{report}
+
+\usepackage{epsf,epsfig,subfigure,latexsym,makeidx,latexsym,xspace,amssymb}
+\usepackage[colorlinks]{hyperref}
+
+\usepackage{float}
+\usepackage{url}
+\usepackage{verbatim}
+\usepackage{latexsym}
+%\usepackage{fancybox}
+%\usepackage{times}
+\usepackage{epic}
+\usepackage{ecltree}
+%\usepackage{fullpage}
+
+\input{include}
+%\input{includeopt}
+
+\pagestyle{headings}
+
+% LaTeX Size Stuff
+% ----------------
+\setlength{\topmargin}{-0.25in}
+\setlength{\headheight}{10pt}
+\setlength{\headsep}{30pt}
+\setlength{\oddsidemargin}{0.0in}
+\setlength{\evensidemargin}{0.0in}
+\setlength{\textheight}{8.5in}
+\setlength{\textwidth}{6.5in}
+\setlength{\footskip}{50pt}
+\setlength{\parskip}{2mm}               % space between paragraphs
+
+
+% New Environments
+% ----------------
+\newcommand{\fillBox}{\hfill$\Box$}
+
+\newenvironment{Prog}{\begin{tt}\begin{tabular}[c]{l}}{\end{tabular}\end{tt}}
+
+\newcommand{\demo}[1]{\hspace*{1.5cm}{\tt #1}}
+\newcommand{\desc}[1]{\item[{\tt #1}]\hspace*{1mm}\newline}
+\newcommand{\desce}[1]{\item[{\tt #1}]}
+\newcommand{\ourrepeatitem}[1]{\item[{\mbox{\tt #1}}] \index{predicates!#1} \ \\ \vspace*{-.35in}}
+
+\newcommand{\ourpreditem}[1]{\item[{\mbox{\tt #1}}] \index{predicates!#1}\ \\}
+
+\newcommand{\ournewitem}[2]{\item[{\mbox{\tt #1}}]\hspace*{\fill}{\mbox{\sf #2}}\ \\}
+
+\newcommand{\ourpredmoditem}[2]{
+	\index{CDF predicates!#1}
+	\item[{\mbox{\tt #1}}]\hspace*{\fill}{\mbox{\sf #2}}\ \\}
+
+\newcommand{\ourpreddomitem}[2]{
+	\index{CDF predicates!#1}
+	\index{domains!#1}
+	\item[{\mbox{\tt #1}}]\hspace*{\fill}{\mbox{\sf #2}}\ \\}
+
+\newcommand{\ourpredmodrptitem}[2]{
+	\index{CDF predicates!#1}
+	\item[{\mbox{\tt #1}}]\hspace*{\fill}{\mbox{\sf #2}}\ \\
+	\vspace*{-.30in}  }
+
+\newcommand{\xjitem}[2]{ 
+	\index{XJ predicates!#2} 
+	\item[{\mbox{\tt #1}}]\hspace*{\fill} \\}
+
+\newcommand{\xjrptitem}[2]{
+	\index{XJ predicates!#2}
+	\item[{\mbox{\tt #1}}]\hspace*{\fill} \\
+	\vspace*{-.30in}  }
+
+\newcommand{\cid}[1]{cid(#1)}
+\newcommand{\oid}[1]{oid(#1)}
+\newcommand{\crid}[1]{crid(#1)}
+\newcommand{\rid}[1]{rid(#1)}
+
+\newcommand{\class}[1]{{\tt #1\/}\index{CDF identifiers! #1}}
+\newcommand{\component}[1]{{\tt #1\/}\index{components! #1}}
+\newcommand{\context}[1]{{\tt #1\/}\index{contexts! #1}}
+\newcommand{\file}[1]{{\tt #1\/}\index{files!{\tt #1}}}
+\newcommand{\pred}[1]{{\tt #1\/}\index{predicates!#1}}
+\newcommand{\domain}[1]{{\tt #1\/}\index{domains!#1}}
+
+\newcommand{\jclass}[1]{{\tt #1\/}\index{Java Classes! #1}}
+\newcommand{\xjclass}[1]{{\tt #1\/}\index{XJ Classes! #1}}
+\newcommand{\xjdom}[1]{{\tt #1\/}\index{XJ Domains! #1}}
+
+\newcommand{\inhdash}{\vdash_{\mbox{\sc inh}}}
+\newcommand{\ttindex}[1]{{\tt #1\/}\index{#1}}
+\newcommand{\emindex}[1]{{\em #1\/}\index{#1}}
+\newcommand{\lra}{\leftrightarrow}
+
+\newcommand{\stuff}[1]{
+        \begin{minipage}{4in}
+        {\tt \samepage
+        \begin{tabbing}
+        \hspace{8mm} \= \hspace{6mm} \= \hspace{10mm} \= \hspace{55mm} \= \kill
+        #1 \hfill
+        \end{tabbing}
+        }
+        \end{minipage}
+}
+
+
+% Macro Abbrev
+% ------------
+\def\cut{\mbox{\tt '!'/0}}
+\def\naf{\mbox{${\tt '\backslash+'\!/1}$}}
+
+\newcommand{\version}{Version 1(beta)}
+
+\newcommand{\refchap}[1]{Chapter~\ref{#1}}
+\newcommand{\refsec}[1]{Section~\ref{#1}}
+\newcommand{\refdef}[1]{Definition~\ref{#1}}
+\newcommand{\secref}[1]{Section~\ref{#1}}
+\newcommand{\refexam}[1]{Example~\ref{#1}}
+\newcommand{\refexer}[1]{Exercise~\ref{#1}}	
+\newcommand{\ctxtexc}[1]{{\bf Exceptions:} based on the context {\tt #1}}
+
+% Special Type Faces
+% ------------------
+\newcommand{\code}[1]{\textup{\texttt{#1}}}	% program code fragment
+
+%------------------------------------------------------------
+\input{predindex.sty}
+\makepredindex
+\makeindex
+%------------------------------------------------------------
+
+\begin{document}
+
+\begin{center}
+{\Huge
+{\bf Coherent Description Framework \\ Programmer's Manual \\ \version }
+\ \\ \ \\ }
+{\Large
+%{\em The open-source edition of the Coherent Description Framework
+%for managing ontologies}
+\ \\ \ \\ \ \\
+Terrance Swift \\ David S. Warren
+}
+\end{center}
+
+\date{}
+
+\newpage
+\thispagestyle{empty}
+\input{acknowledgements}
+
+\pagenumbering{arabic}
+
+\thispagestyle{empty}
+
+\newpage
+\thispagestyle{empty}
+\pagenumbering{roman}
+\tableofcontents
+\newpage        % Just to avoid a silly LaTeX bug with \pagenumbering
+  
+\pagenumbering{arabic}
+
+\input{intro}
+
+%------------------------------------------------------------------------------
+\part{A (somewhat) Formal Introduction to CDF} \label{part:semantics}
+
+\input{semantics}
+  \input{product}
+  \input{inheritance}
+\input{type1}
+
+%------------------------------------------------------------------------------
+\part{Using CDF}
+
+\input{impl}
+
+\input{examples}
+
+%\input{tools}
+%\input{prologCache}
+
+%\input{nondoc}
+
+%\bibliographystyle{plain}
+\bibliographystyle{amsalpha}
+\bibliography{longstring,all}
+%\newpage
+
+%\appendix
+%\input{graphics}
+
+\printindex
+
+\end{document}
+

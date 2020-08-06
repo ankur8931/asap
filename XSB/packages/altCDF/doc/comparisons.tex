@@ -1,0 +1,154 @@
+\section{CDF and Description Logics}
+\label{sec:comp} 
+
+\begin{example} \rm \label{ex:classexpr}
+Consider the (rather abstract) CDF instance: 
+\begin{verbatim}
+     isa(cid(a),cid(b))                  isa(cid(a),cid(c))
+     hasAttr(cid(a),rid(r1),cid(e))      allAttr(cid(a),rid(r2),cid(f)).
+\end{verbatim}
+%     isa(b,d).
+%     isa(f,g).                  hasAttr(f,r3,h)
+The axioms for this instance are logically equivalent to 
+%----------
+\begin{tabbing}
+fooo\=foo\=foo\=foo\=fooooooooooooooooooooooooooooooo\=ooooooooooooo\=\kill
+\> $isClass(a) \wedge isClass(b) \wedge 
+	(\forall X)[elt(X,a) \Ra elt(X,b)] $ \\
+\> $isClass(a) \wedge isClass(c) \wedge 
+	(\forall X)[elt(X,a) \Ra elt(X,c)] $ \\	
+\> $isClass(a) \wedge isRel(r1) \wedge isClass(e) \wedge 
+     (\forall X)[elt(X,a) \Ra \exists Y.(rel(X,r1,Y) \wedge elt(Y,e))]$ \\
+\> $isClass(a) \wedge isRel(r2) \wedge isClass(f) \wedge 
+     (\forall X)[elt(X,a) \Ra \forall Y.(rel(X,r1,Y) \wedge elt(Y,f))]$ 
+\end{tabbing}
+%----------
+which in turn are logically equivalent to
+%----------
+\begin{tabbing}
+fooo\=foo\=foo\=foo\=fooooooooooooooooooooooooooooooo\=ooooooooooooo\=\kill
+$isClass(a) \wedge isClass(b) \wedge isClass(c) \wedge isClass(e) 
+	\wedge isClass(f) \wedge isRel(r1) \wedge isRel(r2)  \wedge $ \\
+$(\forall X)[elt(X,a) \Ra$ \\
+\> \> $(elt(X,b) \wedge  elt(X,c) \wedge$ \\
+\> \> $(\exists Y)[rel(X,r1,Y) \wedge elt(Y,e)] \wedge
+      (\forall Y)[rel(X,r2,Y) \Ra elt(Y,f)]]$ 
+\end{tabbing}
+%----------
+Semantics for description logics are formulated in various ways.
+In~\cite{Swif04}, the semantics for ${\cal ALC}$-style description
+logics are given in terms of first order formulas over an ontology
+language similar to that used in Definition~\ref{def:ontolang}.  Using
+the translation of \cite{Swif04} the class expression
+\[ b \sqcap c \sqcap exists(r2,f) \sqcap all(r2,f) \]
+translates into the formula.
+%----------
+\begin{tabbing}
+fooo\=foo\=foo\=foo\=fooooooooooooooooooooooooooooooo\=ooooooooooooo\=\kill
+\>  $(\exists X)[ $ 
+$ elt(X,b) \wedge elt(X,c)  \wedge $ \\
+\> \> $(\exists Y)[rel(X,r1,Y) \wedge elt (Y,e)] \wedge 
+       (\forall Y)[rel(X,r2,Y) \Ra elt(Y,f)]]$
+\end{tabbing}
+%----------
+\end{example}
+
+Clearly there is a strong similarity between the meaning of certain
+class expressions and certain CDF instances.  To formalize this
+similarity, we use the definition of an {\em atomic relational CDF
+instance}.
+\begin{definition}
+Let $\cO$ be a CDF intance.  $\cO$ is {\em atomic} if it contains no
+product identifiers.  $\cO$ is a {\em relational instance} if it
+contains no object identifiers, and no {\tt classHasAttr/3}
+predicates.
+\end{definition}
+
+%-------------------------
+\mycomment{
+Next, note that, ignoring sorting predicate, each instance axiom for
+an atomic relatoinal class instance $\cO$ has the form: $\forall
+X.(elt(X,C) \Ra Template)$.  Thus, $\cO^{\cI}$ is equivalent to the
+set of formulas
+\begin{tabbing}
+fooo\=foo\=foo\=foo\=fooooooooooooooooooooooooooooooo\=ooooooooooooo\=\kill
+\> $\forall X.(elt(X,C_1) \Ra Template_1) 
+       \wedge \ldots \wedge\forall X.(elt(X,C_n) \Ra Template_n) $ 
+\end{tabbing}
+Where $\{C_1 \ldots C_n\}$ is the set of class identifiers in the
+first argument of each fact in $\cO$.  
+}
+%-------------------------
+
+We also need to formalize the language of class expressions that we
+will use.
+
+\begin{definition}
+The syntax of an \omsdl{} class expression has the following form, in
+which $A$ is an atomic class identifier, $R$ a relation identifer, $N$
+a non-negative integer, and $C_1$ and $C_2$ \omsdl{} class expressions.
+\[ C \leftarrow A | C_1 \sqcap C_2 | all(R,C_1) | exists(R,C_1) 
+	| atLeast(N,R,C) | atMost(N,R,C) \]
+\end{definition}
+
+If $C$ is an \omsdl{} class expression, it can be translated according
+to Definition 1.3 of \cite{Swif04}, into a first order sentence
+(denoted as $C^{\cT}$) over what are called first-order description
+logic languages.  These languages contain slightly different predicate
+symbols from $\cL$, so we make use of a function $f$ from structures
+over ontology languages to structures over first-order description
+logic languages~\footnote{Given a structure $\cM$ over an ontology
+language, $\cL_{CDF}$, we construct a language $f(\cL_{CDF})$ by
+setting the set of atomic class names in $f(\cL_{CDF})$ equal to the
+class identifiers in $\cL_{CDF}$, and the atomic relation names in
+$\cL'_D$ equal to the relation identifiers in $\cL_{CDF}$.  A new
+structure $f(\cM)$ is constructed by restricting $\cM$ to $elt/2$
+and $rel/3$ predicates.}.
+
+In the following theorem, $TH(\cO)/4$ denotes $TH(\cO)$ minus Core
+Axiom~\ref{ax:contained} (Domain Containment).  A model $\cM$ is
+$C$-reified for a class expression $C$ if for each sub-expression $C'$
+of $C$, there is a constant $c'$ such that $isClass(c')$ and $\cM
+\models (\exists X)[elt(X,c')]$ and $C'^{\cT}$ holds for all $d$ such
+that $\cM \models elt(d,c)$.   $c'$ is called a witnessing constant for
+$C$.
+
+\begin{theorem}
+Let $C$ be an \omsdl{} class expression.  Then 
+\begin{enumerate}
+\item There exists a $C$-reified model $f(\cM)$ for $C$.  
+\item There is an atomic CDF instance $\cO$ such that 
+\begin{enumerate}
+\item For any $C$-reified model $f(\cM)$ of $C$, there is a CDF instance
+$\cO$ such that $\cM \models TH(\cO)/4$
+\item For any model $\cM$ of $TH(\cO)/4$, $f(\cM) \models C^{\cT}$.
+\end{enumerate}
+\end{enumerate}
+\end{theorem}
+\begin{proof}
+The proof is contained in the appendix.
+\end{proof}
+
+Atomic CDF class instances thus have an expressive power that is
+equivalent to a weak description logic.  However general CDF class
+instances can also specify axioms about objects and their attributes,
+as well as making use of non-inheritable relations and product
+identifiers.  From Theorme~\ref{thm:poly}, however, consistency of an
+CDF instance can be checked in polynomial time, while consistency
+checking for ${\cal ALC}$ is {\em P-space} complete~\cite{ShmS91}.
+CDF instances can be considered as ``special-cases'' of class
+descriptions that can be extended into more elaborate descriptions if
+needed, but otherwise are efficient for consistency checking,
+subsumption checking and other operations.
+
+%------------------------------------------------
+\mycomment{
+However, CDF can be compared to FLORA facts, for which it is somewhat
+simpler.  CDF does not provide for a constraint that a given attribute
+is functional as is allowed in FLORA, although this extension can be
+provided if CDF instances are extended to have unqualified number
+restrictions
+
+Also, CDF does not provide for non-monotonic inheritance, but
+substitutes the monotonic inheritances described in
+Section~\ref{sec:inheritance}.  }

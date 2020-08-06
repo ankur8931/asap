@@ -1,0 +1,142 @@
+\section{Updating CDF Instances} \label{sec:update}
+
+Both extensional facts and intensional rules are dynamic, so that they
+can be asserted or retracted.  Any attempt to directly assert or
+retract to a CDF instance, however, will almost certainly lead to
+disaster.  When the state of a CDF instance changes, tables that
+support the Type-0 interface may need to be abolished; consistency
+checks may need to be rerun; various components may need to be marked
+as dirty (so that they will be written out the next time the component
+is updated); the update logged to support future merges; and the XJ
+cache may need to be updated, and so on.  The Update API supports all
+the tasks that need to be done when a CDF instance changes.
+
+Abolishing tables for the Type-0 interface, can be seen as an instance
+of the {\em table update problem}.  This problem can occur when a
+table depends on dynamic information.  When the dynamic information
+changes the table may become out-of-date.  In principle, this problem
+might be addressed by changing the tables themselves -- adding or
+deleting answers as needed.  However, relating specific answers to
+dynamic information is not always easy to do, (as when recursive
+predicates are tabled).  As an alternative various tables may be
+abolished when there is a danger that they are based on out-of-date
+information.  Using this approach, one can abolish entire tables for
+certain queries, or all tables for certain predicates.
+
+CDF takes the simple but sound solution of abolishing all calls to a
+tabled system predicate whenever that predicate might depend on
+updated dynamic information.  Such dependencies are most common for
+the Type-0 API.  Various tables are used to compute the {\tt xxxAttr}
+relations and {\tt isa/2} (when {\tt isa/2} is tabled).  If, say, a
+{\tt hasAttr\_ext/3} fact is added, then the {\tt hasAttr/3} tables
+should be abolished: otherwise the tables will represent outdated
+information.  Similarly, if a change is made to an {\tt isa/2}
+extensional fact or intensional rule, all of the tables used to
+compute the {\tt xxxAttr} predicates must be abolished, as well as any
+tables used to compute {\tt isa/2} itself.
+
+A more difficult problem can arise when intensional rules are added or
+deleted.  If the intensional rule depends on tabled predicates, and
+the tabled predicates themselves depend on Type-0 predicates, the
+tabled predicates supporting the rule must be abolished.  To address
+this when a CDF intensional rule $R$ is updated, CDF must be informed
+of those Type-0 predicates upon which tables in $R$ depend using the
+predicate {\tt addTableDependency/2} defined below.
+
+% TLS concurrency
+
+\subsection{The Update API}
+
+The following predicates form the update API for CDF.  No exceptions
+are listed for these predicates: rather a user can chose the semantic
+checks she wants by adding checks to various contexts, or removing
+them, as described in Section~\ref{sec:consist}.
+
+\begin{description}
+
+\ourpredmoditem{newExtTerm/1}{cdf\_init\_cdf}
+{\tt newExtTerm(+Term)} is used to add a new extensional fact to the
+CDF instance.  This predicate applies those consistency checks that
+have been specified for addition of a single extensional facts (see
+\refsec{sec:config} for the default checks, and \refsec{sec:consist}
+for a description of the checks themselves).  It then logs the fact
+that {\tt Term} has been asserted, marks the component to which {\tt
+Term} belongs as $dirty$, invalidates the XJ cache, and finally
+abolishes the appropriate tables.
+
+\ctxtexc{newExtTermSingle}
+
+\ourpredmoditem{retractallExtTerm/1}{cdf\_init\_cdf}
+{\tt retractallExtTerm(?Term)} retracts all extensional CDF facts that
+unify with {\tt Term}.  This predicate applies those consistency
+checks that have been specified for retraction of extensional facts
+unifying with a term (see \refsec{sec:config} for the default checks,
+and \refsec{sec:consist} for a description of the checks themselves).
+It then logs the fact that the facts unifying with {\tt Term} have
+been retracted, marks the components to which those facts belong as
+$dirty$, invalidates the XJ cache, and finally abolishes the
+appropriate tables.  Note that this operation does not affect
+information derived via intensional rules, and may not affect
+information derived via inheritance.
+
+\ctxtexc{retractallExtTermSingle}
+
+\mycomment{
+\ourpredmoditem{updateExtTerm/3}{cdf\_init\_cdf}
+{\tt updateExtTerm(ExtTerm,Vars,NValList)} updates a set of values,
+only invalidating those that changed.  {\tt ExtTerm} is a term of the
+form of an \_ext cdf predicate; Vars is a term containing the
+variables appearing in ExtTerm, and NValList is a list of ground
+instances of Vars.  The goal is to minimize invalidation.  The
+semantics is: (retractallExtTerm(ExtTerm), member(Vars,NValList),
+newExtTerm(ExtTerm)), fail ; true).
+}
+
+\ourpredmoditem{newIntRule/2}{cdf\_init\_cdf}
+{\tt newIntRule(+Head,+Body)} is used to add a new intensional rule to
+the CDF instance.  This predicate applies those consistency checks
+that have been specified for addition of a single intensional rule
+(see \refsec{sec:config} for the default checks, and
+\refsec{sec:consist} for a description of the checks themselves.  It
+then logs that the rule has been asserted, marks the component to
+which the rule belongs as $dirty$, invalidates the XJ cache, and
+finally abolishes the appropriate tables.
+
+\ourpredmoditem{retractallIntRule/2}{cdf\_init\_cdf}
+{\tt retractallExtTerm(?Head,?Body)} retracts all intensional rules for
+which {\tt clause(Head,Body)} is true.  This predicate applies those
+consistency checks that have been specified for retraction of rules
+(see \refsec{sec:config} for the default checks, and
+\refsec{sec:consist} for a description of the checks themselves.  Note
+that this operation does not affect information derived via
+extensional facts, and may not affect information derived via
+inheritance.
+
+\index{predicate indicator}
+\ourpredmoditem{addTableDependency/2}{cdf\_init\_cdf}
+{\tt addTableDependencies(+TableList,+DependencyList} informs CDF that
+each table in {\tt TableList} depends on all dynamic predicates in
+{\tt DependencyList}.  Both lists use predicate indicators (i.e. terms
+of the form {\tt Functor/Arity}, see the XSB manual) and the predicate
+specifiers in {\tt DependencyList} must be of type
+\domain{isDynSupportedPred/1}.  These dependencies ensure that
+tables for predicates in {\tt TableList} are abolished whenever
+extensional facts or intensional rules for tables in {\tt
+DependencyList} are updated.
+
+\ourpreddomitem{isDynSupportedPred/1}{cdf\_init\_cdf}
+The goal {\tt isDynSupportedPred(?Pred)} succeeds if {\tt Pred}
+unifies with a specifier for a predicate defined to be the Type-0 API,
+currently {\tt isa/2}, {\tt allAttr/3}, {\tt hasAttr/3}, {\tt
+maxAttr/4}, {\tt minAttr/4}, {\tt classHasAttr/3} or {\tt
+necessCond/2}.
+
+\ourpredmoditem{abolish\_cdf\_tables/0}{cdf\_init\_cdf}
+This predicate abolishes all tables used by CDF.  It does not
+reinitialize any other aspects of the CDF system state as does
+\pred{initialize\_state/0} (see \refsec{sec:configapi}).
+
+%\ourpredmodrptitem{make\_cdf\_clean/0}{cdf\_init\_cdf}
+%\ourpredmoditem{make\_cdf\_clean/1}{cdf\_init\_cdf}
+
+\end{description}

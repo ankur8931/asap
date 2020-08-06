@@ -1,0 +1,209 @@
+/* File:      ptq.P
+** Author(s): David S. Warren
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: ptq.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+
+/* This file contains a grammar for PTQ. */
+
+:- import append/3, member/2 from basics.
+:- import abolish_table_info/0 from machine.
+:- import numbervars/3 from num_vars.
+:- import parse/2, lred/2, lwrite/1 from parser.
+:- import lex/3 from ptqlex.
+:- import ex/2 from ptq_examples.
+:- import delete/3, delete_some/3, not_occurs_in/2, commatolist/2  from ptq_utils.
+
+:- op(200, xfy,[\]).    % lambda
+:- op(190, yfx,[@]).
+:- op(150, fx,[^]).
+:- op(150, fx,[*]).
+
+:- op(800, xfx,[<==]).
+
+:- op(900,xfx, (<-)).
+
+:- table_all.
+/*
+:- table(s/5).
+:- table(te1/7).
+:- table(cn/6).
+:- table(iv/6). */
+%:- notable te/7, iav/5.
+
+tran1(String,Parse) :- tran(Parse,String).
+
+tran(Parse,String) :-
+	abolish_table_info,
+	(integer(String)
+	 ->	ex(String,Sent)
+	 ;	Sent = String
+	),
+	parse(s(Parse),Sent),
+	numbervars(Parse,0,_).
+
+demo :- 
+	cputime(T1),
+	(eg(X,_N), writeln(X), fail
+	 ;
+	 cputime(T2), Etime is T2-T1, write('CPU Time: '),
+	 write(Etime), writeln(' secs.')
+	).
+	
+
+eg(X,N) :-
+	ex(N,S),tran(X,S).
+
+s(M) --> s(M,[],[]), punc.
+
+punc --> word('.').
+punc --> [].
+
+st(Node,Rule,Children) :-
+	commatolist(Children,Childlist),
+	Node =.. [Rule|Childlist].
+
+
+% Here things are only passed UP the tree.
+% SA is a list of records pro(Var,Gen), for pronouns below
+% SB is as before, a list of records sub(Te,Var,Gen)
+
+/* The simple grammar */
+s(T,Sa,Sb) -->                  % s4
+        te(Te,sub,_G,Sa1,Sb1), 
+        iv(Iv,s,Sa2,Sb2), 
+                {append(Sa1,Sa2,Sa),
+                append(Sb1,Sb2,Sb),
+                st(T,s4,(Te,Iv))}.
+s(T,Sa,Sb) -->                  % s11
+        s(S1,Sa1,Sb1), 
+        word(and), 
+        s(S2,Sa2,Sb2),
+                {append(Sa1,Sa2,Sa),
+                append(Sb1,Sb2,Sb),
+                st(T,s11a,(S1,S2))}.
+s(T,Sa,Sb) -->                  % s11
+        s(S1,Sa1,Sb1), 
+        word(or), 
+        s(S2,Sa2,Sb2),
+                {append(Sa1,Sa2,Sa),
+                append(Sb1,Sb2,Sb),
+                st(T,s11b,(S1,S2))}.
+s(T,Sa,Sb) -->                  % s14
+        s(T1,Sa1,Sb1),
+                {delete(sub(Te,X,Gen),Sb1,Sb),
+		delete_some(pro(X,Gen),Sa1,Sa), not_occurs_in(X,(Te,Sb)),
+                st(T,s14,(X,Te,T1))}.
+
+iv(Iv,T,[],[]) --> biv(Iv,T).            % s1
+iv(Iv,T,Sa,Sb) -->              % s5
+        tv(Tv,T), te(Te,obj,_G,Sa,Sb),
+                {st(Iv,s5,(Tv,Te))}.
+iv(Iv,T,Sa,Sb) -->      % s12
+        iv(Iv1,T,Sa1,Sb1), word(and), 
+        iv(Iv2,T,Sa2,Sb2),
+                {append(Sa1,Sa2,Sa),
+                append(Sb1,Sb2,Sb),
+                st(Iv,s12a,(Iv1,Iv2))}.
+iv(Iv,T,Sa,Sb) -->      % s12
+        iv(Iv1,T,Sa1,Sb1), word(or), 
+        iv(Iv2,T,Sa2,Sb2),
+                {append(Sa1,Sa2,Sa),
+                append(Sb1,Sb2,Sb),
+                st(Iv,s12b,(Iv1,Iv2))}.
+iv(Iv,T,Sa,Sb) -->              % s10
+        iv(Iv1,T,Sa1,Sb1), 
+        iav(Adv,Sa2,Sb2),
+                {append(Sa1,Sa2,Sa),
+                append(Sb1,Sb2,Sb),
+                st(Iv,s10,(Iv1,Adv))}.
+iv(Iv,Tn,Sa,Sb) -->             % s7
+        bivt(Vb,Tn), s(T,Sa,Sb),
+                {st(Iv,s7,(Vb,T))}.
+iv(Iv,T,Sa,Sb) -->                      % s8
+        biviv(Vb,T), iv(Iv1,i,Sa,Sb),
+                {st(Iv,s8,(Vb,Iv1))}.
+iv(Iv,T,Sa,Sb) --> % s16
+        iv(Iv1,T,Sa1,Sb1),
+                {delete(sub(Te,X,Gen),Sb1,Sb),
+		delete_some(pro(X,Gen),Sa1,Sa), not_occurs_in(X,(Te,Sb)),
+                st(Iv,s16,(X,Te,Iv1))}.
+
+
+
+iav(Adv,[],[]) --> biav(Adv).            % s1
+iav(Adv,Sa,Sb) -->                      % s6
+        pr(Pp), te(Te,obj,_G,Sa,Sb),
+                {st(Adv,s6,(Pp,Te))}.
+
+te(Te,C,G,Sa,Sb) --> te1(Te,C,G,Sa,Sb).
+te(Te,C,G,[pro(X,G)],[]) --> 
+        pro(_Pro,G,C),
+                {st(Te,pro,X)}.
+te(Te,C,G,Sa,[sub(M,X,G)|Sb]) -->
+        te1(M,C,G,Sa,Sb),
+                {st(Te,trace,X)}.
+
+te1(Te,_C,G,[],[]) --> bte(Te,G).
+te1(Te,_C,G,Sa,Sb) -->          % s2
+        det(Det), 
+        cn(Cn,G,Sa,Sb),
+                {st(Te,s2,(Det,Cn))}.
+te1(Te,C,G,Sa,Sb) -->   % s13
+        te(Te1,C,G,Sa1,Sb1), 
+        word(or), 
+        te(Te2,C,_,Sa2,Sb2),
+                {append(Sa1,Sa2,Sa),
+                append(Sb1,Sb2,Sb),
+                st(Te,s13,(Te1,Te2))}.
+
+
+cn(Cn,G,[],[]) --> bcn(Cn,G).
+cn(Cn,G,Sa,Sb) -->      %s3
+        cn(Cn1,G,Sa1,Sb1), 
+        word(such),word(that),
+        s(T,Sa2,Sb2),
+                {delete_some(pro(X,G),Sa2,Sa3),
+		append(Sa1,Sa3,Sa),
+                append(Sb1,Sb2,Sb),
+                st(Cn,s3,(X,Cn1,T))}.
+cn(Cn,G,Sa,Sb) --> % s15
+        cn(Cn1,G,Sa1,Sb1),
+		{delete(sub(Te,X,G),Sb1,Sb),
+		delete_some(pro(X,G),Sa1,Sa), not_occurs_in(X,(Te,Sb)),
+		st(Cn,s15,(X,Te,Cn1))}.
+
+
+tv(M,T) --> btv(M,T).
+
+det(Det) --> word(Det), {lex(det,Det,_)}.  % s2
+pro(Pro,G,C) --> word(Pro), {lex(pro,Pro,gc(G,C))}.
+biv(Inf,Num) --> word(Iv), {lex(biv,Iv,p(Num,Inf))}.
+bte(Np,G) --> word(Np), {lex(bte,Np,G)}.
+btv(Inf,Num) --> word(Tv), {lex(btv,Tv,p(Num,Inf))}.
+bcn(Cn,G) --> word(Cn), {lex(bcn,Cn,G)}.
+biav(Iav) --> word(Iav), {lex(biav,Iav,_)}.
+pr(Pr) --> word(Pr), {lex(pr,Pr,_)}.
+bivt(Inf,Num) --> word(Ivt),word(That), {lex(bivt,[Ivt,That],p(Num,Inf))}.
+biviv(Inf,Num) --> word(Ivt),word(To), {lex(biviv,[Ivt,To],p(Num,Inf))}.
+
+word(X) --> [X].

@@ -1,0 +1,47 @@
+/* File:      mutablevar.P 
+** Author(s): Tom Schrijvers
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: mutablevar.P,v 1.4 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+ 
+:- export
+	create_mutable/2,
+	get_mutable/2,
+	update_mutable/2,
+	is_mutable/1.
+
+:- import get_attr/3, put_attr/3 from machine.
+
+:- import install_verify_attribute_handler/4 from machine.
+
+:- install_verify_attribute_handler('$mutable',_,_,fail).
+
+create_mutable(Val,Mutable) :-
+	put_attr(Mutable,'$mutable',Val).
+
+get_mutable(Val,Mutable) :-
+	get_attr(Mutable,'$mutable',Val).
+
+update_mutable(Val,Mutable) :-
+	put_attr(Mutable,'$mutable',Val).
+
+is_mutable(Mutable) :-
+	get_attr(Mutable,'$mutable',_).

@@ -1,0 +1,64 @@
+LIBRARY xasppkg
+EXPORTS
+	smodelsAddHead@0
+	_smodelsAddHead@0 = smodelsAddHead@0
+	smodelsAddNegBody@0
+	_smodelsAddNegBody@0 = smodelsAddNegBody@0
+	smodelsAddPosBody@0
+	_smodelsAddPosBody@0 = smodelsAddPosBody@0
+	smodelsAddWNegBody@0
+	_smodelsAddWNegBody@0 = smodelsAddWNegBody@0
+	smodelsAddWPosBody@0
+	_smodelsAddWPosBody@0 = smodelsAddWPosBody@0
+	smodelsAtomName@0
+	_smodelsAtomName@0 = smodelsAtomName@0
+	smodelsBeginBasicRule@0
+	_smodelsBeginBasicRule@0 = smodelsBeginBasicRule@0
+	smodelsBeginChoiceRule@0
+	_smodelsBeginChoiceRule@0 = smodelsBeginChoiceRule@0
+	smodelsBeginConstraintRule@0
+	_smodelsBeginConstraintRule@0 = smodelsBeginConstraintRule@0
+	smodelsBeginWeightRule@0
+	_smodelsBeginWeightRule@0 = smodelsBeginWeightRule@0
+	smodelsCheckAtom@0
+	_smodelsCheckAtom@0 = smodelsCheckAtom@0
+	smodelsClose@0
+	_smodelsClose@0 = smodelsClose@0
+	smodelsCommitRules@0
+	_smodelsCommitRules@0 = smodelsCommitRules@0
+	smodelsEndRule@0
+	_smodelsEndRule@0 = smodelsEndRule@0
+	smodelsExistsModel@0
+	_smodelsExistsModel@0 = smodelsExistsModel@0
+	smodelsForget@0
+	_smodelsForget@0 = smodelsForget@0
+	smodelsInit@0
+	_smodelsInit@0 = smodelsInit@0
+	smodelsNumAtoms@0
+	_smodelsNumAtoms@0 = smodelsNumAtoms@0
+	smodelsPrintAnswer@0
+	_smodelsPrintAnswer@0 = smodelsPrintAnswer@0
+	smodelsPrintProgram@0
+	_smodelsPrintProgram@0 = smodelsPrintProgram@0
+	smodelsRemember@0
+	_smodelsRemember@0 = smodelsRemember@0
+	smodelsResetNegCompute@0
+	_smodelsResetNegCompute@0 = smodelsResetNegCompute@0
+	smodelsResetPosCompute@0
+	_smodelsResetPosCompute@0 = smodelsResetPosCompute@0
+	smodelsSetBody@0
+	_smodelsSetBody@0 = smodelsSetBody@0
+	smodelsSetHead@0
+	_smodelsSetHead@0 = smodelsSetHead@0
+	smodelsSetNegCompute@0
+	_smodelsSetNegCompute@0 = smodelsSetNegCompute@0
+	smodelsSetPosCompute@0
+	_smodelsSetPosCompute@0 = smodelsSetPosCompute@0
+	smodelsSetWeight@0
+	_smodelsSetWeight@0 = smodelsSetWeight@0
+	smodelsTestNeg@0
+	_smodelsTestNeg@0 = smodelsTestNeg@0
+	smodelsTestPos@0
+	_smodelsTestPos@0 = smodelsTestPos@0
+	smodelsWellFounded@0
+	_smodelsWellFounded@0 = smodelsWellFounded@0

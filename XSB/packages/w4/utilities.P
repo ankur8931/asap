@@ -1,0 +1,120 @@
+%%% General Utilities of the XML Parser ( Version 1.0/November 2002)
+%%%
+%%% (c) 2002 Carlos Viegas Damásio (cd@di.fct.unl.pt)
+%%%
+%%% Centro de Inteligência Artificial da Universade Nova de Lisboa
+%%% Quinta da Torre
+%%% 2829-516 Caparica
+%%% Portugal
+%%%
+%%%
+%%%
+
+
+:- export qname2atom/3.
+
+:- export ucs2atom/2.
+
+:- export atom2utf8/2.
+:- export atom2utf8/3.
+
+:- export atom2ucs/2.
+:- export atom2ucs/3.
+
+:- export ucs2utf8/2.
+:- export ucs2utf8/3.
+:- export utf82ucs/2.
+:- export utf82ucs/3.
+:- export utf8code/3.
+
+
+:- export inUnicodeNFC/1.
+:- export unicodeNFC/2.
+
+
+
+:- import append/3 from builtins.
+
+:- ensure_loaded( builtins ).
+
+
+qname2atom( '', Name, Name ) :- !.
+qname2atom( Prefix, Local, Name ) :- !,
+	atom_codes( Local, CodesLocal ),
+	atom_codes( Prefix, CodesPrefix ),
+	append( CodesPrefix, [0':|CodesLocal], CodesName ),
+	atom_codes( Name, CodesName ), !.
+
+ucs2atom( UCSString, Atom ) :-
+	ucs2utf8( UCSString, UTFString ),
+	atom_codes( Atom, UTFString ).
+
+
+atom2utf8( Atom, UTF8String ) :-
+	atom_codes( Atom, UTF8String ).
+atom2utf8( Atom, UTF8String , RestString ) :-
+	atom_codes( Atom, AString ),
+	append( AString, RestString, UTF8String ).
+
+atom2ucs( Atom, UCSString ) :-
+	atom2ucs( Atom, UCSString, [] ).
+atom2ucs( Atom, UCSString, RestString ) :-
+	atom_codes( Atom, AtomString ),
+	utf82ucs( AtomString, UCSString, RestString ).
+
+
+ucs2utf8( UCSString, UTF8String ) :- 
+	ucs2utf8( UCSString, UTF8String, [] ).
+
+ucs2utf8( [], Rest, Rest ) :- !.
+ucs2utf8( [UCSChar|RestChars], String, RestString ) :- 
+	utf8code( UCSChar, String, AuxString ), !,
+	ucs2utf8( RestChars, AuxString, RestString ).
+
+utf82ucs( UTFString, UCSString ) :- 
+	utf82ucs( UTFString, UCSString, [] ).
+
+utf82ucs( [], Rest, Rest ) :- !.
+utf82ucs( UTFString, [Code|AuxString], RestString ) :- 
+	ucscode( UTFString, Code, RestUTFString ), !,
+	utf82ucs( RestUTFString, AuxString, RestString ).
+
+% Constructs the UTF-8 encoding of an UNICODE character
+utf8code( -1, RestString, RestString ) :- !.
+utf8code( Code, [Code|RestString], RestString ) :- 
+	Code < 16'80, !.
+utf8code( Code, [Byte1,Byte2|RestString], RestString ) :- 
+	Code < 16'07FF, !, 
+	Byte1 is 16'C0 \/ ( Code >> 6 ),
+	Byte2 is 16'80 \/ ( Code /\ 16'3F ).
+utf8code( Code, [Byte1,Byte2,Byte3|RestString], RestString ) :- 
+	Code < 16'FFEF, !, 
+	Byte1 is 16'E0 \/ ( Code >> 12 ),
+	Byte2 is 16'80 \/ ( ( Code >> 6 ) /\ 16'3F),
+	Byte3 is 16'80 \/ ( Code /\ 16'3F).
+utf8code( Code, [Byte1,Byte2,Byte3,Byte4|RestString], RestString ) :- 
+	Code =< 16'10FFFF, !,
+	Byte1 is 16'F0 \/ ( Code >> 18 ),
+	Byte2 is 16'80 \/ ( ( Code >> 12 ) /\ 16'3F),
+	Byte3 is 16'80 \/ ( ( Code >>  6 ) /\ 16'3F),
+	Byte4 is 16'80 \/ ( Code /\ 16'3F).
+
+
+ucscode( [O1|RestUTF], O1, RestUTF ) :-
+	O1 < 16'80, !.
+ucscode( [O1,O2|RestUTF], Code, RestUTF  ) :-
+	O1 >= 16'C0, O1 =< 16'DF, !,
+	Code is (( O1 /\ 16'1F ) << 6) \/ ( O2 /\ 16'3F).
+ucscode( [O1,O2,O3|RestUTF], Code, RestUTF ) :-
+	O1 =< 16'EF, !,					% O1 >= 16'E0
+	Code is (( O1 /\ 16'0F ) << 12) \/ (( O2 /\ 16'3F ) << 6) \/ ( O3 /\ 16'3F).
+ucscode( [O1,O2,O3,O4|RestUTF], Code, RestUTF  ) :-
+	O1 =< 16'F7, !,					% O1 >= 16'F0
+	Code  is (( O1 /\ 16'07 ) << 18) \/ (( O2 /\ 16'3F ) << 12) \/ (( O3 /\ 16'3F ) << 6) \/ ( O4 /\ 16'3F).
+
+
+% inUnicodeNFC/1 checks if the Unicode String is in Normalized Form C  (to be implemented...)
+inUnicodeNFC( _ ).
+
+% unicodeNFC/2 normalizes the first argument Unicode String to Normalized Form C. (not implemented...)
+unicodeNFC( Unicode, Unicode ).

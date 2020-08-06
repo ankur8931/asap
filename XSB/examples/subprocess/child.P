@@ -1,0 +1,20 @@
+%% This is the program executed by child-XSB process spawned off by parent.P
+
+:- import fd2ioport/2 from file_io.
+:- import file_read_line_atom/2 from file_io.
+
+:- dynamic pipe/1, process/1.
+
+?- pipe(P), fd2ioport(P,F),
+   %% pipe and process were asserted by child XSB before it consulted this file
+   process(Pr),
+   %% Acknowledge receipt of the pipe
+   fmt_write("\nChild process %d got pipe %d\n", arg(Pr,P)),
+   %% Get a message from the parent and print it to stdout
+   file_read_line_atom(F, Line), write('Mesage was: '), writeln(Line).
+
+%% Get the termination signal
+?- read(X),
+   (X=stop 
+   -> writeln('Child: Termination signal received from parent, Bye'),
+   halt).

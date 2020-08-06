@@ -1,0 +1,12 @@
+
+:- document_export tp_subclass/2,classIdentifier/1, 
+	topIdentifier/1,bottomIdentifier/1.
+
+:- import cdf_id_fields/4, isa/2 from cdf_init_cdf.
+
+classIdentifier(C):- cdf_id_fields(C,cid,_,_).
+
+topIdentifier(cid('CDF Classes',cdf)).
+
+bottomIdentifier(cid(emptyset,cdf)).
+

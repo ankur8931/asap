@@ -1,0 +1,82 @@
+:- ensure_loaded(xasp).
+
+:- import smcInit/0, smcAddRule/2, smcCommitProgram/0 from sm_int.
+:- import smComputeModel/0, smcExamineModel/1, smEnd/0 
+	from sm_int.
+:- import print_cache/0 from sm_int.
+
+test:- exchoice1,exchoice2,exchoice3,exchoice4.
+
+exchoice1 :-
+	smcInit,
+	smcAddRule(weightConst(1,[a,b],2),
+		  	[weightConst(2,[d,not c],undef),e]),
+	smcAddRule(d,[]),
+	smcAddRule(e,[]),
+	print_cache,
+	smcCommitProgram,
+	repeat,
+	(smComputeModel ->
+	    write('New Solution: '),nl,
+	    smcExamineModel(Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd).
+
+exchoice2 :-
+	smcInit,
+	smcAddRule(weightConst(1,[weight(a,1),weight(b,1)],2),
+		  	[weightConst(2,[weight(d,1),
+				       weight(not(c),1)],undef),e]),
+	smcAddRule(d,[]),
+	smcAddRule(e,[]),
+	print_cache,
+	smcCommitProgram,
+	repeat,
+	(smComputeModel ->
+	    write('New Solution: '),nl,
+	    smcExamineModel(Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd).
+
+exchoice3 :-
+	smcInit,
+	smcAddRule(weightConst(1,[weight(a,1),weight(not(b),1)],2),
+		  	[weightConst(2,[weight(d,1),
+				       weight(not(c),1)],undef),e]),
+	smcAddRule(d,[]),
+	smcAddRule(e,[]),
+	print_cache,
+	smcCommitProgram,
+	repeat,
+	(smComputeModel ->
+	    write('New Solution: '),nl,
+	    smcExamineModel(Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd).
+
+
+exchoice4 :-
+	smcInit,
+	smcAddRule(weightConst(1,[a,weight(not(b),1)],2),
+		  	[weightConst(2,[weight(d,1),
+				       weight(not(c),1)],undef),e]),
+	smcAddRule(d,[]),
+	smcAddRule(e,[]),
+	print_cache,
+	smcCommitProgram,
+	repeat,
+	(smComputeModel ->
+	    write('New Solution: '),nl,
+	    smcExamineModel(Model),
+	    write(Model),nl,
+	    fail
+	;
+	    smEnd).
+
+

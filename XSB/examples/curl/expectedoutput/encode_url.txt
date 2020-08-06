@@ -1,0 +1,4 @@
+test_encode_url on http://www.cs.sunysb.edu/~cse532/first.html
+Directory = http%3A%2F%2Fwww%2Ecs%2Esunysb%2Eedu%2F%7Ecse532
+File = first
+Suffix = html

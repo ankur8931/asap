@@ -1,0 +1,8 @@
+Leader(2) ae_leader
+Modelcheck from TEXT MODE gives 	mck(systemLeader(2),ae_leader) is true.
+Modelcheck from GUI gives true
+Justification tree has 152 nodes.
+Leader(2) one_leader
+Modelcheck from TEXT MODE gives 	mck(systemLeader(2),one_leader) is true.
+Modelcheck from GUI gives true
+Justification tree has 104 nodes.

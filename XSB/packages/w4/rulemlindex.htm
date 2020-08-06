@@ -1,0 +1,489 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en">
+<meta name="GENERATOR" content="Microsoft FrontPage 5.0">
+<meta name="ProgId" content="FrontPage.Editor.Document">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>W4 Project</title>
+</head>
+
+<body>
+
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" width="80%" id="AutoNumber1">
+    <tr>
+      <td><img border="0" src="../images/w4small.GIF" width="50" height="50"></td>
+      <td>
+      <p align="center"><span lang="en-us"><font size="7" face="Arial">W<sup>4</sup> </font></span>
+      <span lang="pt"><font face="Arial" size="7">RuleML Compiler</font></span></td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center">&nbsp;</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+      <p align="center"><font face="Arial">(c)
+      <a href="http://centria.di.fct.unl.pt/~cd">Carlos Viegas Damásio</a>, 
+      <span lang="pt">July</span> 2003</font></td>
+    </tr>
+  </table>
+  </center>
+</div>
+<p align="left">&nbsp;</p>
+<div align="center">
+  <center>
+  <table border="0" cellpadding="0" cellspacing="5" style="border-collapse: collapse" bordercolor="#111111" id="AutoNumber2" width="80%">
+    <tr>
+      <td width="80%">
+      <font face="Arial Black" size="5" color="#0000FF">Description</font></td>
+    </tr>
+    <tr>
+      <td width="80%">
+      <blockquote>
+      <p>
+        <span lang="pt">This software package implements a full RuleML compiler 
+        for an extension of the hornlog frament of
+        <a href="http://www.ruleml.org">RuleML</a>. The W4 RuleML compiler 
+        supports default and explicit negation both in the heads and in the 
+        bodies of rules, as well as assert statements of EVOLP programs. The 
+        semantics implemented is Paraconsistent Well-founded Semantics with 
+        Explicit Negation.</span><p><span lang="pt">Furthermore, the W4 RuleML 
+        compiler supports several rulebases, imported from RuleML files our 
+        Prolog files. A converter from Prolog syntax to RuleML syntax and from 
+        RuleML syntax to Prolog syntax are available.</span></p>
+        <p><span lang="pt">By exploring the NMR features of the new
+        <a href="http://xsb.sourceforge.net">XSB Prolog 2.6</a>, it will be soon 
+        provided support for Stable Models and Answer Set Semantics.</span><p><span lang="en-us">The 
+      package was  </span><span lang="pt">originally </span><span lang="en-us">developed for XSB Prolog</span><span lang="pt"> 
+        2.5</span><span lang="en-us">,  </span><span lang="en-us">but porting  </span><span lang="pt">
+      to</span><span lang="en-us"> other Prolog systems 
+      is </span><span lang="pt">foreseen</span><span lang="en-us">.</span><span lang="pt">
+        </span><p><span lang="pt"><font color="#FF0000">DISCLAIMER:</font> This 
+        is still a beta version of the RuleML compiler and should be used solely 
+        for research/illustration purposes. Use it at your own risk...</span></p>
+      </blockquote>
+      </td>
+    </tr>
+    <tr>
+      <td width="80%">
+      <span lang="en-us">
+      <font face="Arial Black" size="5" color="#0000FF">Download and 
+      Installation</font></span><p>
+        <blockquote>
+        <p><span lang="en">Th</span><span lang="en-us">e</span><span lang="en"> </span> 
+        <span lang="pt"><a href="w4ruleml-1.0-beta.zip">W4 RuleML compiler</a></span><span lang="en"> </span> 
+      <span lang="en-us">distribution contains the following XSB Prolog source 
+      files:</span><ul>
+        <li><span lang="en-us">The file containing the main predicates (</span><b><span lang="pt">ruleml</span></b><span lang="en-us"><b>.P</b>)</span></li>
+        <li><span lang="en-us">The  </span><span lang="pt">support predicates for 
+        asserting, retracting and updating Rule Bases (<b>rulebase.P</b>)</span></li>
+        <li><span lang="pt">The predicates for reading (<b>rulemlread.P</b>) and 
+        writing (<b>rulemlwrite.P</b>) RuleML files for the urhornlog fragment.</span></li>
+        <li><span lang="pt">The predicates for reading (<b>prologread.P</b>) and 
+        writing (<b>prologwrite.P</b>) Prolog files. </span></li>
+        <li><span lang="pt">The GWFSXp meta-interpreter (<b>gwfsxpengine.P</b>)</span></li>
+        <li><span lang="en-us">Several utility predicates (<b>utilities.P</b>)</span></li>
+        </ul>
+        <p><span lang="pt">Plus the the
+        <a href="../w4xmlparser/index.htm">W4 XML Parser</a>, which can be used 
+        for parsing arbitrary XML documents.</span></p>
+        <ul>
+          <li><span lang="en-us">The file containing the main </span>
+          <span lang="pt">XML </span><span lang="en-us">p</span><span lang="pt">arser
+          </span><span lang="en-us">predicates (<b>xml.P</b>)</span> </li>
+          <li><span lang="en-us">The XML parser (</span><b><span lang="pt">xmlparser.H 
+          and </span><span lang="en-us">xmlparser.P</span></b><span lang="en-us"><span lang="en-us">), 
+          automaticaly produced by our Parser Generator</span></span><span lang="pt">, 
+          with lookahead information</span><span lang="en-us">.</span> </li>
+          <li><span lang="en-us">The Document Object Model (</span><b><span lang="pt">xmldom.H 
+          and </span><span lang="en-us">xmldom.P</span></b><span lang="en-us"><span lang="en-us">) 
+          with the predicates for constructing the Prolog representation</span></span><span lang="pt"> 
+          of XML documents</span><span lang="en-us">.</span> </li>
+          <li><span lang="pt">A translator to the compact representation of XML 
+          in Prolog (<b>xml2termns.P</b>), with Namespace support.</span></li>
+          <li><span lang="en-us">The I/O stream support predicates (<b>iostream.P</b> 
+          and <b>utf.P</b>).</span> </li>
+          <li><span lang="en-us">Several utility predicates (<b>utilities.P</b>)</span></li>
+          <li><span lang="pt">Support of URIs (<b>uri.P</b>) - preliminary file.
+          </span></li>
+        </ul>
+        <p><span lang="pt">You can also find some files with extension <b>.G</b>, 
+        whcih are the original source files to generate the XML Parser.</span></p>
+        <p><span lang="en-us">To start using the W4  </span><span lang="pt">
+        RuleML compiler</span><span lang="en-us">, unpack 
+        the .zip file and compile the file </span><b><span lang="pt">ruleml</span></b><span lang="en-us"><b>.P</b> within XSB Prolog.<br>
+        </span><span lang="pt">Ignore the singleton variable warnings produced 
+        while compiling the file <b>xmlparser.P</b>.</span></p>
+      </blockquote>
+      </td>
+    </tr>
+    <tr>
+      <td width="80%">
+      <font face="Arial Black" size="5" color="#0000FF">Utilization</font><p>
+        <blockquote>
+        <p>
+      <span lang="pt">We assume that the user is familiar with the syntax of 
+      RuleML and Prolog.&nbsp; We start by describing the main predicates for 
+      loading, discarding, and writing rule bases.<br>
+      In what follows, the <b>In</b> parameter means either a term of the form:</span></p>
+        <ul>
+          <li><span lang="pt"><b>ruleML( FilePath )</b>, identifying a RuleML 
+          file.</span></li>
+          <li><span lang="pt"><b>prolog( FilePath )</b>, identifying a Prolog 
+          file.</span></li>
+        </ul>
+        <p>
+      <span lang="pt">Rule Bases are identified by a <b>_rbaselab</b> element in 
+      a RuleML file or by a <b>module/1</b> declaration in a Prolog files. If 
+      the label is absent, the rule base name by default is <b>[]</b>.</span></p>
+      </blockquote>
+      </p>
+      <p><b><font color="#0000FF"><span lang="pt">Reading Rule Bases</span></font></b><br>
+      </p>
+      <p>
+        <blockquote>
+        <p><span lang="pt">The user has available several predicates for reading 
+        in rule bases. </span></p>
+        <ul>
+          <li><b>loadRules( In )</b><span lang="pt">, loads a rule base </span>
+          inserting the rules in the <span lang="pt">Prolog </span>knowledge 
+          base.</li>
+          <li><b>reloadRules( In )</b><span lang="pt">, discards all the rules 
+          of the rule base and then loads the rules.</span> </li>
+          <li><b><span lang="pt">update</span>Rules( In )</b><span lang="pt">, 
+          updates a rule base, advancing a step (for supporting EVOLP update 
+          programs)</span>.</li>
+          <li><b><span lang="pt">consult</span>Rules( In )</b><span lang="pt">, 
+          c</span>onsults a rule base by loading it, and executing the queries 
+          provided in the rulebase<span lang="pt">. </span>The output is a XML 
+          document with the answer substitutions, written to the current output<span lang="pt">.</span></li>
+          <li><b><span lang="pt">consult</span>Rules( In<span lang="pt">, Out</span> 
+          )</b><span lang="pt">, c</span>onsults a rule base by loading it, and 
+          executing the queries provided in the rulebase<span lang="pt">. If <b>
+          Out</b> is a variable then it is returned a list of answer 
+          substitutions. Otherwise, a XML document </span>with the answer
+          <span lang="pt">is </span>written to the <span lang="pt">stream 
+          identified by <b>Out</b>.</span></li>
+          <li><b><span lang="pt">reconsult</span>Rules( In )</b><span lang="pt">, 
+          rec</span>onsults a rule base by loading it, and executing the queries 
+          provided in the rulebase<span lang="pt">. </span>The output is a XML 
+          document with the answer substitutions, written to the current output<span lang="pt">.</span></li>
+          <li><b><span lang="pt">reconsult</span>Rules( In<span lang="pt">, Out</span> 
+          )</b><span lang="pt">, rec</span>onsults a rule base by loading it, 
+          and executing the queries provided in the rulebase<span lang="pt">. If
+          <b>Out</b> is a variable then it is returned a list of answer 
+          substitutions. Otherwise, a XML document </span>with the answer
+          <span lang="pt">is </span>written to the <span lang="pt">stream 
+          identified by <b>Out</b>.</span></li>
+        </ul>
+      </blockquote>
+      </p>
+      <p><span lang="pt"><font color="#0000FF"><b>Abolishing</b></font></span><b><font color="#0000FF"><span lang="pt"> 
+      Rule Bases</span></font></b></p>
+      <p>
+        <blockquote>
+        <p><span lang="pt">Only two predicates are available for abolishing rule 
+        bases:</span></p>
+        <ul>
+          <li><span lang="pt"><b>abolishRules</b>, cleans all the loaded&nbsp; 
+          rule bases </span>in the <span lang="pt">Prolog </span>knowledge base.</li>
+          <li><span lang="pt"><b>abolishRules( Label )</b>, cleans all the rules 
+          of the rule base identified by Label (recall that [] is the default 
+          label, if none is provided).</span></li>
+        </ul>
+      </blockquote>
+      </p>
+      <p><span lang="pt"><font color="#0000FF"><b>Listing</b></font></span><b><font color="#0000FF"><span lang="pt"> 
+      Rule Bases</span></font></b></p>
+      <p>
+        <blockquote>
+        <p><span lang="pt">Two forms are provided, one for listing a given 
+        predicate of a rule base, and another for listing all rules of a rule 
+        base:</span></p>
+        <ul>
+          <li><span lang="pt"><b>listRules(</b></span><b>RuleBaseLabel, Pred<span lang="pt">Ind</span>,
+          <span lang="pt">Stream</span> )</b><span lang="pt">, lists the rules 
+          of <b>PredInd </b>(of the form Name/Arity) in </span><b>RuleBaseLabel</b>.<span lang="pt"> 
+          Argument <b>Stream</b> is the name of a stream. Rules are listed in 
+          RuleML format.</span></li>
+          <li><span lang="pt"><b>listAllRules(RuleBaseLabel, Stream )</b>, lists 
+          all the rules in </span><b>RuleBaseLabel</b>.<span lang="pt"> Argument
+          <b>Stream</b> is the name of a stream. Rules are listed in RuleML 
+          format.</span></li>
+        </ul>
+      </blockquote>
+      </p>
+      <p><span lang="pt"><font color="#0000FF"><b>Querying</b></font></span><b><font color="#0000FF"><span lang="pt"> 
+      Rule Bases</span></font></b><br>
+      </p>
+      <p>
+        <blockquote>
+        <p><span lang="pt">The user can query a rule base à la Prolog or à la 
+        RuleML. For the RuleML support two query predicates are defined:</span></p>
+        <ul>
+          <li><span lang="pt"><b>queryRules(</b></span><b><span lang="pt">Queries</span>,
+          <span lang="pt">Answers </span>)</b><span lang="pt">, queries all the 
+          loaded rule bases.</span></li>
+          <li><span lang="pt"><b>queryRules(</b></span><b>RuleBaseLabel<span lang="pt">, 
+          Queries</span>, <span lang="pt">Answers </span>)</b><span lang="pt">, 
+          queries a given RuleBase.</span></li>
+        </ul>
+        <p><span lang="pt">The Queries argument describes a list of queries to 
+        execute. Each query is a term of the form:</span></p>
+        <ul>
+          <li><span lang="pt"><b>query( Goal, Label, ListOfSubsts )</b>, where
+          <b>Goal </b>is the goal to execute (à la Prolog), <b>Label</b> 
+          identifies the answers of the query and can be a constant or a complex 
+          term, and ListOfSubsts is a list of equalities of the form Atom = Var 
+          in order to collect and name the substitutions variables.</span></li>
+        </ul>
+        <p><span lang="pt">If the <b>Answers</b> argument is a variable then it 
+        is returned a list of answers of the form:</span></p>
+        <ul>
+          <li><span lang="pt"><b>answer( Label, ListOfSubsts)</b>, where Label 
+          is a label to identify the query and ListOfSubsts is a list containing 
+          terms of the form Atom = Subst. The template for the ListOfSubsts 
+          should be provided in the <b>Queries</b> argument.</span></li>
+        </ul>
+        <p><span lang="pt">If the <b>Answers</b> argument is not a variable, 
+        then it is assumed that it describes an output stream and the Answers 
+        are written in XML format.</span></p>
+        <p><span lang="pt">Alternatively, the user can query the rule base 
+        resorting to the demo/1 or demo/2 predicates:</span></p>
+        <ul>
+          <li><span lang="pt"><b>demo( Goal )</b>, to query <b>Goal</b> in the 
+          union of all rule bases.</span></li>
+          <li><span lang="pt"><b>demo( RuleBaseLabel, Goal )</b>, to query <b>
+          Goal</b> in the rule base identified by RuleBaseLabel.</span><br>
+          </li>
+        </ul>
+      </blockquote>
+      </p>
+      <p><b><font color="#0000FF"><span lang="pt">Translation of Rule Bases</span></font></b></p>
+      <p>
+        <blockquote>
+        <p><span lang="pt">The W4 RuleML compiler provides two translation 
+        predicates from RuleML syntax to Prolog and vice-versa. The use is the 
+        following:</span><br>
+        </p>
+        <ul>
+          <li><span lang="pt"><b>ruleML2prolog( InFilePath, OutFilePath )</b>, 
+          converts a RuleML base to Prolog syntax.</span></li>
+          <li><span lang="pt"><b>prolog2ruleML( InFilePath, OutFilePath )</b>, 
+          converts a Prolog file to RuleML.</span><br>
+          </li>
+        </ul>
+        <p><span lang="pt">Both predicates loose variable names, since the 
+        current version of XSB Prolog does not provide the standard mechanisms 
+        for getting the original variables names.</span><br>
+        <span lang="pt">The conversion of RuleML to Prolog is particular useful 
+        to see how an RuleML is encoded by the RuleML compiler.</span></p>
+      </blockquote>
+      </p>
+      </td>
+    </tr>
+    <tr>
+      <td width="80%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">Example 
+      Session</font></span><p><b><span lang="pt">Consider the
+      <a href="taxonomy.ruleml">taxonomy rule base</a>.Start by compiling the 
+      RuleML compiler:</span></b></p>
+      <blockquote>
+        <p><span lang="pt">XSB Version 2.5 (Okocim) of March 11, 2002<br>
+        [x86-pc-windows; mode: optimal; engine: slg-wam; gc: indirection; 
+        scheduling: lo<br>
+        cal]<br>
+        <br>
+        | ?- [ruleml].<br>
+        [ruleml loaded]<br>
+        [prologread loaded]<br>
+        [prologwrite loaded]<br>
+        [rulemlread loaded]<br>
+        [xml2termns loaded]<br>
+        [xmldom loaded]<br>
+        [xml loaded]<br>
+        [iostream loaded]<br>
+        [utf loaded]<br>
+        [uri loaded]<br>
+        [xmlparser loaded]<br>
+        [rulemlwrite loaded]<br>
+        [rulebase loaded]<br>
+        [gwfsxpengine loaded]<br>
+        <br>
+        yes</span></p>
+      </blockquote>
+      <p><b><span lang="pt">Next, load the rule base:</span></b></p>
+      <blockquote>
+        <p><span lang="pt">| ?- loadRules( ruleML( 'taxonomy.ruleml' ) ).<br>
+        <br>
+        yes</span></p>
+      </blockquote>
+      <p><b><span lang="pt">Let us try some basic queries:</span></b></p>
+      <blockquote>
+        <p><span lang="pt">| ?- demo( animals, animal(X) ).<br>
+        X = Pluto;<br>
+        X = Dracula;<br>
+        X = Tweety;<br>
+        X = Joe;<br>
+        no<br>
+        | ?- demo( animals, flies(X) ).<br>
+        X = Dracula;<br>
+        X = Tweety;<br>
+        no</span></p>
+        <p><span lang="pt">| ?- demo( animals, neg flies(X) ).<br>
+        X = Joe;<br>
+        X = Pluto;<br>
+        no<br>
+&nbsp;</span></p>
+        <p><span lang="pt">| ?- demo( animals, not flies(X) ).<br>
+        ++Error[XSB]: [Runtime/P] FLOUNDERING: tnot/1 used with a non-ground 
+        subgoal: demo_wfsxp_tu_goal(animals,flies(_h152517))<br>
+        Aborting...<br>
+        Removing incomplete tables...</span></p>
+        <p><span lang="pt"><br>
+        | ?- demo( animals, ( animal(X), not flies(X) ) ).<br>
+        X = Pluto;<br>
+        X = Joe;<br>
+        no</span></p>
+      </blockquote>
+      <p><span lang="pt"><b>We can also try the same queries but now using the 
+      queryRules/3 predicate in its two flavors:</b></span></p>
+      <blockquote>
+        <p>| ?- queryRules( animals, [query( flies(X), q1, [animal=X] )], Ans ).<br>
+        <br>
+        X = _h152778<br>
+        Ans = [[answer(q1,[animal = Dracula]),answer(q1,[animal = Tweety])]];<br>
+        <br>
+        no<br>
+        | ?- queryRules( animals, [query( flies(X), q1, [animal=X] ),query( neg 
+        flies(X)<br>
+        , q2, [non=X])], Ans ).<br>
+        <br>
+        X = _h152980<br>
+        Ans = [[answer(q1,[animal = Dracula]),answer(q1,[animal = Tweety])],[answer(q2,[<br>
+        non = Joe]),answer(q2,[non = Pluto])]];<br>
+        <br>
+        no<br>
+        | ?- queryRules( animals, [query( flies(X), q1, [animal=X] )], userout 
+        ).<br>
+        &lt;answers&gt;&lt;_answer&gt;&lt;_rlab&gt;&lt;ind&gt;q1&lt;/ind&gt;&lt;/_rlab&gt;&lt;_subst&gt;&lt;var&gt;animal&lt;/var&gt;&lt;ind&gt;Dracula&lt;/ind&gt;&lt;/_subst&gt;&lt;/_answer&gt;<br>
+        <span lang="pt">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        </span>&lt;_answer&gt;&lt;_rlab&gt;&lt;ind&gt;q1&lt;/ind&gt;&lt;/_rlab&gt;&lt;_subst&gt;&lt;var&gt;animal&lt;/var&gt;&lt;ind&gt;Tweety&lt;/ind&gt;&lt;/_subst&gt;&lt;/_answer&gt;<br>
+        &lt;/answers&gt;<br>
+        X = _h153294;<br>
+        <br>
+        no<br>
+        | ?- queryRules( animals, [query( flies(X), q1, [animal=X] ),query( neg 
+        flies(X)<br>
+        , q2, [non=X])], userout ).<br>
+        &lt;answers&gt;&lt;_answer&gt;&lt;_rlab&gt;&lt;ind&gt;q1&lt;/ind&gt;&lt;/_rlab&gt;&lt;_subst&gt;&lt;var&gt;animal&lt;/var&gt;&lt;ind&gt;Dracula&lt;/ind&gt;&lt;/_subst&gt;&lt;/_answer&gt;<span lang="pt">
+        </span>&lt;_answer&gt;&lt;_rlab&gt;&lt;ind&gt;q1&lt;/ind&gt;&lt;/_rlab&gt;&lt;_subst&gt;&lt;var&gt;animal&lt;/var&gt;&lt;ind&gt;Tweety&lt;/ind&gt;&lt;/_subst&gt;&lt;/_answer&gt;<br>
+        &lt;_answer&gt;&lt;_rlab&gt;&lt;ind&gt;q2&lt;/ind&gt;&lt;/_rlab&gt;&lt;_subst&gt;&lt;var&gt;non&lt;/var&gt;&lt;ind&gt;Joe&lt;/ind&gt;&lt;/_subst&gt;&lt;/_answer&gt;<br>
+        &lt;_answer&gt;&lt;_rlab&gt;&lt;ind&gt;q2&lt;/ind&gt;&lt;/_rlab&gt;&lt;_subst&gt;&lt;var&gt;non&lt;/var&gt;&lt;ind&gt;Pluto&lt;/ind&gt;&lt;/_subst&gt;&lt;/_answer&gt;&lt;/answers&gt;<br>
+        X = _h153480;</p>
+      </blockquote>
+      <p><b><span lang="pt">To convert the original RuleML file to Prolog just 
+      issue the goal:</span></b></p>
+      <blockquote>
+        <p><span lang="pt">| ?- ruleML2prolog( 'taxonomy.ruleml', 'taxonomy.pl' 
+        ).<br>
+        <br>
+        yes</span></p>
+      </blockquote>
+      <p><b><span lang="pt">The resulting program is:</span></b></p>
+      <blockquote>
+        <p><span lang="pt">:- module(animals).<br>
+        animal(A) :- mammal(A).<br>
+        animal(A) :- bird(A).<br>
+        animal(A) :- 'dead animal'(A).<br>
+        mammal(A) :- bat(A).<br>
+        bird(A) :- penguin(A).<br>
+        bird('Tweety').<br>
+        mammal('Pluto').<br>
+        penguin('Joe').<br>
+        bat('Dracula').<br>
+        'dead animal'('Dracula').<br>
+        neg flies(A) :- animal(A),neg 'flying animal'(A),not(flies(A)).<br>
+        neg 'flying animal'(A) :- not('flying animal'(A)).<br>
+        flies(A) :- bat(A),'flying bat'(A),not(neg flies(A)).<br>
+        'flying bat'(A) :- not(neg 'flying bat'(A)).<br>
+        flies(A) :- bird(A),'flying bird'(A),not(neg flies(A)).<br>
+        'flying bird'(A) :- not(neg 'flying bird'(A)).<br>
+        neg flies(A) :- penguin(A),neg 'flying penguin'(A),not(flies(A)).<br>
+        neg 'flying penguin'(A) :- not('flying penguin'(A)).<br>
+        neg flies(A) :- 'dead animal'(A),neg 'flying dead'(A),not(flies(A)).<br>
+        neg 'flying dead'(A) :- not('flying dead'(A)).<br>
+        neg 'flying bat'(A) :- 'dead animal'(A),bat(A),neg 'flying dead bat'(A).<br>
+        neg 'flying dead bat'(A) :- not('flying dead bat'(A)).<br>
+        neg 'flying bird'(A) :- 'dead animal'(A),bird(A),neg 'flying dead 
+        bird'(A).<br>
+        neg 'flying dead bird'(A) :- not('flying dead bird'(A)).<br>
+        'flying dead bat'('Dracula').<br>
+        'flying animal'(A) :- bat(A),'flying bat'(A).<br>
+        'flying animal'(A) :- bird(A),'flying bird'(A).<br>
+        'flying dead'(A) :- bat(A),'flying dead bat'(A).<br>
+        neg 'flying bird'(A) :- penguin(A),neg 'flying penguin'(A).</span></p>
+      </blockquote>
+      </td>
+    </tr>
+    <tr>
+      <td width="80%">
+      <font face="Arial Black" size="5" color="#0000FF">Current Limitations</font><ul>
+        <li><span lang="pt">Tups, Rolis e Hrefs in the RuleML document are 
+        translated but ignored by the engine.</span></li>
+        <li><span lang="pt">Constructive Negation is not implemented.</span></li>
+        <li><span lang="pt">The code is meta-interpreted, and not compiled. It 
+        amkes extensive use of tabling.</span></li>
+        <li><span lang="pt">Original Prolog variable names are not kept.</span></li>
+        <li><span lang="pt">Missing SOAP 1.2 interface. Under construction.</span></li>
+        <li><span lang="pt">Further testing...</span></li>
+      </ul>
+      </td>
+    </tr>
+    <tr>
+      <td width="80%">
+      <font face="Arial Black" size="5" color="#0000FF">Future developments</font><ul>
+        <li><span lang="pt">Integration with Stable Models/Answer Sets engine 
+        via NMR support from XSB Prolog 2.6.</span></li>
+        <li><span lang="pt">Update semantics.</span></li>
+        <li><span lang="pt">Triple Engine for handling RDF and OWL documents.</span></li>
+        <li><span lang="pt">URI processor, for resolving relative references.</span></li>
+        <li><span lang="pt">Porting to other Prolog systems.</span></li>
+        <li><span lang="pt">More accurate documentation.</span></li>
+      </ul>
+      </td>
+    </tr>
+    <tr>
+      <td valign="top" width="80%">
+      <span lang="pt"><font face="Arial Black" size="5" color="#0000FF">Comments 
+      and Suggestions</font></span><ul>
+        <li><span lang="pt">Please send your enquiries, suggestions, or bug 
+        lists to <a href="mailto:cd@di.fct.unl.pt">cd@di.fct.unl.pt</a> with 
+        subject title starting with &quot;RULEML:&quot;.</span></li>
+      </ul>
+      </td>
+    </tr>
+    <tr>
+      <td valign="top" width="80%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td valign="top" width="80%">
+      &nbsp;</td>
+    </tr>
+    <tr>
+      <td valign="top" width="80%">
+      Last update: <span lang="pt">July 31st</span>, 2003</td>
+    </tr>
+  </table>
+  </center>
+</div>
+
+</body>
+
+</html>

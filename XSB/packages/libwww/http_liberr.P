@@ -1,0 +1,87 @@
+
+:- compiler_options([xpp_on]).
+:- export http_err_code/3.
+
+#include "http_errors.h"
+
+http_err_code(HT_OK, 	      	      'Generic success',       'information').
+http_err_code(HT_ALL, 	       	      'Used by Net Manager',   'information').
+
+http_err_code(HT_CONTINUE,    	      'Continue',              'information').
+http_err_code(HT_UPGRADE,     	      'Switching protocols',   'information').
+http_err_code(HT_LOADED,    	      'OK',                    'success'). 
+http_err_code(HT_CREATED,    	      'Created',               'success'). 
+http_err_code(HT_ACCEPTED, 	      'Accepted',              'success'). 
+http_err_code(HT_NON_AUTHORITATIVE,   'Non-authoritative information',
+	       	       	       	       	       	       	       'success'). 
+http_err_code(HT_NO_DATA,     	      'Document updated',      'success'). 
+http_err_code(HT_RESET_CONTENT,       'Reset content',         'success'). 
+http_err_code(HT_PARTIAL_CONTENT,     'Partial content',       'success'). 
+http_err_code(HT_PARTIAL_OK, 	      'Partial update OK',     'success'). 
+http_err_code(HT_MULTIPLE_CHOICES,    'Multiple choices',      'redirection').
+http_err_code(HT_PERM_REDIRECT,       'Moved permanently',     'redirection').
+http_err_code(HT_FOUND,     	      'Found',                 'redirection').
+http_err_code(HT_SEE_OTHER, 	      'See other',             'redirection').
+http_err_code(HT_NOT_MODIFIED,        'Not modified',          'redirection').
+http_err_code(HT_USE_PROXY, 	      'Use proxy',             'redirection').
+http_err_code(HT_PROXY_REDIRECT,      'Proxy redirect',        'redirection').
+http_err_code(HT_TEMP_REDIRECT,       'Temporary redirect',    'redirection').
+
+http_err_code(HT_IGNORE,     	      'Ignore this in the Net Manager',
+	      	      	      	      	      	      	       'ignore').
+http_err_code(HT_CLOSED,     	      'The socket was closed', 'socket').
+http_err_code(HT_PENDING,    	      'Wait for connection',   'socket').
+http_err_code(HT_RELOAD,      	      'Must reload document',  'reload').
+
+/* Errors */
+http_err_code(HT_ERROR,     	      'General error',         'internal').
+http_err_code(HT_BAD_REQUEST, 	      'Bad request',           'client error').
+http_err_code(HT_NO_ACCESS,    	      'Unauthorized',          'client error').
+http_err_code(HT_FORBIDDEN,           'Forbidden',             'client error').
+http_err_code(HT_NOT_FOUND,           'Not found',             'client error').
+http_err_code(HT_NOT_ALLOWED,         'Method not allowed',    'client error').
+http_err_code(HT_NOT_ACCEPTABLE,      'Not acceptable',        'client error').
+http_err_code(HT_NO_PROXY_ACCESS,     'Proxy authentication required',
+	      	      	      	      	      	      	       'client error').
+http_err_code(HT_CONFLICT,     	      'Conflict',              'client error').
+http_err_code(HT_LENGTH_REQUIRED,     'Length required',       'client error').
+http_err_code(HT_PRECONDITION_FAILED, 'Precondition failed',   'client error').
+http_err_code(HT_TOO_BIG,    	      'Request entity too large',
+	      	      	      	      	      	      	       'client error').
+http_err_code(HT_URI_TOO_BIG, 	      'Request URI too large', 'client error').
+http_err_code(HT_UNSUPPORTED, 	      'Unsupported media type','client error').
+http_err_code(HT_BAD_RANGE, 	      'Range not satisfiable', 'client error').
+http_err_code(HT_EXPECTATION_FAILED,  'Expectation failed',    'client error').
+http_err_code(HT_REAUTH,     	      'Reauthentication required',
+	      	      	      	      	      	      	       'client error').
+http_err_code(HT_PROXY_REAUTH,	      'Proxy reauthentication required',
+	      	      	      	      	      	      	       'client error').
+
+http_err_code(HT_SERVER_ERROR,	      'Internal server error', 'server error').
+http_err_code(HT_NOT_IMPLEMENTED,     'Not implemented',       'server error').
+http_err_code(HT_BAD_GATEWAY, 	      'Bad gateway',           'server error').
+http_err_code(HT_RETRY,     	      'Service unavailable',   'server error').
+http_err_code(HT_GATEWAY_TIMEOUT,     'Gateway timeout',       'server error').
+http_err_code(HT_BAD_VERSION,         'HTTP version not supported',
+	       	       	       	       	       	       	       'server error').
+http_err_code(HT_PARTIAL_NOT_IMPLEMENTED,
+	      	      	      	      'Partial update not implemented',
+	      	      	      	      	      	      	       'server error').
+http_err_code(HT_INTERNAL,            'Weird, should never happen',
+	      	      	      	      	      	      	       'internal').
+http_err_code(HT_WOULD_BLOCK, 	      'We are in a select',    'internal').
+http_err_code(HT_INTERRUPTED, 	      'HTTP request interrupted',
+	      	      	      	      	      	      	       'internal').
+http_err_code(HT_PAUSE,	       	      'If we want to pause a stream',
+	      	      	      	      	      	      	       'internal').
+http_err_code(HT_RECOVER_PIPE,        'Recover pipe line',     'internal').
+http_err_code(HT_TIMEOUT,             'Connection timeout',    'internal').
+http_err_code(HT_NO_HOST,             'Cannot find remote host','internal').
+
+%% Errors used only in the XSB libwww package */
+http_err_code(WWW_DOC_SYNTAX,	      'Document syntax',       'server error').
+http_err_code(WWW_EXTERNAL_ENTITY,    'External entity not found',
+	      	      	      	      	      	      	       'server error').
+http_err_code(WWW_EXPIRED_DOC,        'Document older than specified time',
+	      	      	      	      	      	      	       'server error').
+http_err_code(WWW_URI_SYNTAX, 	      'Invalid URI syntax',    'client error').

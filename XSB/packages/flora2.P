@@ -1,0 +1,46 @@
+/* File:      flora2.P
+**
+** Author(s): Michael Kifer
+**
+** Contact:   flora-users@lists.sourceforge.net
+** 
+** Copyright (C) The Research Foundation of SUNY, 1998 - 2006
+** 
+** FLORA-2 is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** FLORA-2 is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with FLORA-2; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+**
+** $Id: flora2.P,v 1.27 2010-08-19 15:03:38 spyrosh Exp $
+** 
+*/
+
+
+:- export bootstrap_flora/0,  flora_shell/0.
+
+flora_msg :-
+	nl,
+	nl,
+	writeln('Thank you for your interest in the FLORA-2 package.'),
+	nl,
+	writeln('This package is distributed separately.'),
+	writeln('It can be downloaded from its own Web site:'),
+	nl,
+	writeln('       http://flora.sourceforge.net/download.php'),
+	nl,
+	writeln('                        The FLORA-2 team.'),
+	nl,
+	nl.
+
+bootstrap_flora :- flora_msg.
+flora_shell :- flora_msg.

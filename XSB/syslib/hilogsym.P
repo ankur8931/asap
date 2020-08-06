@@ -1,0 +1,58 @@
+/* File:      hilog_symbol.P
+** Author(s): Kostis F. Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: hilogsym.P,v 1.3 1999/05/04 17:44:42 warren Exp $
+** 
+*/
+
+
+:- dynamic '_$hilog_symbol1'/1.
+
+add_hilog_symbol(X) :- 
+	var(X), 
+	!, 
+	abort('Uninstantiated argument 1 of hilog/1').
+add_hilog_symbol([]) :- 
+	!.
+add_hilog_symbol([HS|HSs]) :- 
+	!,
+	add_hilog_symbol(HS), 
+	add_hilog_symbol(HSs).
+add_hilog_symbol((HS, HSs)) :-
+	!, 
+	add_hilog_symbol(HS),
+	add_hilog_symbol(HSs).
+add_hilog_symbol(HS) :- 
+	'_$hilog_symbol'(HS),	% If it's already in there don't add it again!
+	!.
+add_hilog_symbol(HS) :- 
+	( atom(HS) ->
+		assertai('_$hilog_symbol1'(HS), 1)
+	; abort(('Symbol ', HS, ' in hilog declaration is not an atom')) ).
+
+
+:- assertai('_$hilog_symbol1'('^~'),1).
+
+'_$hilog_symbol'(S) :-
+	'_$hilog_symbol1'(S).
+
+
+/* ----------------- end of file hilog_symbol.P ----------------------- */
+

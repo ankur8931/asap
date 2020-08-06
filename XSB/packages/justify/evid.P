@@ -1,0 +1,77 @@
+:- import append/3 from basics.
+:- import trie_assert/1 from tables.
+:- import txm_true_tabled_name/2, txm_true_nontabled_name/2,
+    txm_false_name/2 from jxm.
+:- dynamic just_inited/1, just_tabled_pred/2, true_tabled_evid_store/2.
+
+true_tabled_evid(C, Evid) :-
+    true_tabled_evid_store(C, Evid).
+
+true_tabled_store(C, Evid) :-
+    trie_assert(true_tabled_evid_store(C, Evid)).
+
+concat_lists([], []).
+concat_lists([L|Ls], EvCList) :-
+    concat_lists(Ls, EvCLs),
+    append(L, EvCLs, EvCList).
+concat(EvList, E) :-
+    concat_lists(EvList, EvCList),
+    E = EvCList.
+
+just_init :-
+    (clause(just_inited(true), true)
+     ->	    
+	true
+     ;
+	justify_init_preds,
+	assert(just_inited(true))).
+
+one_evid([], []).
+one_evid([[]], []).
+one_evid([(L, []) | AEs], [(L, [])|OEL]) :- !,
+    one_evid(AEs, OEL).
+one_evid([(_,[(A,E)]) | AEs], [(A,E)|OEL]) :- !,
+%	 delete_ans_evid(A, AEs, NAEs),
+%	 one_evid(NAEs, OEL).
+    one_evid(AEs, OEL).
+one_evid([[(_,(A,E))] | AEs], [(A,E)|OEL]) :- !,
+%	 delete_ans_evid(A, AEs, NAEs),
+%	 one_evid(NAEs, OEL).
+    one_evid(AEs, OEL).
+
+delete_ans_evid(_, [], []).
+delete_ans_evid(_, [[]], []).
+delete_ans_evid(A, [[(A, _)] | AEs], NAEs) :- !,
+    delete_ans_evid(A, AEs, NAEs).
+delete_ans_evid(A, [[(B, E)] | AEs], [[(B,E)] | NAEs]) :- !,
+    delete_ans_evid(A, AEs, NAEs).
+
+allfail_evid(_, _, [], _, []).
+allfail_evid(L1, NE2, [(L,E1)|LE1s], P, Evid) :-
+    copy_term(term(L1,P,NE2), term(L3,P3,NE3)),
+    L3 = L,
+    P3,
+    allfail_evid(L1, NE2, LE1s, P, R),
+    append(NE3, R, E2ER),
+    Evid = [(L,E1)|E2ER].
+
+forall_t(_Variables, (A,AE), C, E) :-
+    findall((AE,C), A, L),
+    all_true_t(L, E).
+
+all_true_t([],[]).
+all_true_t([(AE,C)|L], [[AE,CE] | E]) :-
+    call_t(C, CE),
+    all_true_t(L, E).
+
+forall_f(_Var, (A,AE), C, E) :-
+    findall((AE,C), A, L),
+    all_true_f(L, E).
+
+all_true_f([(AE,C)|L], E) :-
+    (call_f(C, CE)
+     ->
+	E = [AE,CE]
+     ;
+	all_true_f(L, E)).
+

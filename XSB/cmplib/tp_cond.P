@@ -1,0 +1,128 @@
+/* File:      tp_cond.P
+** Author(s): Saumya Debray, Terrance Swift, Kostis Sagonas
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** Copyright (C) ECRC, Germany, 1990
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: tp_cond.P,v 1.11 2010-08-19 15:03:36 spyrosh Exp $
+** 
+*/
+
+
+/*======================================================================*/
+/* tvar_hold(+TestGoal,	+HoldRegsIn, -HoldRegsOut)			*/
+/*	It collects all the temp vars used in the test and append	*/
+/*	their id in HoldRegs, since these temp vars should not be	*/
+/*	released in the "then" part until the next chunk.		*/
+/*======================================================================*/
+
+tvar_hold(and(Goal,Goals), HoldIn, HoldOut) :-
+	tvar_hold(Goal, HoldIn, HoldMed),
+	tvar_hold(Goals, HoldMed, HoldOut).
+tvar_hold(or(Goal,Goals), HoldIn, HoldOut) :-
+	tvar_hold(Goal, HoldIn, HoldMed),
+	tvar_hold(Goals, HoldMed, HoldOut).
+tvar_hold(inlinegoal(_,_,Args), HoldIn, HoldOut) :-
+	tvar_hold_args(Args, HoldIn, HoldOut).
+
+tvar_hold_args([], HoldIn, HoldIn).
+tvar_hold_args([Arg|Args], HoldIn, HoldOut) :-
+	tvar_hold_arg(Arg, HoldIn, HoldMed),
+	tvar_hold_args(Args, HoldMed, HoldOut).
+
+tvar_hold_arg(real(_), HoldIn, HoldIn).
+tvar_hold_arg(integer(_), HoldIn, HoldIn).
+tvar_hold_arg(constant(_), HoldIn, HoldIn).
+tvar_hold_arg(string(_), HoldIn, HoldIn).
+tvar_hold_arg(structure(_,Args), HoldIn, HoldOut) :- 
+	tvar_hold_args(Args, HoldIn, HoldOut).
+tvar_hold_arg(varocc(Vid,Prag), HoldIn, HoldOut) :-
+	vprag_type(Prag, Type),
+	( Type == t -> HoldOut=[Vid|HoldIn] ; HoldOut=HoldIn ).
+
+/*======================================================================*/
+/* tcond(+TestGoal, +SuccessLabel, +FailLabel, 				*/
+/*	 -Pil-Pilr, +Tin, -Tout, +HoldRegs, e(+PredSym,+NC))		*/
+/* 	Generates code for the test part of an 'if_then_else'.		*/
+/*======================================================================*/
+
+tcond(and(Goal,Goals),SuccLab,FailLab,Pil,Pilr,Tin,Tout,Hold,EPN) :-
+    gennum(LabId), IntSuccLab = label(_,(disj,LabId)),
+    tcond(Goal,IntSuccLab,FailLab,Pil,[IntSuccLab|Pilm],
+	  Tin,Tmid,Hold,EPN),
+    tcond(Goals,SuccLab,FailLab,Pilm,Pilr,Tmid,Tout,Hold,EPN).
+tcond(or(Goal,Goals),SuccLab,FailLab,Pil,Pilr,Tin,Tout,Hold,EPN) :-
+    gennum(LabId), IntFailLab = label(_,(disj,LabId)),
+    tcond(Goal,SuccLab,IntFailLab,Pil,[IntFailLab|Pilm],
+	  Tin,Tmid,Hold,EPN),
+    tcond(Goals,SuccLab,FailLab,Pilm,Pilr,Tmid,Tout,Hold,EPN).
+tcond(inlinegoal(Op,_,Args),SuccLab,FailLab,
+      Pil,Pilr,Tin,Tout,Hold,EPN) :-
+    ( Args = [Arg1,Arg2],
+	( arithrelop(Op) -> 
+	     tcond_relop(Op,Arg1,Arg2,SuccLab,FailLab,
+			 Pil,Pilr,Tin,Tout,Hold,EPN)
+	; term_comp_op(Op) ->
+	     tcond_compop(Op,Arg1,Arg2,SuccLab,FailLab,Pil,Pilr,Tin,Tout,Hold)
+	; Op == '=' ->	% these inlines are introduced by flattening
+	     geninline(Op, Args, Hold, 0, Pil, Pilr, Tin, Tout, EPN)
+	; Op == 'is' ->	% these inlines are introduced by flattening
+	     geninline(Op, Args, Hold, 0, Pil, Pilr, Tin, Tout, EPN)
+	; Op == '@=' ->
+	     tcond_componfun(Op,Arg1,Arg2,SuccLab,FailLab,Pil,Pilr,Tin,Tout,Hold)
+	)
+    ; Args = [Arg],		% Op = var/nonvar (only for the moment)
+	inline_jumpcof_cond(Op,1,COF_Code),
+        tcond_cof(COF_Code,Arg,SuccLab,FailLab,Pil,Pilr,Tin,Tout,Hold)
+    ; Args = [], Pil = Pilr, Tin = Tout
+    ).
+
+tcond_relop(Op, Arg1, Arg2, SuccLab, FailLab,
+	    Pil, Pilr, Tin, Tout, Hold, EPN) :-
+    SuccLab = label(_,SL0), FailLab = label(_,FL0),
+    eval_relop(Op, Arg1, Arg2, Hold, FL0,
+	       Pil, [jump(SL0)|Pilr], Tin, Tout, EPN).
+
+tcond_cof(BIT_Code,Arg,SuccLab,FailLab,Pil,Pilr,Tin,Tout,Hold) :-
+    SuccLab = label(_,SL0), FailLab = label(_,FL0),
+    geninl_load_lhs(Arg, R1, Pil, [jumpcof(BIT_Code,R1,FL0),jump(SL0)|Pilr],Tin,Tout1,_),
+    release_if_done0(Arg, R1, Hold, Tout1, Tout).
+
+tcond_compop(Op, Arg1, Arg2, SuccLab, FailLab, Pil, Pilr, Tin, Tout, Hold) :-
+    SuccLab = label(_,SL0), FailLab = label(_,FL0),
+    geninl_load_lhs(Arg1, R1, Pil, Pilm, Tin, Tmid, _),
+    geninl_load_lhs(Arg2, R2, Pilm,
+		    [term_comp(R1,R2,R3),JumpInst,jump(SL0)|Pilr],Tmid,Tout1,_),
+    term_comp_tab(Op, R3, FL0, JumpInst),
+    getreg(Tout1, R3),
+    release_if_done0(Arg1, R1, Hold, Tout1, Tout2),
+    release_if_done0(Arg2, R2, Hold, Tout2, Tout).
+    
+tcond_componfun(_Op, Arg1, Arg2, SuccLab, FailLab, Pil, Pilr, Tin, Tout, Hold) :-
+    FailLab = label(_,FL0), SuccLab = label(_,SL0),
+    geninl_load_lhs(Arg1, R1, Pil, Pilm, Tin, Tmid, _),
+    geninl_load_lhs(Arg2, R2, Pilm, [fun_test_ne(R1,R2,FL0),jump(SL0)|Pilr],Tmid,Tout1,_),
+    release_if_done0(Arg1, R1, Hold, Tout1, Tout2),
+    release_if_done0(Arg2, R2, Hold, Tout2, Tout).
+
+/*======================================================================*/
+/* Auxiliary predicates							*/
+/*======================================================================*/
+
+force_tp_cond_loaded.
+

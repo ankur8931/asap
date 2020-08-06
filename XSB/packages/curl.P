@@ -1,0 +1,310 @@
+/*
+** File: packages/curl.P
+** Author: Aneesh Ali
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 2010
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+*/
+
+
+:- import bootstrap_package/2 from packaging.
+:- import member/2, append/3 from basics.
+:- import file_seek/4, path_sysop/2 from file_io.
+:- import str_match/5, substring/4, str_cat/3 from string.
+:- import slash/1 from machine.
+:- import xsb_configuration/2 from xsb_configuration.
+
+:- import pl_load_page/1, 
+	curl_allocate_error_term/2, 
+	curl_finalize_warn/1, 
+	pl_encode_url/2
+   from curl2pl.
+:- import
+        domain_error/4,
+        type_error/4
+   from error_handler.
+
+:- export 
+	load_page/5,
+	url_properties/2,
+	url_properties/3,
+	encode_url/2,
+	www_cache_filename/4,
+	set_tmp_file/3,
+	get_redir_url/2, 
+	post_data/2, 
+	post_us_pair/3, 
+	get_us_pair/3, 
+	delete_us_pair/3.
+
+:- local us_pair/3.
+:- dynamic us_pair/3.
+
+:- bootstrap_package([curl, cc], curl),
+	[curlconfig].
+
+
+%% load_page(+Source,+Options,-Properties,-Document,-Warnings)
+load_page(_Source, _Options, _Props, _Document, _Warn) :- 
+	catch(\+ curl_info:curl_info(support,yes),
+	      _,
+	      throw(error(existence_error, 'Error: open(url(...), ..., ...) - the XSB package Curl has not been configured - see the XSB manual, volume 2'))),
+	!,
+	throw(error(existence_error, 'Error: open(url(...), ..., ...) - the package Curl has not been configured - see the XSB manual, volume 2')).
+
+load_page(Source, Options, [DirEnc, FileBase, Suffix, Size, Time], Document, Warn) :- 
+	load_page_warn(Source, Options, [Size, Time], Document, Warn),
+	encode_url(Source, [DirEnc, FileBase, Suffix]), 
+	curl_finalize_warn(Warn).
+
+load_page_warn(Source, Opt, _Props, Document, _Warn) :-
+	Opt == [post(true)],
+	!, 
+        %% here we are getting the temp file into which we posed and make it
+        %% into a string passed to pl_load_page as post(String)
+	encode_url(Source, [DirEnc, FileBase, Suffix]), 
+	www_cache_filename([redirect(false)], FileBase, Suffix, FileUnEnc), 
+	set_tmp_file(DirEnc, FileUnEnc, TmpFile), 
+	open(TmpFile, read, RStream),
+	stream_to_string(RStream, Str), 
+	close(RStream), 
+        pl_load_page([options([post(Str)]), source(Source), document(Document), properties(_, _, _, _, _)]).
+
+load_page_warn(Source, Options, [Size, Time], Doc, Warn) :-
+	curl_allocate_error_term(Error, Warn),
+	examine_open_options(open, Options, ValidOptions), 
+        pl_load_page([options(ValidOptions), source(Source), document(DocTmp), properties(SizeTmp, TimeTmp)]), 
+	handle_html_redir(ValidOptions, DocTmp, SizeTmp, TimeTmp, Doc, Size, Time), 
+	throw_error(Error).
+
+url_properties(Url, Properties) :-
+	!, 
+	url_properties(Url, [], Properties).
+
+url_properties(Url, Options, Properties) :-
+	atom(Url), 
+	!, 
+	url_properties(url(Url), Options, Properties).
+
+url_properties(url(Url), Options, Properties) :-
+	atom(Url), 
+	!, 
+	append(Options, [url_prop(true)], OptionsFinal), 
+	load_page(url(Url), OptionsFinal, Properties, _Doc, _Warn). 
+
+encode_url(url(Url), [DirEnc, FileUnEnc, Suffix]) :- 
+	pl_encode_url(Url, [Dir, File, Suf]), 
+	validatedir(Dir, DirEnc), 
+	validatefile(File, FileUnEnc), 
+	validatesuffix(Suf, Suffix).
+
+examine_open_options(open, Options, ValidOptions):-
+	examine_open_options(Options, Options1), 
+	remove(url_prop(true), Options1, ValidOptions).
+
+examine_open_options([], []).
+examine_open_options([redirect(Bool)|T], [redirect(Bool)|Options]):-
+        ((Bool == true ; Bool == false) -> true
+        ;	domain_error(redirect_option,redirect(Bool),open/load_page/5,2)
+        ),
+        !,
+	examine_open_options(T, Options).
+examine_open_options([secure(CrtName)|T], [secure(CrtName)|Options]):-
+        (atom(CrtName) -> true
+        ; type_error(secure('<atom>'),secure(CrtName),open/load_page/4,2)
+        ),
+        !,
+	examine_open_options(T, Options).
+examine_open_options([auth(UserName, Password)|T], [auth(UserName, Password)|Options]):-
+        (atom(UserName), atom(Password) -> true
+        ; type_error(auth('<atom>','<atom>'),auth(UserName,Password),open/load_page/4,2)
+        ),
+	!,
+	examine_open_options(T, Options).
+examine_open_options([timeout(Seconds)|T], [timeout(Seconds)|Options]):-
+	(integer(Seconds) -> true
+        ; type_error(timeout('<integer>'),timeout(Seconds),open/load_page/4,2)
+        ),
+	!,
+	examine_open_options(T, Options).
+examine_open_options([url_prop(true)|T], [url_prop(true)|Options]):-
+	!,
+	examine_open_options(T, Options).
+examine_open_options([user_agent(Agent)|T], [user_agent(Agent)|Options]):-
+        atom(Agent),
+	!,
+	examine_open_options(T, Options).
+examine_open_options([_|T], Options):- 
+	examine_open_options(T, Options).
+
+handle_html_redir(ValidOptions, Doc, Size, Time, Doc, Size, Time) :-
+	member(redirect(false), ValidOptions), 
+	!.
+handle_html_redir(ValidOptions, DocTmp, _, _, Doc, Size, Time) :-
+	get_redir_url(DocTmp, UrlNew), 
+	load_page_warn(url(UrlNew), ValidOptions, [Size, Time], Doc, _Warn), 
+	!.
+handle_html_redir(_, Doc, Size, Time, Doc, Size, Time) :-
+	!.
+
+get_redir_url(url(Url), UrlNew) :-
+	!, 
+	load_page_warn(url(Url), [redirect(false)], _Props, Doc, _Warn), 
+	get_redir_url(Doc, UrlNew).
+
+get_redir_url(file(File), UrlNew) :-
+	!, 
+	open(file(File), read, X), 
+	stream_to_string(X, Doc), 
+	get_redir_url(Doc, UrlNew).
+
+get_redir_url(Doc, Url) :-
+	str_match('<head>', Doc, forward, XHead, _), 
+	str_match('</head>', Doc, forward, _, YHead), 
+	substring(Doc, XHead, YHead, Head1), 
+	substr_remove(Head1, ' ', Head2),   
+	substr_remove(Head2, '\n', Head3), 
+	substr_remove(Head3, '\t', Head), 
+	get_meta_redir(Head, Meta), 
+	get_url_frm_meta(Meta, Url). 
+
+get_meta_redir(Head, Meta) :-
+	str_match('<meta', Head, forward, XMeta, _),
+	substring(Head, XMeta, _, HeadPart), 
+	str_match('>', HeadPart, forward, _, YMeta),
+	substring(HeadPart, 0, YMeta, MetaTmp), 
+	chk_meta_redir(HeadPart, YMeta, MetaTmp, Meta).
+
+%% The selected Meta is a redirecting meta
+chk_meta_redir(_, _, Meta, Meta) :-
+	is_meta_redir(Meta), !.
+
+%% Try to find another <meta > tag
+chk_meta_redir(HeadPart, YMeta, _, Meta) :-
+	substring(HeadPart, YMeta, _, HeadNew), 
+	get_meta_redir(HeadNew, Meta).
+
+is_meta_redir(Meta) :-
+	str_sub('http-equiv', Meta), 
+	(str_sub('REFRESH', Meta); str_sub('Refresh', Meta)).
+
+get_url_frm_meta(Meta, Url) :-
+	str_match('URL=', Meta, forward, _, Beg), 
+	str_match('://', Meta, forward, _, _), 
+	substring(Meta, Beg, _, MetaPart), 
+	str_match('\"', MetaPart, forward, _, Y),
+	End is Y - 1,
+	substring(MetaPart, 0, End, Url).
+
+substr_remove(S1, SubStr, S2) :-
+	str_sub(SubStr, S1, Pos),
+	!, 
+	substring(S1, 0, Pos, S1Beg), 
+	str_length(SubStr, SubStrLen), 
+	NewPos is Pos + SubStrLen,  
+	substring(S1, NewPos, _, S1EndRaw), 
+	substr_remove(S1EndRaw, SubStr, S1End), 
+	str_cat(S1Beg, S1End, S2).
+
+substr_remove(S, _, S).
+
+stream_to_string(X, Y) :- 
+	file_seek(X, 0, 0, _), 
+	stream_to_string_sub(X, Y).
+stream_to_string_sub(X, Y) :- file_read_line(X, Y1), !, stream_to_string_sub(X, Y2), str_cat(Y1, Y2, Y).
+stream_to_string_sub(_, '').
+
+validatedir('', 'tmpdir') :- !.
+validatedir(Name, Name). 
+validatefile('', 'tmpfile') :- !.
+validatefile(Name, Name). 
+validatesuffix('', 'tmp') :- !.
+validatesuffix(Name, Name). 
+
+www_cache_filename(Options, FileBase, Suffix, FileName) :-
+	member(redirect(false), Options), 
+	!, 
+	str_cat(FileBase, '-redir=false.', FileBaseDot), 
+	str_cat(FileBaseDot, Suffix, FileName). 
+
+www_cache_filename(_, FileBase, Suffix, FileName) :-
+	str_cat(FileBase, '.', FileBaseRedir), 
+	str_cat(FileBaseRedir, Suffix, FileName). 
+	
+remove(_, [], []).
+remove(X, [X|T1], T2):-
+	!, 
+	remove(X, T1, T2).
+remove(X, [H|T1], [H|T2]):-
+	!, 
+	remove(X, T1, T2).
+
+throw_error(Error) :- var(Error), !.
+throw_error(Error) :- throw(Error).
+
+set_tmp_file(DirEnc, FileUnEnc, TmpFile) :-
+	slash(Slash),
+	xsb_configuration(user_home,UserHome), 
+	str_cat(UserHome, Slash, UserHomeSlash),
+	str_cat(UserHomeSlash, '.xsb', UserXSB),
+	str_cat(UserXSB, Slash, UserXSBSlash),
+	str_cat(UserXSBSlash, 'www_cache', TmpPath), 
+	str_cat(TmpPath, Slash, TmpPathSlash),
+	str_cat(TmpPathSlash, DirEnc, TmpDir), 
+	(path_sysop(isdir, UserXSB), !
+	;
+	    path_sysop(mkdir, UserXSB)
+	), 
+	(path_sysop(isdir, TmpPath), !
+	;
+	    path_sysop(mkdir, TmpPath)
+	), 
+	(path_sysop(isdir, TmpDir), !
+	;
+	    path_sysop(mkdir, TmpDir)
+	), 
+	str_cat(TmpDir, Slash, TmpDirSlash),
+	str_cat(TmpDirSlash, FileUnEnc, TmpFile).
+
+/* Post data if output stream */
+post_data(Atom, write) :- 
+        %% in case of POST we are not getting errors/warnings - needs fixing
+	load_page(url(Atom), [post(true)], _, Doc, Warn), 
+        %% uncomment to see what gets posted
+        %%writeln(debug=Doc),
+        %% load_page_warn/5 takes the temp file into which we wrote post data
+        %% and passes it to the POST action.
+        %% Here Doc will be whatever the server returns in response to POST.
+        (Warn \= [] -> writeln(Warn)
+        ; true
+        ),
+	Doc \= ''.
+
+post_data(_, read).
+
+post_us_pair(Atom, Mode, Stream) :- 
+	assert:asserta(us_pair(Atom, Mode, Stream)).
+
+get_us_pair(Atom, Mode, Stream) :- 
+	us_pair(Atom, Mode, Stream).
+
+delete_us_pair(Atom, Mode, Stream) :- 
+	assert:retractall(us_pair(Atom, Mode, Stream)), !.
+delete_us_pair(_, _, _).
+
+%-------------------------------------------------

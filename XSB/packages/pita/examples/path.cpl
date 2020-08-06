@@ -1,0 +1,14 @@
+
+path(A,B):-edge(A,B).
+
+path(A,B):-path(A,C),edge(C,B).
+
+edge(a,b):0.2.
+
+edge(b,a):0.2.
+
+edge(b,c):0.2.
+
+edge(a,c):0.2.
+
+

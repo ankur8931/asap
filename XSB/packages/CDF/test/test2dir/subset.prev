@@ -1,0 +1,55 @@
+:-(dynamic(attribute_ext(A,B,C,D,E,F))).
+:-(dynamic(attribute_object_ext(A,B,C,D,E,F))).
+:-(dynamic(class_ext(A,B,C))).
+:-(dynamic(memberof_ext(A,B,C,D))).
+:-(dynamic(object_ext(A,B,C))).
+:-(dynamic(relationship_ext(A,B,C,D,E,F))).
+:-(dynamic(schrel_ext(A,B,C,D,E,F))).
+:-(dynamic(strel_ext(A,B,C,D,E,F))).
+:-(dynamic(subclass_ext(A,B,C,D))).
+:-(index(attribute_ext(A,B,C,D,E,F),'.'(328449,[]),17)).
+:-(index(attribute_object_ext(A,B,C,D,E,F),'.'(328449,[]),17)).
+:-(index(class_ext(A,B,C),'.'(1,'.'(2,'.'(3,[]))),17)).
+:-(index(memberof_ext(A,B,C,D),'.'(1,'.'(1027,[])),17)).
+:-(index(object_ext(A,B,C),'.'(2,[]),17)).
+:-(index(relationship_ext(A,B,C,D,E,F),'.'(197121,[]),17)).
+:-(index(schrel_ext(A,B,C,D,E,F),'.'(197121,[]),17)).
+:-(index(strel_ext(A,B,C,D,E,F),'.'(197121,[]),17)).
+:-(index(subclass_ext(A,B,C,D),'.'(513,'.'(1027,[])),17)).
+class_ext('OMS Inheritable Relationships','OMS Inheritable Relationships','OMS').
+class_ext('OMS Relations','OMS Relations','OMS').
+class_ext('OMS Root','OMS Root','OMS').
+class_ext(c1,c1,test).
+class_ext(c11,c11,test).
+class_ext(c12,c12,test).
+class_ext(c13,c13,test).
+class_ext(c2,c2,test).
+class_ext(c2alt,c2alt,test).
+class_ext(c3,c3,test).
+class_ext(r1,r1,test).
+class_ext(r2,r2,test).
+class_ext(r3,r3,test).
+memberof_ext(o1,test,c1,test).
+memberof_ext(o11,test,c11,test).
+memberof_ext(o12,test,c12,test).
+memberof_ext(or1,test,r1,test).
+memberof_ext(or2,test,r2,test).
+object_ext(o1,o1,test).
+object_ext(o11,o11,test).
+object_ext(o12,o12,test).
+object_ext(or1,or1,test).
+object_ext(or2,or2,test).
+relationship_ext(c2,test,r2,test,c12,test).
+subclass_ext('OMS Inheritable Relationships','OMS','OMS Relations','OMS').
+subclass_ext('OMS Relations','OMS','OMS Root','OMS').
+subclass_ext(c1,test,c2,test).
+subclass_ext(c1,test,c2alt,test).
+subclass_ext(c11,test,c12,test).
+subclass_ext(c12,test,c13,test).
+subclass_ext(c13,test,'OMS Root','OMS').
+subclass_ext(c2,test,c3,test).
+subclass_ext(c2alt,test,c3,test).
+subclass_ext(c3,test,'OMS Root','OMS').
+subclass_ext(r1,test,r2,test).
+subclass_ext(r2,test,r3,test).
+subclass_ext(r3,test,'OMS Inheritable Relationships','OMS').

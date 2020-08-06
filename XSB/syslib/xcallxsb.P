@@ -1,0 +1,66 @@
+/* File:      xcallxsb.P
+** Author(s): David Warren, Ernie Johnson
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1997-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: xcallxsb.P,v 1.20 2007/10/09 16:40:18 dwarren Exp $
+** 
+*/
+
+
+:- compiler_options([sysmod,xpp_on]).
+#include "standard.h"
+#include "sig_xsb.h"
+#include "flag_defs_xsb.h"
+
+:- import ensure_loaded/1 from consult.
+?- ensure_loaded(xsbbrat).
+
+:- c_callloop.
+
+c_callloop :-
+        set_inthandler('_$keyboard_int'(_), MYSIG_KEYB),
+	set_inthandler('_$attv_int'(_,_), MYSIG_ATTV),
+	set_inthandler('_$thread_int'(_,_), THREADSIG_CANCEL),
+	catch(c_callloop_cmd_goal([]),Ball,ccall_error_handler(Ball)),
+	fail.
+c_callloop :-
+	repeat,
+	c_callloop_query_loop([]),
+	fail.
+
+c_callloop_cmd_goal(_) :-
+	eval_cmdline_goal.
+
+
+eval_cmdline_goal :-
+	xsb_flag(goal, CmdGoal),
+	file_open(CmdGoal, sr, FileDes),
+	eval_cmdline_goal(FileDes).
+
+eval_cmdline_goal(FileDes) :-
+	file_read(FileDes, Goal),
+	(Goal \= end_of_file
+	 ->	(call(Goal) -> true ; true),
+		eval_cmdline_goal(FileDes)
+	 ;	file_close(FileDes)
+	).
+
+'_$keyboard_int'(_Call) :- 
+        abort.
+

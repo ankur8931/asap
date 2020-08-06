@@ -1,0 +1,22 @@
+
+:- export included_ciao_directive/1.
+:- import op/3 from standard.
+
+%included_ciao_directive(comment(_,_)).
+included_ciao_directive(decl(_)).
+included_ciao_directive(decl(_,_)).
+included_ciao_directive(discontiguous(_)).
+included_ciao_directive(impl_defined(_)).
+included_ciao_directive(meta_predicate(_)).
+included_ciao_directive(pred(_,_)).
+included_ciao_directive(pred(_)).
+included_ciao_directive(prop(_)).
+included_ciao_directive(prop(_,_)).
+included_ciao_directive(regtype(_)).
+%included_ciao_directive(document_export(_)).	% added for xsbdoc
+%included_ciao_directive(document_import(_)).	% added for xsbdoc
+
+% for ISO-style mode declarations.
+% TLS: more than one operator declaration.
+:- op(200,fy,(?)).
+:- op(500,fy,(@)).

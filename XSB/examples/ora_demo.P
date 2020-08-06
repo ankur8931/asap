@@ -1,0 +1,259 @@
+/* File:      ora_demo.P
+** Author(s): Hasan Davulcu
+** Contact:   xsb-contact@cs.sunysb.edu
+** 
+** Copyright (C) The Research Foundation of SUNY, 1986, 1993-1998
+** 
+** XSB is free software; you can redistribute it and/or modify it under the
+** terms of the GNU Library General Public License as published by the Free
+** Software Foundation; either version 2 of the License, or (at your option)
+** any later version.
+** 
+** XSB is distributed in the hope that it will be useful, but WITHOUT ANY
+** WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+** FOR A PARTICULAR PURPOSE.  See the GNU Library General Public License for
+** more details.
+** 
+** You should have received a copy of the GNU Library General Public License
+** along with XSB; if not, write to the Free Software Foundation,
+** Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+**
+** $Id: ora_demo.P,v 1.3 2010-08-19 15:03:37 spyrosh Exp $
+** 
+*/
+
+/*======================================================================
+  Note: This demo deletes tables EMP, DEPT and PARENT from your account,  
+  ----	recreates, populates and then queries those tables.
+=========================================================================*/ 
+
+:- import conset/2, conget/2, coninc/1 from prof_sbp.
+:- table(ancestor/2).
+
+go(Name, Passwd) :- cputime(X0), demo(Name, Passwd),
+	cputime(X1), X is X1 - X0,
+	write('cputime: '), write(X), nl.
+
+demo(Name, Pass) :- connect_create(Name, Pass),
+		    import_and_pop.
+
+connect_create(Name, Pass) :-
+		writeln('% Connecting to Oracle ...'),
+		db_open(oracle(Name, Pass)),
+		write('% Connected to Oracle as '),
+		write(Name), writeln(' ...'),nl,
+		writeln('% Droppping experimantal tables ...'),
+		writeln('% If those tables do not exist you will get '),
+		writeln('% an error message for each one, thats OK ...'),
+		db_sql('drop table EMP'),
+		db_sql('drop table DEPT'),
+		db_sql('drop table PARENT'), nl,
+		writeln('% Creating tables EMP and DEPT and PARENT ...'),
+		db_create_table('DEPT', 'DEPTNO NUMBER(2),DNAME VARCHAR2(14),
+						LOC VARCHAR2(13)'),
+		writeln('% DEPT created ...'),
+		db_sql('create table EMP ( EMPNO NUMBER(4) NOT NULL,
+						ENAME VARCHAR2(10),
+						JOB VARCHAR2(9),
+						MGR NUMBER(4),
+						HIREDATE DATE,
+						SAL NUMBER(7,2),
+						COMM NUMBER(7,2),
+						DEPTNO NUMBER(2))'),
+		writeln('% EMP created ...'),
+		db_sql('create table PARENT ( P1 number, P2 number)'),
+		writeln('% PARENT created ...'), nl, 
+		writeln('% User created tables are:'),
+		db_show_schema(user), nl,
+		writeln('% Arity of EMP table :'),
+		db_show_schema(arity('EMP')), nl,
+		writeln('% Columns of DEPT are:'),
+		db_show_schema(columns('DEPT')),nl,
+		writeln('% Lets import those tables and populate them ...').
+
+
+
+import_and_pop :-				db_import('EMP'('EMPNO','ENAME','JOB','MGR','HIREDATE','SAL','COMM','DEPTNO'),
+	empall),
+	db_import('DEPT'('DEPTNO', 'DNAME', 'LOC'), deptall),
+	db_import('PARENT'('P1', 'P2'), db_parent),
+	writeln('% EMP and DEPT imported as empall/8 and deptall/3 and db_parent/2 ...'),
+	writeln('% Populating EMP & DEPT  ...'),
+	db_insert(emp_put(A1,A2,A3,A4,A5,A6,A7, A8),
+		(empall(A1,A2,A3,A4,A5,A6,A7,A8))),
+	db_insert(par_put(A1,A2), (db_parent(A1,A2))),
+	fill_parent,
+	emp_put(7369,'SMITH','CLERK',7902,'17-DEC-80',800,'NULL'(_),20),
+	emp_put(7499,'ALLEN','SALESMAN',7698,'20-FEB-81',1600,300,30),
+	emp_put(7521,'WARD','SALESMAN',7698,'22-FEB-81',1250,500,30),
+	emp_put(7566,'JONES','MANAGER',7839,'2-APR-81',2975,'NULL'(_),20),
+	emp_put(7654,'MARTIN','SALESMAN',7698,'28-SEP-81',1250,1400,30),
+	emp_put(7698,'BLAKE','MANAGER',7839,'1-MAY-81',2850,'NULL'(_),30),
+	emp_put(7782,'CLARK','MANAGER',7839,'9-JUN-81',2450,'NULL'(_),10),
+	emp_put(7788,'SCOTT','ANALYST',7566,'09-DEC-82',2300,'NULL'(_),50),
+emp_put(7839,'KING','PRESIDENT','NULL'(_),'17-NOV-81',5000,'NULL'(_),10),
+	emp_put(7844,'TURNER','SALESMAN',7698,'8-SEP-81',1500,0,30),
+	emp_put(7876,'ADAMS','CLERK',7788,'12-JAN-83',1100,'NULL'(_),20),
+	emp_put(7900,'JAMES','CLERK',7698,'3-DEC-81',950,'NULL'(_),30),
+	emp_put(7902,'FORD','ANALYST',7566,'3-DEC-81',3000,'NULL'(_),20),
+	emp_put(7934,'MILLER','CLERK',7782,'23-JAN-82',1300,'NULL'(_),10),
+	db_insert(dept_put(A1,A2,A3),(deptall(A1,A2,A3))),
+	dept_put(10,'ACCOUNTING','NEW YORK'),
+	dept_put(20,'RESEARCH','DALLAS'),
+	dept_put(30,'SALES','CHICAGO'),
+	dept_put(40,'OPERATIONS','BOSTON'),nl,
+	writeln('% Commit inserts and show table EMP ...'),
+	flush,
+	db_transaction(commit),
+	db_show_schema(tuples('EMP')), nl, 
+	writeln('% Table DEPT ...'), 
+	db_show_schema(tuples('DEPT')),nl,
+	queries, fail.
+
+import_and_pop :- writeln('% Closing Oracle ...'), 
+		  writeln('% *** End of demo. *** '),
+		  db_close.
+
+queries :- query1;query2;query3;query4;query5;query6;query7.
+	
+query1 :- writeln('% A simple query :'),
+	db_import('EMP'('ENAME','JOB','SAL','COMM','DEPTNO'),emp),
+	writeln('emp(Name, Job, Sal, ''NULL''(_), 30).'),
+	emp(Name, Job, Sal, 'NULL'(_), 30),
+	write(Name),write(' '), write(Job), write(' '), writeln(Sal), fail.
+query1 :- nl.
+
+
+query2 :- nl, writeln('% An example join  ...'),
+	   writeln('emp(Name, Job, Sal,Comm, DeptNo), deptall(Deptno, Dname, Loc).'),
+	   emp(Name, Job, Sal,Comm, Deptno), deptall(Deptno, Dname, Loc),
+	   write(Name),write(' '), write(Job), write(' '), write(Sal),
+	   write(' '), write(Comm),write(' '), write(Deptno),write(' '),
+	   write(Dname),write(' '), writeln(Loc), fail.
+query2 :- nl.
+
+
+query3 :- writeln('% An aggragate (rule) :'),
+	   writeln('db_query(a(X), (X is avg(Sal,A1 ^ A2 ^ A4 ^ A5 ^ emp(A1,A2,Sal,A4,A5)))).'),
+	   db_query(a(X),(X is avg(Sal,A1 ^ A2 ^ A4 ^ A5 ^ emp(A1,A2,Sal,A4,A5)))), a(X),nl, write('Avarage is '), writeln(X),nl, fail.
+
+query3 :- nl.
+
+
+query4 :- writeln('% A defined rule to find rich employees :'),
+	  writeln('db_query(rich(Name, Job, Sal,Comm, DeptNo), (emp(Name, Job, Sal,Comm, DeptNo), Sal > avg(S, (A1 ^ A2 ^ A4 ^ A5 ^ emp(A1,A2,S,A4,A5))))).'),
+db_query(rich(Name, Job, Sal,Comm, DeptNo), (emp(Name, Job, Sal,Comm, DeptNo),
+ Sal > avg(S, (A1 ^ A2 ^ A4 ^ A5 ^ emp(A1,A2,S,A4,A5))))),
+	  	  rich(Name, Job, Sal,Comm, DeptNo), 
+	   write(Name),write(' '), write(Job), write(' '), write(Sal),
+	   write(' '), write(Comm),write(' '), writeln(DeptNo),
+	   fail.
+
+query4 :- nl, write('% Number of rows returned for above query is '),
+	   db_SQLCA('SQLERRD'(2), Rows), writeln(Rows), nl.
+
+
+
+query5 :- writeln('% A more complicated rule :'),
+	   writeln('db_query(harder(A,B,D,E,S), (emp(A,B,S,E,D),not dept(D,C), 
+	   not (A = ''CAROL''), S >
+      avg(Sal,A1 ^ A2 ^ A4 ^ A5 ^ A6 ^ (emp(A1,A2,Sal,A4,A5),dept(A5,A6),not (A1 = A2))))).'), 
+	   db_import('DEPT'('DEPTNO','LOC'),dept),
+	   db_query(harder(A,B,D,E,S), (emp(A,B,S,E,D),not dept(D,C), 
+	   not (A = 'CAROL'), S >
+      avg(Sal,A1 ^ A2 ^ A4 ^ A5 ^ A6 ^ (emp(A1,A2,Sal,A4,A5),dept(A5,A6),not (A1 = A2))))),
+	   harder(A,B,C,D,S),
+	   write(A),write(' '), write(B), write(' '), write(C),
+	   write(' '), write(D),write(' '), writeln(S),
+	   fail.
+query5 :- nl, write('% Number of rows returned for above query is '),
+	   db_SQLCA('SQLERRD'(2), Rows), writeln(Rows), nl.
+ 
+	
+
+query6 :- writeln('% An SQL query :'),
+	   writeln('db_sql_select(''SELECT DEPTNO FROM EMP GROUP BY DEPTNO HAVING AVG(SAL) >= ALL (SELECT AVG(SAL) FROM EMP GROUP BY DEPTNO)'',L).'),
+	   db_sql_select('SELECT DEPTNO FROM EMP GROUP BY DEPTNO HAVING AVG(SAL) >= ALL (SELECT AVG(SAL) FROM EMP GROUP BY DEPTNO)',L),
+	   L = [Result], nl, write('Highest paying deptno is : '),writeln(Result), nl, fail.
+
+query6 :- nl.
+
+
+query7 :- writeln('% A recursive query :'),
+	  writeln('% Acsesses 50 rows from database and'),
+	  writeln('% computes their transitive closure.'),
+	  timejoin2, nl.
+
+timejoin2:-
+	cputime(T1), conset(count,0),tj2(1),cputime(T2), Tot is T2 - T1,
+	write('Time : '), writeln(Tot),
+	conget(count,V),nl,write('Size of transitive closure: '), V1 is V-2, writeln(V1), nl.
+
+tj2(0):-!.
+tj2(N):- 
+	(ancestor(_,_),coninc(count),fail; true),
+	abolish_all_tables,
+	N1 is N - 1,
+	tj2(N1).
+
+
+
+fill_parent :- parent(A,B), par_put(A,B), fail.
+fill_parent. 
+
+ancestor(X,Y) :- db_parent(X,Y).
+ancestor(X,Z) :- ancestor(X,Y), db_parent(Y,Z).
+
+% Parent facts ( size 50 transitive closure expands to 90 facts ) 
+
+parent(1, 10).
+parent(1, 11).
+parent(1, 12).
+parent(1, 13).
+parent(1, 14).
+parent(1, 15).
+parent(1, 16).
+parent(1, 17).
+parent(1, 18).
+parent(1, 19).
+parent(10, 100).
+parent(10, 101).
+parent(10, 102).
+parent(10, 103).
+parent(10, 104).
+parent(10, 105).
+parent(10, 106).
+parent(10, 107).
+parent(10, 108).
+parent(10, 109).
+parent(11, 110).
+parent(11, 111).
+parent(11, 112).
+parent(11, 113).
+parent(11, 114).
+parent(11, 115).
+parent(11, 116).
+parent(11, 117).
+parent(11, 118).
+parent(11, 119).
+parent(12, 120).
+parent(12, 121).
+parent(12, 122).
+parent(12, 123).
+parent(12, 124).
+parent(12, 125).
+parent(12, 126).
+parent(12, 127).
+parent(12, 128).
+parent(12, 129).
+parent(13, 130).
+parent(13, 131).
+parent(13, 132).
+parent(13, 133).
+parent(13, 134).
+parent(13, 135).
+parent(13, 136).
+parent(13, 137).
+parent(13, 138).
+parent(13, 139).
+

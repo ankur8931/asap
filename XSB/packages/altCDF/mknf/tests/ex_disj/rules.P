@@ -1,0 +1,329 @@
+:- import member/2 from basics.
+
+%-----------
+% Ex 1 
+
+first(callback).
+third(X):- known(second(X)).
+fifth(X):- known(fourth(X)).
+
+definedClass(first(Obj),first,Obj):- Obj = callback.
+definedClass(second(Obj),second,Obj):- Obj = callback.
+definedClass(third(Obj),third,Obj):- Obj = callback.
+definedClass(fourth(Obj),fourth,Obj):- Obj = callback.
+definedClass(fifth(Obj),fifth,Obj):- Obj = callback.
+
+%-----------
+% Ex 2
+% tests stratified negation, interleaved between ont and rules.
+% win1 \subset not(win2)
+% win3 \subset not(win4)
+
+win1(tok).
+win3(tok):- dlnot(win2(tok)).
+win5(tok):- dlnot(win4(tok)).
+
+definedClass(win1(Obj),win1,Obj):- Obj = tok.
+definedClass(win2(Obj),win2,Obj):- Obj = tok.
+definedClass(win3(Obj),win3,Obj):- Obj = tok.
+definedClass(win4(Obj),win4,Obj):- Obj = tok.
+definedClass(win5(Obj),win5,Obj):- Obj = tok.
+
+%-----------
+% Ex 3
+% tests non-stratified negation, solely in rules.
+
+l1(ab):- dlnot(l2(ab)).
+l2(ab):- dlnot(l1(ab)).
+
+definedClass(l1(Obj),l1,Obj):- Obj = ab.
+definedClass(l2(Obj),l2,Obj):- Obj = ab.
+
+%-----------
+% Ex 4
+% p \in not(two4).
+% tests non-stratified negation broken through O |= -two4
+
+one4(X):- known(p4(a4)),dlnot(two4(X)).
+two4(X):- known(p4(a4)),dlnot(one4(X)).
+
+p4(a4).
+
+definedClass(p4(X),p4,X):- X = a4.
+definedClass(two4(X),two4,X):- X = a4.
+definedClass(one4(X),one4,X):- X = a4.
+
+%-----------
+% Ex 5 
+% Tests rules with ontology in disjunction
+
+% p_or_q \subset (p5 \cup q5)
+% r \subset not (p5 \cup q5)
+
+p5(a5).
+
+definedClass(p5(X),p5,X):- X = a5.
+definedClass(q5(X),q5,X):- X = a5.
+definedClass(p_or_q5(X),p_or_q5,X):- X = a5.
+definedClass(r5(X),r5,X):- X = a5.
+
+%-----------
+% Ex 6
+% not yet in test suite
+
+% NaturalDeath ⊑ Pay
+% Suicide ⊑ ¬Pay 
+
+pay(X):- known(murdered(X)),known(benefits(X,Y)),dlnot(responsible(Y,X)).
+suicide(X):- dlnot(naturalDeath(X)),dlnot(murdered(X)).
+murdered(X):- dlnot(naturalDeath(X)),dlnot(suicide(X)).
+
+murdered(j2).
+responsible(max,j2).
+benefits(j2,thomas).
+
+%murdered(j3).
+%responsible(max,j3).
+%benefits(j3,max).
+
+/*
+definedClass(pay(X),pay,X):- member(X,[j2,max,thomas]).
+definedClass(suicide(X),suicide,X):- member(X,[j2,max,thomas]).
+definedClass(murdered(X),murdered,X):- member(X,[j2,max,thomas]).
+definedClass(naturalDeath(X),naturalDeath,X):- member(X,[j2,max,thomas]).
+definedRole(benefits(X,Y),benefits,X,Y):- 
+	  member(X,[j2,max,thomas]),member(Y,[j2,max,thomas]).
+definedRole(responsible(X,Y),responsible,X,Y):-
+	  member(X,[j2,max,thomas]),member(Y,[j2,max,thomas]).
+*/
+definedRole(responsible(X,Y),responsible,X,Y):-
+	  member(X,[j2,max]),member(Y,[j2,max]).
+
+
+%-----------
+% Ex. 7 very simple example w. multiple objects but no roles.
+
+seven_1(p7_1).
+seven_2(p7_2):- known(seven_1(p7_1)).
+seven_3(p7_1):- known(seven_2(p7_2)).
+
+definedClass(seven_1(X),seven_1,X):- member(X,[p7_1,p7_2]).
+definedClass(seven_2(X),seven_2,X):- member(X,[p7_1,p7_2]).
+definedClass(seven_3(X),seven_3,X):- member(X,[p7_1,p7_2]).
+
+%-----------
+% Ex 8 - Roles (Added by Sofia)
+% Tbox: Second8 ⊑ First8
+% Abox: fourth8(David)
+
+first8(X) :- person8(Y), person8(X), known(role(X,Y)).
+third8(X) :- known(second8(X)).
+fifth8(X) :- known(fourth8(X)).
+
+role(john,david).
+person8(david).
+person8(john).
+
+definedRole(role(Obj1,Obj2),role,Obj1,Obj2) :- Obj1 = john, Obj2 = david.
+definedClass(person8(Obj),person8,Obj):- ( Obj = david ; Obj = john).
+definedClass(first8(Obj),first8,Obj):- Obj = john.
+definedClass(fifth8(Obj),fifth8,Obj):- Obj = david.
+definedClass(fourth8(Obj),fourth8,Obj):- Obj = david.
+definedClass(third8(Obj),third8,Obj):- Obj = john.
+definedClass(second8(Obj),second8,Obj):- Obj = john.
+
+%-----------
+% Ex. 9 simple example w. multiple objects but no roles (slightly less simple than 7)
+
+nine_1(p9_1).
+nine_3(p9_1):- known(nine_2(p9_2)), known(nine_1(p9_1)).
+
+definedClass(nine_1(X),nine_1,X):- member(X,[p9_1,p9_2]).
+definedClass(nine_2(X),nine_2,X):- member(X,[p9_1,p9_2]).
+definedClass(nine_3(X),nine_3,X):- member(X,[p9_1,p9_2]).
+
+%-----------
+% Ex 10 (not yet in test suite)
+% notp \subset not p
+
+%p7(a7).
+%notp7(a7).
+
+%definedClass(p7(X),p7,X):- X = a7.
+%definedClass(notp7(X),notp7,X):- X = a7.
+
+%-----------
+% Ex 11 simplest roles
+
+role_11(john_11,david_11).
+
+definedRole(role_11(Obj1,Obj2),role,Obj1,Obj2) :- Obj1 = john_11, Obj2 = david_11.
+
+%-----------
+% Ex 12
+% interleaving neg w. ontology (ontology has to override dlnot).
+
+c12(X) :- dlnot(b12(X)).
+a12(o12).
+
+definedClass(a12(X),a12,X):- X = o12.
+definedClass(b12(X),b12,X):- X = o12.
+definedClass(c12(X),c12,X):- X = o12.
+
+%-----------
+% Ex 13
+% same as 12, but o12 is in ont.
+
+c13(X) :- dlnot(b13(X)).
+
+definedClass(a13(X),a13,X):- X = o13.
+definedClass(b13(X),b13,X):- X = o13.
+definedClass(c13(X),c13,X):- X = o13.
+
+%-----------
+% Ex 14
+%  like 12, but with another two strata
+
+e14(X) :- dlnot(d14(X)).
+c14(X) :- dlnot(b14(X)).
+a14(o14).
+
+definedClass(a14(X),a14,X):- X = o14.
+definedClass(b14(X),b14,X):- X = o14.
+definedClass(c14(X),c14,X):- X = o14.
+definedClass(d14(X),d14,X):- X = o14.
+definedClass(e14(X),e14,X):- X = o14.
+
+%-----------
+% Ex 15 (dynamically stratified)
+%  loop broken by positive knowl rather then negative knowl as in 4)
+
+a15(X):- dlnot(b15(X)).
+b15(X):- dlnot(a15(X)).
+b15(X):- known(c15(X)).
+
+definedClass(a15(X),a15,X):- X = o15.
+definedClass(b15(X),b15,X):- X = o15.
+definedClass(c15(X),c15,X):- X = o15.
+
+%-----------
+% Ex 16
+
+a16(X):- dlnot(b16(X)).
+%b16(X):- known(c16(X)).
+c16(X):- dlnot(a16(X)).
+
+definedClass(a16(X),a16,X):- X = o16.
+definedClass(b16(X),b16,X):- X = o16.
+definedClass(c16(X),c16,X):- X = o16.
+
+%------------
+
+test:- 
+       test_call(k(fifth(callback)),get_object_model(oid(callback,mknf),
+                 [entry(known(fifth(callback)),[[]]),
+                  entry(known(first(callback)),[[]]),
+                  entry(known(fourth(callback)),[[]]),
+                  entry(known(second(callback)),[[]]),
+		  entry(known(third(callback)),[[]])],
+                  [],
+                  [entry(allModelsEntails(oid(callback,mknf),cid(fifth,mknf)),[[]]),
+ 		   entry(allModelsEntails(oid(callback,mknf),cid(first,mknf)),[[]]),
+		   entry(allModelsEntails(oid(callback,mknf),cid(fourth,mknf)),[[]]),
+ 		   entry(allModelsEntails(oid(callback,mknf),cid(second,mknf)),[[]]),
+		   entry(allModelsEntails(oid(callback,mknf),cid(third,mknf)),[[]])])),
+        
+       test_call(k(win5(tok)),get_object_model(oid(tok,mknf),
+                 [entry(known(win1(tok)),[[]]),entry(known(win3(tok)),[[]]),
+		  entry(known(win5(tok)),[[]])],
+		 [entry(dlnot(win2(tok)),[[]]),entry(dlnot(win4(tok)),[[]])],
+		 [entry(allModelsEntails(oid(tok,mknf),not cid(win2,mknf)),[[]]),
+		  entry(allModelsEntails(oid(tok,mknf),not cid(win4,mknf)),[[]]),
+		  entry(allModelsEntails(oid(tok,mknf),cid(win1,mknf)),[[]]),
+		  entry(allModelsEntails(oid(tok,mknf),cid(win3,mknf)),[[]]),
+		  entry(allModelsEntails(oid(tok,mknf),cid(win5,mknf)),[[]])])),
+
+%         test_call(k(l1(ab)),get_object_model(oid(ab,mknf),
+%          [entry(known(l1(ab),3),[[dlnot(l2(ab),3)],[allModelsEntails(oid(ab,mknf),cid(l1,mknf),2)]]),
+%	   entry(known(l2(ab),3),[[dlnot(l1(ab),3)],[allModelsEntails(oid(ab,mknf),cid(l2,mknf),2)]])],
+%         [entry(dlnot(l1(ab),3),[[tnot(known(l1(ab),3))]]),
+%          entry(dlnot(l2(ab),3),[[tnot(known(l2(ab),3))]])],
+%	 [entry(allModelsEntails(oid(ab,mknf),cid(l1,mknf),3),[[known(l1(ab),2),known(l2(ab),2)]]),
+%          entry(allModelsEntails(oid(ab,mknf),cid(l2,mknf),3),[[known(l1(ab),2),known(l2(ab),2)]])])).
+
+       test_call(k(l1(ab)),get_object_model(oid(ab,mknf),
+          [entry(known(l1(ab)),[[dlnot(l2(ab))]]),
+	   entry(known(l2(ab)),[[dlnot(l1(ab))]])],
+         [entry(dlnot(l1(ab)),[[tnot(known(l1(ab)))]]),
+          entry(dlnot(l2(ab)),[[tnot(known(l2(ab)))]])],
+	 [])),
+
+	 test_call(k(one4(a4)),get_object_model(oid(a4,mknf),
+	   [entry(known(one4(a4)),[[]]),entry(known(p4(a4)),[[]])],
+	   [entry(dlnot(two4(a4)),[[]])],
+	   [entry(allModelsEntails(oid(a4,mknf),not cid(two4,mknf)),[[]]),
+            entry(allModelsEntails(oid(a4,mknf),cid(one4,mknf)),[[]]),
+            entry(allModelsEntails(oid(a4,mknf),cid(p4,mknf)),[[]])])),
+
+     test_call(k(p5(a5)),get_object_model(oid(a5,mknf),
+		[entry(known(p5(a5)),[[]]),entry(known(p_or_q5(a5)),[[]])],
+		[entry(dlnot(q5(a5)),[[]]),entry(dlnot(r5(a5)),[[]])],
+		[entry(allModelsEntails(oid(a5,mknf),not cid(r5,mknf)),[[]]),
+		 entry(allModelsEntails(oid(a5,mknf),cid(p5,mknf)),[[]]),
+ 	 	 entry(allModelsEntails(oid(a5,mknf),cid(p_or_q5,mknf)),[[]])])),
+
+     test_call(k(seven_3(p7_1)), get_object_model(oid(p7_1,mknf), 	 	 
+      [entry(known(seven_1(p7_1)),[[]]),entry(known(seven_3(p7_1)),[[]])],
+      [entry(dlnot(seven_2(p7_1)),[[]])],
+      [entry(allModelsEntails(oid(p7_1,mknf),cid(seven_1,mknf)),[[]]),
+         entry(allModelsEntails(oid(p7_1,mknf),cid(seven_3,mknf)),[[]])])),
+
+    test_call(k(role(john,david)), get_object_model(oid(john,mknf),
+        [entry(known(first8(john)),[[]]),
+          entry(known(person8(john)),[[]]),entry(known(second8(john)),[[]]),
+          entry(known(third8(john)),[[]]),entry(known(role(john,david)),[[]])],
+        [],
+        [  entry(allModelsEntails(oid(john,mknf),cid(first8,mknf)),[[]]),
+           entry(allModelsEntails(oid(john,mknf),cid(person8,mknf)),[[]]),
+           entry(allModelsEntails(oid(john,mknf),cid(second8,mknf)),[[]]),
+           entry(allModelsEntails(oid(john,mknf),cid(third8,mknf)),[[]]),
+           entry(allModelsEntails(oid(john,mknf),exists(rid(role,mknf),oid(david,mknf))),[[]])])),
+    
+    test_call(k(nine_3(p9_1)), get_object_model(oid(p9_1,mknf),
+    [entry(known(nine_1(p9_1)),[[]]),entry(known(nine_3(p9_1)),[[]])],
+    [entry(dlnot(nine_2(p9_1)),[[]])],
+    [entry(allModelsEntails(oid(p9_1,mknf),cid(nine_1,mknf)),[[]]),
+      entry(allModelsEntails(oid(p9_1,mknf),cid(nine_3,mknf)),[[]])])),
+
+      test_call(k(role_11(john_11,david_11)), get_object_model(oid(john_11,mknf),
+       [entry(known(role_11(john_11,david_11)),[[]])],
+       [],
+       [entry(allModelsEntails(oid(john_11,mknf),exists(rid(role,mknf),oid(david_11,mknf))),[[]])])),
+
+       test_call(k(a12(o12)), get_object_model(oid(o12,mknf), 
+        [entry(known(a12(o12)),[[]]),entry(known(b12(o12)),[[]])],
+	[entry(dlnot(c12(o12)),[[]])],
+	[  entry(allModelsEntails(oid(o12,mknf),cid(a12,mknf)),[[]]),
+	   entry(allModelsEntails(oid(o12,mknf),cid(b12,mknf)),[[]])])),
+
+       test_call(k(a13(o13)), get_object_model(oid(o13,mknf), 
+        [entry(known(a13(o13)),[[]]),entry(known(b13(o13)),[[]])],
+	[entry(dlnot(c13(o13)),[[]])],
+	[  entry(allModelsEntails(oid(o13,mknf),cid(a13,mknf)),[[]]),
+	   entry(allModelsEntails(oid(o13,mknf),cid(b13,mknf)),[[]])])),
+
+       test_call(k(a14(o14)), get_object_model(oid(o14,mknf), 
+        [entry(known(a14(o14)),[[]]),entry(known(b14(o14)),[[]]),entry(known(e14(o14)),[[]])],
+	[entry(dlnot(c14(o14)),[[]]),entry(dlnot(d14(o14)),[[]])],
+	[ entry(allModelsEntails(oid(o14,mknf),cid(a14,mknf)),[[]]),
+ 	  entry(allModelsEntails(oid(o14,mknf),cid(b14,mknf)),[[]]),
+	  entry(allModelsEntails(oid(o14,mknf),cid(e14,mknf)),[[]])])),
+
+       test_call(k(a15(o15)), get_object_model(oid(o15,mknf), 
+       [entry(known(b15(o15)),[[]]),entry(known(c15(o15)),[[]])],
+       [entry(dlnot(a15(o15)),[[]])],
+       [  entry(allModelsEntails(oid(o15,mknf),cid(b15,mknf)),[[]]),
+       	  entry(allModelsEntails(oid(o15,mknf),cid(c15,mknf)),[[]])])).
+
+
+end_of_file.

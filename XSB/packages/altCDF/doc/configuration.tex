@@ -1,0 +1,65 @@
+\section{Configuring and Examining the CDF System} \label{sec:config} 
+
+The file \file{cdf\_config.P} contains all facts, tables etc. that may
+need to be configured for a particular user or application.  In
+addition to the predicates described below, {\tt cdf\_config.P}
+contains a fact for the dynamic predicate {\tt
+default\_user\_error\_handler/1} which is used to handle errors.  See
+the XSB manual for documentation of this predicate.
+
+\subsection{The Configuration API} \label{sec:configapi}
+
+\begin{description}
+
+%--------------------------------------------------------------------
+\mycomment{
+\ourpredmoditem{cdf\_flag/2}{usermod}
+{\tt cdf\_flag(?Flag,?Value} is a dynamic predicate that indicates all
+aspects of a CDF state that can be set dynamically at run time.  It is
+analogous to the XSB predicate {\tt xsb\_flag/2}.  The aspects that
+can be dynamically changed include consistency checks to be set for
+various contexts.
+
+\ourpredmoditem{initial\_cdf\_flag/2}{usermod}
+The main action of {\tt initial\_cdf\_flag(+Flag,+ActionList)} is used
+to declare which actions (usually consistency checks) are to be
+executed at specific points during ontology management.  Any {\tt
+initial\_cdf\_flag/2} fact is meant for site-wide configuration.
+It can be overridden by declaring a corresponding {\tt
+user\_cdf\_flag/2} fact in {\tt \$HOME/.xsb/xsbrc.P}.  
+}
+%--------------------------------------------------------------------
+
+\ourpredmoditem{cdf\_configuration/2}{usermod}
+{\tt cdf\_configuration(?Flag,?Value)} allows access to configuration
+parameters for CDF, and is analogous to {\tt xsb\_configuration/2}
+These parameters are set during the compilation of CDF by define
+statements in \file{cdf\_definitions.h}.  Currently, the only
+parameters that can be set are
+\begin{itemize}
+\item {\tt using\_xj}.  This parameter is set {\tt on} if XJ is to be
+supported by CDF, and set {\t off} otherwise.  This parameter is set on by
+default in the proprietary version of CDF and off by default in the
+open-source version.
+
+\item {\tt tabled\_isa}.  This parameter is set on if {\tt isa/2} is
+tabled, and off otherwise.  It is set on by default.
+\end{itemize}
+
+\ourpredmoditem{cdf\_index/3}{usermod}
+{\tt cdf\_index(+Functor,+Arity,+Index)} is used to set initial
+indices for the various types of extensional facts. These indices can
+be changed, if necessary to give better performance, but note that the
+semantics of predicates in the Type-0 API may not use all indices.
+See \refsec{sec:type0api} for details.
+
+\ourpredmoditem{initialize\_state/0}{usermod}
+Normally, initialization is done automatically upon loading CDF at the
+start of a session.  The predicate {\tt initialize\_state/0} should be
+called only when a state is to be reinitialized during a session.
+This predicate removes all data in extensional and intensional forat,
+and reasserts the basic CDF classes and relations, and resets internal
+state variables to values in the CDF configuration file.
+
+\end{description}
+

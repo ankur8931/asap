@@ -1,0 +1,725 @@
+
+:- comment(title,"Generating Manuals").
+
+:- comment(module,"
+
+@cindex{generating manuals}
+
+This chapter describes how to generate a manual (semi-)automatically
+from a set of source files using @apl{xsbdoc}, how to install it in a
+public area, and how to access it on line. It also includes some
+recommendations for improving the layout of manuals, @concept{usage
+tips}, and @concept{troubleshooting} advice.
+
+@section{Generating a manual} 
+
+To use xsbdoc, the package must be first loaded via the command
+
+@begin{verbatim}
+         [xsbdoc].
+@end{verbatim}
+
+The top-level command to generate documentation is 
+
+@begin{verbatim}
+?- xsbdoc(FormatFile,GenerationType).
+@end{verbatim}
+
+Where @tt{FormatFile} is a file specifying input files and formatting
+options to use, while @tt{GenerationType} is specifies the graphical
+format to use: postscript, html, etc.  We consider each of the
+arguments in turn.
+
+@subsection{The Format File}
+
+The @apl{doc} library directory includes the @em{format file}
+@tt{'xsbdoc_format.P'} used to generate this manual, and which can be
+used as a example of how to generate other manuals.  Typically, the
+format file is put into a separate directory (say a subdirectory) from
+the code that it documents, and relative or absolute paths to the main
+and componts are given to access the file.  The main file to be used
+is indicated by the predicate @pred{xsbdoc_main/1}, while component
+files are indicated by the predicate @pred{xsbdoc_component/1} and are
+documented in the order in which they occur in the format file.  For
+instance, in @tt{'xsbdoc_format.P'}, the main file is indicated by the fact: 
+
+@begin{verbatim}
+xsbdoc_main('../xsbdoc1.P').
+@end{verbatim}
+
+while the first few chapters are indicated by the facts
+
+@begin{verbatim}
+xsbdoc_component('Generating.P').
+xsbdoc_component('../comments.P').
+@end{verbatim}
+
+@apl{xsbdoc} uses as default directory search paths whatever
+directories have been asserted via the XSB predicate
+@pred{library_directory/1} (See the XSB manual for more details).
+
+Finally, if there are any citations in the manual, any bibtex files
+will have to be indicated through @pred{xsbdoc_bibfile/1}.  All the
+references will appear together in a @em{References} appendix at the
+end of the manual.  If you are not using citations, then add the fact
+@tt{xsbdoc_option('-norefs')} in the format file, which will prevent
+an empty 'References' appendix from appearing in the manual.
+
+Like @apl{lpdoc}, @apl{xsbdoc} can use default settings for many of
+the other options.  However, if you wish to control the behavior of
+@apl{xsbdoc}, you can do so through a large array of options.
+
+@subsubsection{Miscellaneous options}
+
+@begin{itemize}
+
+@item Options that don't require parameters are indicated through
+@pred{xsbdoc_option/1} facts.
+
+@begin{itemize}
+
+@item @pred{xsbdoc_option/1} facts can be used to configure whether
+various pieces of information are included or not.  For instance, if a
+set of authors should not be printed out , the option @tt{-noauthors}
+can be specified.  Authors are included by default.  @cindex{omitting
+author information}.  Information on bugs, versions, patches, change
+logs, etc are handled similarly.  See See @pred{option_comment/2} in
+@lib{autodocformats} for a complete list of these options.
+
+@end{itemize}
+
+@item Facts of the form @pred{xsbdoc_index/1} determine the list of
+indices to be included at the end of the document.  These can include
+indices for defined predicates, modules, concepts, etc.  For a
+complete list of the types of indices available see
+@pred{index_comment/2} in @lib{autodocformats}.  A setting of @tt{all}
+generates all the supported indices -- but @em{beware of limitations
+in the number of simultaneous indices} supported in many @apl{texinfo}
+installations.
+
+
+@cindex{page numbering, changing}
+
+@item The predicate @pred{xsbdoc_startpage/1} allows changing the page
+number of the first page of the manual. This can be useful if the
+manual is to be included in a larger document or set of manuals.
+Typically, this should be an @em{odd} number.  The default number is
+@tt{1}.
+
+@cindex{page size, changing}
+@cindex{page style, changing}
+
+@item @pred{xsbdoc_papertype/1} allows selection between several paper
+sizes for the printable outputs (@tt{dvi}, @tt{ps}, etc.). The
+currently supported outputs (most of them inherited from
+@apl{texinfo}) are:
+
+  @begin{description}
+
+  @item{@tt{afourpaper}} 
+
+     The default, usable for printing on @index{A4 paper}. Rather busy, but
+     saves trees.
+
+  @item{@tt{afourwide}} 
+
+     This one crams even more stuff than @tt{afourpaper} on an A4
+     page. Useful for generating manuals in the least amount of space.
+     Saves more trees.
+
+  @item{@tt{afourlatex}} 
+
+     This one  is a little less compressed than @tt{afourpaper}.
+
+  @item{@tt{smallbook}} 
+
+     Small pages, like in a handbook. 
+
+  @item{@tt{letterpaper}} 
+
+     For printing on American @index{letter size paper}.
+
+  @item{@tt{afourthesis}} 
+
+     A @index{thesis-like style} (i.e., double spaced, wide margins
+     etc.). Useful -- for inserting @apl{xsbdoc} output as appendices 
+     of a thesis or similar document. Does not save trees. 
+
+  @end{description}
+
+The default paper type is @tt{letterpaper}.
+
+@end{itemize}
+
+@subsection{Graphical Formatting}
+
+The second argument of @pred{xsbdoc/2} indicates the target graphical
+format.  Use of all options depends on having @apl{tex} installed on
+your system.
+
+The current options are: 
+
+@begin{itemize}
+
+@item @tt{dvi}, which generates a dvi format file, viewable by
+@apl{xdvi}, @apl{yap} and other viewers.  
+
+@item @tt{ps} which generates a viewable and printable postscript
+file.  Use of this option depends on having @apl{dvips} installed on
+your machine.
+
+@item @tt{pdf} which generates a viewable and printable postscript
+file.  Use of this option depends on having @apl{dvips} and
+@apl{ps2pdf} installed on your machine.
+
+@item @tt{html} which generates html files in a subdirectory of the
+current working directory.  The directory is named @tt{<Main>_html}
+where @tt{Main} is the base name of the file (i.e. the filename
+without a directory path or extension) specified by the fact
+@pred{xsbdoc_main/1} in the format file.  Use of this option depends
+on having @apl{texi2html} installed on your machine.
+
+@item @tt{ascii} which generates ascii files which are surprisingly
+nicely formatted to denote chapeter and section headings, indices, and
+so on.  Use of this option depends on having @apl{makeinfo} installed
+on your machine.
+
+@end{itemize}
+
+Future versions will probably also include support for generating
+@tt{rtf} files. 
+
+@section{Working on a manual} 
+
+In order to speed up processing while developing a manual, it may be
+easiest to first generate a @tt{.dvi} or @tt{.ps} version only. The
+resulting output can be easily viewed by tools such as @apl{xdvi} or
+@apl{ghostview}.  The other formats can be generated later, once the
+@tt{.dvi} or @tt{.ps} version has the desired contents.
+
+@subsection{Cleaning up the documentation directory} 
+
+Typing the command: 
+@begin{verbatim}
+?- make_distclean.
+@end{verbatim}
+deletes all intermediate files and the
+generated @tt{.texic} files, leaving only the targets (i.e., the
+@tt{.ps}, @tt{.dvi}, @tt{.ascii}, @tt{.html}, etc. files). This is the
+option normally used when building software distributions in which the
+manuals come ready made in the distribution itself and will not need
+to be generated during installation.
+
+This predicate calls the file @tt{make_distclean.sh}, which can be
+used directly to clean up a directory.
+
+@section{Enhancing the documentation being generated} 
+
+The quality of the documentation generated can be greatly enhanced by
+including within the program text:
+
+@begin{itemize}
+
+@item @em{assertions}, and 
+
+@item @em{machine-readable comments}. 
+
+@end{itemize}
+
+@bf{Assertions} are directives that are included in the source program
+and provide the compiler with information regarding characteristics of
+the program. Typical assertions include standard compiler directives
+(such as @decl{dynamic/1}, @decl{op/3},
+@decl{use_variant_tabling/1}...), etc.  However, the @decl{pred/2}
+assertion can also be used to declare global, call, and success types
+and modes (see @ref{???}).
+
+When documenting a module, @apl{xsbdoc} will use the assertions
+associated with the module interface to construct a textual
+description of this interface.  In principle, only the exported
+predicates are documented, although any predicate can be included in
+the documentation by explicitly requesting it (see the documentation
+for the @decl{comment/2} declaration).  Judicious use of these
+assertions combines documentation of the program with improved
+debugging behavior.  Improvement in debugging is possible because some
+assertions provide information on the intended meaning or behaviour of
+the program (i.e., the specification) which can be checked at
+compile-time (by a suitable preprocessor/static analyzer) and/or at
+run-time (via checks inserted by a preprocessor).  (TLS: this portion
+is still under development for XSB).
+
+@bf{Machine-readable comments} are also declarations included in the
+source program but which contain additional information intended to be
+read by humans (i.e., this is an instantiation of the
+@index{literate programming} style of Knuth
+@cite{knuth-lit}). Typical comments include title, author(s), bugs,
+changelog, etc.  
+@section{Some usage tips}
+
+This section contains additional suggestions on the use of
+@apl{xsbdoc}.
+
+@subsection{Ensuring Compatibility with All Supported Target Formats}
+
+@apl{xsbdoc} allows manuals to be generated in several different
+formats.  Because these formats each have widely different
+requirements it is sometimes a little tricky to get things to work
+successfully for all formats. The following recommendations may help:
+
+@begin{itemize} 
+
+@item The best results are obtained when documenting code organized as
+a series of libraries, and with a well-designed module structure.  If
+the user does not wish to use the XSB module system, (s)he can use the
+directives @decl{document_export/1} or @tt{document_import/1}.  These
+directives indicate to @apl{xsbdoc} that given predicates are to be
+exported or imported, but their information is not passed on for use
+by the module system.
+
+@item @apl{texinfo} supports only a limited number of indices. Thus,
+if you select too many indices in the @file{SETTINGS} file you may
+exceed @apl{texinfo}'s capacity (which it will signal by saying
+something like ``No room for a new @@write'').
+
+@item The GNU info format requires all @em{nodes} (chapters, sections,
+etc.) to have different names. This is ensured by @apl{xsbdoc} for
+the automatically generated sections (by appending the module or file
+name to all section headings). However, care must be taken when
+writing section names manually to make them different. For example,
+use ``xsbdoc usage'' instead of simply ``Usage'', which is much more
+likely to be used as a section name in another file being documented.
+
+@item Also due to a limitation of the @apl{info} format, (used in
+generating formatted ASCII files) do not use @tt{:} or @tt{,} or
+@tt{-}@tt{-} in section, chapter, etc. headings.
+
+@item The character ``@tt{_}'' in names may sometimes give problems in
+indices, since current versions of @apl{texinfo} do not always handle
+it correctly.
+
+@end{itemize}
+
+@subsection{Writing comments to document version/patch changes}
+
+When writing version comments (@tt{:- comment(version(...),
+""..."").}), it is useful to keep in mind that the text can often be
+used to include in the manual a list of improvements made to the
+software since the last time that it was distributed. For this to work
+well, the textual comments should describe the significance of the
+work done for the user. For example, it is more useful to write
+""added support for @tt{pred} assertions"" than ""modifying file so
+@tt{pred} case is also handled"". 
+
+Sometimes one would like to write version comments which are internal,
+i.e., not meant to appear in the manual. This can easily be done with
+standard Prolog comments (which @apl{xsbdoc} will not read). An
+alternative and quite useful solution is to put such internal comments
+in @em{patch} changes (e.g., 1.1#2 to 1.1#3), and put the more general
+comments, which describe major changes to the user and should appear
+in the manual, in @em{version} changes (e.g., 1.1#2 to
+1.2#0). Selecting the appropriate options in @apl{xsbdoc} then allows
+including in the manual the version changes but not the patch changes
+(which might on the other hand be included in an @index{internals
+manual}).
+
+@subsection{Documenting Libraries and/or Applications}
+
+As mentioned before, for each @tt{.P} file, @apl{xsbdoc} tries to
+determine whether it is a library or the main file of an application,
+and documents it accordingly. Any combination of libraries and/or main
+files of applications can be used arbitrarily into a @apl{xsbdoc}
+manual. Some typical combinations are:
+
+@begin{itemize}
+
+@item @em{Main file is a library, no components:} A manual of a simple
+library, which appears externally as a single module. The manual
+describes the purpose of the library and its interface.
+
+@item @em{Main file is an application, no components:} A manual of a
+simple application.
+
+@item @em{Main file is a library, components are also libraries:} This
+can be used for example for generating an @concept{internals manual}
+of a library. The main file describes the purpose and use of the
+library, while the components describe the internal modules of the
+library.
+
+@item @em{Main file is an application, components are libraries:} This
+can be used similarly for generating an @concept{internals manual} of
+an application. The main file describes the purpose and use of the
+application, while the components describe the internal modules which
+compose the application.
+
+@item @em{Main file is a (pseudo-)application, components are
+libraries:} A manual of a complex library made up of smaller libraries
+(for example, the @apl{Prolog} library). The (pseudo-)application file
+contains the introductory material (title, version, etc.).  Each
+chapter describes a particular library.
+
+@item @em{Main file is a (pseudo-)application, components are
+applications:} This can be used to generate a manual of a set of
+applications (e.g., a set of utilities). The (pseudo-)application file
+contains the introductory material (title, version, etc.).  Each
+chapter describes a particular component application.
+
+@end{itemize}
+
+@subsection{Documenting files which are not modules}
+
+TLS: revise -- Sometimes it is difficult for @apl{xsbdoc} to
+distinguish @concept{include files} and CIAO @concept{packages} from
+normal @em{user} files (i.e., normal code files but which are not
+modules). The distinction is important because the former are quite
+different in their form of use (they are loaded via @decl{include/1}
+or @decl{use_package/1} declarations instead of
+@decl{ensure_loaded/1}) and effect (since they are included, they
+'export' operators, declarations, etc.), and should typically be
+documented differently.  There is a special @decl{comment/2}
+declaration which provides a way of defining the intended use of the
+file. This declaration is normally not needed in modules, include
+files, or packages, but should be added in user files (i.e., those
+meant to be loaded using @decl{ensure_loaded/1}).
+
+@subsection{Splitting large documents into parts}
+
+TLS test and revise.  As mentioned before, in @apl{xsbdoc} each
+documented file (each component) corresponds to a chapter in the
+generated manual. In large documents, it is sometimes convenient to
+build a super-structure of parts, each of which groups several
+chapters. There is a special value of the second argument of the
+@tt{:- comment(filetype,...).}  declaration mentioned above designed
+for this purpose. The special @em{filetype} value @tt{part} can be
+used to flag that the file in which it appears should be documented as
+the start of one of the major @index{parts in a large document}. In
+order to introduce such a part, a @tt{.pl} file with a declaration
+@tt{:- comment(filetype,part).}  should be inserted in the sequence of
+files that make up the @tt{COMPONENTS} variable of the @file{SETTINGS}
+file at each point in which a major part starts. The @tt{:-
+comment(title,""..."").}  declaration of this file will be used as the
+part title, and the @tt{:- comment(module,""..."").}  declaration text
+will be used as the introduction to the part.
+
+@subsection{Separating the documentation from the source file}
+
+Sometimes it is convenient to include long introductory comments in a
+separate file from a source code file.  This can be by using the
+@@include command. For example, the declaration:
+
+@begin{verbatim}
+:- comment(module,""@@include@{Intro.xsbdoc@}"").
+@end{verbatim}
+
+@noindent includes the contents of the file @tt{Intro.xsbdoc} as the
+module description.
+
+Alternatively, sometimes it may be convenient to generate the
+documentation from a completely different file. Assuming that the
+original module is @tt{m1.P}, documentation can be kept in
+@tt{m1_doc.P}, and included as a component in the format file.
+@apl{xsbdoc} recognizes and treats such @tt{_doc} files specially so
+that the name without the @tt{_doc} part is used in various parts of
+the documentation, in the same way as if the documentation were placed
+in file @tt{m1}.
+
+@subsection{Generating auxiliary files (e.g., READMEs)}
+
+Using @apl{xsbdoc} it is often possible to use a common source for
+documentation which should appear in several places. For example, if a
+file @file{INSTALL.xsbdoc} contains text (with @tt{xsbdoc} formatting
+commands) describing an application. This text can be included in a
+section of the main file documentation as described above:
+
+@begin{verbatim}
+:- comment(module,""
+   ...
+   @@section@{Installation instructions@}
+   @@include@{INSTALL.xsbdoc@}
+   ...
+   "").
+@end{verbatim}
+
+@noindent At the same time, this text can be used to generate a nicely
+formatted @tt{INSTALL} file in ascii.  To this end, an @tt{INSTALL.P}
+file as follows can be constructed:
+
+@begin{verbatim}
+:- comment(title,""Installation instructions"").
+:- comment(module,""@@include@{INSTALL.xsbdoc@}"").
+main. %% forces file to be documented as an application
+@end{verbatim}
+
+Then, the ascii @tt{INSTALL} file can be generated by simply running
+@tt{xsbdoc(format,ascii)} using a file @tt{format.P} with the fact
+ @tt{xsbdoc_main('INSTALL')}.
+
+@section{Troubleshooting}
+
+These are some common errors which may be found using @apl{xsbdoc}
+and the usual fix:
+
+@begin{itemize}
+
+@item Messages of the type:
+@begin{verbatim}
+
+ ! No room for a new @@write .
+
+@end{verbatim} while converting from @tt{.texi} to @tt{.dvi} (i.e.,
+while running @apl{tex}). These messages are @apl{tex}'s way of saying
+that an internal area (typically for an index) is full. This is
+normally because more indices were selected in the @tt{INDICES}
+variable of the @tt{SETTINGS} file than the maximum number supported
+by the installed version of @apl{tex}/@apl{texinfo} installations, as
+mentioned in @ref{Generating a manual}. The easiest fix is to reduce
+the number of indices generated.  Alternatively, it may be possible to
+recompile your local @apl{tex}/@apl{texinfo} installation with a
+higher number of indices.
+
+@item Missing links in @apl{info} files (a section which exists in the
+printed document cannot be accessed in the on-line document) can be
+due to the presence of a colon (@tt{:}), a comma (@tt{,}), a double
+dash (@tt{--}), or other such separators in a section name. Due to
+limitations of @apl{info} section names cannot contain these symbols.
+
+@item Menu listings in @apl{info} which @em{do not work} (i.e., the
+menu listings are there, but they cannot be followed): see if they are
+indented. In that case it is due to an @tt{itemize} or @tt{enumerate}
+which was not closed.
+
+@end{itemize}
+
+").
+
+main.
+
+% ----------------------------------------------------------------------------
+
+% ----------------------------------------------------------------------------
+
+end_of_file.
+
+@section{Installing a generated manual in a public area} 
+
+@cindex{installation, of manuals}
+
+Once the manual has been generated in the desired formats, the
+@file{Makefile} provided also allows automatic installation in a
+different area, specified by the @tt{DOCDIR} option in the
+@file{SETTINGS} file. This is done by typing @tt{gmake install}.
+
+As mentioned above, @apl{xsbdoc} can generate directly brief
+descriptions in html or @apl{emacs} info formats suitable for
+inclusion in an on-line index of applications. In particular, if the
+@tt{htmlindex} and/or @tt{infoindex} options are selected, @tt{gmake
+install} will create the installation directory, place the
+documentation in the desired formats in this directory, and produce
+and place in the same directory suitable @tt{index.html} and/or
+@tt{dir} files. These files will contain some basic info on the manual
+(extracted from the summary and title, respectively) and include
+pointers to the relevant documents which have been installed.  The
+variables @tt{HTMLINDEXHEADFILE} / @tt{HTMLINDEXTAILFILE} and
+@tt{INFODIRHEADFILE} / @tt{INFODIRTAILFILE} (default examples, used in
+the CLIP group at UPM, are included with the distribution) should
+point to files which will be used as head and tail templates when
+generating the @tt{index.html} and/or @tt{dir} files.
+
+Several manuals, coming from different @tt{doc} directories, can be
+installed in the same @tt{DOCDIR} directory. In this case, the
+descriptions of and pointers to the different manuals will be
+automatically combined (appearing in alphabetic order) in the
+@tt{index.html} and/or @tt{dir} indices, and a @index{contents area}
+will appear at the beginning of the @index{html index page}. If only
+one manual is installed, selecting the @tt{-nobullet} option for the
+main file prevents the bullet item from appearing in this contents
+area.
+
+Note that, depending on the structure of the manuals being generated,
+some formats are not very suitable for public installation. For
+example, the @tt{.dvi} format has the disadvantage that it is not self
+contained if images are included in the manual.
+
+The @file{Makefile} also makes provisions for manual deinstallation from
+the installation area. Typing @tt{gmake uninstall} in a @tt{doc}
+directory will deinstall from @tt{DOCDIR} the manuals corresponding to
+the @file{Makefile} in that @tt{doc} directory.  If a manual is already
+installed and changes in the number of formats being installed are
+desired, @tt{gmake uninstall} should be made before changing the
+@tt{DOCFORMATS} variable and doing @tt{gmake install} again. This is
+needed in order to ensure that a complete cleanup is performed.
+
+
+@apl{xsbdoc} requires these assertions and comments to be written
+using the simple @apl{XSB} system @em{assertion language}. 
+@section{Accessing on-line manuals} 
+
+@subsection{Accessing html manuals} 
+
+Once generated, the @tt{.html} files can be viewed using any standard
+@apl{WWW} browser, e.g., @apl{netscape} (a command @tt{gmake htmlview}
+is available which, if there is an instance of @apl{netscape} running
+in the machine, will make that instance visit the manual in @tt{html}
+format). To make these files publicly readable on the WWW, they
+should be copied into a directory visible by browsers running in other
+machines, such as @tt{/home/clip/public_html/xsbdoc_docs},
+@tt{/usr/home/httpd/htmldocs/xsbdoc_docs}, etc. As mentioned before,
+this is easily done by setting the @tt{DOCDIR} variable in the
+@file{SETTINGS} file to this directory and typing @tt{gmake install}.
+
+@subsection{Accessing info manuals} 
+
+Generated @tt{.info} files are meant to be viewed by the @apl{emacs}
+editor or by the standalone @apl{info} application, both publicly
+available from the GNU project sites. To view the a generated
+@apl{info} file from @apl{emacs} manually (i.e., before it is
+installed in a common area), type @tt{C-u M-x info}. This will prompt
+for an info file name. @cindex{emacs, accessing info files} Input the
+name of the info file generated by @apl{xsbdoc} (@tt{MAIN}@tt{.info})
+and @apl{emacs} will open the manual in info mode.
+
+There are several possibilities in order to install an @tt{.info} file
+so that it is publicly available, i.e., so that it appears
+automatically with all other @apl{info} manuals when starting
+@apl{info} or typing @tt{C-u M-x info} in emacs:
+
+  @begin{itemize}
+
+  @item @bf{Installation in the common info directory:} 
+
+        @begin{itemize}
+
+        @item Move the @tt{.info} file to the common info directory
+        (typically @tt{/usr/info}, @tt{/usr/local/info}, ..). This can
+        be done automatically by setting the @tt{DOCDIR} variable in
+        the @file{SETTINGS} file to this directory and typing
+        @tt{gmake install}.
+
+        @bf{Warning:} if you are installing in an @apl{info} directory
+        that is not maintained automatically by @apl{xsbdoc}, make
+        sure that you have not selected the @tt{infoindex} option in
+        @tt{DOCFORMATS}, since this will overwrite the existing
+        @file{dir} file).
+
+        @item Add an entry to the @apl{info} index in that directory
+        (normally a file in that directory called @tt{dir}). The
+        manual should appear as part of the normal set of manuals
+        available when typing @tt{M-x info} in @apl{emacs} or
+        @apl{info} in a shell. See the @apl{emacs} manual for details.
+
+        @end{itemize}
+
+  @item @bf{Installation in a different info directory:} you may want
+  to place one or more manuals generated by @tt{xsbdoc} in their own
+  directory. This has the advantage that @tt{xsbdoc} will maintain
+  automatically an index for all the @apl{xsbdoc} generated manuals
+  installed in that directory. In order for such manuals to appear
+  when typing @tt{M-x info} in @apl{emacs} or @apl{info} in a shell
+  there are two requirements:
+
+        @begin{itemize}
+
+        @item This directory must contain a @tt{dir} index. The first
+        part of the process can all be done automatically by setting
+        the @tt{DOCDIR} variable in the @file{SETTINGS} file to this
+        directory, including the @tt{infoindex} option in
+        @tt{DOCFORMATS}, and typing @tt{gmake install}. This will
+        install the info manual in directory @tt{DOCDIR} and update
+        the @tt{dir} file there. @tt{gmake uninstall} does the
+        opposite, eliminating also the manual from the index.
+
+        @item The directory must be added to the @index{info path
+        list}.  The easiest way to do this is to set the @tt{INFOPATH}
+        environment variable. For example, assuming that we are
+        installing the @apl{info} manual in
+        @tt{/home/clip/public_html/xsbdoc_docs} and that @tt{/usr/info} is
+        the common @tt{info} directory, for @apl{csh} in @tt{.cshrc}:
+
+        @tt{setenv INFOPATH /usr/info:/home/clip/public_html/xsbdoc_docs}
+
+        Adding the directory to the info path list can also be done
+        within emacs, by including the following line in the
+        @tt{.emacs} file:
+
+@begin{verbatim}
+(defun add-info-path (newpath)
+  (setq Info-default-directory-list
+	(cons (expand-file-name newpath) Info-default-directory-list)))
+(add-info-path ""/home/clip/public_html/xsbdoc_docs"")
+(add-info-path ""/usr/info/"")
+@end{verbatim}
+
+        However, this has the disadvantage that it will not be seen by
+        the standalone @apl{info} command.
+
+        @end{itemize}
+@end{itemize}
+
+Automatic, direct on-line access to the information contained in the
+info file (e.g., going automatically to predicate descriptions by
+clicking on predicate names in programs in an @apl{emacs} buffer) can
+be easily implemented via existing @tt{.el} packages such as
+@tt{word-help}, written by Jens T. Berger Thielemann
+(@email{jensthi@@ifi.uio.no}). @file{word-help} may already be in your
+@apl{emacs} distribution, but for convenience the file
+@file{word-help.el} and a @file{word-help-setup.el} file, providing
+suitable initialization are included in the @tt{xsbdoc} library.  A
+suitable interface for @file{word-help} is also provided by the
+@tt{ciao.el} @apl{emacs} file that comes with the @apl{CIAO} system
+distribution (i.e., if @tt{ciao.el} is loaded it is not necessary to
+load or initialize @tt{word-help}).
+
+@subsection{Accessing man manuals} 
+
+The @apl{unix} @apl{man} format manuals generated by @apl{xsbdoc} can
+be viewed using the @apl{unix} @apl{man} command. In order for
+@apl{man} to be able to locate the manuals, they should be copied to
+one of the subdirectories (e.g., @tt{/usr/local/man/manl}) of one of
+the main man directories (in the previous case the main directory
+would be @tt{/usr/local/man}).  As usual, any directory can be used as
+as a man main directory, provided it is included in the environment
+variable @tt{MANPATH}. Again, this process can be performed
+automatically by setting the @tt{DOCDIR} variable in the @file{SETTINGS}
+file to this directory and typing @tt{gmake install}.
+
+@subsection{Putting it all together} 
+
+A simple, powerful, and very convenient way to use the facilities
+provided by @apl{xsbdoc} for automatic installation of manuals in
+different formats is to install all manuals in all formats in the same
+directory @tt{DOCDIR}, and to choose a directory which is also
+accessible via @tt{WWW}. After setting @tt{DOCDIR} to this directory
+in the @file{SETTINGS} file, and selecting @tt{infoindex} and
+@tt{htmlindex} for the @tt{DOCFORMATS} variable, @tt{gmake
+install}/@tt{gmake uninstall} will install/uninstall all manuals in
+all the selected formats in this directory and create and maintain the
+corresponding @tt{html} and @tt{info} indices. Then, setting the
+environment variables as follows (e.g., for @apl{csh} in @tt{.cshrc}):
+
+@begin{verbatim}
+setenv DOCDIR   /home/clip/public_html/xsbdoc_docs
+setenv INFOPATH /usr/local/info:$@{DOCDIR@}
+setenv MANPATH  $@{DOCDIR@}:$@{MANPATH@}
+@end{verbatim}
+
+Example files for inclusion in user's or common shell initialization
+files are included in the @tt{xsbdoc} library.
+
+More complex setups can be accommodated, as, for example, installing
+different types of manuals in different directories. However, this
+currently requires changing the @tt{DOCFORMATS} and @tt{DOCDIR}
+variables and performing @tt{gmake install} for each installation
+format/directory.
+
+@item  Sometimes, messages of the type: 
+@begin{verbatim}
+  gmake: *** No rule to make target `myfile.texic', needed by
+  `main.texic'.  Stop.
+@end{verbatim}
+appear (i.e., in the case above when running (@tt{g})@tt{make}
+@tt{main.}@em{target}).  Since @apl{xsbdoc} definitely knows how to
+make a @tt{.texic} file given a @tt{.pl} file, this means (in make's
+language) that it @em{cannot find the corresponding} @tt{.pl}
+@em{file} (@tt{myfile.pl} in the case above). The usual reason for
+this is that there is no directory path to this file declared in the
+@tt{SETTINGS} file.
+

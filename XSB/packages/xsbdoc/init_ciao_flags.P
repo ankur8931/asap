@@ -1,0 +1,5 @@
+
+:- import warning/1 from standard.
+
+:- assert((dynamic_flag_handler(multi_arity_warnings,_) :- 
+	warning('The flag multi_arity_warnings is not defined.  No action taken'))).

@@ -1,0 +1,316 @@
+%% chr_TimeMachine.P
+%%  Barry Evans 2006
+
+:- compiler_options([xpp_on]).
+%#define TRACE
+
+:- export	chr_TraceNewPath/1,
+			chr_TraceConstraintRuleFired/2,
+			chr_TraceConstraintRuleFired/3,
+			chr_Prepare/0,
+			chr_DisplayState/0,
+			chr_GraphState/0,
+			chr_GraphStep/0,
+			chr_DetermineID/2.
+
+:- import global_term_ref_1/1,show_store/1 from chr_interp.
+:- import get_attr/3 from machine.
+:- import findall/3 from setof.
+:- import member/2, memberchk/2 from basics.
+:- import prepare/1,gensym/2 from gensym.
+:- import concat_atom/2 from string.
+
+:- import lookup_variable_id/2 from constraintLib.
+
+%chr_DisplayState.
+
+chr_DisplayState :-
+ 	global_term_ref_1(Store),
+ 	get_attr(Store,timeConstraints,Attr),
+	fmt_write('\nTime Constraints state is:\n',_),
+	(
+	Attr =.. [v,_|Susps] ->
+		findall(_,(member(L,Susps),member(S,L),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],chr_DisplayPath(C)),_)
+		;
+		findall(_,(member(S,Attr),S =.. [_,_,_,_,_,_,F|A],C=..[F|A],chr_DisplayPath(C)),_)
+	),
+	write('\n\n'),
+	!.
+chr_DisplayState :-
+	fmt_write('*** Time Constraints state is empty ***\n',_).
+
+
+%
+%	chr_DetermineID(X,IdX)
+%
+
+chr_DetermineID(X,id(X,IdX)) :-
+	var(X),
+	lookup_variable_id(X,IdX),
+	!.
+chr_DetermineID(X,X).
+
+%
+%	chr_DisplayPath(Path)
+%
+chr_DisplayPath(Path) :-
+	write('path: '),
+	chr_WritePath(Path),
+	nl,
+	!.
+chr_DisplayPath(Path) :-
+	fmt_write('\n### chr_DisplayPath failed for Path:%S ###\n\n',arg(Path)).
+
+
+chr_WritePath(Path) :-
+	chr_DeterminePath(Path,X,Y,L),
+	chr_WritePath(X,Y,L).
+
+chr_WritePath(X,Y,L) :-
+	fmt_write('%S -%S-> %S',arg(X,L,Y)).
+
+
+chr_DeterminePath(path(_N,X,Y,L,_T,_I),IdX,IdY,L) :-
+	chr_DetermineID(X,IdX),
+	chr_DetermineID(Y,IdY).
+
+%----------------------------------------------------------------------------
+#ifndef TRACE
+%
+%	Dummy versions for when tracing is off
+%
+
+chr_TraceNewPath(_Path).
+chr_TraceConstraintRuleFired(_RuleName,_TriggeringPath).
+chr_TraceConstraintRuleFired(_RuleName,_TriggeringPath1,_TriggeringPath2).
+chr_Prepare.
+chr_GraphState.
+chr_GraphStep.
+
+%-------------------------------------------------------------------------
+#else
+
+%
+%	External Interfaces, exported predicates
+%
+
+%
+%	chr_TraceNewPath(Path)
+%
+
+:- ensure_loaded('iso8601.P').
+:- import	date_string/3,
+			date/4
+			from iso8601.
+
+chr_TraceNewPath(Path) :-
+	write('Adding path '),
+	chr_DeterminePath(Path,X,Y,L),
+	chr_WritePath(X,Y,L),
+	(show_store(timeConstraints) ; true),
+	nl,
+	!.
+
+chr_TraceNewPath(Path) :-
+	fmt_write('\n### chr_TraceNewPath failed for Path:%S ###\n\n',arg(Path)).
+
+%
+%	chr_TraceConstraintRuleFired(RuleName,TriggeringPath)
+%	chr_TraceConstraintRuleFired(RuleName,TriggeringPath1,TriggeringPath2)
+%
+
+chr_TraceConstraintRuleFired(RuleName,TriggeringPath) :-
+	fmt_write('\nRule %S triggered by\n\t',arg(RuleName)),
+	chr_DeterminePath(TriggeringPath,X,Y,L),
+	chr_WritePath(X,Y,L),
+	nl,
+	(show_store(timeConstraints) ; true),
+%	chr_GraphStep(RuleName,[X-Y]),
+	!.
+
+chr_TraceConstraintRuleFired(RuleName,TriggeringPath) :-
+	fmt_write('\n### chr_TraceConstraintRuleFired failed for RuleName:%X, TriggeringPath: %S',arg(RuleName,TriggeringPath)).
+
+
+chr_TraceConstraintRuleFired(RuleName,TriggeringPath1,TriggeringPath2) :-
+	fmt_write('\nRule %S triggered by\n\t',arg(RuleName)),
+	chr_DeterminePath(TriggeringPath1,X1,Y1,L1),
+	chr_WritePath(X1,Y1,L1),
+	write('\n\t'),
+	chr_DeterminePath(TriggeringPath2,X2,Y2,L2),
+	chr_WritePath(X2,Y2,L2),
+	write('\n\t'),
+	nl,
+	chr_GraphStep(RuleName,[X1-Y1,X2-Y2]),
+	!.
+
+chr_TraceConstraintRuleFired(RuleName,TriggeringPath1,TriggeringPath2) :-
+	fmt_write('\n### chr_TraceConstraintRuleFired failed for RuleName:%X, TriggeringPaths: %S,%S',arg(RuleName,TriggeringPath1,TriggeringPath2)).
+
+%
+%	chr_Prepare/0
+%
+chr_Prepare :-
+	prepare(0),
+	shell('rm ./dot_cache/*',_Result1),
+	shell('rm ./jpeg_cache/*',_Result2),
+	!.
+
+chr_Prepare.
+
+chr_GraphState.
+chr_GraphState(_File,_TriggerPaths,_RuleName).
+chr_GraphStep.
+/*
+%
+%	chr_GraphState
+%
+chr_GraphState :-
+	chr_GraphState('Test.dot',[],''),
+	shell('open DisplaySlideshow.app',_Result).
+
+
+chr_GraphState(File,TriggerPaths,RuleName) :-
+	tell(File),
+	fmt_write('digraph states {\n\tnode [style=filled,color=green,shape=circle];\n',_),
+	chr_GetConstraintPaths(Paths),
+	chr_GraphNodesInPaths(Paths),
+	chr_GraphPaths(Paths,TriggerPaths),
+	chr_writeGraphRuleName(RuleName),
+	write('  }\n'),
+	told,
+	!.
+
+chr_GraphState(_File,_TriggerPaths,_RuleName) :-
+	fmt_write('*** Time Constraints state is empty ***\n',_).
+
+
+ chr_GraphStep :-
+ 	gensym(step,FileName),
+ 	concat_atom(['./dot_cache/',FileName,'.dot'],DotPathname),
+ 	chr_GraphState(DotPathname,[],''),
+ 	concat_atom(['dot -Tjpg ',DotPathname,' -o./jpeg_cache/',FileName,'.jpeg'],JPegCommand),
+	shell(JPegCommand,_Result).
+
+
+chr_GraphStep.
+
+*/
+
+
+chr_writeGraphRuleName('') :-!.
+
+chr_writeGraphRuleName(RuleName) :-
+	fmt_write('"%S" [shape=plaintext,color=white];\n',arg(RuleName)).
+
+/*
+chr_GraphStep(RuleName,TriggerPaths) :-
+	gensym(step,FileName),
+	concat_atom(['./dot_cache/',FileName,'.dot'],DotPathname),
+	chr_GraphState(DotPathname,TriggerPaths,RuleName),
+	concat_atom(['dot -Tjpg ',DotPathname,' -o./jpeg_cache/',FileName,'.jpeg'],JPegCommand),
+	shell(JPegCommand,_Result).
+*/
+
+chr_GraphStep(_RuleName,_TriggerPaths).
+
+
+chr_GraphPaths([],_TriggerPaths) :- !.
+
+chr_GraphPaths([Path|Paths],TriggerPaths) :-
+	chr_GraphPath(Path,TriggerPaths),
+	chr_GraphPaths(Paths,TriggerPaths).
+
+chr_GraphPath(path(_N,X,Y,L,_T,I),TriggerPaths) :-
+	chr_DetermineID(X,IdX),
+	chr_DetermineID(Y,IdY),
+	chr_EdgeAttributeCheck(IdX-IdY,I,TriggerPaths,Attributes),
+	write('\t'),
+	chr_GraphPath1(IdX),
+	write(' -> '),
+	chr_GraphPath1(IdY),
+	fmt_write(' [%Slabel = "',arg(Attributes)),
+	chr_writeGraphLable(L),
+	write('"];\n').
+
+
+chr_GraphPath1(X-Y) :-
+	!,
+	fmt_write('"%S-%S"',arg(X,Y)).
+
+chr_GraphPath1(X) :-
+	fmt_write('%S',arg(X)).
+
+
+chr_writeGraphLable([]) :-!.
+
+chr_writeGraphLable([Label|Labels]) :-
+	fmt_write('%S\\n',arg(Label)),
+	chr_writeGraphLable(Labels).
+
+
+chr_EdgeAttributeCheck(Path,_I,TriggerPaths,'color=red,') :-
+	memberchk(Path,TriggerPaths),
+	!.
+chr_EdgeAttributeCheck(_Path,1,_TriggerPaths,'color=deepskyblue,') :- !.
+chr_EdgeAttributeCheck(_Path,_I,_TriggerPaths,'style=dashed,').
+
+chr_GraphNodesInPaths([]) :- !.
+
+chr_GraphNodesInPaths(Paths) :-
+	chr_PathNodes(Paths,Nodes),
+	write('\tordering=out;\n'),
+	chr_GraphNodes(Nodes).
+
+chr_GraphNodes([]) :- !.
+
+chr_GraphNodes([Node|Nodes]) :-
+	chr_GraphNode(Node),
+	!,
+	chr_GraphNodes(Nodes).
+
+chr_GraphNodes([_Node|Nodes]) :-
+	chr_GraphNodes(Nodes).
+
+chr_GraphNode([]) :- !.
+
+chr_GraphNode(Start-End) :-
+	!,
+	fmt_write('\t"%S-%S"  [label="[ ',arg(Start,End)),
+	writeDate(Start),
+	write(' - '),
+	writeDate(End),
+	write(' ]"];\n').
+
+chr_GraphNode(Node) :-
+	fmt_write('\t%S  [label="T%S"];\n',arg(Node,Node)).
+
+
+chr_PathNodes(Paths,NodesOut) :-
+	findall(Node,(member(Path,Paths),chr_PathNode(Path,Node)),Nodes),
+	sort(Nodes,NodesOut).
+
+chr_PathNode(path(_N,X,_Y,_L,_T,_I),IdX) :- chr_DetermineID(X,IdX).
+chr_PathNode(path(_N,_X,Y,_L,_T,_I),IdY) :- chr_DetermineID(Y,IdY).
+
+writeDate(JD) :-
+	date(JD, Year, Month, Day),
+	date_string('YYYY-MM-DD',[Year,Month,Day],Date),
+	write(Date).
+
+
+chr_GetConstraintPaths(Paths) :-
+ 	global_term_ref_1(Store),
+ 	get_attr(Store,timeConstraints,Attr),
+	(
+	Attr =.. [v,_|Susps] ->
+		findall(Path,(member(L,Susps),member(S,L),S =.. [_,_,_,_,_,_,F|A],Path=..[F|A]),Paths)
+		;
+		findall(Path,(member(S,Attr),S =.. [_,_,_,_,_,_,F|A],Path=..[F|A]),Paths)
+	),
+	!.
+
+chr_GetConstraintPaths([]).
+
+#endif
+

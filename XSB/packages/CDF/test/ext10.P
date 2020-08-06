@@ -1,0 +1,44 @@
+
+class_ext(domain1,domain1,test).
+class_ext(domain2,domain2,test).
+class_ext(domain3,domain3,test).
+class_ext(domain4,domain4,test).
+
+class_ext(cgood1,cgood1,test).
+class_ext(cgood2,cgood2,test).
+class_ext(goodparam,g(cgood2,test),test).
+class_ext(badparam,h(cgood2,test),test).
+class_ext(cbad1,cbad1,test).
+
+class_ext(rel1,rel1,test).
+class_ext(rel2,rel2,test).
+
+object_ext(ogood1,ogood1,test).
+object_ext(obad1,obad1,test).
+
+subclass_ext(rel2,test,'OMS Set-Valued Relations','OMS').
+subclass_ext(rel1,test,'OMS Inheritable Relationships','OMS').
+
+subclass_ext(cgood1,test,'OMS Root','OMS').
+subclass_ext(cgood2,test,cgood1,test).
+subclass_ext(g(cgood2,test),test,cgood1,test).
+subclass_ext(h(cgood2,test),test,cgood2,test).
+
+subclass_ext(domain1,test,'OMS Root','OMS').
+subclass_ext(domain2,test,domain1,test).
+subclass_ext(domain3,test,domain2,test).
+subclass_ext(domain4,test,domain2,test).
+
+memberof_ext(ogood1,test,cgood1,test).
+
+schrel_ext(cgood1,test,rel1,test,domain3,test).
+relationship_ext(cgood1,test,rel1,test,domain3,test).
+strel_ext(cgood1,test,rel2,test,domain3,test).
+
+schrel_ext(cbad1,test,rel1,test,domain4,test).
+relationship_ext(cbad1,test,rel1,test,domain3,test).
+
+attribute_ext(ogood1,test,rel1,test,cgood1,test).
+attribute_object_ext(ogood1,test,rel1,test,obad1,test).
+
+end_of_file.

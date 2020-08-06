@@ -1,0 +1,23 @@
+
+% A fanciful rule, to illustrate aspects of rule tranlation.
+% "Every suture whose thread is made of gut and that has at least two
+%  distinct needle designs, is an absorbable suture whose pointstyle
+%  is a reverseCuttingEdge"
+
+rt1:- 
+check_rule((cid(absorbableSuture,test),
+	      exists(rid(hasPointStyle,test),cid(reverseCuttingEdge,test)),
+	      component(test)) <=
+    (exists(cid(hasImmedPart,test), 
+        (cid(sutThread,test),
+         exists(rid(hasMaterial,test),cid(gut,test)))),
+      atLeast(2,rid(hasNeedleDesign,test),cid(needleDesign,test)))).
+
+rt2:- 
+check_rule((cid(absorbableSuture,test),
+	      exists(rid(hasPointStyle,test),cid(reverseCuttingEdge,test))) <=
+    (exists(cid(hasImmedPart,test), 
+        (cid(sutThread,test),
+         exists(rid(hasMaterial,test),cid(gut,test)))),
+      atLeast(2,rid(hasNeedleDesign,test),cid(needleDesign,test)))).
+
