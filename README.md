@@ -1,7 +1,7 @@
 # asap
 ## Autonomous Security Analysis and Penetration Testing
 
-## Source code descriptiion
+## Source code description
 ```
 PortScan.py - Python based nmap port scanner for Stinger's network discovery
    
