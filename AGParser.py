@@ -1,16 +1,33 @@
 import xml.etree.ElementTree as ET
 import networkx as nx
 import re
+import sys
+import subprocess
+import json
+
 class AGParser:
 
     def __init__(self, agfile):
+
         self.agfile = agfile
         self.G = nx.DiGraph()
-        self.G1 = nx.DiGraph()
+        self.G1 = nx.DiGraph() 
+        sys.path.append('cve-search/bin')
+
+    def getCVSS(self, cve):
+
+        proc = subprocess.Popen([" python3 cve-search/bin/search.py -c "+ cve +" -o json"], stdout=subprocess.PIPE, shell=True)
+        (out, err) = proc.communicate()
+        out = json.loads(out.decode('utf-8'))
+        res = {'complexity':out['access']['complexity'], 'cvss':out['cvss']} 
+
+        return res
 
     def parseAG(self, agfile):
+
         tree = ET.parse(self.agfile)
         root = tree.getroot()      
+        cve_dict = dict()
 
         # Parse over arcs and create a directed graph
         for child in root:
@@ -40,7 +57,9 @@ class AGParser:
                     if 'vulExists' in self.G.nodes[pred]['attrib']:
                         cve = self.G.nodes[pred]['attrib'].split(',')[1]
                         cve = cve.strip('\'')
-                        print(cve)
+                        if cve not in cve_dict.keys():
+                           cve_dict[cve] = self.getCVSS(cve)
+
                 for succ in list(self.G.successors(node)):
                     if 'attacker' in self.G.nodes[succ]['attrib'] or \
                        'execCode' in self.G.nodes[succ]['attrib'] or \
@@ -49,7 +68,8 @@ class AGParser:
                        self.G1.nodes[succ]['attrib'] = self.G.nodes[succ]['attrib']
                        n2=succ 
                 self.G1.add_edge(n1,n2,cvss=cve)
-               
+
+        print(cve_dict)       
         print(self.G1.edges.data())   
 f = AGParser('data/testcases/case1/100_case_AttackGraph.xml')
 f.parseAG(f)

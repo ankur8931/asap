@@ -60,6 +60,7 @@ class NessusScan:
          for policy in policies.json()['templates']:
              if (policy["title"] == scan_data["policy"]):
                 uuid = policy["uuid"]
+                print(policy)
 
       payload = {  "uuid" : uuid,
                    "settings" :  {
@@ -109,11 +110,11 @@ if __name__ == "__main__":
 
 
    ns = NessusScan()
-   #ns.getScannerState()
-   #ns.getScanPolicies()
+   ns.getScannerState()
+   ns.getScanPolicies()
      
    scan_data = {"policy": "Advanced Scan", "ipList": [{"ip": "192.168.3.29"}, {"ip": "192.168.3.30"}, {"ip": "192.168.3.31"}]}
    tid = {"id":"21"}
 
-   #print(ns.createScan(scan_data))
-   ns.getScanStatus(tid)
+   print(ns.createScan(scan_data))
+   #ns.getScanStatus(tid)

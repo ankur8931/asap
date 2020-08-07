@@ -24,5 +24,5 @@ class PortScan:
 
 if __name__ == "__main__":
    ps = PortScan()
-   ps.scanTarget('192.168.3.29')
+   ps.scanTarget('192.168.3.36')
 
