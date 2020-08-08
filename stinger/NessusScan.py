@@ -116,5 +116,5 @@ if __name__ == "__main__":
    scan_data = {"policy": "Advanced Scan", "ipList": [{"ip": "192.168.3.29"}, {"ip": "192.168.3.30"}, {"ip": "192.168.3.31"}]}
    tid = {"id":"21"}
 
-   print(ns.createScan(scan_data))
+   #print(ns.createScan(scan_data))
    #ns.getScanStatus(tid)

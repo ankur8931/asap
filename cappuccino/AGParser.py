@@ -4,7 +4,7 @@ import re
 import sys
 import subprocess
 import json
-import mdptoolbox
+import mdptoolbox, mdptoolbox.example
 import numpy as np
 
 class AGParser:
@@ -18,7 +18,7 @@ class AGParser:
 
     def getCVSS(self, cve):
 
-        proc = subprocess.Popen([" python3 cve-search/bin/search.py -c "+ cve +" -o json"], stdout=subprocess.PIPE, shell=True)
+        proc = subprocess.Popen([" python3 ../cve-search/bin/search.py -c "+ cve +" -o json"], stdout=subprocess.PIPE, shell=True)
         (out, err) = proc.communicate()
         out = json.loads(out.decode('utf-8'))
         complexity = out['access']['complexity']
@@ -88,8 +88,8 @@ class AGParser:
 
                 self.G1.add_edge(n1,n2,cvss=cve)
 
-        print(cve_dict)       
-        #print(self.G1.edges.data())  
+        #print(cve_dict)       
+        print(self.G1.edges.data())  
         
         state_size = len(self.G1)
         action_size = len(cve_dict)+1
@@ -110,7 +110,7 @@ class AGParser:
                  #if there is edge find edge cvss score
                     if self.G1.has_edge(j,k) and self.G1[j][k]['cvss'] in cve_dict.keys():
                        score = 0
-                       print(self.G1[j][k])                         
+                       #print(self.G1[j][k])                         
                        # check all incoming edges to AxSxS' and update score
 
                        for u,v,cvss in self.G1.edges(k):
@@ -130,20 +130,17 @@ class AGParser:
                       if k in node_attribs.keys():
                          cve = self.G1.nodes[k]['cve']
                          if cve in cve_dict.keys():
-                            print(cve_dict[cve])
+                            #print(cve_dict[cve])
                             R[i][j][k]= cve_dict[cve]['cvss']
 
+        print("=============MDP Reward Matrix=============")
         print(R)
-        # create MDP matrix for value iteration
-        
+        print("=======Value iteration Algorithm Output=====")
+        print("=======MDP Generated Policy=================")
         fh = mdptoolbox.mdp.FiniteHorizon(S, R, 0.9, 3) 
         fh.run()
         print(fh.V)
+        print(fh.policy) 
 
-           
-        
- 
-                              
-                         
-f = AGParser('data/testcases/case1/100_case_AttackGraph.xml')
+f = AGParser('/home/ubuntu/asap/americano/data/testcases/case1/100_case_AttackGraph.xml')
 f.parseAG(f)

