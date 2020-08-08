@@ -1,13 +1,16 @@
 # asap
 ## Autonomous Security Analysis and Penetration Testing
+stinger - port scan and vulnerablity scan APIs 
+americano - generated attack graph files. Need a local setup of mulval tool
+cappuccino - code files for MDP solver. Need pymdptoolbox and pymetasploit framework
 
 ## Source code description
 ```
-PortScan.py - Python based nmap port scanner for Stinger's network discovery
+stinger/PortScan.py - Python based nmap port scanner for Stinger's network discovery
    
-AGParser.py - Python parser for extracting attack graph information for creating MDP matrix
+cappuccino/AGParser.py - Python parser for extracting attack graph information for creating MDP matrix
 
-NessusScan.py - Automated Vulnerablity scan APIs. APIs disabled in current version 
+stinger/NessusScan.py - Automated Vulnerablity scan APIs. APIs disabled in current version 
 of nessus
 
 env.sh - Source files for setting up americano attack graph generation modules

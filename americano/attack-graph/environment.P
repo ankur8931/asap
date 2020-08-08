@@ -1,0 +1,17 @@
+:-['/home/hakem/Desktop/mulval/lib/libmulval'].
+:-['/home/hakem/Desktop/mulval/src/analyzer/translate'].
+:-['/home/hakem/Desktop/mulval/src/analyzer/attack_trace'].
+:-['/home/hakem/Desktop/mulval/src/analyzer/auxiliary'].
+
+:-dynamic meta/1.
+
+:-load_dyn('running_rules.P').
+
+:-load_dyn('nessus.P').
+
+:-assert(traceMode(completeTrace2)).
+
+:-load_dyn('/home/hakem/Desktop/mulval/src/analyzer/advances_notrim.P').
+
+:-assert(cvss(_, none)).
+

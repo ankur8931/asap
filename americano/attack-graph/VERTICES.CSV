@@ -1,0 +1,109 @@
+1,"execCode('192.168.3.36',someUser)","OR",0
+2,"RULE 2 (remote exploit of a server program)","AND",0
+3,"netAccess('192.168.3.36',tcp,'22')","OR",0
+4,"RULE 6 (direct network access)","AND",0
+5,"hacl(internet,'192.168.3.36',tcp,'22')","LEAF",1
+6,"attackerLocated(internet)","LEAF",1
+7,"networkServiceInfo('192.168.3.36',openssh,tcp,'22',someUser)","LEAF",1
+8,"vulExists('192.168.3.36','CVE-2008-5161',openssh,remoteExploit,privEscalation)","LEAF",1
+9,"RULE 2 (remote exploit of a server program)","AND",0
+10,"networkServiceInfo('192.168.3.36',openssl,tcp,'22',someUser)","LEAF",1
+11,"vulExists('192.168.3.36','CVE-2008-0166',openssl,remoteExploit,privEscalation)","LEAF",1
+12,"RULE 2 (remote exploit of a server program)","AND",0
+13,"vulExists('192.168.3.36','CVE-2014-3566',openssl,remoteExploit,privEscalation)","LEAF",1
+14,"RULE 2 (remote exploit of a server program)","AND",0
+15,"vulExists('192.168.3.36','CVE-2015-0204',openssl,remoteExploit,privEscalation)","LEAF",1
+16,"RULE 2 (remote exploit of a server program)","AND",0
+17,"vulExists('192.168.3.36','CVE-2016-0800',openssl,remoteExploit,privEscalation)","LEAF",1
+18,"RULE 2 (remote exploit of a server program)","AND",0
+19,"netAccess('192.168.3.36',tcp,'25')","OR",0
+20,"RULE 6 (direct network access)","AND",0
+21,"hacl(internet,'192.168.3.36',tcp,'25')","LEAF",1
+22,"networkServiceInfo('192.168.3.36',connect,tcp,'25',someUser)","LEAF",1
+23,"vulExists('192.168.3.36','CVE-2011-1506',connect,remoteExploit,privEscalation)","LEAF",1
+24,"RULE 2 (remote exploit of a server program)","AND",0
+25,"networkServiceInfo('192.168.3.36',content_security_management_appliance,tcp,'25',someUser)","LEAF",1
+26,"vulExists('192.168.3.36','CVE-2016-2183',content_security_management_appliance,remoteExploit,privEscalation)","LEAF",1
+27,"RULE 2 (remote exploit of a server program)","AND",0
+28,"networkServiceInfo('192.168.3.36',imail,tcp,'25',someUser)","LEAF",1
+29,"vulExists('192.168.3.36','CVE-2011-1430',imail,remoteExploit,privEscalation)","LEAF",1
+30,"RULE 2 (remote exploit of a server program)","AND",0
+31,"networkServiceInfo('192.168.3.36',netqmail,tcp,'25',someUser)","LEAF",1
+32,"vulExists('192.168.3.36','CVE-2011-1431',netqmail,remoteExploit,privEscalation)","LEAF",1
+33,"RULE 2 (remote exploit of a server program)","AND",0
+34,"networkServiceInfo('192.168.3.36',openssl,tcp,'25',someUser)","LEAF",1
+35,"RULE 2 (remote exploit of a server program)","AND",0
+36,"RULE 2 (remote exploit of a server program)","AND",0
+37,"RULE 2 (remote exploit of a server program)","AND",0
+38,"RULE 2 (remote exploit of a server program)","AND",0
+39,"networkServiceInfo('192.168.3.36',postfix,tcp,'25',someUser)","LEAF",1
+40,"vulExists('192.168.3.36','CVE-2011-0411',postfix,remoteExploit,privEscalation)","LEAF",1
+41,"RULE 2 (remote exploit of a server program)","AND",0
+42,"networkServiceInfo('192.168.3.36',safari,tcp,'25',someUser)","LEAF",1
+43,"vulExists('192.168.3.36','CVE-2013-2566',safari,remoteExploit,privEscalation)","LEAF",1
+44,"RULE 2 (remote exploit of a server program)","AND",0
+45,"vulExists('192.168.3.36','CVE-2015-2808',safari,remoteExploit,privEscalation)","LEAF",1
+46,"RULE 2 (remote exploit of a server program)","AND",0
+47,"vulExists('192.168.3.36','CVE-2015-4000',safari,remoteExploit,privEscalation)","LEAF",1
+48,"RULE 2 (remote exploit of a server program)","AND",0
+49,"networkServiceInfo('192.168.3.36',scoofficeserver,tcp,'25',someUser)","LEAF",1
+50,"vulExists('192.168.3.36','CVE-2011-1432',scoofficeserver,remoteExploit,privEscalation)","LEAF",1
+51,"RULE 2 (remote exploit of a server program)","AND",0
+52,"networkServiceInfo('192.168.3.36',tomcat,tcp,'25',someUser)","LEAF",1
+53,"vulExists('192.168.3.36','CVE-2007-1858',tomcat,remoteExploit,privEscalation)","LEAF",1
+54,"RULE 2 (remote exploit of a server program)","AND",0
+55,"networkServiceInfo('192.168.3.36',xcs,tcp,'25',someUser)","LEAF",1
+56,"vulExists('192.168.3.36','CVE-2011-2165',xcs,remoteExploit,privEscalation)","LEAF",1
+57,"RULE 2 (remote exploit of a server program)","AND",0
+58,"netAccess('192.168.3.36',tcp,'445')","OR",0
+59,"RULE 6 (direct network access)","AND",0
+60,"hacl(internet,'192.168.3.36',tcp,'445')","LEAF",1
+61,"networkServiceInfo('192.168.3.36',samba,tcp,'445',someUser)","LEAF",1
+62,"vulExists('192.168.3.36','CVE-2016-2118',samba,remoteExploit,privEscalation)","LEAF",1
+63,"RULE 2 (remote exploit of a server program)","AND",0
+64,"netAccess('192.168.3.36',tcp,'5432')","OR",0
+65,"RULE 6 (direct network access)","AND",0
+66,"hacl(internet,'192.168.3.36',tcp,'5432')","LEAF",1
+67,"networkServiceInfo('192.168.3.36',content_security_management_appliance,tcp,'5432',someUser)","LEAF",1
+68,"RULE 2 (remote exploit of a server program)","AND",0
+69,"networkServiceInfo('192.168.3.36',openssl,tcp,'5432',someUser)","LEAF",1
+70,"RULE 2 (remote exploit of a server program)","AND",0
+71,"RULE 2 (remote exploit of a server program)","AND",0
+72,"RULE 2 (remote exploit of a server program)","AND",0
+73,"RULE 2 (remote exploit of a server program)","AND",0
+74,"networkServiceInfo('192.168.3.36',safari,tcp,'5432',someUser)","LEAF",1
+75,"RULE 2 (remote exploit of a server program)","AND",0
+76,"RULE 2 (remote exploit of a server program)","AND",0
+77,"RULE 2 (remote exploit of a server program)","AND",0
+78,"netAccess('192.168.3.36',tcp,'6667')","OR",0
+79,"RULE 6 (direct network access)","AND",0
+80,"hacl(internet,'192.168.3.36',tcp,'6667')","LEAF",1
+81,"networkServiceInfo('192.168.3.36',unrealircd,tcp,'6667',someUser)","LEAF",1
+82,"vulExists('192.168.3.36','CVE-2010-2075',unrealircd,remoteExploit,privEscalation)","LEAF",1
+83,"RULE 2 (remote exploit of a server program)","AND",0
+84,"netAccess('192.168.3.36',tcp,'80')","OR",0
+85,"RULE 6 (direct network access)","AND",0
+86,"hacl(internet,'192.168.3.36',tcp,'80')","LEAF",1
+87,"networkServiceInfo('192.168.3.36',internet_information_services,tcp,'80',someUser)","LEAF",1
+88,"vulExists('192.168.3.36','CVE-2003-1567',internet_information_services,remoteExploit,privEscalation)","LEAF",1
+89,"RULE 2 (remote exploit of a server program)","AND",0
+90,"networkServiceInfo('192.168.3.36',java_system_application_server,tcp,'80',someUser)","LEAF",1
+91,"vulExists('192.168.3.36','CVE-2010-0386',java_system_application_server,remoteExploit,privEscalation)","LEAF",1
+92,"RULE 2 (remote exploit of a server program)","AND",0
+93,"networkServiceInfo('192.168.3.36',weblogic_server,tcp,'80',someUser)","LEAF",1
+94,"vulExists('192.168.3.36','CVE-2004-2320',weblogic_server,remoteExploit,privEscalation)","LEAF",1
+95,"RULE 2 (remote exploit of a server program)","AND",0
+96,"netAccess('192.168.3.36',udp,'2049')","OR",0
+97,"RULE 6 (direct network access)","AND",0
+98,"hacl(internet,'192.168.3.36',udp,'2049')","LEAF",1
+99,"networkServiceInfo('192.168.3.36',solaris,udp,'2049',someUser)","LEAF",1
+100,"vulExists('192.168.3.36','CVE-1999-0211',solaris,remoteExploit,privEscalation)","LEAF",1
+101,"RULE 2 (remote exploit of a server program)","AND",0
+102,"networkServiceInfo('192.168.3.36',ultrix,udp,'2049',someUser)","LEAF",1
+103,"vulExists('192.168.3.36','CVE-1999-0170',ultrix,remoteExploit,privEscalation)","LEAF",1
+104,"RULE 2 (remote exploit of a server program)","AND",0
+105,"netAccess('192.168.3.36',udp,'53')","OR",0
+106,"RULE 6 (direct network access)","AND",0
+107,"hacl(internet,'192.168.3.36',udp,'53')","LEAF",1
+108,"networkServiceInfo('192.168.3.36',bind,udp,'53',someUser)","LEAF",1
+109,"vulExists('192.168.3.36','CVE-2008-1447',bind,remoteExploit,privEscalation)","LEAF",1

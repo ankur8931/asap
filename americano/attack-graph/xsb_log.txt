@@ -1,0 +1,31 @@
+[xsb_configuration loaded]
+[sysinitrc loaded]
+
+XSB Version 3.4.0 (Soy mILK) of May 1, 2013
+[x86_64-unknown-linux-gnu 64 bits; mode: optimal; engine: slg-wam; scheduling: local]
+[Patch date: 2013/05/02 17:42:32]
+
+| ?- [Compiling ./run]
+[run compiled, cpu time used: 0.0120 seconds]
+[run loaded]
+[libmulval loaded]
+[translate loaded]
+[attack_trace loaded]
+[auxiliary loaded]
+[/home/hakem/Pictures/running_rules.P dynamically loaded, cpu time used: 0.0040 seconds]
+[/home/hakem/Pictures/nessus.P dynamically loaded, cpu time used: 0.0080 seconds]
+[/home/hakem/Desktop/mulval/src/analyzer/advances_notrim.P dynamically loaded, cpu time used: 0.0000 seconds]
+@@@@@@@@@@@@@@Done transforming in mode dynamic_decl
+
+[/home/hakem/Pictures/dynamic_decl.gen dynamically loaded, cpu time used: 0.0000 seconds]
+@@@@@@@@@@@@@@Done transforming in mode completeTrace2
+
+@@@@@@@@@@@@@@Done transforming in mode completeTrace2
+
+@@@@@@@@@@@@@@Done transforming in mode stripExplanation
+
+Running attack simulation...
+
+yes
+| ?- 
+End XSB (cputime 0.07 secs, elapsetime 0.08 secs)

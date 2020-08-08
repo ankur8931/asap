@@ -1,0 +1,50 @@
+:-(mvTrc(execCode(_h3376,_h3377,0)),','(mvTrc(principalCompromised(_h3382,_h3430)),','(hasAccount(_h3382,_h3376,_h3377),','(mvTrc(canAccessHost(_h3376,_h3468)),assert_trace(because(0,rule_desc('When a principal is compromised any machine he has an account on will also be compromised',0.5),execCode(_h3376,_h3377),[canAccessHost(_h3376),hasAccount(_h3382,_h3376,_h3377),principalCompromised(_h3382)])))))).
+
+:-(mvTrc(execCode(_h3376,root,1)),','(mvTrc(execCode(_h3376,_h3383,_h3428)),','(vulExists(_h3376,_h3386,_h3387,localExploit,privEscalation),assert_trace(because(1,rule_desc('local exploit',1.0),execCode(_h3376,root),[vulExists(_h3376,_h3386,_h3387,localExploit,privEscalation),execCode(_h3376,_h3383)]))))).
+
+:-(mvTrc(execCode(_h3376,_h3377,2)),','(vulExists(_h3376,_h3383,_h3384,remoteExploit,privEscalation),','(networkServiceInfo(_h3376,_h3384,_h3393,_h3394,_h3377),','(mvTrc(netAccess(_h3376,_h3393,_h3394,_h3457)),assert_trace(because(2,rule_desc('remote exploit of a server program',1.0),execCode(_h3376,_h3377),[netAccess(_h3376,_h3393,_h3394),networkServiceInfo(_h3376,_h3384,_h3393,_h3394,_h3377),vulExists(_h3376,_h3383,_h3384,remoteExploit,privEscalation)])))))).
+
+:-(mvTrc(execCode(_h3376,_h3377,3)),','(vulExists(_h3376,_h3383,_h3384,remoteClient,privEscalation),','(hasAccount(_h3391,_h3376,_h3377),','(mvTrc(accessMaliciousInput(_h3376,_h3391,_h3384,_h3455)),assert_trace(because(3,rule_desc('remote exploit for a client program',0.5),execCode(_h3376,_h3377),[accessMaliciousInput(_h3376,_h3391,_h3384),hasAccount(_h3391,_h3376,_h3377),vulExists(_h3376,_h3383,_h3384,remoteClient,privEscalation)])))))).
+
+:-(mvTrc(execCode(_h3376,root,4)),','(mvTrc(accessFile(_h3376,write,_h3381,_h3429)),assert_trace(because(4,rule_desc('Trojan horse installation',0.8),execCode(_h3376,root),[accessFile(_h3376,write,_h3381)])))).
+
+:-(mvTrc(netAccess(_h3376,_h3377,_h3378,5)),','(mvTrc(execCode(_h3383,_h3384,_h3434)),','(advances(_h3383,_h3376),','(hacl(_h3383,_h3376,_h3377,_h3378),assert_trace(because(5,rule_desc('multi-hop access',0.5),netAccess(_h3376,_h3377,_h3378),[hacl(_h3383,_h3376,_h3377,_h3378),advances(_h3383,_h3376),execCode(_h3383,_h3384)])))))).
+
+:-(mvTrc(netAccess(_h3376,_h3377,_h3378,6)),','(attackerLocated(_h3383),','(hacl(_h3383,_h3376,_h3377,_h3378),assert_trace(because(6,rule_desc('direct network access',1.0),netAccess(_h3376,_h3377,_h3378),[hacl(_h3383,_h3376,_h3377,_h3378),attackerLocated(_h3383)]))))).
+
+:-(mvTrc(netAccess(_h3376,_h3377,_h3378,7)),','(attackerLocated(_h3376),assert_trace(because(7,rule_desc('direct on-host access',1.0),netAccess(_h3376,_h3377,_h3378),[attackerLocated(_h3376)])))).
+
+:-(mvTrc(canAccessHost(_h3376,8)),','(mvTrc(execCode(_h3376,_h3379,_h3427)),assert_trace(because(8,rule_desc('Access a host through executing code on the machine',1.0),canAccessHost(_h3376),[execCode(_h3376,_h3379)])))).
+
+:-(mvTrc(canAccessHost(_h3376,9)),','(mvTrc(logInService(_h3376,_h3382,_h3383,_h3426)),','(mvTrc(netAccess(_h3376,_h3382,_h3383,_h3469)),assert_trace(because(9,rule_desc('Access a host through a log-in service',1.0),canAccessHost(_h3376),[netAccess(_h3376,_h3382,_h3383),logInService(_h3376,_h3382,_h3383)]))))).
+
+:-(mvTrc(accessFile(_h3376,_h3377,_h3378,10)),','(mvTrc(execCode(_h3376,_h3384,_h3428)),','(canAccessFile(_h3376,_h3384,_h3377,_h3378),assert_trace(because(10,rule_desc('execCode implies file access',1.0),accessFile(_h3376,_h3377,_h3378),[canAccessFile(_h3376,_h3384,_h3377,_h3378),execCode(_h3376,_h3384)]))))).
+
+:-(mvTrc(principalCompromised(_h3376,11)),','(hasAccount(_h3376,_h3382,_h3383),','(mvTrc(execCode(_h3382,root,_h3439)),assert_trace(because(11,rule_desc('password sniffing',0.8),principalCompromised(_h3376),[execCode(_h3382,root),hasAccount(_h3376,_h3382,_h3383)]))))).
+
+:-(mvTrc(principalCompromised(_h3376,12)),','(hasAccount(_h3376,_h3382,_h3383),','(mvTrc(execCode(_h3382,_h3383,_h3439)),assert_trace(because(12,rule_desc('password sniffing',0.8),principalCompromised(_h3376),[execCode(_h3382,_h3383),hasAccount(_h3376,_h3382,_h3383)]))))).
+
+:-(mvTrc(logInService(_h3376,_h3377,_h3378,13)),','(networkServiceInfo(_h3376,sshd,_h3377,_h3378,_h3384),assert_trace(because(13,rule_desc('',1),logInService(_h3376,_h3377,_h3378),[networkServiceInfo(_h3376,sshd,_h3377,_h3378,_h3384)])))).
+
+:-(mvTrc(logInService(_h3376,_h3377,_h3378,14)),','(networkServiceInfo(_h3376,vpnService,_h3377,_h3378,_h3384),assert_trace(because(14,rule_desc('',1),logInService(_h3376,_h3377,_h3378),[networkServiceInfo(_h3376,vpnService,_h3377,_h3378,_h3384)])))).
+
+:-(mvTrc(accessFile(_h3376,_h3377,_h3378,15)),','(nfsMounted(_h3383,_h3384,_h3376,_h3378,_h3377),','(mvTrc(accessFile(_h3383,_h3377,_h3384,_h3440)),assert_trace(because(15,rule_desc('NFS semantics',1),accessFile(_h3376,_h3377,_h3378),[accessFile(_h3383,_h3377,_h3384),nfsMounted(_h3383,_h3384,_h3376,_h3378,_h3377)]))))).
+
+:-(mvTrc(accessFile(_h3376,_h3377,_h3378,16)),','(nfsMounted(_h3376,_h3378,_h3385,_h3386,read),','(mvTrc(accessFile(_h3385,_h3377,_h3386,_h3440)),assert_trace(because(16,rule_desc('NFS semantics',1),accessFile(_h3376,_h3377,_h3378),[accessFile(_h3385,_h3377,_h3386),nfsMounted(_h3376,_h3378,_h3385,_h3386,read)]))))).
+
+:-(mvTrc(accessFile(_h3376,_h3377,_h3378,17)),','(mvTrc(execCode(_h3383,_h3384,_h3436)),','(nfsExportInfo(_h3376,_h3378,_h3377,_h3383),','(hacl(_h3383,_h3376,nfsProtocol,nfsPort),assert_trace(because(17,rule_desc('NFS shell',0.8),accessFile(_h3376,_h3377,_h3378),[hacl(_h3383,_h3376,nfsProtocol,nfsPort),nfsExportInfo(_h3376,_h3378,_h3377,_h3383),execCode(_h3383,_h3384)])))))).
+
+:-(mvTrc(canAccessFile(_h3376,_h3377,_h3378,_h3379,18)),','(localFileProtection(_h3376,_h3377,_h3378,_h3379),assert_trace(because(18,rule_desc('',1),canAccessFile(_h3376,_h3377,_h3378,_h3379),[localFileProtection(_h3376,_h3377,_h3378,_h3379)])))).
+
+:-(mvTrc(vulExists(_h3376,_h3377,_h3378,_h3379,_h3380,19)),','(vulExists(_h3376,_h3377,_h3378),','(vulProperty(_h3377,_h3379,_h3380),assert_trace(because(19,rule_desc('',1),vulExists(_h3376,_h3377,_h3378,_h3379,_h3380),[vulProperty(_h3377,_h3379,_h3380),vulExists(_h3376,_h3377,_h3378)]))))).
+
+:-(mvTrc(vulExists(_h3376,_h3377,_h3378,_h3379,_h3380,20)),','(bugHyp(_h3376,_h3378,_h3379,_h3380),assert_trace(because(20,rule_desc('Introducing hypothetical bug',1),vulExists(_h3376,_h3377,_h3378,_h3379,_h3380),[bugHyp(_h3376,_h3378,_h3379,_h3380)])))).
+
+:-(mvTrc(vulExists(_h3376,_h3377,_h3378,_h3379,_h3380,21)),','(vulExists(_h3376,_h3377,_h3387,_h3379,_h3380),','(dependsOn(_h3376,_h3378,_h3387),assert_trace(because(21,rule_desc('Library bug',1),vulExists(_h3376,_h3377,_h3378,_h3379,_h3380),[dependsOn(_h3376,_h3378,_h3387),vulExists(_h3376,_h3377,_h3387,_h3379,_h3380)]))))).
+
+:-(mvTrc(accessMaliciousInput(_h3376,_h3377,_h3378,22)),','(inCompetent(_h3377),','(hacl(_h3376,_h3389,httpProtocol,httpPort),','(attackerLocated(_h3389),assert_trace(because(22,rule_desc('Browsing a malicious website',0.8),accessMaliciousInput(_h3376,_h3377,_h3378),[attackerLocated(_h3389),hacl(_h3376,_h3389,httpProtocol,httpPort),inCompetent(_h3377)])))))).
+
+:-(mvTrc(accessMaliciousInput(_h3376,_h3377,_h3378,23)),','(competent(_h3377),','(hacl(_h3376,_h3389,httpProtocol,httpPort),','(attackerLocated(_h3389),assert_trace(because(23,rule_desc('Browsing a malicious website',0.1),accessMaliciousInput(_h3376,_h3377,_h3378),[attackerLocated(_h3389),hacl(_h3376,_h3389,httpProtocol,httpPort),competent(_h3377)])))))).
+
+:-(mvTrc(accessMaliciousInput(_h3376,_h3377,_h3378,24)),','(inCompetent(_h3377),','(isWebServer(_h3388),','(hacl(_h3376,_h3388,httpProtocol,httpPort),','(mvTrc(execCode(_h3388,_h3399,_h3462)),assert_trace(because(24,rule_desc('Browsing a compromised website',0.4),accessMaliciousInput(_h3376,_h3377,_h3378),[execCode(_h3388,_h3399),hacl(_h3376,_h3388,httpProtocol,httpPort),isWebServer(_h3388),inCompetent(_h3377)]))))))).
+
