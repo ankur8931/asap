@@ -6,6 +6,7 @@ import subprocess
 import json
 import mdptoolbox, mdptoolbox.example
 import numpy as np
+from sklearn import preprocessing
 
 class AGParser:
 
@@ -89,8 +90,21 @@ class AGParser:
                 self.G1.add_edge(n1,n2,cvss=cve)
 
         #print(cve_dict)       
-        print(self.G1.edges.data())  
+        #print(self.G1.edges.data())  
+        f = open("sample.yaml", "a")
+
+        for edge in self.G1.edges():
+            cve = str(self.G1[edge[0]][edge[1]]['cvss'])
+            if cve in cve_dict.keys():
+               f.write(str(edge)+" : "+str(cve_dict[cve])+"\n")
+            
+            
+        f.write("\n")
+
+        for edge in self.G1.edges():
+            f.write(str(edge)+" : "+str(self.G1[edge[0]][edge[1]]['cvss'])+"\n")
         
+
         state_size = len(self.G1)
         action_size = len(cve_dict)+1
 
@@ -118,12 +132,18 @@ class AGParser:
                        if score!=0:
                           S[i][j][k] = self.G1.nodes[k]['complexity']/score
                         
+        # Normalize the matrix
+
+        for i in range(action_size):
+            S[i] = preprocessing.normalize(S[i])        
+            print(S[i])
+       
  
         # update reward table
         node_attribs = nx.get_node_attributes(self.G1,'cve')
         print(node_attribs)
 
-        for i in range(action_size):
+        '''for i in range(action_size):
             for j in range(state_size):
                 for k in range(state_size):
                    if self.G1.has_node(k):
@@ -140,7 +160,7 @@ class AGParser:
         fh = mdptoolbox.mdp.FiniteHorizon(S, R, 0.9, 3) 
         fh.run()
         print(fh.V)
-        print(fh.policy) 
+        print(fh.policy) '''
 
 f = AGParser('/home/ubuntu/asap/americano/data/testcases/case1/100_case_AttackGraph.xml')
 f.parseAG(f)
