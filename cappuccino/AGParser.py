@@ -97,14 +97,14 @@ class AGParser:
         for edge in self.G1.edges():
             cve = str(self.G1[edge[0]][edge[1]]['cvss'])
             if cve in cve_dict.keys():
-               f.write(str(edge)+": "+str(cve_dict[cve]['cvss'])+"\n")
+               f.write("  "+str(edge)+": "+str(cve_dict[cve]['cvss'])+"\n")
             
             
         f.write("\n")
         f.write("vulnerabilities: \n")
         for edge in self.G1.edges():
             if str(self.G1[edge[0]][edge[1]]['cvss'])!="":
-               f.write(" - "+str(self.G1[edge[0]][edge[1]]['cvss'])+"\n")
+               f.write("  - "+str(self.G1[edge[0]][edge[1]]['cvss'])+"\n")
         
         f.write("os: \n")
         f.write("  - linux \n")
@@ -113,12 +113,12 @@ class AGParser:
         for edge in self.G1.edges():
             cve = str(self.G1[edge[0]][edge[1]]['cvss'])
             if cve!= "":
-               f.write("e_"+cve+": \n")
+               f.write("  e_"+cve+": \n")
             if cve in cve_dict.keys():
-               f.write("vulnerability: "+cve+"\n")
-               f.write("os: linux \n")
-               f.write("prob: "+str(cve_dict[cve]['complexity'])+"\n")
-               f.write("cost: "+str(cve_dict[cve]['cvss'])+"\n")
+               f.write("    vulnerability: "+cve+"\n")
+               f.write("    os: linux \n")
+               f.write("    prob: "+str(cve_dict[cve]['complexity'])+"\n")
+               f.write("    cost: "+str(cve_dict[cve]['cvss'])+"\n")
         
         f.write("vulnerability_scan_cost: 0.01\n")
         f.write("os_scan_cost: 0.05\n")
@@ -126,9 +126,9 @@ class AGParser:
         for edge in self.G1.edges():
             cve = str(self.G1[edge[0]][edge[1]]['cvss'])
             if cve in cve_dict.keys():
-               f.write(str(edge)+": \n")
-               f.write("vulnerability: ["+cve+"]\n")
-               f.write("os: linux\n")
+               f.write("  "+str(edge)+": \n")
+               f.write("    vulnerability: ["+cve+"]\n")
+               f.write("    os: linux\n")
         f.write("step_limit: 1000\n")
         state_size = len(self.G1)
         action_size = len(cve_dict)+1
