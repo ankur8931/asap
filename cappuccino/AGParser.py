@@ -92,19 +92,44 @@ class AGParser:
         #print(cve_dict)       
         #print(self.G1.edges.data())  
         f = open("sample.yaml", "a")
+        f.write("sensitive hosts: \n")
 
         for edge in self.G1.edges():
             cve = str(self.G1[edge[0]][edge[1]]['cvss'])
             if cve in cve_dict.keys():
-               f.write(str(edge)+" : "+str(cve_dict[cve])+"\n")
+               f.write(str(edge)+" : "+str(cve_dict[cve]['cvss'])+"\n")
             
             
         f.write("\n")
-
+        f.write("vulnerabilities: \n")
         for edge in self.G1.edges():
-            f.write(str(edge)+" : "+str(self.G1[edge[0]][edge[1]]['cvss'])+"\n")
+            if str(self.G1[edge[0]][edge[1]]['cvss'])!="":
+               f.write(" - "+str(self.G1[edge[0]][edge[1]]['cvss'])+"\n")
         
-
+        f.write("os: \n")
+        f.write("  - linux \n")
+        
+        f.write("exploits: \n")
+        for edge in self.G1.edges():
+            cve = str(self.G1[edge[0]][edge[1]]['cvss'])
+            if cve!= "":
+               f.write("e_"+cve+": \n")
+            if cve in cve_dict.keys():
+               f.write("vulnerability: "+cve+"\n")
+               f.write("os: linux \n")
+               f.write("prob : "+str(cve_dict[cve]['complexity'])+"\n")
+               f.write("cost : "+str(cve_dict[cve]['cvss'])+"\n")
+        
+        f.write("vulnerability_scan_cost: 0.01\n")
+        f.write("os_scan_cost: 0.05\n")
+        f.write("vuln_configuration: \n")
+        for edge in self.G1.edges():
+            cve = str(self.G1[edge[0]][edge[1]]['cvss'])
+            if cve in cve_dict.keys():
+               f.write(str(edge)+" : \n")
+               f.write("vulnerability: ["+cve+"]\n")
+               f.write("os :linux\n")
+        f.write("step_limit: 1000\n")
         state_size = len(self.G1)
         action_size = len(cve_dict)+1
 
