@@ -1,0 +1,6 @@
+setup.py
+nasim.egg-info/PKG-INFO
+nasim.egg-info/SOURCES.txt
+nasim.egg-info/dependency_links.txt
+nasim.egg-info/requires.txt
+nasim.egg-info/top_level.txt

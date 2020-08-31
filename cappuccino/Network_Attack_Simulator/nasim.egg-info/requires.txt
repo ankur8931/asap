@@ -1,0 +1,7 @@
+gym
+numpy
+networkx
+matplotlib
+pyyaml
+prettytable
+pytest

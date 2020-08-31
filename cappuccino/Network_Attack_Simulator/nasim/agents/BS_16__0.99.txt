@@ -1,0 +1,7 @@
+
+Episode 1:	steps done = 200 / 10000	return = -145.0	goal = True	episode_time = 1.2079997062683105
+Episode 2:	steps done = 1110 / 10000	return = -1345.0	goal = True	episode_time = 4.535995006561279
+Episode 3:	steps done = 1880 / 10000	return = -1099.0	goal = True	episode_time = 3.629035472869873
+Episode 4:	steps done = 3265 / 10000	return = -2003.0	goal = True	episode_time = 6.793989658355713
+Episode 5:	steps done = 6682 / 10000	return = -4533.0	goal = True	episode_time = 17.480037927627563
+Episode 6:	steps done = 10000 / 10000	return = -3840.0	goal = False	episode_time = 17.404000759124756

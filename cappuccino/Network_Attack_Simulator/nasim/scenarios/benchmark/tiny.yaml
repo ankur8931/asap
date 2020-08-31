@@ -1,0 +1,979 @@
+# A tiny standard (one public network) network configuration
+#
+# 3 hosts
+# 3 subnets
+# 1 service
+# 1 os
+# 1 exploit
+#
+# Optimal path:
+# (e_ssh, (1, 0)) -> subnet_scan -> (e_ssh, (3, 0)) -> (e_ssh, (2, 0))
+# Score = 200 - (3*1) = 196
+#
+subnets: [300]
+topology: [[ 1, 1],
+           [ 1, 1]]
+sensitive_hosts:
+  (1, 299): 100
+  (1, 298): 100
+  (1, 297): 100
+  (1, 296): 100
+  (1, 295): 100  
+services:
+  - http 
+  - CVE-2011-0411
+  - CVE-2011-1431
+  - CVE-2013-2566
+os: 
+  - linux 
+exploits: 
+  e_CVE-2011-0411: 
+    service: CVE-2011-0411
+    os: linux 
+    prob: 0.6
+    cost: 6.8
+  e_CVE-2011-1431: 
+    service: CVE-2011-1431
+    os: linux 
+    prob: 0.6
+    cost: 6.8
+  e_CVE-2013-2566: 
+    service: CVE-2013-2566
+    os: linux 
+    prob: 0.6
+    cost: 4.3  
+service_scan_cost: 1
+os_scan_cost: 1
+subnet_scan_cost: 1
+host_configurations: 
+  (1, 0) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 1) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 2) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 3) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 4) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 5) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 6) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 7) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 8) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 9) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 10) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 11) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 12) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 13) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 14) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 15) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 16) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 17) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 18) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 19) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 20) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 21) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 22) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 23) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 24) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 25) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 26) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 27) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 28) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 29) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 30) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 31) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 32) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 33) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 34) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 35) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 36) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 37) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 38) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 39) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 40) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 41) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 42) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 43) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 44) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 45) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 46) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 47) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 48) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 49) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 50) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 51) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 52) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 53) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 54) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 55) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 56) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 57) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 58) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 59) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 60) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 61) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 62) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 63) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 64) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 65) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 66) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 67) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 68) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 69) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 70) : 
+    services: [CVE-2013-2566]
+    os: linux 
+  (1, 71) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 72) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 73) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 74) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 75) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 76) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 77) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 78) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 79) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 80) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 81) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 82) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 83) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 84) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 85) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 86) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 87) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 88) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 89) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 90) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 91) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 92) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 93) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 94) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 95) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 96) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 97) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 98) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 99) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 100) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 101) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 102) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 103) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 104) :
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 105) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 106) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 107) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 108) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 109) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 110) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 111) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 112) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 113) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 114) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 115) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 116) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 117) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 118) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 119) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 120) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 121) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 122) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 123) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 124) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 125) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 126) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 127) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 128) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 129) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 130) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 131) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 132) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 133) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 134) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 135) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 136) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 137) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 138) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 139) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 140) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 141) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 142) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 143) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 144) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 145) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 146) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 147) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 148) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 149) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 150) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 151) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 152) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 153) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 154) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 155) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 156) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 157) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 158) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 159) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 160) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 161) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 162) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 163) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 164) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 165) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 166) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 167) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 168) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 169) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 170) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 171) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 172) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 173) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 174) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 175) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 176) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 177) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 178) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 179) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 180) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 181) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 182) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 183) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 184) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 185) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 186) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 187) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 188) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 189) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 190) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 191) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 192) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 193) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 194) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 195) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 196) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 197) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 198) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 199) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 200) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 201) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 202) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 203) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 204) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 205) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 206) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 207) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 208) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 209) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 210) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 211) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 212) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 213) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 214) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 215) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 216) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 217) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 218) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 219) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 220) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 221) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 222) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 223) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 224) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 225) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 226) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 227) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 228) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 229) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 230) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 231) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 232) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 233) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 234) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 235) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 236) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 237) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 238) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 239) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 240) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 241) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 242) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 243) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 244) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 245) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 246) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 247) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 248) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 249) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 250) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 251) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 252) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 253) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 254) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 255) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 256) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 257) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 258) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 259) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 260) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 261) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 262) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 263) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 264) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 265) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 266) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 267) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 268) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 269) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 270) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 271) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 272) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 273) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 274) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 275) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 276) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 277) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 278) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 279) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 280) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 281) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 282) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 283) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 284) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 285) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 286) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 287) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 288) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 289) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 290) : 
+    services: [CVE-2011-1431]
+    os: linux
+  (1, 291) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 292) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 293) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 294) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 295) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 296) : 
+    services: [ CVE-2011-1431]
+    os: linux
+  (1, 297) : 
+    services: [CVE-2013-2566]
+    os: linux
+  (1, 298) : 
+    services: [CVE-2011-0411]
+    os: linux
+  (1, 299) : 
+    services: [CVE-2011-1431]
+    os: linux
+  
+  # step_limit: 1000
+  # - ssh
+# os:
+#   - linux
+# exploits:
+#   e_ssh:
+#     service: ssh
+#     os: linux
+#     prob: 0.8
+#     cost: 1
+# service_scan_cost: 1
+# os_scan_cost: 1
+# subnet_scan_cost: 1
+# host_configurations:
+#   (1, 0):
+#     services: [ssh]
+#     os: linux
+#   (2, 0):
+#     services: [ssh]
+#     os: linux
+#   (3, 0):
+#     services: [ssh]
+#     os: linux
+# two row for each connection between subnets as defined by topology
+# one for each direction of connection
+# list which services to allow
+firewall:
+  (0, 1): [http]
+  (1, 0): []
+step_limit: 10000
